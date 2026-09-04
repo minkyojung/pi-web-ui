@@ -6,8 +6,16 @@ A minimal web UI over the pi coding agent.
 
 ```bash
 npm install
-npm run dev            # http://localhost:3000
+npm run dev            # api on :3000, vite with HMR on :5173 — open :5173
 MODEL=anthropic/claude-opus-4-8 npm run dev
+```
+
+The client is a Vite build, so `npm run dev` runs two processes: the API server,
+which owns the pi session, and the Vite dev server, which proxies `/ws` to it.
+For the single-port shape the app actually ships as:
+
+```bash
+npm run build && npm run dev:server   # http://localhost:3000
 ```
 
 Auth comes from `~/.pi/agent/auth.json` (`pi` → `/login`). Sessions are written
@@ -18,14 +26,16 @@ npm test          # replays recorded pi sessions, offline
 npm run typecheck
 ```
 
-## Status: step 5 — one reducer, tested
+## Status: step 6 — React client
 
-The browser shows the conversation: user messages, streamed assistant text,
-tool calls with their results, errors, and a completion marker. Everything else
-is dropped. The `raw` checkbox still shows every event, which is the only way to debug when
-the rendered view is wrong. Events go out in the same shape pi's own print and
-rpc modes use: a `message_update` carries its delta, not the two full copies of
-the in-flight message it also ships as `message` and `assistantMessageEvent.partial`.
+The browser shows the conversation: user messages, streamed assistant text, tool
+calls with their results and the partial output arriving before them, errors,
+notices for the work pi does without being asked (auto retries, compaction), and
+a completion marker. Everything else is dropped. The `raw` checkbox still shows
+every event, which is the only way to debug when the rendered view is wrong.
+Events go out in the same shape pi's own print and rpc modes use: a
+`message_update` carries its delta, not the two full copies of the in-flight
+message it also ships as `message` and `assistantMessageEvent.partial`.
 
 `conversation.js` holds the rules for turning a pi session into conversation
 items, and both the browser and the server import it. It used to exist twice —
@@ -41,10 +51,19 @@ what made them worth removing rather than fixing twice.
 incremental without diffing; a caller that re-renders wholesale can ignore it
 and read `state.items`.
 
-Rendering is incremental: each conversation item owns its DOM node, deltas mark
-only that item dirty, and updates are flushed once per animation frame. The raw
-view keeps the last 300 events. Rebuilding everything per event cost 63ms for
-the first turn and 534ms by the twelfth; it is now flat at ~42ms.
+Rendering is incremental, which the reducer makes possible and the suite pins:
+`applyEvent` touches at most one item per event. `conversation.js` updates items
+in place, which React cannot see, so the client copies the items the reducer
+reports as touched into a fresh array — every other item keeps its identity and
+its memoized component skips the render. Updates are coalesced into one
+animation frame, which a browser does not run in a hidden tab, so a background
+tab catches up when it is focused. The raw view keeps the last 300 events and is
+mounted only while it is on.
+
+The design comes from the hand-written DOM client that preceded it, where
+rebuilding everything per event cost 63ms for the first turn and 534ms by the
+twelfth, and going incremental made it flat at ~42ms. The React client has not
+been re-measured.
 
 The settings bar exposes three controls, all applied to the live session:
 
@@ -124,5 +143,9 @@ session. It spends real tokens, so it is manual and never part of `npm test`.
 Re-record only when a pi upgrade actually breaks a test — a stale fixture that
 still passes is evidence the contract held.
 
-The DOM layer is deliberately untested: it is about to be replaced by a React
-client, and its tests would be replaced with it.
+The rendering layer is deliberately untested. Every rule about what a session
+means lives in `conversation.js` and is covered here; the renderer's one
+contract with it — an event touches at most one item — is asserted by the same
+suite. What is left is JSX, and it was checked the one way that is worth the
+trouble: by running both clients against the same live session until the DOM
+they produced was identical.
