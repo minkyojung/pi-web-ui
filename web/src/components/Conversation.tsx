@@ -1,35 +1,23 @@
-import { useLayoutEffect, useRef } from "react";
-
-import type { Item } from "../types";
+import { Conversation as Scroller, ConversationContent, ConversationScrollButton } from "./ai-elements/conversation";
 import { ItemView } from "./Item";
+import type { Item } from "../types";
 
-/** Near enough to the bottom that the view should keep following new content. */
-const isAtBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-
+/**
+ * The scroll container. use-stick-to-bottom replaces the hand-rolled follow
+ * logic that had to record the user's scrolls to avoid measuring after new
+ * content had already changed scrollHeight; it watches the content instead,
+ * and brings a jump-to-bottom button with it.
+ */
 export function Conversation({ items }: { items: Item[] }) {
-	const main = useRef<HTMLElement>(null);
-	// Recorded while the user scrolls rather than when content arrives: measured
-	// afterwards, a tall new item is already in scrollHeight and the view would
-	// read as scrolled away and stop following.
-	const following = useRef(true);
-
-	useLayoutEffect(() => {
-		const el = main.current;
-		if (el && following.current) el.scrollTop = el.scrollHeight;
-	}, [items]);
-
 	return (
-		<main
-			ref={main}
-			className="flex-1 overflow-auto p-3"
-			onScroll={(e) => (following.current = isAtBottom(e.currentTarget))}
-		>
-			<div id="chat">
+		<Scroller className="relative flex-1 overflow-y-auto">
+			<ConversationContent id="chat" className="flex flex-col gap-3 p-3">
 				{/* Items are only ever appended, never reordered, so the index is a stable key. */}
 				{items.map((item, i) => (
 					<ItemView key={i} item={item} />
 				))}
-			</div>
-		</main>
+			</ConversationContent>
+			<ConversationScrollButton />
+		</Scroller>
 	);
 }

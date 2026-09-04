@@ -2,6 +2,9 @@
 /* Vite's root is web/, so pin the scan rather than rely on detection: when it
    goes wrong it goes wrong silently, as a few classes that just do nothing. */
 @source "./";
+/* Streamdown emits Tailwind classes from its own dist, which the scan above
+   does not reach; without this, rendered markdown comes out unstyled. */
+@source "../../node_modules/streamdown/dist";
 
 /*
  * shadcn's neutral tokens. Its own output puts the dark set behind a .dark

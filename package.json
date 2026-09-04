@@ -17,13 +17,17 @@
   "type": "module",
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.4",
+    "@streamdown/cjk": "^1.0.3",
+    "@streamdown/code": "^1.1.1",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.2.5",
     "lucide-react": "^1.40.0",
     "radix-ui": "^1.6.7",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "streamdown": "^2.6.0",
     "tsx": "^4.23.13",
+    "use-stick-to-bottom": "^1.1.6",
     "ws": "^8.21.3"
   },
   "devDependencies": {
@@ -33,6 +37,7 @@
     "@types/react-dom": "^19.2.7",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^6.1.1",
+    "ai": "^7.0.92",
     "concurrently": "^10.0.5",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
