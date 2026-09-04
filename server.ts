@@ -23,6 +23,14 @@ import {
 import { itemsFromMessages } from "./conversation.js";
 
 const PORT = Number(process.env.PORT ?? 3000);
+/**
+ * Loopback by default. There is no authentication here and the agent runs shell
+ * commands with this process's permissions, so anything that can reach the port
+ * has the machine. Binding every interface — which is what listen() does when
+ * you leave the host out — hands that to whoever else is on the wifi. Set
+ * HOST=0.0.0.0 to expose it on purpose.
+ */
+const HOST = process.env.HOST ?? "127.0.0.1";
 /** "provider/id". Only the starting model; the UI can switch it live. */
 const MODEL = process.env.MODEL ?? "openai/gpt-5.4";
 const CWD = process.cwd();
@@ -390,8 +398,9 @@ wss.on("connection", async (ws) => {
 	ws.send(safeStringify(await sessions()));
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
 	console.log(`open http://localhost:${PORT}  (ctrl+c to stop)`);
+	if (HOST !== "127.0.0.1") console.log(`listening on ${HOST} — anyone who can reach it controls this machine`);
 	console.log(`model: ${session().model?.id ?? "none"}  thinking: ${session().thinkingLevel}`);
 	console.log(`session: ${session().sessionFile ?? "(not persisted)"}`);
 });

@@ -8,6 +8,7 @@ const dir = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 /** Follows the same env var server.ts reads, so the two stay on one port. */
 const apiPort = process.env.PORT ?? "3000";
+const apiHost = process.env.HOST ?? "127.0.0.1";
 
 export default defineConfig({
 	// The client lives in web/ rather than at the repo root so its index.html
@@ -21,7 +22,7 @@ export default defineConfig({
 		// server refuses to read outside it without this.
 		fs: { allow: [dir(".")] },
 		// The API server owns the pi session; only the socket needs proxying.
-		proxy: { "/ws": { target: `ws://localhost:${apiPort}`, ws: true } },
+		proxy: { "/ws": { target: `ws://${apiHost}:${apiPort}`, ws: true } },
 	},
 	build: { outDir: dir("./dist"), emptyOutDir: true },
 });
