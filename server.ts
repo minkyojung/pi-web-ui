@@ -262,7 +262,6 @@ wss.on("connection", async (ws) => {
 	ws.send(safeStringify(config()));
 	ws.send(safeStringify(usage()));
 	ws.send(safeStringify(snapshot()));
-	ws.send(safeStringify(await sessions()));
 
 	ws.on("message", async (data) => {
 		let msg: {
@@ -368,6 +367,12 @@ wss.on("connection", async (ws) => {
 			broadcast({ type: "error", message: err instanceof Error ? err.message : String(err) });
 		}
 	});
+
+	// Last, and only after the handler above is registered: reading the session
+	// list touches the disk, and anything the client sent while that await was
+	// outstanding would arrive at a socket with no 'message' listener and be
+	// dropped without a trace.
+	ws.send(safeStringify(await sessions()));
 });
 
 server.listen(PORT, () => {
