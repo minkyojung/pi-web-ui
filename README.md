@@ -22,8 +22,10 @@ npm run typecheck
 
 The browser shows the conversation: user messages, streamed assistant text,
 tool calls with their results, errors, and a completion marker. Everything else
-is dropped. The `raw` checkbox still shows every event verbatim, which is the
-only way to debug when the rendered view is wrong.
+is dropped. The `raw` checkbox still shows every event, which is the only way to debug when
+the rendered view is wrong. Events go out in the same shape pi's own print and
+rpc modes use: a `message_update` carries its delta, not the two full copies of
+the in-flight message it also ships as `message` and `assistantMessageEvent.partial`.
 
 `conversation.js` holds the rules for turning a pi session into conversation
 items, and both the browser and the server import it. It used to exist twice —

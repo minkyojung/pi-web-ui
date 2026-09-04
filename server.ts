@@ -27,18 +27,26 @@ const PORT = Number(process.env.PORT ?? 3000);
 const MODEL = process.env.MODEL ?? "openai/gpt-5.4";
 const CWD = process.cwd();
 
-/** JSON.stringify that survives circular references and Error values. */
+/**
+ * JSON.stringify that survives circular references and Error values.
+ *
+ * Only the current ancestor path counts as "seen". Tracking every visited
+ * object instead would collapse an object that merely appears twice in the
+ * tree, which is a shape pi actually emits.
+ */
 function safeStringify(value: unknown): string {
-	const seen = new WeakSet<object>();
+	const ancestors: unknown[] = [];
 	return JSON.stringify(
 		value,
-		(_key, val) => {
+		function (this: unknown, _key, val) {
 			if (val instanceof Error) return { name: val.name, message: val.message };
 			if (typeof val === "bigint") return val.toString();
-			if (typeof val === "object" && val !== null) {
-				if (seen.has(val)) return "[Circular]";
-				seen.add(val);
-			}
+			if (typeof val !== "object" || val === null) return val;
+			// `this` is the object val was read from, so unwinding to it leaves
+			// exactly the path from the root to val on the stack.
+			while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== this) ancestors.pop();
+			if (ancestors.includes(val)) return "[Circular]";
+			ancestors.push(val);
 			return val;
 		},
 		2,
@@ -173,8 +181,24 @@ function broadcast(payload: unknown): void {
 	}
 }
 
+/**
+ * The wire form of a session event, matching what pi's own print and rpc modes
+ * send. A `message_update` ships the whole message being streamed twice — as
+ * `message` and again as `assistantMessageEvent.partial` — and both are
+ * reconstructible from the deltas the client already folds in. Dropping them
+ * keeps the raw view readable at 300 events.
+ */
+function toWireEvent(event: AgentSessionEvent): unknown {
+	if (event.type !== "message_update") return event;
+	const usage = event.message.role === "assistant" ? event.message.usage : undefined;
+	const sub = event.assistantMessageEvent;
+	if (!("partial" in sub)) return { type: event.type, usage, assistantMessageEvent: sub };
+	const { partial: _partial, ...delta } = sub;
+	return { type: event.type, usage, assistantMessageEvent: delta };
+}
+
 function onEvent(event: AgentSessionEvent): void {
-	broadcast(event);
+	broadcast(toWireEvent(event));
 	// isStreaming and the queue drive the stop button and pending count.
 	if (event.type === "agent_start" || event.type === "agent_settled" || event.type === "queue_update") {
 		broadcast(config());
@@ -351,5 +375,9 @@ process.on("SIGINT", async () => {
 	if (shuttingDown) return;
 	shuttingDown = true;
 	await runtime.dispose();
+	// server.close() waits for open connections, and an upgraded WebSocket is
+	// one of them. ws does not close them for us when the http server was
+	// passed in, so a browser tab left open would hang the exit.
+	for (const client of clients) client.terminate();
 	server.close(() => process.exit(0));
 });

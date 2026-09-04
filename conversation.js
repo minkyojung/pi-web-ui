@@ -184,8 +184,10 @@ export function itemsFromMessages(messages) {
 					items.push(item);
 				}
 			}
-			if (message.stopReason === "error" && message.errorMessage) {
-				items.push({ kind: "error", text: errorText(message.errorMessage) });
+			// errorMessage is optional, so a failed message with none still has
+			// to surface — the live path shows it, and pi's own UI does too.
+			if (message.stopReason === "error") {
+				items.push({ kind: "error", text: errorText(message.errorMessage ?? "unknown error") });
 			}
 		} else if (message.role === "toolResult") {
 			const item = toolItems.get(message.toolCallId);

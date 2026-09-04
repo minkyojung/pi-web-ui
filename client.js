@@ -163,11 +163,20 @@ function updateNode(item) {
 	}
 }
 
+/** Near enough to the bottom that the view should keep following new content. */
+function isAtBottom(main) {
+	return main.scrollHeight - main.scrollTop - main.clientHeight < 40;
+}
+
 /** Append one item's node. Only this node is created; the rest are untouched. */
 function mount(item) {
+	const main = chat.parentElement;
+	// Measured before the append: the new node's own height lands in
+	// scrollHeight immediately, and reading it afterwards would report every
+	// item taller than the threshold as "scrolled away" and stop following.
+	const atBottom = isAtBottom(main);
 	chat.append(createNode(item));
-	// A new node changes the height, so the scroll position needs a pass too.
-	scheduleFlush();
+	if (atBottom) main.scrollTop = main.scrollHeight;
 }
 
 function scheduleFlush() {
@@ -186,7 +195,9 @@ function touch(item) {
 function flush() {
 	frame = null;
 	const main = chat.parentElement;
-	const atBottom = main.scrollHeight - main.scrollTop - main.clientHeight < 40;
+	// Safe to read here: updateNode only rewrites existing nodes, so the
+	// measurement still describes the layout the user is looking at.
+	const atBottom = isAtBottom(main);
 	for (const item of dirty) updateNode(item);
 	dirty.clear();
 	if (atBottom) main.scrollTop = main.scrollHeight;

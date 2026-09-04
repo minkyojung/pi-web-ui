@@ -173,6 +173,13 @@ test("an empty user message is skipped by both paths", () => {
 	assert.deepEqual(itemsFromMessages([message]), []);
 });
 
+test("a failure with no errorMessage still shows in both paths", () => {
+	const message = { role: "assistant", content: [], stopReason: "error" };
+	const live = replay([{ type: "message_start", message }, { type: "message_end", message }]).state.items;
+	assert.deepEqual(comparable(itemsFromMessages([message])), comparable(live));
+	assert.equal(live[0].kind, "error");
+});
+
 test("a reply that calls a tool before speaking keeps one order", () => {
 	// Content order is toolCall-then-text, but live the text streams first,
 	// so the stored path has to match that rather than the array order.
