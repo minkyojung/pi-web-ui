@@ -7,6 +7,7 @@
  * server's state and are rebroadcast whenever it changes.
  */
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { createServer } from "node:http";
@@ -34,7 +35,16 @@ const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? "127.0.0.1";
 /** "provider/id". Only the starting model; the UI can switch it live. */
 const MODEL = process.env.MODEL ?? "openai/gpt-5.4";
-const CWD = process.cwd();
+/**
+ * Where the agent reads and writes. Inherited from the shell when this is run
+ * from a terminal, which is what you want there; the desktop app has no useful
+ * working directory of its own, so it asks and passes the answer in.
+ */
+const CWD = process.env.WORKDIR ?? process.cwd();
+if (!existsSync(CWD)) {
+	console.error(`working directory does not exist: ${CWD}`);
+	process.exit(1);
+}
 
 /**
  * JSON.stringify that survives circular references and Error values.
