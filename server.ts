@@ -10,11 +10,14 @@ import { createServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
 	createAgentSession,
+	ModelRuntime,
 	SessionManager,
 	type AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 
 const PORT = Number(process.env.PORT ?? 3000);
+/** "provider/id". Override with MODEL=anthropic/claude-opus-4-8 npm run dev */
+const MODEL = process.env.MODEL ?? "openai/gpt-5.4";
 
 /** JSON.stringify that survives circular references and Error values. */
 function safeStringify(value: unknown): string {
@@ -34,7 +37,14 @@ function safeStringify(value: unknown): string {
 	);
 }
 
+const [provider, ...rest] = MODEL.split("/");
+const modelRuntime = await ModelRuntime.create();
+const model = modelRuntime.getModel(provider, rest.join("/"));
+if (!model) throw new Error(`unknown model: ${MODEL}`);
+
 const { session } = await createAgentSession({
+	model,
+	modelRuntime,
 	sessionManager: SessionManager.inMemory(),
 });
 

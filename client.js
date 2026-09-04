@@ -13,6 +13,10 @@ function line(event) {
 		const sub = event.assistantMessageEvent;
 		return `message_update.${sub.type}${sub.delta ? ` ${JSON.stringify(sub.delta)}` : ""}`;
 	}
+	// Provider failures arrive on the message, not as a thrown error.
+	if (event.message?.stopReason === "error") {
+		return `${event.type}  !! ${event.message.errorMessage}`;
+	}
 	return event.type;
 }
 
