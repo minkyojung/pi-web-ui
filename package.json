@@ -1,7 +1,8 @@
 {
   "name": "khartoum",
+  "productName": "pi",
   "version": "1.0.0",
-  "description": "",
+  "description": "A local web UI over the pi coding agent",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,magenta \"tsx server.ts\" \"vite\"",
@@ -10,6 +11,7 @@
     "build:server": "esbuild server.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist-server/server.mjs",
     "build": "npm run build:client && npm run build:server",
     "app": "npm run build && electron .",
+    "pack": "npm run build && electron-builder --mac --dir",
     "test": "node --test",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
     "record": "node scripts/record.mjs"
@@ -20,21 +22,11 @@
   "type": "module",
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.4",
-    "@streamdown/cjk": "^1.0.3",
-    "@streamdown/code": "^1.1.1",
-    "class-variance-authority": "^0.7.1",
-    "cn": "^0.2.5",
-    "lucide-react": "^1.40.0",
-    "radix-ui": "^1.6.7",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "shiki": "^4.4.3",
-    "streamdown": "^2.6.0",
-    "tsx": "^4.23.13",
-    "use-stick-to-bottom": "^1.1.6",
     "ws": "^8.21.3"
   },
   "devDependencies": {
+    "@streamdown/cjk": "^1.0.3",
+    "@streamdown/code": "^1.1.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
@@ -42,11 +34,22 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^6.1.1",
     "ai": "^7.0.92",
+    "class-variance-authority": "^0.7.1",
+    "cn": "^0.2.5",
     "concurrently": "^10.0.5",
     "electron": "^44.2.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
+    "lucide-react": "^1.40.0",
+    "radix-ui": "^1.6.7",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "shiki": "^4.4.3",
+    "streamdown": "^2.6.0",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.13",
     "typescript": "^7.0.2",
+    "use-stick-to-bottom": "^1.1.6",
     "vite": "^8.2.2"
   }
 }

@@ -1,0 +1,38 @@
+# Kept out of package.json so it can say why it is the way it is.
+
+# Provisional: the app has no name yet. Changing it later moves where macOS
+# keeps the app's settings, which starts a user from scratch.
+# productName lives in package.json instead, because electron reads it from
+# there at runtime to decide that path — a dev run and the packaged app have to
+# agree on it.
+appId: local.pi-web-ui.app
+
+directories:
+  output: release
+  buildResources: build
+
+# Only what the app runs. The client and the server are already built into
+# dist/ and dist-server/; the rest of the repo is source it has no use for.
+# Production dependencies come along on their own — which is why everything the
+# browser uses is a devDependency: vite has already bundled it.
+files:
+  - electron/**
+  - dist/**
+  - dist-server/**
+  - package.json
+
+# The server runs as a child process, and a child process cannot load an ES
+# module out of an asar archive. Unpacking just the server does not help either:
+# it would then resolve `@earendil-works/pi-coding-agent` from disk and find
+# nothing, because node_modules is still inside the archive. Unpacking both is
+# asar with extra steps, and the archive buys a local developer tool very
+# little — so there is no archive. This also settles the SDK's native clipboard
+# module and its wasm image codec, neither of which can be read from one.
+asar: false
+
+mac:
+  category: public.app-category.developer-tools
+  target: [dir]
+  # Signing needs an Apple Developer identity this build does not have. Unsigned
+  # runs, but a first open has to be right-click -> Open.
+  identity: null

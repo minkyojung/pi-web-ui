@@ -18,8 +18,27 @@ For the single-port shape the app actually ships as:
 npm run build && npm run dev:server   # http://localhost:3000
 ```
 
+As a desktop app:
+
+```bash
+npm run app       # build and open it
+npm run pack      # release/mac-arm64/pi.app
+```
+
+The app is a window over the same server, started as a child process on a port
+it picks. It asks which folder the agent should work in on first run and
+remembers it — a packaged app is launched with a working directory of `/`,
+which is not somewhere to point a coding agent. `⌘O` changes it, which
+relaunches.
+
+The build is **not signed**; that needs an Apple Developer identity. It runs,
+but a first open has to be right-click → Open. `productName` and `appId` are
+provisional, and `appId` decides where macOS keeps the app's settings, so
+changing it later starts a user from scratch.
+
 Auth comes from `~/.pi/agent/auth.json` (`pi` → `/login`). Sessions are written
-to `~/.pi/agent/sessions/` and survive a restart.
+to `~/.pi/agent/sessions/` and survive a restart. With no usable credentials at
+all the server says so and exits rather than failing on the first prompt.
 
 ```bash
 npm test          # replays recorded pi sessions, offline
