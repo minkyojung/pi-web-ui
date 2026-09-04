@@ -61,14 +61,26 @@ function safeStringify(value: unknown): string {
 	);
 }
 
-const [provider, ...rest] = MODEL.split("/");
 const modelRuntime = await ModelRuntime.create();
-const startingModel = modelRuntime.getModel(provider, rest.join("/"));
-if (!startingModel) throw new Error(`unknown model: ${MODEL}`);
 
 /** Models with usable credentials. Fixed for the process; auth does not change while running. */
 const availableModels = await modelRuntime.getAvailable();
 const modelKey = (m: { provider: string; id: string }) => `${m.provider}/${m.id}`;
+
+if (availableModels.length === 0) {
+	console.error("No model has usable credentials. Run `pi`, sign in with /login, then start this again.");
+	process.exit(1);
+}
+
+const [provider, ...rest] = MODEL.split("/");
+// getModel only says whether the name is in the catalogue, which is a different
+// question from whether this machine can call it. A default that suits the
+// person who built this is no use to whoever runs it with another provider's
+// key, so an unusable name falls back rather than killing the process.
+const requested = modelRuntime.getModel(provider, rest.join("/"));
+const startingModel =
+	requested && availableModels.some((m) => modelKey(m) === modelKey(requested)) ? requested : availableModels[0];
+if (startingModel !== requested) console.warn(`${MODEL} is not available here; starting on ${modelKey(startingModel)}`);
 
 /**
  * The runtime, not a bare session: /new and /resume replace the AgentSession
