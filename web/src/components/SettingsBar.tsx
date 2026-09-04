@@ -4,11 +4,13 @@ import { configStore, sessionsStore, usageStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { ModelSelect } from "./ModelSelect";
+import { ToolToggles } from "./ToolToggles";
 import { UsageView } from "./UsageView";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { NativeSelect } from "./ui/native-select";
 
-const BAR = "flex flex-wrap items-center gap-4 border-b px-3 py-1.5 text-xs";
-const GROUP = "flex items-center gap-1.5";
-const CONTROL = "rounded-md border bg-background px-2 py-1 disabled:opacity-50";
+const BAR = "flex flex-wrap items-center gap-3 border-b px-3 py-1.5 text-xs";
 
 export function SettingsBar() {
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
@@ -33,62 +35,69 @@ export function SettingsBar() {
 
 	return (
 		<div id="settings" className={BAR}>
-			<span className={GROUP}>
-				<select
-					id="sessions"
-					className={`max-w-80 ${CONTROL}`}
-					disabled={!online}
-					value={current?.path ?? ""}
-					onChange={(e) => send({ type: "resume_session", path: e.target.value })}
-				>
-					{sessions.map((s) => (
-						<option key={s.path} value={s.path}>
-							{`${s.name ?? s.firstMessage ?? "(empty)"} · ${s.messageCount}msg · ${new Date(s.modified).toLocaleString()}`}
-						</option>
-					))}
-				</select>
-				<button id="newSession" className={CONTROL} disabled={!online} onClick={() => send({ type: "new_session" })}>
-					새 대화
-				</button>
-			</span>
-			<span className={GROUP}>
-				<ModelSelect model={config.model} models={config.models} />
-			</span>
-			<span className={GROUP}>
-				<label htmlFor="thinking">생각</label>
-				<select
-					id="thinking"
-					className={CONTROL}
-					value={config.thinkingLevel}
-					disabled={!online || config.thinkingLevels.length === 0}
-					onChange={(e) => send({ type: "set_thinking", level: e.target.value })}
-				>
-					{config.thinkingLevels.map((level) => (
-						<option key={level} value={level}>
-							{level}
-						</option>
-					))}
-				</select>
-			</span>
-			<span className={GROUP} id="tools">
-				{config.tools.map((tool) => (
-					<label key={tool.name} className="flex items-center gap-1 whitespace-nowrap" title={tool.description ?? ""}>
-						<input
-							type="checkbox"
-							disabled={!online}
-							checked={config.activeTools.includes(tool.name)}
-							onChange={(e) => toggleTool(tool.name, e.target.checked)}
-						/>
-						{` ${tool.name}`}
-					</label>
+			<NativeSelect
+				id="sessions"
+				className="max-w-72"
+				disabled={!online}
+				value={current?.path ?? ""}
+				onChange={(e) => send({ type: "resume_session", path: e.target.value })}
+			>
+				{sessions.map((s) => (
+					<option key={s.path} value={s.path}>
+						{`${s.name ?? s.firstMessage ?? "(empty)"} · ${s.messageCount}msg · ${new Date(s.modified).toLocaleString()}`}
+					</option>
 				))}
-			</span>
-			<button id="stop" className={CONTROL} disabled={!online || !config.isStreaming} onClick={() => send({ type: "abort" })}>
+			</NativeSelect>
+			<Button
+				id="newSession"
+				variant="outline"
+				size="sm"
+				className="h-8 text-xs"
+				disabled={!online}
+				onClick={() => send({ type: "new_session" })}
+			>
+				새 대화
+			</Button>
+
+			<ModelSelect model={config.model} models={config.models} />
+
+			<NativeSelect
+				id="thinking"
+				className="w-28"
+				title="생각"
+				value={config.thinkingLevel}
+				disabled={!online || config.thinkingLevels.length === 0}
+				onChange={(e) => send({ type: "set_thinking", level: e.target.value })}
+			>
+				{config.thinkingLevels.map((level) => (
+					<option key={level} value={level}>
+						생각 {level}
+					</option>
+				))}
+			</NativeSelect>
+
+			<ToolToggles tools={config.tools} active={config.activeTools} disabled={!online} onToggle={toggleTool} />
+
+			<Button
+				id="stop"
+				variant="destructive"
+				size="sm"
+				className="h-8 text-xs"
+				disabled={!online || !config.isStreaming}
+				onClick={() => send({ type: "abort" })}
+			>
 				중단
-			</button>
+			</Button>
+
 			{usage && <UsageView usage={usage} />}
-			<span id="queued" className="text-[11px] text-amber-600 dark:text-amber-500">{pending ? `대기 중 ${pending}건` : ""}</span>
-			<span id="note" className="text-[11px] text-muted-foreground">{note}</span>
+			{pending > 0 && (
+				<Badge id="queued" variant="secondary">
+					대기 중 {pending}건
+				</Badge>
+			)}
+			<span id="note" className="text-[11px] text-muted-foreground">
+				{note}
+			</span>
 		</div>
 	);
 }

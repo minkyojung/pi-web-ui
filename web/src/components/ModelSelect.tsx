@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
+import { NativeSelect } from "./ui/native-select";
 
 /** Group by provider; the list runs to dozens of entries. */
 function byProvider(models: string[]): [string, string[]][] {
@@ -17,11 +18,13 @@ function byProvider(models: string[]): [string, string[]][] {
 export function ModelSelect({ model, models }: { model: string | null; models: string[] }) {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	return (
-		<select
+		<NativeSelect
 			id="model"
-			className="max-w-64 rounded-md border bg-background px-2 py-1 disabled:opacity-50"
+			className="max-w-56"
 			disabled={!online}
-			value={model ?? ""} onChange={(e) => send({ type: "set_model", model: e.target.value })}>
+			value={model ?? ""}
+			onChange={(e) => send({ type: "set_model", model: e.target.value })}
+		>
 			{byProvider(models).map(([provider, keys]) => (
 				<optgroup key={provider} label={provider}>
 					{keys.map((key) => (
@@ -31,6 +34,6 @@ export function ModelSelect({ model, models }: { model: string | null; models: s
 					))}
 				</optgroup>
 			))}
-		</select>
+		</NativeSelect>
 	);
 }
