@@ -205,6 +205,23 @@ async function sessions() {
 	return { type: "sessions", sessions: list };
 }
 
+/**
+ * abort() waits for the agent to go idle, and a tool that never returns never
+ * lets it. An extension tool that asks the user a question pi's own UI would
+ * answer will sit there forever, and every path that aborts first — stopping,
+ * starting a new session, switching to another one — used to wait with it. One
+ * such call left the server unable to do anything else for the rest of its
+ * life. Giving up on the abort is worse than a stuck tool but better than a
+ * stuck server: the session gets replaced out from under whatever is hanging.
+ */
+async function abortWithin(ms: number): Promise<void> {
+	const timedOut = Symbol("timeout");
+	const timer = new Promise<typeof timedOut>((resolve) => setTimeout(() => resolve(timedOut), ms));
+	if ((await Promise.race([session().abort(), timer])) === timedOut) {
+		console.error(`abort did not finish within ${ms}ms — a tool is not responding`);
+	}
+}
+
 const clients = new Set<WebSocket>();
 
 function broadcast(payload: unknown): void {
@@ -351,7 +368,7 @@ wss.on("connection", async (ws) => {
 				}
 
 				case "abort":
-					await session().abort();
+					await abortWithin(5000);
 					broadcast(config());
 					break;
 
@@ -390,7 +407,7 @@ wss.on("connection", async (ws) => {
 
 				case "new_session":
 					// A run in progress would keep writing to the session being replaced.
-					await session().abort();
+					await abortWithin(5000);
 					await runtime.newSession();
 					await bind();
 					await broadcastAll();
@@ -405,7 +422,7 @@ wss.on("connection", async (ws) => {
 						ws.send(safeStringify({ type: "error", message: `unknown session: ${msg.path}` }));
 						return;
 					}
-					await session().abort();
+					await abortWithin(5000);
 					await runtime.switchSession(msg.path);
 					await bind();
 					await broadcastAll();
