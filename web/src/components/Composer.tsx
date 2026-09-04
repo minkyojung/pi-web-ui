@@ -1,5 +1,6 @@
-import { useRef, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
+import { configStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import {
@@ -10,48 +11,69 @@ import {
 	PromptInputTextarea,
 	PromptInputTools,
 } from "./ai-elements/prompt-input";
-import { NativeSelect } from "./ui/native-select";
+
+const MOD = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
+
+/** Send the text and empty the box, whichever way it was sent. */
+function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "steer") {
+	const trimmed = text.trim();
+	if (!trimmed) return;
+	send({ type: "prompt", text: trimmed, behavior });
+	form.reset();
+}
 
 /**
  * Where you write to pi.
  *
- * At the bottom, because the conversation grows downwards and reading the
- * answer should not mean scrolling back up to reply. The textarea is
- * uncontrolled — the component reads it out of the form on submit — so typing
- * does not re-render the conversation, and it knows to leave Enter alone while
- * an IME is composing, which a plain input does not.
+ * What to do with a message typed mid-run used to be a dropdown, which asked
+ * for the decision permanently and before there was anything to decide about.
+ * Nobody does it that way: ChatGPT will not take the message at all, and the
+ * agents that will — Cursor, Claude Code — make it a gesture on the key you
+ * press. So it is one here too, and only while a run is going.
  */
 export function Composer() {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
-	const behavior = useRef<HTMLSelectElement>(null);
+	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
+	const streaming = config?.isStreaming ?? false;
 
 	return (
 		<div className="border-t p-3">
 			<PromptInput
-				onSubmit={(message) => {
-					const text = message.text.trim();
-					if (!text) return;
-					send({ type: "prompt", text, behavior: behavior.current?.value });
-				}}
+				onSubmit={(message, event) => submit(event.currentTarget, message.text, "followUp")}
 			>
 				<PromptInputBody>
 					{/* The component asks for four lines of empty box; one is enough until
 					    there is something to show, and it grows from there. */}
-					<PromptInputTextarea className="min-h-9" placeholder="Message pi" disabled={!online} />
+					<PromptInputTextarea
+						className="min-h-9"
+						placeholder="Message pi"
+						disabled={!online}
+						onKeyDown={(e) => {
+							// Steering is delivered at the next turn boundary — after the
+							// current turn's tool calls, before the next model call — so it
+							// cuts a tool-using run short. Enter alone queues instead.
+							if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+								e.preventDefault();
+								submit(e.currentTarget.form!, e.currentTarget.value, "steer");
+							}
+						}}
+					/>
 				</PromptInputBody>
 				<PromptInputFooter>
 					<PromptInputTools>
-						<NativeSelect
-							id="behavior"
-							ref={behavior}
-							className="w-36 border-none shadow-none"
-							title="What to do with a message sent while a run is in progress"
-						>
-							<option value="followUp">Queue</option>
-							<option value="steer">Steer</option>
-						</NativeSelect>
+						{streaming && (
+							<span className="px-1 text-xs text-muted-foreground">
+								Enter to queue · {MOD}↵ to steer
+							</span>
+						)}
 					</PromptInputTools>
-					<PromptInputSubmit disabled={!online} />
+					{/* Becomes a stop button while a run streams, which is where the
+					    settings bar's own stop button went. */}
+					<PromptInputSubmit
+						disabled={!online}
+						status={streaming ? "streaming" : "ready"}
+						onStop={() => send({ type: "abort" })}
+					/>
 				</PromptInputFooter>
 			</PromptInput>
 		</div>

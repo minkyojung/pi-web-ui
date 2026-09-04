@@ -78,17 +78,6 @@ export function SettingsBar() {
 
 			<ToolToggles tools={config.tools} active={config.activeTools} disabled={!online} onToggle={toggleTool} />
 
-			<Button
-				id="stop"
-				variant="destructive"
-				size="sm"
-				className="h-8 text-xs"
-				disabled={!online || !config.isStreaming}
-				onClick={() => send({ type: "abort" })}
-			>
-				Stop
-			</Button>
-
 			{usage && <UsageView usage={usage} />}
 			{pending > 0 && (
 				<Badge id="queued" variant="secondary">
