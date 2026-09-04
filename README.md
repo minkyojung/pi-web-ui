@@ -10,10 +10,10 @@ npm run dev            # http://localhost:3000
 MODEL=anthropic/claude-opus-4-8 npm run dev
 ```
 
-Auth comes from `~/.pi/agent/auth.json` (`pi` → `/login`). Sessions are
-in-memory, so nothing is written to `~/.pi/agent/sessions/`.
+Auth comes from `~/.pi/agent/auth.json` (`pi` → `/login`). Sessions are written
+to `~/.pi/agent/sessions/` and survive a restart.
 
-## Status: step 3 — settings
+## Status: step 4 — sessions
 
 The browser shows the conversation: user messages, streamed assistant text,
 tool calls with their results, errors, and a completion marker. Everything else
@@ -32,6 +32,15 @@ The settings bar exposes three controls, all applied to the live session:
   clamps rather than rejects, so the server validates the value first;
   otherwise an unknown level silently becomes `off`.
 - **Stop** — `abort()`. Enabled only while streaming.
+
+Sessions are owned by an `AgentSessionRuntime`, since `/new` and `/resume`
+replace the `AgentSession` object rather than mutating it. Every read goes
+through `runtime.session`, and the event subscription is rebound after each
+replacement. A resumed session emits no events for its history, so the server
+sends a `snapshot` — the conversation rebuilt from `session.messages` into the
+same item shape the client builds from live events. An unsaved session has no
+file yet and would be missing from the picker, so it appears as a placeholder
+entry.
 
 Messages sent while a run is in progress are queued as either `steer` or
 `followUp`, chosen next to the input. Steering is delivered at the next turn

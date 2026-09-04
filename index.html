@@ -11,6 +11,7 @@
   #settings .group { display: flex; gap: 6px; align-items: center; }
   #settings label { white-space: nowrap; }
   #model { max-width: 16em; }
+  #sessions { max-width: 20em; }
   #stop:disabled { opacity: .4; }
   #note { color: #888; font-size: 11px; }
   #queued { color: #c60; font-size: 11px; }
@@ -49,6 +50,10 @@
     <span id="status">connecting…</span>
   </header>
   <div id="settings">
+    <span class="group">
+      <select id="sessions"></select>
+      <button id="newSession">새 대화</button>
+    </span>
     <span class="group"><select id="model"></select></span>
     <span class="group">
       <label for="thinking">생각</label>

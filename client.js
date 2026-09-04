@@ -12,6 +12,8 @@ const note = document.getElementById("note");
 const usage = document.getElementById("usage");
 const behavior = document.getElementById("behavior");
 const queued = document.getElementById("queued");
+const sessionSelect = document.getElementById("sessions");
+const newSession = document.getElementById("newSession");
 
 /** Every event, unmodified. The only way to debug when the chat view is wrong. */
 const events = [];
@@ -85,6 +87,21 @@ function renderConfig(cfg) {
 		box.checked = cfg.activeTools.includes(box.dataset.tool);
 	}
 }
+
+function renderSessions(list) {
+	sessionSelect.replaceChildren(
+		...list.map((s) => {
+			const when = new Date(s.modified).toLocaleString();
+			const label = s.name ?? s.firstMessage ?? "(empty)";
+			const option = new Option(`${label} · ${s.messageCount}msg · ${when}`, s.path);
+			option.selected = s.current;
+			return option;
+		}),
+	);
+}
+
+newSession.addEventListener("click", () => send({ type: "new_session" }));
+sessionSelect.addEventListener("change", () => send({ type: "resume_session", path: sessionSelect.value }));
 
 function renderUsage(u) {
 	const cost = `$${u.cost.toFixed(4)}`;
@@ -240,6 +257,21 @@ ws.onmessage = (e) => {
 	}
 	if (event.type === "usage") {
 		renderUsage(event);
+		return;
+	}
+	if (event.type === "sessions") {
+		renderSessions(event.sessions);
+		return;
+	}
+	if (event.type === "snapshot") {
+		// A replaced session emits no events for its history, so rebuild from this.
+		items.length = 0;
+		openText = null;
+		openTools.clear();
+		for (const item of event.items) {
+			items.push(item.kind === "error" ? { ...item, text: errorText(item.text) } : item);
+		}
+		render();
 		return;
 	}
 	events.push(event);
