@@ -15,10 +15,14 @@ const queued = document.getElementById("queued");
 const sessionSelect = document.getElementById("sessions");
 const newSession = document.getElementById("newSession");
 
-/** Every event, unmodified. The only way to debug when the chat view is wrong. */
-const events = [];
-/** Rendered conversation items, built from the event stream. */
+/** How many raw events the debug view keeps. Older ones are dropped, not the server's copy. */
+const RAW_LIMIT = 300;
+
+/** Rendered conversation items, built from the event stream. Each owns its DOM node. */
 const items = [];
+/** Items whose node is out of date, flushed once per animation frame. */
+const dirty = new Set();
+let frame = null;
 /** The assistant item currently receiving text_delta, if any. */
 let openText = null;
 /** tool_execution_start items awaiting their _end, keyed by toolCallId. */
@@ -151,6 +155,73 @@ function errorText(message) {
 	}
 }
 
+function el(tag, className, textContent) {
+	const node = document.createElement(tag);
+	node.className = className;
+	if (textContent !== undefined) node.textContent = textContent;
+	return node;
+}
+
+function createNode(item) {
+	if (item.kind === "tool") {
+		const node = el("div", "item tool");
+		const pre = el("pre", "");
+		pre.hidden = true;
+		node.append(el("span", "name", item.name), ` ${JSON.stringify(item.args)}`, pre);
+		item.pre = pre;
+		return node;
+	}
+	return el("div", `item ${item.kind}`, item.kind === "done" ? "— 완료 —" : item.text);
+}
+
+function updateNode(item) {
+	if (item.kind === "tool") {
+		if (item.result === null) return;
+		item.pre.hidden = false;
+		item.pre.className = item.isError ? "error" : "";
+		item.pre.textContent = item.result;
+	} else if (item.kind !== "done") {
+		item.node.textContent = item.text;
+	}
+}
+
+/** Append one item and its node. Only this item's node is created; the rest are untouched. */
+function addItem(item) {
+	items.push(item);
+	item.node = createNode(item);
+	chat.append(item.node);
+	// A new node changes the height, so the scroll position needs a pass too.
+	scheduleFlush();
+	return item;
+}
+
+function scheduleFlush() {
+	if (frame === null) frame = requestAnimationFrame(flush);
+}
+
+function touch(item) {
+	dirty.add(item);
+	scheduleFlush();
+}
+
+/**
+ * Deltas arrive far faster than the screen repaints, so updates are coalesced
+ * into one frame and only the changed items are rewritten.
+ */
+function flush() {
+	frame = null;
+	const main = chat.parentElement;
+	const atBottom = main.scrollHeight - main.scrollTop - main.clientHeight < 40;
+	for (const item of dirty) updateNode(item);
+	dirty.clear();
+	if (atBottom) main.scrollTop = main.scrollHeight;
+}
+
+function pushRaw(event) {
+	raw.append(`${JSON.stringify(event, null, 2)}\n`);
+	while (raw.childNodes.length > RAW_LIMIT) raw.removeChild(raw.firstChild);
+}
+
 function apply(event) {
 	switch (event.type) {
 		case "agent_start":
@@ -158,20 +229,17 @@ function apply(event) {
 			break;
 
 		case "message_start":
-			if (event.message?.role === "user") items.push({ kind: "user", text: textOf(event.message) });
+			if (event.message?.role === "user") addItem({ kind: "user", text: textOf(event.message) });
 			break;
 
 		case "message_update": {
 			const sub = event.assistantMessageEvent;
 			if (sub.type === "text_start") {
-				openText = { kind: "assistant", text: "" };
-				items.push(openText);
+				openText = addItem({ kind: "assistant", text: "" });
 			} else if (sub.type === "text_delta") {
-				if (!openText) {
-					openText = { kind: "assistant", text: "" };
-					items.push(openText);
-				}
+				if (!openText) openText = addItem({ kind: "assistant", text: "" });
 				openText.text += sub.delta;
+				touch(openText);
 			} else if (sub.type === "text_end") {
 				openText = null;
 			}
@@ -181,19 +249,18 @@ function apply(event) {
 		case "message_end":
 			// Provider failures arrive here, not as a thrown error on the server.
 			if (event.message?.stopReason === "error") {
-				items.push({ kind: "error", text: errorText(event.message.errorMessage ?? "unknown error") });
+				addItem({ kind: "error", text: errorText(event.message.errorMessage ?? "unknown error") });
 			} else if (event.message?.role === "assistant" && !openText && textOf(event.message)) {
 				// Non-streaming reply: no text_delta ever arrived.
 				const already = items.some((i) => i.kind === "assistant" && i.text === textOf(event.message));
-				if (!already) items.push({ kind: "assistant", text: textOf(event.message) });
+				if (!already) addItem({ kind: "assistant", text: textOf(event.message) });
 			}
 			openText = null;
 			break;
 
 		case "tool_execution_start": {
-			const item = { kind: "tool", name: event.toolName, args: event.args, result: null, isError: false };
+			const item = addItem({ kind: "tool", name: event.toolName, args: event.args, result: null, isError: false });
 			openTools.set(event.toolCallId, item);
-			items.push(item);
 			break;
 		}
 
@@ -202,6 +269,7 @@ function apply(event) {
 			if (item) {
 				item.result = resultText(event.result);
 				item.isError = event.isError;
+				touch(item);
 				openTools.delete(event.toolCallId);
 			}
 			break;
@@ -209,41 +277,13 @@ function apply(event) {
 
 		case "agent_settled":
 			status.textContent = "idle";
-			items.push({ kind: "done" });
+			addItem({ kind: "done" });
 			break;
 
 		case "error":
-			items.push({ kind: "error", text: event.message });
+			addItem({ kind: "error", text: event.message });
 			break;
 	}
-}
-
-function el(tag, className, textContent) {
-	const node = document.createElement(tag);
-	node.className = className;
-	if (textContent !== undefined) node.textContent = textContent;
-	return node;
-}
-
-function renderItem(item) {
-	if (item.kind === "tool") {
-		const node = el("div", "item tool");
-		node.append(el("span", "name", item.name), ` ${JSON.stringify(item.args)}`);
-		if (item.result !== null) {
-			const pre = el("pre", item.isError ? "error" : "", item.result);
-			node.append(pre);
-		}
-		return node;
-	}
-	const label = { user: "user", assistant: "assistant", error: "error", done: "done" }[item.kind];
-	return el("div", `item ${label}`, item.kind === "done" ? "— 완료 —" : item.text);
-}
-
-function render() {
-	const atBottom = chat.parentElement.scrollHeight - chat.parentElement.scrollTop - chat.parentElement.clientHeight < 40;
-	chat.replaceChildren(...items.map(renderItem));
-	raw.textContent = events.map((e) => JSON.stringify(e, null, 2)).join("\n");
-	if (atBottom) chat.parentElement.scrollTop = chat.parentElement.scrollHeight;
 }
 
 const ws = new WebSocket(`ws://${location.host}`);
@@ -266,17 +306,20 @@ ws.onmessage = (e) => {
 	if (event.type === "snapshot") {
 		// A replaced session emits no events for its history, so rebuild from this.
 		items.length = 0;
+		dirty.clear();
 		openText = null;
 		openTools.clear();
-		for (const item of event.items) {
-			items.push(item.kind === "error" ? { ...item, text: errorText(item.text) } : item);
+		for (const incoming of event.items) {
+			const item = incoming.kind === "error" ? { ...incoming, text: errorText(incoming.text) } : { ...incoming };
+			items.push(item);
+			item.node = createNode(item);
+			updateNode(item);
 		}
-		render();
+		chat.replaceChildren(...items.map((item) => item.node));
 		return;
 	}
-	events.push(event);
+	pushRaw(event);
 	apply(event);
-	render();
 };
 
 form.addEventListener("submit", (e) => {

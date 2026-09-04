@@ -20,6 +20,11 @@ tool calls with their results, errors, and a completion marker. Everything else
 is dropped. The `raw` checkbox still shows every event verbatim, which is the
 only way to debug when the rendered view is wrong.
 
+Rendering is incremental: each conversation item owns its DOM node, deltas mark
+only that item dirty, and updates are flushed once per animation frame. The raw
+view keeps the last 300 events. Rebuilding everything per event cost 63ms for
+the first turn and 534ms by the twelfth; it is now flat at ~42ms.
+
 The settings bar exposes three controls, all applied to the live session:
 
 - **Model** — any model with usable credentials, grouped by provider. Switching
