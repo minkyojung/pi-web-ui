@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
@@ -12,7 +13,7 @@ export default defineConfig({
 	// The client lives in web/ rather than at the repo root so its index.html
 	// does not collide with the old one while both are still around.
 	root: dir("./web"),
-	plugins: [react()],
+	plugins: [react(), tailwindcss()],
 	resolve: { alias: { "@": dir("./web/src") } },
 	server: {
 		port: 5173,

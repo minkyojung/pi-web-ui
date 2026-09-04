@@ -1,33 +1,137 @@
-:root { color-scheme: light dark; }
-/* React mounts into #root, which would otherwise become the flex child body expects header/#settings/main to be. */
-#root { display: contents; }
-body { font: 14px/1.5 system-ui, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
-header { padding: 8px 12px; border-bottom: 1px solid #8884; display: flex; gap: 12px; align-items: center; }
-#settings { padding: 6px 12px; border-bottom: 1px solid #8884; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 12px; }
-#settings .group { display: flex; gap: 6px; align-items: center; }
-#settings label { white-space: nowrap; }
-#model { max-width: 16em; }
-#sessions { max-width: 20em; }
-#stop:disabled { opacity: .4; }
-#note { color: #888; font-size: 11px; }
-#queued { color: #c60; font-size: 11px; }
-#usage { color: #888; margin-left: auto; font-variant-numeric: tabular-nums; }
-#usage .warn { color: #c60; }
-#text { flex: 1; font: inherit; padding: 6px 8px; }
-#status { color: #888; font-size: 12px; min-width: 5em; }
+@import "tailwindcss";
+/* Vite's root is web/, so pin the scan rather than rely on detection: when it
+   goes wrong it goes wrong silently, as a few classes that just do nothing. */
+@source "./";
 
-main { flex: 1; overflow: auto; padding: 12px; }
-#raw { display: none; white-space: pre-wrap; font: 12px ui-monospace, monospace; }
-body.raw #chat { display: none; }
-body.raw #raw { display: block; }
+/*
+ * shadcn's neutral tokens. Its own output puts the dark set behind a .dark
+ * class and adds @custom-variant dark to match. Without that variant,
+ * Tailwind's built-in dark: is @media (prefers-color-scheme: dark) — so
+ * defining the dark tokens in the same media query makes every dark: utility
+ * inside a vendored component follow the system with no JS and no flash of the
+ * wrong theme. color-scheme below does the same for native controls.
+ */
+:root {
+  color-scheme: light dark;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
 
-.item { margin-bottom: 12px; }
-.user { font-weight: 600; white-space: pre-wrap; }
-.user::before { content: "› "; color: #888; }
-.assistant { white-space: pre-wrap; }
-.tool { font: 12px ui-monospace, monospace; border-left: 2px solid #8884; padding-left: 8px; color: #888; }
-.tool .name { color: inherit; font-weight: 600; }
-.tool pre { margin: 4px 0 0; white-space: pre-wrap; max-height: 12em; overflow: auto; }
-.error { color: #c00; white-space: pre-wrap; }
-.done { color: #888; font-size: 12px; }
-.notice { color: #a60; font-size: 12px; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply flex h-screen flex-col bg-background text-sm/relaxed text-foreground;
+  }
+}
+
+/* React mounts here; without this the div would become the flex child that
+   body expects header, the settings bar and main to be. */
+#root {
+  display: contents;
+}

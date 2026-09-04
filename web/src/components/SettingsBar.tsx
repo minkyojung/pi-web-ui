@@ -6,6 +6,10 @@ import { send } from "../ws";
 import { ModelSelect } from "./ModelSelect";
 import { UsageView } from "./UsageView";
 
+const BAR = "flex flex-wrap items-center gap-4 border-b px-3 py-1.5 text-xs";
+const GROUP = "flex items-center gap-1.5";
+const CONTROL = "rounded-md border bg-background px-2 py-1 disabled:opacity-50";
+
 export function SettingsBar() {
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const usage = useSyncExternalStore(usageStore.subscribe, usageStore.get);
@@ -16,7 +20,7 @@ export function SettingsBar() {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 
 	// The server is the source of truth for all of this, and it has not spoken yet.
-	if (!config) return <div id="settings" />;
+	if (!config) return <div id="settings" className={BAR} />;
 
 	const current = sessions.find((s) => s.current);
 	const pending = config.queued.steering.length + config.queued.followUp.length;
@@ -28,10 +32,11 @@ export function SettingsBar() {
 	};
 
 	return (
-		<div id="settings">
-			<span className="group">
+		<div id="settings" className={BAR}>
+			<span className={GROUP}>
 				<select
 					id="sessions"
+					className={`max-w-80 ${CONTROL}`}
 					disabled={!online}
 					value={current?.path ?? ""}
 					onChange={(e) => send({ type: "resume_session", path: e.target.value })}
@@ -42,17 +47,18 @@ export function SettingsBar() {
 						</option>
 					))}
 				</select>
-				<button id="newSession" disabled={!online} onClick={() => send({ type: "new_session" })}>
+				<button id="newSession" className={CONTROL} disabled={!online} onClick={() => send({ type: "new_session" })}>
 					새 대화
 				</button>
 			</span>
-			<span className="group">
+			<span className={GROUP}>
 				<ModelSelect model={config.model} models={config.models} />
 			</span>
-			<span className="group">
+			<span className={GROUP}>
 				<label htmlFor="thinking">생각</label>
 				<select
 					id="thinking"
+					className={CONTROL}
 					value={config.thinkingLevel}
 					disabled={!online || config.thinkingLevels.length === 0}
 					onChange={(e) => send({ type: "set_thinking", level: e.target.value })}
@@ -64,9 +70,9 @@ export function SettingsBar() {
 					))}
 				</select>
 			</span>
-			<span className="group" id="tools">
+			<span className={GROUP} id="tools">
 				{config.tools.map((tool) => (
-					<label key={tool.name} title={tool.description ?? ""}>
+					<label key={tool.name} className="flex items-center gap-1 whitespace-nowrap" title={tool.description ?? ""}>
 						<input
 							type="checkbox"
 							disabled={!online}
@@ -77,12 +83,12 @@ export function SettingsBar() {
 					</label>
 				))}
 			</span>
-			<button id="stop" disabled={!online || !config.isStreaming} onClick={() => send({ type: "abort" })}>
+			<button id="stop" className={CONTROL} disabled={!online || !config.isStreaming} onClick={() => send({ type: "abort" })}>
 				중단
 			</button>
 			{usage && <UsageView usage={usage} />}
-			<span id="queued">{pending ? `대기 중 ${pending}건` : ""}</span>
-			<span id="note">{note}</span>
+			<span id="queued" className="text-[11px] text-amber-600 dark:text-amber-500">{pending ? `대기 중 ${pending}건` : ""}</span>
+			<span id="note" className="text-[11px] text-muted-foreground">{note}</span>
 		</div>
 	);
 }

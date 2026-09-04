@@ -12,10 +12,12 @@ export function UsageView({ usage }: { usage: UsageMsg }) {
 		(usage.context ? `\ncontext ${usage.context.tokens ?? "?"} / ${usage.context.window}` : "");
 
 	return (
-		<span className="group" id="usage" title={title}>
+		<span id="usage" className="ml-auto flex items-center gap-1.5 tabular-nums text-muted-foreground" title={title}>
 			{`$${usage.cost.toFixed(4)}`} ·{" "}
 			{/* Compaction kicks in near the top of the window; warn before it surprises the user. */}
-			<span className={percent != null && percent >= 70 ? "warn" : undefined}>{context}</span>
+			<span className={percent != null && percent >= 70 ? "text-amber-600 dark:text-amber-500" : undefined}>
+				{context}
+			</span>
 		</span>
 	);
 }
