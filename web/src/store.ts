@@ -63,15 +63,24 @@ export function applyServerEvent(event: ServerMsg): void {
 	agentStatus = STATUS_LABEL[convo.status] ?? convo.status;
 
 	if (added.length || changed.length) {
+		// A tool writes partial output into `result` while it is still running, so
+		// `result !== null` cannot stand in for "finished" — the spinner would
+		// vanish the moment the first chunk of a long command arrived. The reducer
+		// already tracks exactly this in openTools; read it rather than duplicate
+		// the bookkeeping. A tool item is in `added` when it opens and in
+		// `changed` when it ends, so the flag is refreshed at both transitions,
+		// and an untouched item's flag cannot have gone stale.
+		const running = new Set<object>(convo.openTools.values());
+		const project = (item: Item): Item => ({ ...item, pending: running.has(item) });
 		const next = items.slice();
 		// Adds come first: a delta with no text_start opens an item and appends
 		// to it in the same event, so the item is in both lists and has to have
 		// a place in `next` before the copy is overwritten.
 		for (const item of added) {
 			index.set(item, next.length);
-			next.push({ ...item });
+			next.push(project(item));
 		}
-		for (const item of changed) next[index.get(item)!] = { ...item };
+		for (const item of changed) next[index.get(item)!] = project(item);
 		items = next;
 	}
 	notify();
@@ -82,7 +91,8 @@ export function replaceConversation(snapshot: Item[]): void {
 	convo = createConversation();
 	convo.items = snapshot;
 	index = new Map(snapshot.map((item, i) => [item, i]));
-	items = snapshot.map((item) => ({ ...item }));
+	// A snapshot is stored history, which by definition has no tool still running.
+	items = snapshot.map((item) => ({ ...item, pending: false }));
 	agentStatus = STATUS_LABEL[convo.status] ?? convo.status;
 	notify();
 }
