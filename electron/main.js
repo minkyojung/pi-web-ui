@@ -69,9 +69,9 @@ function writeSettings(next) {
 
 async function askForWorkdir(current) {
 	const { canceled, filePaths } = await dialog.showOpenDialog({
-		title: "작업 폴더 선택",
-		message: "pi가 파일을 읽고 쓸 폴더입니다.",
-		buttonLabel: "이 폴더 사용",
+		title: "Choose a working folder",
+		message: "The folder pi will read and write files in.",
+		buttonLabel: "Use this folder",
 		defaultPath: current ?? app.getPath("home"),
 		properties: ["openDirectory", "createDirectory"],
 	});
@@ -120,14 +120,14 @@ function startServer(port, workdir) {
 	// A failed spawn emits 'error', not 'exit', and without this the shell would
 	// sit forever waiting for a server that was never going to start.
 	child.on("error", (err) => {
-		serverErrors = [...serverErrors, `pi 서버를 실행하지 못했습니다: ${err.message}`].slice(-10);
+		serverErrors = [...serverErrors, `Could not start the pi server: ${err.message}`].slice(-10);
 	});
 	child.on("exit", (code) => {
 		child = null;
 		if (exiting) return;
 		dialog.showErrorBox(
-			"pi 서버가 종료되었습니다",
-			serverErrors.length ? serverErrors.join("\n") : `종료 코드 ${code}. 터미널 출력을 확인해 주세요.`,
+			"The pi server stopped",
+			serverErrors.length ? serverErrors.join("\n") : `Exit code ${code}. Check the terminal output.`,
 		);
 		app.quit();
 	});
@@ -160,10 +160,10 @@ function buildMenu(workdir) {
 		Menu.buildFromTemplate([
 			{ role: "appMenu" },
 			{
-				label: "폴더",
+				label: "Folder",
 				submenu: [
-					{ label: "작업 폴더 변경…", accelerator: "CmdOrCtrl+O", click: changeWorkdir },
-					{ label: "Finder에서 열기", click: () => shell.openPath(workdir) },
+					{ label: "Change working folder…", accelerator: "CmdOrCtrl+O", click: changeWorkdir },
+					{ label: "Reveal in Finder", click: () => shell.openPath(workdir) },
 				],
 			},
 			{ role: "editMenu" },
@@ -200,7 +200,7 @@ async function main() {
 	window.on("closed", () => cancel.abort());
 	if (!(await waitForServer(url, cancel.signal))) {
 		if (!cancel.signal.aborted) {
-			dialog.showErrorBox("서버가 응답하지 않습니다", `${url} 이 30초 안에 열리지 않았습니다.`);
+			dialog.showErrorBox("The pi server did not answer", `${url} did not come up within 30 seconds.`);
 			app.quit();
 		}
 		return;

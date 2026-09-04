@@ -30,7 +30,7 @@ export function SettingsBar() {
 	const toggleTool = (name: string, on: boolean) => {
 		const names = on ? [...config.activeTools, name] : config.activeTools.filter((n) => n !== name);
 		send({ type: "set_tools", names });
-		setNote("도구 변경은 다음 turn부터 적용됩니다");
+		setNote("Tool changes apply from the next turn");
 	};
 
 	return (
@@ -56,7 +56,7 @@ export function SettingsBar() {
 				disabled={!online}
 				onClick={() => send({ type: "new_session" })}
 			>
-				새 대화
+				New
 			</Button>
 
 			<ModelSelect model={config.model} models={config.models} />
@@ -64,14 +64,14 @@ export function SettingsBar() {
 			<NativeSelect
 				id="thinking"
 				className="w-28"
-				title="생각"
+				title="Thinking level"
 				value={config.thinkingLevel}
 				disabled={!online || config.thinkingLevels.length === 0}
 				onChange={(e) => send({ type: "set_thinking", level: e.target.value })}
 			>
 				{config.thinkingLevels.map((level) => (
 					<option key={level} value={level}>
-						생각 {level}
+						thinking {level}
 					</option>
 				))}
 			</NativeSelect>
@@ -86,13 +86,13 @@ export function SettingsBar() {
 				disabled={!online || !config.isStreaming}
 				onClick={() => send({ type: "abort" })}
 			>
-				중단
+				Stop
 			</Button>
 
 			{usage && <UsageView usage={usage} />}
 			{pending > 0 && (
 				<Badge id="queued" variant="secondary">
-					대기 중 {pending}건
+					{pending} queued
 				</Badge>
 			)}
 			<span id="note" className="text-[11px] text-muted-foreground">

@@ -29,7 +29,7 @@ export function ToolToggles({
 		<Popover>
 			<PopoverTrigger asChild>
 				<Button id="tools" variant="outline" size="sm" className="h-8 text-xs" disabled={disabled}>
-					도구
+					Tools
 					<Badge variant="secondary" className="ml-1 px-1 py-0 text-[10px] tabular-nums">
 						{active.length}/{tools.length}
 					</Badge>

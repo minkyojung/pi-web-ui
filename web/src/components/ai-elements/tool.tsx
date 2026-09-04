@@ -44,16 +44,15 @@ export type ToolHeaderProps = {
     }
 );
 
-// Translated, since the rest of the UI is Korean. Only the three states this
-// app can produce are reachable; the others come with the component.
+// Only three of these are reachable here; the rest come with the component.
 const statusLabels: Record<ToolPart["state"], string> = {
-  "approval-requested": "승인 대기",
-  "approval-responded": "응답함",
-  "input-available": "실행 중",
-  "input-streaming": "대기 중",
-  "output-available": "완료",
-  "output-denied": "거부됨",
-  "output-error": "오류",
+  "approval-requested": "Awaiting approval",
+  "approval-responded": "Responded",
+  "input-available": "Running",
+  "input-streaming": "Pending",
+  "output-available": "Done",
+  "output-denied": "Denied",
+  "output-error": "Error",
 };
 
 const statusIcons: Record<ToolPart["state"], ReactNode> = {

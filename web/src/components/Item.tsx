@@ -76,7 +76,7 @@ export const ItemView = memo(function ItemView({ item }: { item: Item }) {
 			);
 
 		case "done":
-			return <div className="text-center text-xs text-muted-foreground">— 완료 —</div>;
+			return <div className="text-center text-xs text-muted-foreground">— done —</div>;
 
 		default:
 			return <div className="text-xs text-amber-600 dark:text-amber-500">{item.text}</div>;

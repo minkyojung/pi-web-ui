@@ -37,7 +37,7 @@ export function Composer() {
 				<PromptInputBody>
 					{/* The component asks for four lines of empty box; one is enough until
 					    there is something to show, and it grows from there. */}
-					<PromptInputTextarea className="min-h-9" placeholder="pi에게 보낼 말" disabled={!online} />
+					<PromptInputTextarea className="min-h-9" placeholder="Message pi" disabled={!online} />
 				</PromptInputBody>
 				<PromptInputFooter>
 					<PromptInputTools>
@@ -45,10 +45,10 @@ export function Composer() {
 							id="behavior"
 							ref={behavior}
 							className="w-36 border-none shadow-none"
-							title="작업 중일 때 보낸 말을 어떻게 처리할지"
+							title="What to do with a message sent while a run is in progress"
 						>
-							<option value="followUp">기다렸다 보내기</option>
-							<option value="steer">바로 끼어들기</option>
+							<option value="followUp">Queue</option>
+							<option value="steer">Steer</option>
 						</NativeSelect>
 					</PromptInputTools>
 					<PromptInputSubmit disabled={!online} />
