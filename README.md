@@ -30,6 +30,10 @@ The settings bar exposes three controls, all applied to the live session:
   otherwise an unknown level silently becomes `off`.
 - **Stop** — `abort()`. Enabled only while streaming.
 
+A `usage` message carries `getSessionStats()` and `getContextUsage()`: accrued
+cost, token breakdown, and how full the context window is. Sent on connect and
+after every completed message, since spend is otherwise invisible.
+
 The server owns this state and broadcasts a `config` message on connect and
 after every change, so multiple tabs stay in sync.
 

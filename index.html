@@ -13,6 +13,8 @@
   #model { color: #888; }
   #stop:disabled { opacity: .4; }
   #note { color: #888; font-size: 11px; }
+  #usage { color: #888; margin-left: auto; font-variant-numeric: tabular-nums; }
+  #usage .warn { color: #c60; }
   #text { flex: 1; font: inherit; padding: 6px 8px; }
   #status { color: #888; font-size: 12px; min-width: 5em; }
 
@@ -49,6 +51,7 @@
     </span>
     <span class="group" id="tools"></span>
     <button id="stop" disabled>중단</button>
+    <span class="group" id="usage" title=""></span>
     <span id="note"></span>
   </div>
   <main>

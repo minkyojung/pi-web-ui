@@ -51,8 +51,6 @@ const { session } = await createAgentSession({
 /** Derived from the session so it stays in sync; pi does not re-export ThinkingLevel. */
 type ThinkingLevel = typeof session.thinkingLevel;
 
-const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
-
 /** Everything the settings UI needs. Re-sent whenever any of it changes. */
 function config() {
 	const model = session.model;
@@ -60,13 +58,27 @@ function config() {
 		type: "config",
 		model: model ? `${model.provider}/${model.id}` : null,
 		thinkingLevel: session.thinkingLevel,
-		// null in the map marks a level the model does not support.
-		thinkingLevels: model?.reasoning
-			? THINKING_LEVELS.filter((level) => model.thinkingLevelMap?.[level] !== null)
-			: [],
+		thinkingLevels: session.supportsThinking() ? session.getAvailableThinkingLevels() : [],
 		tools: session.getAllTools().map((tool) => ({ name: tool.name, description: tool.description })),
 		activeTools: session.getActiveToolNames(),
 		isStreaming: session.isStreaming,
+	};
+}
+
+/**
+ * Token spend and context pressure. pi tracks both; without surfacing them the
+ * user has no idea what a turn costs or how close the session is to overflowing.
+ */
+function usage() {
+	const stats = session.getSessionStats();
+	const context = session.getContextUsage();
+	return {
+		type: "usage",
+		cost: stats.cost,
+		tokens: stats.tokens,
+		messages: stats.totalMessages,
+		toolCalls: stats.toolCalls,
+		context: context ? { tokens: context.tokens, window: context.contextWindow, percent: context.percent } : null,
 	};
 }
 
@@ -90,6 +102,8 @@ session.subscribe((event: AgentSessionEvent) => {
 	broadcast(event);
 	// isStreaming drives the stop button, so resend config when it flips.
 	if (event.type === "agent_start" || event.type === "agent_settled") broadcast(config());
+	// Cost only moves when a message completes.
+	if (event.type === "message_end" || event.type === "agent_settled") broadcast(usage());
 });
 
 const STATIC_FILES: Record<string, string> = {
@@ -119,6 +133,7 @@ wss.on("connection", (ws) => {
 	clients.add(ws);
 	ws.on("close", () => clients.delete(ws));
 	ws.send(safeStringify(config()));
+	ws.send(safeStringify(usage()));
 
 	ws.on("message", async (data) => {
 		let msg: { type?: string; text?: string; names?: string[]; level?: string };

@@ -9,6 +9,7 @@ const thinking = document.getElementById("thinking");
 const tools = document.getElementById("tools");
 const stop = document.getElementById("stop");
 const note = document.getElementById("note");
+const usage = document.getElementById("usage");
 
 /** Every event, unmodified. The only way to debug when the chat view is wrong. */
 const events = [];
@@ -61,6 +62,24 @@ function renderConfig(cfg) {
 	for (const box of tools.querySelectorAll("input")) {
 		box.checked = cfg.activeTools.includes(box.dataset.tool);
 	}
+}
+
+function renderUsage(u) {
+	const cost = `$${u.cost.toFixed(4)}`;
+	// Percent is 0-100 and often well under 1 early on; rounding to an integer would read as 0 or 1.
+	const pct = u.context?.percent;
+	const ctx = pct != null ? `context ${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%` : "context —";
+	usage.replaceChildren(cost, " · ");
+	const ctxNode = document.createElement("span");
+	// Compaction kicks in near the top of the window; warn before it surprises the user.
+	if (u.context?.percent != null && u.context.percent >= 70) ctxNode.className = "warn";
+	ctxNode.textContent = ctx;
+	usage.append(ctxNode);
+	usage.title =
+		`input ${u.tokens.input} · output ${u.tokens.output} · ` +
+		`cache read ${u.tokens.cacheRead} · cache write ${u.tokens.cacheWrite}\n` +
+		`messages ${u.messages} · tool calls ${u.toolCalls}` +
+		(u.context ? `\ncontext ${u.context.tokens ?? "?"} / ${u.context.window}` : "");
 }
 
 thinking.addEventListener("change", () => send({ type: "set_thinking", level: thinking.value }));
@@ -194,6 +213,10 @@ ws.onmessage = (e) => {
 	const event = JSON.parse(e.data);
 	if (event.type === "config") {
 		renderConfig(event);
+		return;
+	}
+	if (event.type === "usage") {
+		renderUsage(event);
 		return;
 	}
 	events.push(event);
