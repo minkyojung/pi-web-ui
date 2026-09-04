@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>pi events</title>
+<style>
+  body { font: 13px ui-monospace, monospace; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+  header { padding: 8px; border-bottom: 1px solid #ccc; display: flex; gap: 8px; align-items: center; }
+  #text { flex: 1; font: inherit; padding: 4px; }
+  #log { flex: 1; margin: 0; padding: 8px; overflow: auto; white-space: pre-wrap; }
+  #status { color: #888; }
+</style>
+</head>
+<body>
+  <header>
+    <form id="form" style="display: contents;">
+      <input id="text" placeholder="pi에게 보낼 말" autocomplete="off" autofocus>
+      <button>send</button>
+    </form>
+    <label><input type="checkbox" id="compact" checked> compact</label>
+    <span id="status">connecting…</span>
+  </header>
+  <pre id="log"></pre>
+  <script type="module" src="/client.js"></script>
+</body>
+</html>
