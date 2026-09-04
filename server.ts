@@ -1,7 +1,7 @@
 /**
  * A web UI over one pi coding-agent session.
  *
- * Serves index.html + client.js, owns an AgentSessionRuntime, and forwards
+ * Serves the built client from dist/, owns an AgentSessionRuntime, and forwards
  * every session event to connected browsers as raw JSON. The browser holds no
  * state of its own: config, usage, sessions, and snapshot messages describe the
  * server's state and are rebroadcast whenever it changes.
@@ -226,25 +226,40 @@ async function broadcastAll(): Promise<void> {
 
 await bind();
 
-const STATIC_FILES: Record<string, string> = {
-	"/": "index.html",
-	"/index.html": "index.html",
-	"/client.js": "client.js",
-	"/conversation.js": "conversation.js",
+/** Where `npm run build` puts the client. Absent until it has been run once. */
+const CLIENT_DIR = new URL("dist/", import.meta.url);
+
+const CONTENT_TYPES: Record<string, string> = {
+	".html": "text/html; charset=utf-8",
+	".js": "text/javascript; charset=utf-8",
+	".css": "text/css; charset=utf-8",
+	".svg": "image/svg+xml",
+	".map": "application/json; charset=utf-8",
+	".ico": "image/x-icon",
+	".woff2": "font/woff2",
 };
 
 const server = createServer(async (req, res) => {
-	const file = STATIC_FILES[req.url ?? "/"];
-	if (!file) {
+	// The build hashes its asset names, so the set of files cannot be listed
+	// ahead of time the way the two hand-written ones could be.
+	const { pathname } = new URL(req.url ?? "/", "http://localhost");
+	const file = new URL(pathname === "/" ? "index.html" : pathname.slice(1), CLIENT_DIR);
+	// A path can climb out of dist/ with ..; resolving first and comparing after
+	// is the only check that survives whatever encoding it arrives in.
+	if (!file.pathname.startsWith(CLIENT_DIR.pathname)) {
 		res.writeHead(404).end("Not found");
 		return;
 	}
-	const body = await readFile(new URL(file, import.meta.url));
-	res.writeHead(200, {
-		"content-type": file.endsWith(".js")
-			? "text/javascript; charset=utf-8"
-			: "text/html; charset=utf-8",
-	});
+	let body: Buffer;
+	try {
+		body = await readFile(file);
+	} catch {
+		if (pathname === "/") console.error("no dist/ yet — run `npm run build`, or use the vite dev server");
+		res.writeHead(404).end("Not found");
+		return;
+	}
+	const ext = file.pathname.slice(file.pathname.lastIndexOf("."));
+	res.writeHead(200, { "content-type": CONTENT_TYPES[ext] ?? "application/octet-stream" });
 	res.end(body);
 });
 
