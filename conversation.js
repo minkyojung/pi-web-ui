@@ -8,7 +8,7 @@
  * agreement can be tested.
  *
  * @typedef {object} Item
- * @property {"user"|"assistant"|"tool"|"error"|"done"} kind
+ * @property {"user"|"assistant"|"tool"|"error"|"done"|"notice"} kind
  * @property {string} [text]
  * @property {string} [name]     tool name
  * @property {unknown} [args]    tool arguments
@@ -48,6 +48,22 @@ export function errorText(message) {
 	}
 }
 
+/**
+ * What a finished compaction says. Live it comes from compaction_end's result;
+ * on resume, from the compactionSummary message the compaction left behind.
+ * Both call this so the two paths word it the same.
+ */
+export function compactionText(tokensBefore) {
+	if (typeof tokensBefore !== "number") return "대화를 압축했습니다";
+	return `대화를 압축했습니다 (이전 ${tokensBefore} 토큰)`;
+}
+
+const COMPACTION_REASON = {
+	manual: "수동",
+	threshold: "컨텍스트 한도 도달",
+	overflow: "컨텍스트 초과",
+};
+
 export function createConversation() {
 	return {
 		/** @type {Item[]} */
@@ -59,6 +75,10 @@ export function createConversation() {
 		openTools: new Map(),
 		/** Whether the assistant message in flight has streamed any text. */
 		sawText: false,
+		/** The notice tracking an auto-retry in progress, if any. */
+		openRetry: null,
+		/** The notice tracking a compaction in progress, if any. */
+		openCompaction: null,
 	};
 }
 
@@ -78,6 +98,18 @@ export function applyEvent(state, event) {
 		state.items.push(item);
 		added.push(item);
 		return item;
+	};
+
+	/**
+	 * Notices track something in progress, so the same item is reworded as it
+	 * proceeds rather than a new one appended per step. Keeps one event to at
+	 * most one touched item, which is what lets a renderer stay incremental.
+	 */
+	const notice = (open, text) => {
+		if (!open) return add({ kind: "notice", text });
+		open.text = text;
+		changed.push(open);
+		return open;
 	};
 
 	switch (event.type) {
@@ -129,6 +161,20 @@ export function applyEvent(state, event) {
 			);
 			break;
 
+		case "tool_execution_update": {
+			// Partial output is a cumulative snapshot, so it overwrites rather
+			// than appends, and tool_execution_end overwrites it in turn. The
+			// first update of a run carries no content yet; showing it would
+			// open an empty result pane for the rest of the run.
+			const item = state.openTools.get(event.toolCallId);
+			const text = resultText(event.partialResult);
+			if (item && text) {
+				item.result = text;
+				changed.push(item);
+			}
+			break;
+		}
+
 		case "tool_execution_end": {
 			const item = state.openTools.get(event.toolCallId);
 			if (item) {
@@ -139,6 +185,56 @@ export function applyEvent(state, event) {
 			}
 			break;
 		}
+
+		// pi retries retryable provider failures itself, with exponential
+		// backoff. Without this the UI sits silent for the whole wait — with
+		// the default three retries at 2s, that is 14 seconds of nothing after
+		// an error line. _start fires once per attempt and _end only once at
+		// the finish, so every attempt rewords the one notice.
+		//
+		// A retry leaves no trace in the stored session, so this notice is
+		// live-only, like `done`. A recording that contains a retry could not
+		// be compared against itemsFromMessages without filtering it out.
+		case "auto_retry_start":
+			state.openRetry = notice(
+				state.openRetry,
+				`재시도 ${event.attempt}/${event.maxAttempts} — ${Math.round(event.delayMs / 100) / 10}초 후`,
+			);
+			break;
+
+		case "auto_retry_end":
+			if (state.openRetry) {
+				notice(
+					state.openRetry,
+					event.success
+						? `재시도 성공 (${event.attempt}회)`
+						: `재시도 실패 (${event.attempt}회)${event.finalError ? ` — ${errorText(event.finalError)}` : ""}`,
+				);
+				state.openRetry = null;
+			}
+			break;
+
+		// Compaction rewrites the conversation's history without being asked.
+		// Unannounced, the context percentage simply drops and earlier messages
+		// stop mattering, with nothing on screen to say why.
+		case "compaction_start":
+			state.openCompaction = notice(
+				state.openCompaction,
+				`대화를 압축하는 중 (${COMPACTION_REASON[event.reason] ?? event.reason})`,
+			);
+			break;
+
+		case "compaction_end":
+			if (state.openCompaction) {
+				let text;
+				if (event.aborted) text = "압축이 중단되었습니다";
+				else if (event.errorMessage)
+					text = `압축 실패 — ${errorText(event.errorMessage)}${event.willRetry ? ", 다시 시도합니다" : ""}`;
+				else text = compactionText(event.result?.tokensBefore);
+				notice(state.openCompaction, text);
+				state.openCompaction = null;
+			}
+			break;
 
 		case "agent_settled":
 			state.status = "idle";
@@ -189,6 +285,9 @@ export function itemsFromMessages(messages) {
 			if (message.stopReason === "error") {
 				items.push({ kind: "error", text: errorText(message.errorMessage ?? "unknown error") });
 			}
+		} else if (message.role === "compactionSummary") {
+			// Left behind by a compaction, in place of the messages it replaced.
+			items.push({ kind: "notice", text: compactionText(message.tokensBefore) });
 		} else if (message.role === "toolResult") {
 			const item = toolItems.get(message.toolCallId);
 			if (item) {

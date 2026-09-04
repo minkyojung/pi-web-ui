@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
 	applyEvent,
+	compactionText,
 	createConversation,
 	errorText,
 	itemsFromMessages,
@@ -197,6 +198,85 @@ test("a reply that calls a tool before speaking keeps one order", () => {
 		itemsFromMessages(messages).map((i) => i.kind),
 		["assistant", "tool"],
 	);
+});
+
+test("an auto retry is announced and the same notice tracks every attempt", () => {
+	// _start fires per attempt, _end only once at the finish.
+	const { state, touched } = replay([
+		{ type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "overloaded" },
+		{ type: "auto_retry_start", attempt: 2, maxAttempts: 3, delayMs: 4000, errorMessage: "overloaded" },
+		{ type: "auto_retry_end", success: true, attempt: 2 },
+	]);
+	assert.deepEqual(state.items, [{ kind: "notice", text: "재시도 성공 (2회)" }]);
+	// One item the whole way through, so a renderer never has to re-lay-out.
+	assert.deepEqual(touched, [1, 1, 1]);
+});
+
+test("a retry that runs out of attempts says so, with the reason", () => {
+	const { state } = replay([
+		{ type: "auto_retry_start", attempt: 3, maxAttempts: 3, delayMs: 8000, errorMessage: "overloaded" },
+		{ type: "auto_retry_end", success: false, attempt: 3, finalError: '400 {"error":{"message":"overloaded"}}' },
+	]);
+	assert.deepEqual(state.items, [{ kind: "notice", text: "재시도 실패 (3회) — overloaded" }]);
+});
+
+test("a retry_end with nothing open is ignored", () => {
+	assert.deepEqual(replay([{ type: "auto_retry_end", success: true, attempt: 1 }]).state.items, []);
+});
+
+test("a compaction reads the same live as it does after resuming", () => {
+	const { state } = replay([
+		{ type: "compaction_start", reason: "threshold" },
+		{ type: "compaction_end", reason: "threshold", result: { tokensBefore: 120000 }, aborted: false, willRetry: false },
+	]);
+	// The live path cannot be compared item-for-item against a resumed session
+	// here — compaction replaces the messages it summarised, so the two
+	// conversations legitimately differ. What has to match is the wording.
+	const stored = itemsFromMessages([
+		{ role: "compactionSummary", summary: "...", tokensBefore: 120000, timestamp: 0 },
+	]);
+	assert.deepEqual(state.items, stored);
+	assert.equal(stored[0].text, compactionText(120000));
+});
+
+test("a compaction that fails or is cancelled says which", () => {
+	const start = { type: "compaction_start", reason: "overflow" };
+	const end = (extra) => ({ type: "compaction_end", reason: "overflow", result: undefined, ...extra });
+
+	assert.equal(replay([start, end({ aborted: true, willRetry: false })]).state.items[0].text, "압축이 중단되었습니다");
+	assert.equal(
+		replay([start, end({ aborted: false, willRetry: true, errorMessage: "rate limited" })]).state.items[0].text,
+		"압축 실패 — rate limited, 다시 시도합니다",
+	);
+	// A result is optional even on success, so the count has to be droppable.
+	assert.equal(replay([start, end({ aborted: false, willRetry: false })]).state.items[0].text, "대화를 압축했습니다");
+});
+
+test("partial tool output fills the result pane before the tool finishes", () => {
+	const { state } = replay([
+		{ type: "tool_execution_start", toolCallId: "t1", toolName: "bash", args: { command: "ls" } },
+		{ type: "tool_execution_update", toolCallId: "t1", partialResult: { content: [{ type: "text", text: "a\n" }] } },
+		{ type: "tool_execution_update", toolCallId: "t1", partialResult: { content: [{ type: "text", text: "a\nb\n" }] } },
+		{ type: "tool_execution_end", toolCallId: "t1", result: { content: [{ type: "text", text: "a\nb\nc\n" }] }, isError: false },
+	]);
+	// Each update is the whole output so far, so it overwrites; the end wins.
+	assert.equal(state.items[0].result, "a\nb\nc\n");
+});
+
+test("an empty partial result leaves the tool looking unfinished", () => {
+	// pi sends one of these right after a tool starts. Acting on it would set
+	// result to "", and the client opens the result pane on anything but null.
+	const { state, touched } = replay([
+		{ type: "tool_execution_start", toolCallId: "t1", toolName: "bash", args: { command: "ls" } },
+		{ type: "tool_execution_update", toolCallId: "t1", partialResult: { content: [] } },
+	]);
+	assert.equal(state.items[0].result, null);
+	assert.deepEqual(touched, [1, 0]);
+});
+
+test("a partial result for an unknown tool call is ignored", () => {
+	const events = [{ type: "tool_execution_update", toolCallId: "gone", partialResult: { content: [{ type: "text", text: "x" }] } }];
+	assert.deepEqual(replay(events).state.items, []);
 });
 
 test("work per event does not grow with conversation length", () => {

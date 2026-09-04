@@ -253,6 +253,12 @@ const wss = new WebSocketServer({ server });
 wss.on("connection", async (ws) => {
 	clients.add(ws);
 	ws.on("close", () => clients.delete(ws));
+	// ws emits 'error' for a malformed frame. Node throws on an 'error' event
+	// with no listener, so without this one bad frame takes the process down.
+	ws.on("error", (err) => {
+		console.error("websocket error:", err.message);
+		clients.delete(ws);
+	});
 	ws.send(safeStringify(config()));
 	ws.send(safeStringify(usage()));
 	ws.send(safeStringify(snapshot()));
