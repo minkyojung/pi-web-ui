@@ -2,11 +2,12 @@
   "name": "khartoum",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,magenta \"tsx server.ts\" \"vite\"",
     "dev:server": "tsx server.ts",
     "build": "vite build",
+    "app": "npm run build && electron .",
     "test": "node --test",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
     "record": "node scripts/record.mjs"
@@ -40,6 +41,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "ai": "^7.0.92",
     "concurrently": "^10.0.5",
+    "electron": "^44.2.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.2.2"
