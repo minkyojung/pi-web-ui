@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,magenta \"tsx server.ts\" \"vite\"",
     "dev:server": "tsx server.ts",
-    "build": "vite build",
+    "build:client": "vite build",
+    "build:server": "esbuild server.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist-server/server.mjs",
+    "build": "npm run build:client && npm run build:server",
     "app": "npm run build && electron .",
     "test": "node --test",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
@@ -42,6 +44,7 @@
     "ai": "^7.0.92",
     "concurrently": "^10.0.5",
     "electron": "^44.2.0",
+    "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.2.2"

@@ -48,9 +48,10 @@ let exiting = false;
 
 function startServer(port) {
 	// ELECTRON_RUN_AS_NODE turns this same binary into plain node, so the app does
-	// not depend on whatever node the machine happens to have.
-	child = spawn(process.execPath, [here("../node_modules/tsx/dist/cli.mjs"), here("../server.ts")], {
-		env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", PORT: String(port), HOST },
+	// not depend on whatever node the machine happens to have. The server is
+	// pre-bundled rather than compiled at startup: `npm run build` writes it.
+	child = spawn(process.execPath, [here("../dist-server/server.mjs")], {
+		env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", PORT: String(port), HOST, CLIENT_DIR: here("../dist") },
 		cwd: process.cwd(),
 		stdio: ["ignore", "pipe", "pipe"],
 	});

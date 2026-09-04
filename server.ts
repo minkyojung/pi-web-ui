@@ -8,6 +8,7 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { createServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
@@ -246,8 +247,16 @@ async function broadcastAll(): Promise<void> {
 
 await bind();
 
-/** Where `npm run build` puts the client. Absent until it has been run once. */
-const CLIENT_DIR = new URL("dist/", import.meta.url);
+/**
+ * Where `npm run build` puts the client. Absent until it has been run once.
+ *
+ * The desktop shell runs a bundled copy of this file from another directory, so
+ * it says where the client is rather than letting the path be inferred from
+ * wherever the module happens to sit.
+ */
+const CLIENT_DIR = process.env.CLIENT_DIR
+	? pathToFileURL(process.env.CLIENT_DIR.replace(/\/?$/, "/"))
+	: new URL("dist/", import.meta.url);
 
 const CONTENT_TYPES: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
