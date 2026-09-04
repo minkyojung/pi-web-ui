@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from "react";
 
 import { configStore, sessionsStore, usageStore } from "../serverState";
+import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { ModelSelect } from "./ModelSelect";
 import { UsageView } from "./UsageView";
@@ -10,6 +11,9 @@ export function SettingsBar() {
 	const usage = useSyncExternalStore(usageStore.subscribe, usageStore.get);
 	const sessions = useSyncExternalStore(sessionsStore.subscribe, sessionsStore.get);
 	const [note, setNote] = useState("");
+	// Nothing is queued while the socket is down, so a control that still looked
+	// live would silently do nothing.
+	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 
 	// The server is the source of truth for all of this, and it has not spoken yet.
 	if (!config) return <div id="settings" />;
@@ -28,6 +32,7 @@ export function SettingsBar() {
 			<span className="group">
 				<select
 					id="sessions"
+					disabled={!online}
 					value={current?.path ?? ""}
 					onChange={(e) => send({ type: "resume_session", path: e.target.value })}
 				>
@@ -37,7 +42,7 @@ export function SettingsBar() {
 						</option>
 					))}
 				</select>
-				<button id="newSession" onClick={() => send({ type: "new_session" })}>
+				<button id="newSession" disabled={!online} onClick={() => send({ type: "new_session" })}>
 					새 대화
 				</button>
 			</span>
@@ -49,7 +54,7 @@ export function SettingsBar() {
 				<select
 					id="thinking"
 					value={config.thinkingLevel}
-					disabled={config.thinkingLevels.length === 0}
+					disabled={!online || config.thinkingLevels.length === 0}
 					onChange={(e) => send({ type: "set_thinking", level: e.target.value })}
 				>
 					{config.thinkingLevels.map((level) => (
@@ -64,6 +69,7 @@ export function SettingsBar() {
 					<label key={tool.name} title={tool.description ?? ""}>
 						<input
 							type="checkbox"
+							disabled={!online}
 							checked={config.activeTools.includes(tool.name)}
 							onChange={(e) => toggleTool(tool.name, e.target.checked)}
 						/>
@@ -71,7 +77,7 @@ export function SettingsBar() {
 					</label>
 				))}
 			</span>
-			<button id="stop" disabled={!config.isStreaming} onClick={() => send({ type: "abort" })}>
+			<button id="stop" disabled={!online || !config.isStreaming} onClick={() => send({ type: "abort" })}>
 				중단
 			</button>
 			{usage && <UsageView usage={usage} />}

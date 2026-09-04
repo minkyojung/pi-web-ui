@@ -1,3 +1,6 @@
+import { useSyncExternalStore } from "react";
+
+import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 
 /** Group by provider; the list runs to dozens of entries. */
@@ -12,8 +15,9 @@ function byProvider(models: string[]): [string, string[]][] {
 }
 
 export function ModelSelect({ model, models }: { model: string | null; models: string[] }) {
+	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	return (
-		<select id="model" value={model ?? ""} onChange={(e) => send({ type: "set_model", model: e.target.value })}>
+		<select id="model" disabled={!online} value={model ?? ""} onChange={(e) => send({ type: "set_model", model: e.target.value })}>
 			{byProvider(models).map(([provider, keys]) => (
 				<optgroup key={provider} label={provider}>
 					{keys.map((key) => (

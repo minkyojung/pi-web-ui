@@ -3,13 +3,18 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Conversation } from "./components/Conversation";
 import { RawView } from "./components/RawView";
 import { SettingsBar } from "./components/SettingsBar";
-import { getItems, getStatus, subscribe } from "./store";
+import { getAgentStatus, getConnection, getItems, subscribe } from "./store";
 import { send } from "./ws";
 
 export function App() {
 	const items = useSyncExternalStore(subscribe, getItems);
-	const status = useSyncExternalStore(subscribe, getStatus);
+	const agentStatus = useSyncExternalStore(subscribe, getAgentStatus);
+	const connection = useSyncExternalStore(subscribe, getConnection);
 	const [raw, setRaw] = useState(false);
+	const online = connection === "open";
+	// While the socket is down the run status is whatever it was, which would be
+	// a lie; say what is actually happening instead.
+	const status = online ? agentStatus : connection === "connecting" ? "connecting…" : "reconnecting…";
 	const text = useRef<HTMLInputElement>(null);
 	const behavior = useRef<HTMLSelectElement>(null);
 
@@ -38,7 +43,7 @@ export function App() {
 						<option value="followUp">기다렸다 보내기</option>
 						<option value="steer">바로 끼어들기</option>
 					</select>
-					<button>send</button>
+					<button disabled={!online}>send</button>
 				</form>
 				<label>
 					<input type="checkbox" id="rawToggle" checked={raw} onChange={(e) => setRaw(e.target.checked)} /> raw

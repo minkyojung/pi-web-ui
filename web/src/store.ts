@@ -20,7 +20,9 @@ let convo: Conversation = createConversation();
 let items: Item[] = [];
 /** Where each of the reducer's own item objects landed in `items`. */
 let index = new Map<object, number>();
-let statusText = "connecting…";
+let agentStatus = "idle";
+/** Whether the socket is up. Separate from agentStatus, which describes the run. */
+let connection: Connection = "connecting";
 
 const listeners = new Set<() => void>();
 let frame: number | null = null;
@@ -30,8 +32,16 @@ export function subscribe(listener: () => void): () => void {
 	return () => listeners.delete(listener);
 }
 
+export type Connection = "connecting" | "open" | "reconnecting";
+
 export const getItems = (): Item[] => items;
-export const getStatus = (): string => statusText;
+export const getAgentStatus = (): string => agentStatus;
+export const getConnection = (): Connection => connection;
+
+export function setConnection(next: Connection): void {
+	connection = next;
+	notify();
+}
 
 /**
  * Deltas arrive far faster than the screen repaints, so a burst of them settles
@@ -50,7 +60,7 @@ const STATUS_LABEL: Record<string, string> = { working: "working…", idle: "idl
 
 export function applyServerEvent(event: ServerMsg): void {
 	const { added, changed } = applyEvent(convo, event) as { added: Item[]; changed: Item[] };
-	statusText = STATUS_LABEL[convo.status] ?? convo.status;
+	agentStatus = STATUS_LABEL[convo.status] ?? convo.status;
 
 	if (added.length || changed.length) {
 		const next = items.slice();
@@ -73,11 +83,6 @@ export function replaceConversation(snapshot: Item[]): void {
 	convo.items = snapshot;
 	index = new Map(snapshot.map((item, i) => [item, i]));
 	items = snapshot.map((item) => ({ ...item }));
-	statusText = STATUS_LABEL[convo.status] ?? convo.status;
-	notify();
-}
-
-export function setStatus(text: string): void {
-	statusText = text;
+	agentStatus = STATUS_LABEL[convo.status] ?? convo.status;
 	notify();
 }
