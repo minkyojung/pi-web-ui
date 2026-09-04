@@ -48,6 +48,28 @@ const { session } = await createAgentSession({
 	sessionManager: SessionManager.inMemory(),
 });
 
+/** Derived from the session so it stays in sync; pi does not re-export ThinkingLevel. */
+type ThinkingLevel = typeof session.thinkingLevel;
+
+const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+/** Everything the settings UI needs. Re-sent whenever any of it changes. */
+function config() {
+	const model = session.model;
+	return {
+		type: "config",
+		model: model ? `${model.provider}/${model.id}` : null,
+		thinkingLevel: session.thinkingLevel,
+		// null in the map marks a level the model does not support.
+		thinkingLevels: model?.reasoning
+			? THINKING_LEVELS.filter((level) => model.thinkingLevelMap?.[level] !== null)
+			: [],
+		tools: session.getAllTools().map((tool) => ({ name: tool.name, description: tool.description })),
+		activeTools: session.getActiveToolNames(),
+		isStreaming: session.isStreaming,
+	};
+}
+
 const clients = new Set<WebSocket>();
 /** Every event type actually seen, printed on shutdown. This is the goal of step 1. */
 const seenTypes = new Set<string>();
@@ -66,6 +88,8 @@ session.subscribe((event: AgentSessionEvent) => {
 			: event.type,
 	);
 	broadcast(event);
+	// isStreaming drives the stop button, so resend config when it flips.
+	if (event.type === "agent_start" || event.type === "agent_settled") broadcast(config());
 });
 
 const STATIC_FILES: Record<string, string> = {
@@ -94,23 +118,52 @@ const wss = new WebSocketServer({ server });
 wss.on("connection", (ws) => {
 	clients.add(ws);
 	ws.on("close", () => clients.delete(ws));
+	ws.send(safeStringify(config()));
 
 	ws.on("message", async (data) => {
-		let msg: { type?: string; text?: string };
+		let msg: { type?: string; text?: string; names?: string[]; level?: string };
 		try {
 			msg = JSON.parse(data.toString());
 		} catch {
 			ws.send(safeStringify({ type: "error", message: "invalid JSON from client" }));
 			return;
 		}
-		if (msg.type !== "prompt" || typeof msg.text !== "string") return;
-
 		try {
-			// prompt() throws if the session is streaming and no behavior is given.
-			await session.prompt(
-				msg.text,
-				session.isStreaming ? { streamingBehavior: "followUp" } : undefined,
-			);
+			switch (msg.type) {
+				case "prompt":
+					if (typeof msg.text !== "string") return;
+					// prompt() throws if the session is streaming and no behavior is given.
+					await session.prompt(
+						msg.text,
+						session.isStreaming ? { streamingBehavior: "followUp" } : undefined,
+					);
+					break;
+
+				case "abort":
+					await session.abort();
+					broadcast(config());
+					break;
+
+				case "set_tools":
+					if (!Array.isArray(msg.names)) return;
+					// Takes effect on the next turn, not the one in flight.
+					session.setActiveToolsByName(msg.names);
+					broadcast(config());
+					break;
+
+				case "set_thinking": {
+					// setThinkingLevel clamps rather than rejecting, so an unknown
+					// value would silently become "off". Validate first.
+					const levels = config().thinkingLevels;
+					if (typeof msg.level !== "string" || !levels.includes(msg.level as ThinkingLevel)) {
+						ws.send(safeStringify({ type: "error", message: `unsupported thinking level: ${msg.level}` }));
+						return;
+					}
+					session.setThinkingLevel(msg.level as ThinkingLevel);
+					broadcast(config());
+					break;
+				}
+			}
 		} catch (err) {
 			broadcast({ type: "error", message: err instanceof Error ? err.message : String(err) });
 		}

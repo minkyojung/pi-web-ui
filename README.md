@@ -13,12 +13,25 @@ MODEL=anthropic/claude-opus-4-8 npm run dev
 Auth comes from `~/.pi/agent/auth.json` (`pi` → `/login`). Sessions are
 in-memory, so nothing is written to `~/.pi/agent/sessions/`.
 
-## Status: step 2 — rendered conversation
+## Status: step 3 — settings
 
 The browser shows the conversation: user messages, streamed assistant text,
 tool calls with their results, errors, and a completion marker. Everything else
 is dropped. The `raw` checkbox still shows every event verbatim, which is the
 only way to debug when the rendered view is wrong.
+
+The settings bar exposes three controls, all applied to the live session:
+
+- **Tools** — which of the session's tools the agent may call. Checking only
+  `read` genuinely prevents shell execution; the model says so and calls
+  nothing. Takes effect on the next turn, not the one in flight.
+- **Thinking** — only the levels the current model supports. `setThinkingLevel`
+  clamps rather than rejects, so the server validates the value first;
+  otherwise an unknown level silently becomes `off`.
+- **Stop** — `abort()`. Enabled only while streaming.
+
+The server owns this state and broadcasts a `config` message on connect and
+after every change, so multiple tabs stay in sync.
 
 ### Events observed
 

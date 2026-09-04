@@ -4,6 +4,11 @@ const status = document.getElementById("status");
 const form = document.getElementById("form");
 const text = document.getElementById("text");
 const rawToggle = document.getElementById("rawToggle");
+const modelLabel = document.getElementById("model");
+const thinking = document.getElementById("thinking");
+const tools = document.getElementById("tools");
+const stop = document.getElementById("stop");
+const note = document.getElementById("note");
 
 /** Every event, unmodified. The only way to debug when the chat view is wrong. */
 const events = [];
@@ -17,6 +22,49 @@ const openTools = new Map();
 rawToggle.addEventListener("change", () => {
 	document.body.classList.toggle("raw", rawToggle.checked);
 });
+
+function send(msg) {
+	if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+}
+
+/** Rebuild the settings bar from the server's config. The server is the source of truth. */
+function renderConfig(cfg) {
+	modelLabel.textContent = cfg.model ?? "no model";
+	stop.disabled = !cfg.isStreaming;
+
+	if (thinking.options.length !== cfg.thinkingLevels.length) {
+		thinking.replaceChildren(
+			...cfg.thinkingLevels.map((level) => new Option(level, level)),
+		);
+	}
+	thinking.disabled = cfg.thinkingLevels.length === 0;
+	thinking.value = cfg.thinkingLevel;
+
+	if (tools.children.length !== cfg.tools.length) {
+		tools.replaceChildren(
+			...cfg.tools.map((tool) => {
+				const box = document.createElement("input");
+				box.type = "checkbox";
+				box.dataset.tool = tool.name;
+				box.addEventListener("change", () => {
+					const names = [...tools.querySelectorAll("input:checked")].map((i) => i.dataset.tool);
+					send({ type: "set_tools", names });
+					note.textContent = "도구 변경은 다음 turn부터 적용됩니다";
+				});
+				const label = document.createElement("label");
+				label.title = tool.description ?? "";
+				label.append(box, ` ${tool.name}`);
+				return label;
+			}),
+		);
+	}
+	for (const box of tools.querySelectorAll("input")) {
+		box.checked = cfg.activeTools.includes(box.dataset.tool);
+	}
+}
+
+thinking.addEventListener("change", () => send({ type: "set_thinking", level: thinking.value }));
+stop.addEventListener("click", () => send({ type: "abort" }));
 
 function textOf(message) {
 	return (message?.content ?? [])
@@ -144,6 +192,10 @@ ws.onopen = () => (status.textContent = "idle");
 ws.onclose = () => (status.textContent = "disconnected");
 ws.onmessage = (e) => {
 	const event = JSON.parse(e.data);
+	if (event.type === "config") {
+		renderConfig(event);
+		return;
+	}
 	events.push(event);
 	apply(event);
 	render();
@@ -152,7 +204,7 @@ ws.onmessage = (e) => {
 form.addEventListener("submit", (e) => {
 	e.preventDefault();
 	const value = text.value.trim();
-	if (!value || ws.readyState !== WebSocket.OPEN) return;
-	ws.send(JSON.stringify({ type: "prompt", text: value }));
+	if (!value) return;
+	send({ type: "prompt", text: value });
 	text.value = "";
 });

@@ -7,6 +7,12 @@
   :root { color-scheme: light dark; }
   body { font: 14px/1.5 system-ui, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
   header { padding: 8px 12px; border-bottom: 1px solid #8884; display: flex; gap: 12px; align-items: center; }
+  #settings { padding: 6px 12px; border-bottom: 1px solid #8884; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 12px; }
+  #settings .group { display: flex; gap: 6px; align-items: center; }
+  #settings label { white-space: nowrap; }
+  #model { color: #888; }
+  #stop:disabled { opacity: .4; }
+  #note { color: #888; font-size: 11px; }
   #text { flex: 1; font: inherit; padding: 6px 8px; }
   #status { color: #888; font-size: 12px; min-width: 5em; }
 
@@ -35,6 +41,16 @@
     <label><input type="checkbox" id="rawToggle"> raw</label>
     <span id="status">connecting…</span>
   </header>
+  <div id="settings">
+    <span class="group"><span id="model">…</span></span>
+    <span class="group">
+      <label for="thinking">생각</label>
+      <select id="thinking"></select>
+    </span>
+    <span class="group" id="tools"></span>
+    <button id="stop" disabled>중단</button>
+    <span id="note"></span>
+  </div>
   <main>
     <div id="chat"></div>
     <pre id="raw"></pre>
