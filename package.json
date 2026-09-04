@@ -4,9 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "concurrently -k -n server,web -c blue,magenta \"tsx server.ts\" \"vite\"",
+    "dev:server": "tsx server.ts",
+    "build": "vite build",
     "test": "node --test",
-    "typecheck": "tsc --noEmit -p tsconfig.server.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
     "record": "node scripts/record.mjs"
   },
   "keywords": [],

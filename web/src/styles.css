@@ -1,0 +1,33 @@
+:root { color-scheme: light dark; }
+/* React mounts into #root, which would otherwise become the flex child body expects header/#settings/main to be. */
+#root { display: contents; }
+body { font: 14px/1.5 system-ui, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+header { padding: 8px 12px; border-bottom: 1px solid #8884; display: flex; gap: 12px; align-items: center; }
+#settings { padding: 6px 12px; border-bottom: 1px solid #8884; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 12px; }
+#settings .group { display: flex; gap: 6px; align-items: center; }
+#settings label { white-space: nowrap; }
+#model { max-width: 16em; }
+#sessions { max-width: 20em; }
+#stop:disabled { opacity: .4; }
+#note { color: #888; font-size: 11px; }
+#queued { color: #c60; font-size: 11px; }
+#usage { color: #888; margin-left: auto; font-variant-numeric: tabular-nums; }
+#usage .warn { color: #c60; }
+#text { flex: 1; font: inherit; padding: 6px 8px; }
+#status { color: #888; font-size: 12px; min-width: 5em; }
+
+main { flex: 1; overflow: auto; padding: 12px; }
+#raw { display: none; white-space: pre-wrap; font: 12px ui-monospace, monospace; }
+body.raw #chat { display: none; }
+body.raw #raw { display: block; }
+
+.item { margin-bottom: 12px; }
+.user { font-weight: 600; white-space: pre-wrap; }
+.user::before { content: "› "; color: #888; }
+.assistant { white-space: pre-wrap; }
+.tool { font: 12px ui-monospace, monospace; border-left: 2px solid #8884; padding-left: 8px; color: #888; }
+.tool .name { color: inherit; font-weight: 600; }
+.tool pre { margin: 4px 0 0; white-space: pre-wrap; max-height: 12em; overflow: auto; }
+.error { color: #c00; white-space: pre-wrap; }
+.done { color: #888; font-size: 12px; }
+.notice { color: #a60; font-size: 12px; }
