@@ -26,10 +26,11 @@ npm test          # replays recorded pi sessions, offline
 npm run typecheck
 ```
 
-## Status: step 6 — React client
+## Status: step 7 — Tailwind, shadcn, AI Elements
 
-The browser shows the conversation: user messages, streamed assistant text, tool
-calls with their results and the partial output arriving before them, errors,
+The browser shows the conversation: user messages, assistant text rendered as
+markdown as it streams, tool calls as collapsible cards that fill in with their
+partial output while they run, errors,
 notices for the work pi does without being asked (auto retries, compaction), and
 a completion marker. Everything else is dropped. The `raw` checkbox still shows
 every event, which is the only way to debug when the rendered view is wrong.
@@ -62,17 +63,28 @@ mounted only while it is on.
 
 The design comes from the hand-written DOM client that preceded it, where
 rebuilding everything per event cost 63ms for the first turn and 534ms by the
-twelfth, and going incremental made it flat at ~42ms. The React client has not
-been re-measured.
+twelfth, and going incremental made it flat at ~42ms. Markdown made this worth
+rechecking, since the open message is now re-parsed rather than appended to: a
+5,500-character answer with four highlighted code blocks streamed in over 17.5s
+for 698ms of script time and no task over 50ms.
 
-The settings bar exposes three controls, all applied to the live session:
+The socket reconnects with a capped, jittered backoff. Recovery is entirely
+server-driven — it pushes `config`, `usage`, `snapshot` and `sessions` on
+connect — which is also the limit: a snapshot is rebuilt from stored messages,
+so `done` markers and live-only notices do not come back, and a tool that was
+mid-execution returns with no result and stays that way. Nothing is queued while
+the socket is down; a prompt replayed afterwards could land in a session that
+was swapped underneath it. The controls disable instead.
+
+The settings bar exposes four controls, all applied to the live session:
 
 - **Model** — any model with usable credentials, grouped by provider. Switching
   is live; `MODEL=` only sets the starting point. Thinking level is clamped to
   the new model, which the config broadcast reflects.
-- **Tools** — which of the session's tools the agent may call. Checking only
-  `read` genuinely prevents shell execution; the model says so and calls
-  nothing. Takes effect on the next turn, not the one in flight.
+- **Tools** — which of the session's tools the agent may call, behind a popover
+  because a session can expose a dozen. Checking only `read` genuinely prevents
+  shell execution; the model says so and calls nothing. Takes effect on the next
+  turn, not the one in flight.
 - **Thinking** — only the levels the current model supports. `setThinkingLevel`
   clamps rather than rejects, so the server validates the value first;
   otherwise an unknown level silently becomes `off`.
@@ -100,6 +112,44 @@ after every completed message, since spend is otherwise invisible.
 
 The server owns this state and broadcasts a `config` message on connect and
 after every change, so multiple tabs stay in sync.
+
+### The UI stack
+
+Tailwind 4, shadcn/ui, and Vercel's AI Elements. All three vendor their
+components into `web/src/components`, which is the point: the files are ours to
+edit, and several are edited.
+
+- **Dark mode is a media query, not a class.** shadcn puts its dark tokens
+  behind `.dark` and adds `@custom-variant dark` to match. Leaving that variant
+  out means Tailwind's built-in `dark:` *is* `prefers-color-scheme`, so every
+  `dark:` utility inside a vendored component follows the system with no JS and
+  no flash of the wrong theme. `color-scheme: light dark` does the same for
+  native controls.
+- **`message.tsx` drops the math and mermaid streamdown plugins.** mermaid is by
+  far the largest thing in this dependency graph and katex ships its own
+  stylesheet and fonts, for LaTeX and diagrams a coding agent does not produce.
+  `cjk` stays — it fixes emphasis parsing next to CJK characters. Re-adding
+  either is one import.
+- **`tool.tsx` renders a string result as-is rather than as JSON**, which is what
+  the registry does, and caps its height: a tool result here is whatever the
+  tool printed, and a grep over a large tree runs for pages.
+- **The selects are native.** The model list is fifty-odd entries across provider
+  groups and the session list is unbounded; picking out of either is done by
+  typing the first characters, which a portalled listbox does not do.
+  `native-select.tsx` is a `<select>` wearing shadcn's chrome.
+- **AI Elements' `PromptInput` is not used.** It brings attachments, a dropzone
+  and a model picker that route nowhere here, and its textarea is controlled —
+  the input is deliberately uncontrolled so a keystroke does not re-render the
+  conversation.
+- **`ai` is a devDependency.** Every import of it in the vendored files is
+  type-only, so it erases at build.
+
+Two things about the CLIs, since neither is in their docs. shadcn resolves
+`@/*` from `paths` alone, which matters because TypeScript 7 removed `baseUrl`
+and the Vite guide tells you to add one. And `npx ai-elements add` writes to
+`./components/ai-elements` regardless of `components.json`, so its output has to
+be moved into `web/src` and its `@/lib/utils` import repointed at the `cn`
+package the shadcn components already use.
 
 ### Events observed
 
