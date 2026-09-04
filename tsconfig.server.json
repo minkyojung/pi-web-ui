@@ -1,0 +1,14 @@
+{
+	"//": "The flags npm run typecheck used to pass on the command line. Split from the web project because the two share no lib or module settings.",
+	"compilerOptions": {
+		"module": "esnext",
+		"target": "es2022",
+		"moduleResolution": "bundler",
+		"allowJs": true,
+		"skipLibCheck": true,
+		"allowImportingTsExtensions": true,
+		"noEmit": true,
+		"types": ["node"]
+	},
+	"include": ["server.ts"]
+}

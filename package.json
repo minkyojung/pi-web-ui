@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "test": "node --test",
-    "typecheck": "tsc --noEmit --skipLibCheck --allowJs --module esnext --target es2022 --moduleResolution bundler --allowImportingTsExtensions server.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.server.json",
     "record": "node scripts/record.mjs"
   },
   "keywords": [],
@@ -15,11 +15,19 @@
   "type": "module",
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "tsx": "^4.23.13",
     "ws": "^8.21.3"
   },
   "devDependencies": {
+    "@types/node": "^26.4.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
     "@types/ws": "^8.18.1",
-    "typescript": "^7.0.2"
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
   }
 }
