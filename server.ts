@@ -48,6 +48,10 @@ const { session } = await createAgentSession({
 	sessionManager: SessionManager.inMemory(),
 });
 
+/** Models with usable credentials. Fixed for the process; auth does not change while running. */
+const availableModels = await modelRuntime.getAvailable();
+const modelKey = (m: { provider: string; id: string }) => `${m.provider}/${m.id}`;
+
 /** Derived from the session so it stays in sync; pi does not re-export ThinkingLevel. */
 type ThinkingLevel = typeof session.thinkingLevel;
 
@@ -56,7 +60,8 @@ function config() {
 	const model = session.model;
 	return {
 		type: "config",
-		model: model ? `${model.provider}/${model.id}` : null,
+		model: model ? modelKey(model) : null,
+		models: availableModels.map(modelKey),
 		thinkingLevel: session.thinkingLevel,
 		thinkingLevels: session.supportsThinking() ? session.getAvailableThinkingLevels() : [],
 		tools: session.getAllTools().map((tool) => ({ name: tool.name, description: tool.description })),
@@ -136,7 +141,7 @@ wss.on("connection", (ws) => {
 	ws.send(safeStringify(usage()));
 
 	ws.on("message", async (data) => {
-		let msg: { type?: string; text?: string; names?: string[]; level?: string };
+		let msg: { type?: string; text?: string; names?: string[]; level?: string; model?: string };
 		try {
 			msg = JSON.parse(data.toString());
 		} catch {
@@ -165,6 +170,19 @@ wss.on("connection", (ws) => {
 					session.setActiveToolsByName(msg.names);
 					broadcast(config());
 					break;
+
+				case "set_model": {
+					const next = availableModels.find((m) => modelKey(m) === msg.model);
+					if (!next) {
+						ws.send(safeStringify({ type: "error", message: `unknown model: ${msg.model}` }));
+						return;
+					}
+					// Throws when the model has no configured auth. Thinking level is
+					// clamped to the new model, so the config broadcast reflects that too.
+					await session.setModel(next);
+					broadcast(config());
+					break;
+				}
 
 				case "set_thinking": {
 					// setThinkingLevel clamps rather than rejecting, so an unknown

@@ -22,6 +22,9 @@ only way to debug when the rendered view is wrong.
 
 The settings bar exposes three controls, all applied to the live session:
 
+- **Model** — any model with usable credentials, grouped by provider. Switching
+  is live; `MODEL=` only sets the starting point. Thinking level is clamped to
+  the new model, which the config broadcast reflects.
 - **Tools** — which of the session's tools the agent may call. Checking only
   `read` genuinely prevents shell execution; the model says so and calls
   nothing. Takes effect on the next turn, not the one in flight.

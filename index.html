@@ -10,7 +10,7 @@
   #settings { padding: 6px 12px; border-bottom: 1px solid #8884; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 12px; }
   #settings .group { display: flex; gap: 6px; align-items: center; }
   #settings label { white-space: nowrap; }
-  #model { color: #888; }
+  #model { max-width: 16em; }
   #stop:disabled { opacity: .4; }
   #note { color: #888; font-size: 11px; }
   #usage { color: #888; margin-left: auto; font-variant-numeric: tabular-nums; }
@@ -44,7 +44,7 @@
     <span id="status">connecting…</span>
   </header>
   <div id="settings">
-    <span class="group"><span id="model">…</span></span>
+    <span class="group"><select id="model"></select></span>
     <span class="group">
       <label for="thinking">생각</label>
       <select id="thinking"></select>

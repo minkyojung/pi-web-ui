@@ -4,7 +4,7 @@ const status = document.getElementById("status");
 const form = document.getElementById("form");
 const text = document.getElementById("text");
 const rawToggle = document.getElementById("rawToggle");
-const modelLabel = document.getElementById("model");
+const modelSelect = document.getElementById("model");
 const thinking = document.getElementById("thinking");
 const tools = document.getElementById("tools");
 const stop = document.getElementById("stop");
@@ -30,7 +30,24 @@ function send(msg) {
 
 /** Rebuild the settings bar from the server's config. The server is the source of truth. */
 function renderConfig(cfg) {
-	modelLabel.textContent = cfg.model ?? "no model";
+	if (modelSelect.options.length !== cfg.models.length) {
+		// Group by provider; the list runs to dozens of entries.
+		const groups = new Map();
+		for (const key of cfg.models) {
+			const provider = key.slice(0, key.indexOf("/"));
+			if (!groups.has(provider)) groups.set(provider, []);
+			groups.get(provider).push(key);
+		}
+		modelSelect.replaceChildren(
+			...[...groups].map(([provider, keys]) => {
+				const group = document.createElement("optgroup");
+				group.label = provider;
+				group.append(...keys.map((key) => new Option(key.slice(provider.length + 1), key)));
+				return group;
+			}),
+		);
+	}
+	if (cfg.model) modelSelect.value = cfg.model;
 	stop.disabled = !cfg.isStreaming;
 
 	if (thinking.options.length !== cfg.thinkingLevels.length) {
@@ -82,6 +99,7 @@ function renderUsage(u) {
 		(u.context ? `\ncontext ${u.context.tokens ?? "?"} / ${u.context.window}` : "");
 }
 
+modelSelect.addEventListener("change", () => send({ type: "set_model", model: modelSelect.value }));
 thinking.addEventListener("change", () => send({ type: "set_thinking", level: thinking.value }));
 stop.addEventListener("click", () => send({ type: "abort" }));
 
