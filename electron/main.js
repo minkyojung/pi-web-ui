@@ -88,6 +88,13 @@ async function resolveWorkdir() {
 
 let child = null;
 let exiting = false;
+/**
+ * The server's last words. It exits deliberately for reasons a person can act
+ * on — no credentials yet, a working directory that has been deleted — and
+ * those reasons are worth more than the exit code the shell would otherwise
+ * have to report.
+ */
+let serverErrors = [];
 
 function startServer(port, workdir) {
 	// ELECTRON_RUN_AS_NODE turns this same binary into plain node, so the app does
@@ -106,11 +113,22 @@ function startServer(port, workdir) {
 		stdio: ["ignore", "pipe", "pipe"],
 	});
 	child.stdout.on("data", (d) => process.stdout.write(`[server] ${d}`));
-	child.stderr.on("data", (d) => process.stderr.write(`[server] ${d}`));
+	child.stderr.on("data", (d) => {
+		process.stderr.write(`[server] ${d}`);
+		serverErrors = [...serverErrors, ...String(d).split("\n").filter(Boolean)].slice(-10);
+	});
+	// A failed spawn emits 'error', not 'exit', and without this the shell would
+	// sit forever waiting for a server that was never going to start.
+	child.on("error", (err) => {
+		serverErrors = [...serverErrors, `pi 서버를 실행하지 못했습니다: ${err.message}`].slice(-10);
+	});
 	child.on("exit", (code) => {
 		child = null;
 		if (exiting) return;
-		dialog.showErrorBox("서버가 종료되었습니다", `pi 서버가 코드 ${code}로 종료됐습니다. 터미널 출력을 확인해 주세요.`);
+		dialog.showErrorBox(
+			"pi 서버가 종료되었습니다",
+			serverErrors.length ? serverErrors.join("\n") : `종료 코드 ${code}. 터미널 출력을 확인해 주세요.`,
+		);
 		app.quit();
 	});
 }

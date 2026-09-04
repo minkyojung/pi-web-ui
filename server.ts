@@ -42,7 +42,7 @@ const MODEL = process.env.MODEL ?? "openai/gpt-5.4";
  */
 const CWD = process.env.WORKDIR ?? process.cwd();
 if (!existsSync(CWD)) {
-	console.error(`working directory does not exist: ${CWD}`);
+	console.error(`작업 폴더가 없습니다: ${CWD}`);
 	process.exit(1);
 }
 
@@ -79,7 +79,9 @@ const availableModels = await modelRuntime.getAvailable();
 const modelKey = (m: { provider: string; id: string }) => `${m.provider}/${m.id}`;
 
 if (availableModels.length === 0) {
-	console.error("No model has usable credentials. Run `pi`, sign in with /login, then start this again.");
+	// Korean: the desktop shell puts whatever this prints in front of the user,
+	// and this is the one message someone starting out is likely to need.
+	console.error("사용할 수 있는 모델이 없습니다. 터미널에서 `pi`를 실행해 /login으로 로그인한 뒤 다시 시작해 주세요.");
 	process.exit(1);
 }
 
