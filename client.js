@@ -1,3 +1,5 @@
+import { applyEvent, createConversation } from "./conversation.js";
+
 const chat = document.getElementById("chat");
 const raw = document.getElementById("raw");
 const status = document.getElementById("status");
@@ -18,15 +20,13 @@ const newSession = document.getElementById("newSession");
 /** How many raw events the debug view keeps. Older ones are dropped, not the server's copy. */
 const RAW_LIMIT = 300;
 
-/** Rendered conversation items, built from the event stream. Each owns its DOM node. */
-const items = [];
+/** Conversation state. Replaced wholesale when the server switches sessions. */
+let convo = createConversation();
+/** item -> its DOM nodes. Kept here so items stay plain data. */
+let nodes = new Map();
 /** Items whose node is out of date, flushed once per animation frame. */
 const dirty = new Set();
 let frame = null;
-/** The assistant item currently receiving text_delta, if any. */
-let openText = null;
-/** tool_execution_start items awaiting their _end, keyed by toolCallId. */
-const openTools = new Map();
 
 rawToggle.addEventListener("change", () => {
 	document.body.classList.toggle("raw", rawToggle.checked);
@@ -129,32 +129,6 @@ modelSelect.addEventListener("change", () => send({ type: "set_model", model: mo
 thinking.addEventListener("change", () => send({ type: "set_thinking", level: thinking.value }));
 stop.addEventListener("click", () => send({ type: "abort" }));
 
-function textOf(message) {
-	return (message?.content ?? [])
-		.filter((part) => part.type === "text")
-		.map((part) => part.text)
-		.join("");
-}
-
-function resultText(result) {
-	if (typeof result === "string") return result;
-	const parts = result?.content;
-	if (Array.isArray(parts)) {
-		return parts.filter((p) => p.type === "text").map((p) => p.text).join("");
-	}
-	return JSON.stringify(result);
-}
-
-/** Provider errors arrive as "400 {json}". Show the human sentence, keep the rest in raw view. */
-function errorText(message) {
-	const json = message.slice(message.indexOf("{"));
-	try {
-		return JSON.parse(json).error?.message ?? message;
-	} catch {
-		return message;
-	}
-}
-
 function el(tag, className, textContent) {
 	const node = document.createElement(tag);
 	node.className = className;
@@ -168,31 +142,32 @@ function createNode(item) {
 		const pre = el("pre", "");
 		pre.hidden = true;
 		node.append(el("span", "name", item.name), ` ${JSON.stringify(item.args)}`, pre);
-		item.pre = pre;
+		nodes.set(item, { node, pre });
 		return node;
 	}
-	return el("div", `item ${item.kind}`, item.kind === "done" ? "— 완료 —" : item.text);
+	const node = el("div", `item ${item.kind}`, item.kind === "done" ? "— 완료 —" : item.text);
+	nodes.set(item, { node });
+	return node;
 }
 
 function updateNode(item) {
+	const entry = nodes.get(item);
+	if (!entry) return;
 	if (item.kind === "tool") {
 		if (item.result === null) return;
-		item.pre.hidden = false;
-		item.pre.className = item.isError ? "error" : "";
-		item.pre.textContent = item.result;
+		entry.pre.hidden = false;
+		entry.pre.className = item.isError ? "error" : "";
+		entry.pre.textContent = item.result;
 	} else if (item.kind !== "done") {
-		item.node.textContent = item.text;
+		entry.node.textContent = item.text;
 	}
 }
 
-/** Append one item and its node. Only this item's node is created; the rest are untouched. */
-function addItem(item) {
-	items.push(item);
-	item.node = createNode(item);
-	chat.append(item.node);
+/** Append one item's node. Only this node is created; the rest are untouched. */
+function mount(item) {
+	chat.append(createNode(item));
 	// A new node changes the height, so the scroll position needs a pass too.
 	scheduleFlush();
-	return item;
 }
 
 function scheduleFlush() {
@@ -222,68 +197,24 @@ function pushRaw(event) {
 	while (raw.childNodes.length > RAW_LIMIT) raw.removeChild(raw.firstChild);
 }
 
+const STATUS_LABEL = { working: "working…", idle: "idle" };
+
+/** Fold an event into the conversation, then mount or mark whatever it touched. */
 function apply(event) {
-	switch (event.type) {
-		case "agent_start":
-			status.textContent = "working…";
-			break;
+	const { added, changed } = applyEvent(convo, event);
+	status.textContent = STATUS_LABEL[convo.status] ?? convo.status;
+	for (const item of added) mount(item);
+	for (const item of changed) touch(item);
+}
 
-		case "message_start":
-			if (event.message?.role === "user") addItem({ kind: "user", text: textOf(event.message) });
-			break;
-
-		case "message_update": {
-			const sub = event.assistantMessageEvent;
-			if (sub.type === "text_start") {
-				openText = addItem({ kind: "assistant", text: "" });
-			} else if (sub.type === "text_delta") {
-				if (!openText) openText = addItem({ kind: "assistant", text: "" });
-				openText.text += sub.delta;
-				touch(openText);
-			} else if (sub.type === "text_end") {
-				openText = null;
-			}
-			break;
-		}
-
-		case "message_end":
-			// Provider failures arrive here, not as a thrown error on the server.
-			if (event.message?.stopReason === "error") {
-				addItem({ kind: "error", text: errorText(event.message.errorMessage ?? "unknown error") });
-			} else if (event.message?.role === "assistant" && !openText && textOf(event.message)) {
-				// Non-streaming reply: no text_delta ever arrived.
-				const already = items.some((i) => i.kind === "assistant" && i.text === textOf(event.message));
-				if (!already) addItem({ kind: "assistant", text: textOf(event.message) });
-			}
-			openText = null;
-			break;
-
-		case "tool_execution_start": {
-			const item = addItem({ kind: "tool", name: event.toolName, args: event.args, result: null, isError: false });
-			openTools.set(event.toolCallId, item);
-			break;
-		}
-
-		case "tool_execution_end": {
-			const item = openTools.get(event.toolCallId);
-			if (item) {
-				item.result = resultText(event.result);
-				item.isError = event.isError;
-				touch(item);
-				openTools.delete(event.toolCallId);
-			}
-			break;
-		}
-
-		case "agent_settled":
-			status.textContent = "idle";
-			addItem({ kind: "done" });
-			break;
-
-		case "error":
-			addItem({ kind: "error", text: event.message });
-			break;
-	}
+/** Replace the conversation wholesale, e.g. after the server switches sessions. */
+function replaceConversation(items) {
+	convo = createConversation();
+	convo.items = items;
+	nodes = new Map();
+	dirty.clear();
+	chat.replaceChildren(...items.map(createNode));
+	for (const item of items) updateNode(item);
 }
 
 const ws = new WebSocket(`ws://${location.host}`);
@@ -305,17 +236,7 @@ ws.onmessage = (e) => {
 	}
 	if (event.type === "snapshot") {
 		// A replaced session emits no events for its history, so rebuild from this.
-		items.length = 0;
-		dirty.clear();
-		openText = null;
-		openTools.clear();
-		for (const incoming of event.items) {
-			const item = incoming.kind === "error" ? { ...incoming, text: errorText(incoming.text) } : { ...incoming };
-			items.push(item);
-			item.node = createNode(item);
-			updateNode(item);
-		}
-		chat.replaceChildren(...items.map((item) => item.node));
+		replaceConversation(event.items);
 		return;
 	}
 	pushRaw(event);

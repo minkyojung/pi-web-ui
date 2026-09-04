@@ -20,6 +20,7 @@ import {
 	type AgentSessionEvent,
 	type CreateAgentSessionRuntimeFactory,
 } from "@earendil-works/pi-coding-agent";
+import { itemsFromMessages } from "./conversation.js";
 
 const PORT = Number(process.env.PORT ?? 3000);
 /** "provider/id". Only the starting model; the UI can switch it live. */
@@ -123,48 +124,13 @@ function usage() {
 	};
 }
 
-const textOf = (content: unknown): string =>
-	typeof content === "string"
-		? content
-		: Array.isArray(content)
-			? content.filter((c) => c?.type === "text").map((c) => c.text).join("")
-			: "";
-
 /**
  * The conversation so far, in the same item shape the client builds from live
  * events. A resumed session has history but emits no events for it, so without
  * this the browser would show an empty conversation.
  */
 function snapshot() {
-	const items: any[] = [];
-	const toolItems = new Map<string, any>();
-
-	for (const message of session().messages) {
-		if (message.role === "user") {
-			const text = textOf(message.content);
-			if (text) items.push({ kind: "user", text });
-		} else if (message.role === "assistant") {
-			for (const part of message.content) {
-				if (part.type === "text" && part.text) {
-					items.push({ kind: "assistant", text: part.text });
-				} else if (part.type === "toolCall") {
-					const item = { kind: "tool", name: part.name, args: part.arguments, result: null, isError: false };
-					toolItems.set(part.id, item);
-					items.push(item);
-				}
-			}
-			if (message.stopReason === "error" && message.errorMessage) {
-				items.push({ kind: "error", text: message.errorMessage });
-			}
-		} else if (message.role === "toolResult") {
-			const item = toolItems.get(message.toolCallId);
-			if (item) {
-				item.result = textOf(message.content);
-				item.isError = message.isError;
-			}
-		}
-	}
-	return { type: "snapshot", items };
+	return { type: "snapshot", items: itemsFromMessages(session().messages) };
 }
 
 /** Saved sessions for this working directory, newest first. */
@@ -240,6 +206,7 @@ const STATIC_FILES: Record<string, string> = {
 	"/": "index.html",
 	"/index.html": "index.html",
 	"/client.js": "client.js",
+	"/conversation.js": "conversation.js",
 };
 
 const server = createServer(async (req, res) => {

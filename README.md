@@ -13,12 +13,31 @@ MODEL=anthropic/claude-opus-4-8 npm run dev
 Auth comes from `~/.pi/agent/auth.json` (`pi` → `/login`). Sessions are written
 to `~/.pi/agent/sessions/` and survive a restart.
 
-## Status: step 4 — sessions
+```bash
+npm test          # replays recorded pi sessions, offline
+npm run typecheck
+```
+
+## Status: step 5 — one reducer, tested
 
 The browser shows the conversation: user messages, streamed assistant text,
 tool calls with their results, errors, and a completion marker. Everything else
 is dropped. The `raw` checkbox still shows every event verbatim, which is the
 only way to debug when the rendered view is wrong.
+
+`conversation.js` holds the rules for turning a pi session into conversation
+items, and both the browser and the server import it. It used to exist twice —
+`apply()` in the client for live events, `snapshot()` in the server for resumed
+ones — and the two had drifted in four ways: an unusual tool result rendered as
+JSON live and as blank on resume; the server emitted the raw `400 {json}`
+envelope and relied on the client to unwrap it; empty user messages were kept
+by one path and skipped by the other; and a reply that called a tool before
+speaking came out in opposite orders. None showed on the happy path, which is
+what made them worth removing rather than fixing twice.
+
+`applyEvent` returns the items it added and changed so a renderer can stay
+incremental without diffing; a caller that re-renders wholesale can ignore it
+and read `state.items`.
 
 Rendering is incremental: each conversation item owns its DOM node, deltas mark
 only that item dirty, and updates are flushed once per animation frame. The raw
@@ -42,8 +61,8 @@ Sessions are owned by an `AgentSessionRuntime`, since `/new` and `/resume`
 replace the `AgentSession` object rather than mutating it. Every read goes
 through `runtime.session`, and the event subscription is rebound after each
 replacement. A resumed session emits no events for its history, so the server
-sends a `snapshot` — the conversation rebuilt from `session.messages` into the
-same item shape the client builds from live events. An unsaved session has no
+sends a `snapshot` — the conversation rebuilt from `session.messages` through
+`itemsFromMessages`. An unsaved session has no
 file yet and would be missing from the picker, so it appears as a placeholder
 entry.
 
@@ -85,3 +104,23 @@ Notes:
 - Provider failures (billing, rate limits) do **not** throw from `prompt()`.
   They arrive as a message with `stopReason: "error"` and an `errorMessage`,
   so a UI that ignores them looks silently stuck.
+
+## Tests
+
+`npm test` (Node's built-in runner, no dependencies) replays two recordings of
+real pi sessions from `test/fixtures/`: a turn with two tool calls, and a
+provider billing failure. Recordings are committed verbatim rather than
+trimmed, so the tests can only pass on shapes pi actually emits.
+
+The load-bearing test is the equivalence one: `agent_end` carries the run's
+messages, so a single recording holds both inputs to the live/resumed contract,
+and asserting the two produce the same items is what keeps them from drifting
+again.
+
+`npm run record <out.json> "<prompt>"` refreshes a fixture against a live
+session. It spends real tokens, so it is manual and never part of `npm test`.
+Re-record only when a pi upgrade actually breaks a test — a stale fixture that
+still passes is evidence the contract held.
+
+The DOM layer is deliberately untested: it is about to be replaced by a React
+client, and its tests would be replaced with it.
