@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { type ReactNode, useLayoutEffect, useRef } from "react";
 
 import type { Item } from "../types";
 import { ItemView } from "./Item";
@@ -6,7 +6,7 @@ import { ItemView } from "./Item";
 /** Near enough to the bottom that the view should keep following new content. */
 const isAtBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight < 40;
 
-export function Conversation({ items }: { items: Item[] }) {
+export function Conversation({ items, children }: { items: Item[]; children?: ReactNode }) {
 	const main = useRef<HTMLElement>(null);
 	// Recorded while the user scrolls rather than when content arrives: measured
 	// afterwards, a tall new item is already in scrollHeight and the view would
@@ -26,6 +26,7 @@ export function Conversation({ items }: { items: Item[] }) {
 					<ItemView key={i} item={item} />
 				))}
 			</div>
+			{children}
 		</main>
 	);
 }

@@ -1,14 +1,22 @@
-import { useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { Conversation } from "./components/Conversation";
+import { RawView } from "./components/RawView";
+import { SettingsBar } from "./components/SettingsBar";
 import { getItems, getStatus, subscribe } from "./store";
 import { send } from "./ws";
 
 export function App() {
 	const items = useSyncExternalStore(subscribe, getItems);
 	const status = useSyncExternalStore(subscribe, getStatus);
+	const [raw, setRaw] = useState(false);
 	const text = useRef<HTMLInputElement>(null);
 	const behavior = useRef<HTMLSelectElement>(null);
+
+	// The stylesheet swaps the two views off body.raw rather than off a prop.
+	useEffect(() => {
+		document.body.classList.toggle("raw", raw);
+	}, [raw]);
 
 	return (
 		<>
@@ -32,9 +40,13 @@ export function App() {
 					</select>
 					<button>send</button>
 				</form>
+				<label>
+					<input type="checkbox" id="rawToggle" checked={raw} onChange={(e) => setRaw(e.target.checked)} /> raw
+				</label>
 				<span id="status">{status}</span>
 			</header>
-			<Conversation items={items} />
+			<SettingsBar />
+			<Conversation items={items}>{raw && <RawView />}</Conversation>
 		</>
 	);
 }
