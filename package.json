@@ -1,0 +1,25 @@
+{
+  "name": "khartoum",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "test": "node --test",
+    "typecheck": "tsc --noEmit --skipLibCheck --allowJs --module esnext --target es2022 --moduleResolution bundler --allowImportingTsExtensions server.ts",
+    "record": "node scripts/record.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.4",
+    "tsx": "^4.23.13",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "typescript": "^7.0.2"
+  }
+}
