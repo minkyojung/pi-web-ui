@@ -10,6 +10,8 @@ const tools = document.getElementById("tools");
 const stop = document.getElementById("stop");
 const note = document.getElementById("note");
 const usage = document.getElementById("usage");
+const behavior = document.getElementById("behavior");
+const queued = document.getElementById("queued");
 
 /** Every event, unmodified. The only way to debug when the chat view is wrong. */
 const events = [];
@@ -76,6 +78,9 @@ function renderConfig(cfg) {
 			}),
 		);
 	}
+	const pending = cfg.queued.steering.length + cfg.queued.followUp.length;
+	queued.textContent = pending ? `대기 중 ${pending}건` : "";
+
 	for (const box of tools.querySelectorAll("input")) {
 		box.checked = cfg.activeTools.includes(box.dataset.tool);
 	}
@@ -246,6 +251,6 @@ form.addEventListener("submit", (e) => {
 	e.preventDefault();
 	const value = text.value.trim();
 	if (!value) return;
-	send({ type: "prompt", text: value });
+	send({ type: "prompt", text: value, behavior: behavior.value });
 	text.value = "";
 });

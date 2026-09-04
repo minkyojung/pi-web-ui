@@ -67,6 +67,10 @@ function config() {
 		tools: session.getAllTools().map((tool) => ({ name: tool.name, description: tool.description })),
 		activeTools: session.getActiveToolNames(),
 		isStreaming: session.isStreaming,
+		queued: {
+			steering: [...session.getSteeringMessages()],
+			followUp: [...session.getFollowUpMessages()],
+		},
 	};
 }
 
@@ -106,7 +110,9 @@ session.subscribe((event: AgentSessionEvent) => {
 	);
 	broadcast(event);
 	// isStreaming drives the stop button, so resend config when it flips.
-	if (event.type === "agent_start" || event.type === "agent_settled") broadcast(config());
+	if (event.type === "agent_start" || event.type === "agent_settled" || event.type === "queue_update") {
+		broadcast(config());
+	}
 	// Cost only moves when a message completes.
 	if (event.type === "message_end" || event.type === "agent_settled") broadcast(usage());
 });
@@ -141,7 +147,7 @@ wss.on("connection", (ws) => {
 	ws.send(safeStringify(usage()));
 
 	ws.on("message", async (data) => {
-		let msg: { type?: string; text?: string; names?: string[]; level?: string; model?: string };
+		let msg: { type?: string; text?: string; names?: string[]; level?: string; model?: string; behavior?: string };
 		try {
 			msg = JSON.parse(data.toString());
 		} catch {
@@ -150,14 +156,17 @@ wss.on("connection", (ws) => {
 		}
 		try {
 			switch (msg.type) {
-				case "prompt":
+				case "prompt": {
 					if (typeof msg.text !== "string") return;
+					// "steer" redirects the run in progress; "followUp" waits for it to finish.
+					const behavior = msg.behavior === "steer" ? "steer" : "followUp";
 					// prompt() throws if the session is streaming and no behavior is given.
 					await session.prompt(
 						msg.text,
-						session.isStreaming ? { streamingBehavior: "followUp" } : undefined,
+						session.isStreaming ? { streamingBehavior: behavior } : undefined,
 					);
 					break;
+				}
 
 				case "abort":
 					await session.abort();

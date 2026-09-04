@@ -33,6 +33,13 @@ The settings bar exposes three controls, all applied to the live session:
   otherwise an unknown level silently becomes `off`.
 - **Stop** — `abort()`. Enabled only while streaming.
 
+Messages sent while a run is in progress are queued as either `steer` or
+`followUp`, chosen next to the input. Steering is delivered at the next turn
+boundary — after the current turn's tool calls, before the next model call —
+so it cuts a tool-using run short but cannot interrupt a single long
+generation. Follow-ups wait for the run to finish. The pending count comes
+from `queue_update`.
+
 A `usage` message carries `getSessionStats()` and `getContextUsage()`: accrued
 cost, token breakdown, and how full the context window is. Sent on connect and
 after every completed message, since spend is otherwise invisible.

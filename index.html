@@ -13,6 +13,7 @@
   #model { max-width: 16em; }
   #stop:disabled { opacity: .4; }
   #note { color: #888; font-size: 11px; }
+  #queued { color: #c60; font-size: 11px; }
   #usage { color: #888; margin-left: auto; font-variant-numeric: tabular-nums; }
   #usage .warn { color: #c60; }
   #text { flex: 1; font: inherit; padding: 6px 8px; }
@@ -38,6 +39,10 @@
   <header>
     <form id="form" style="display: contents;">
       <input id="text" placeholder="pi에게 보낼 말" autocomplete="off" autofocus>
+      <select id="behavior" title="작업 중일 때 보낸 말을 어떻게 처리할지">
+        <option value="followUp">기다렸다 보내기</option>
+        <option value="steer">바로 끼어들기</option>
+      </select>
       <button>send</button>
     </form>
     <label><input type="checkbox" id="rawToggle"> raw</label>
@@ -52,6 +57,7 @@
     <span class="group" id="tools"></span>
     <button id="stop" disabled>중단</button>
     <span class="group" id="usage" title=""></span>
+    <span id="queued"></span>
     <span id="note"></span>
   </div>
   <main>
