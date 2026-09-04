@@ -13,10 +13,12 @@ MODEL=anthropic/claude-opus-4-8 npm run dev
 Auth comes from `~/.pi/agent/auth.json` (`pi` → `/login`). Sessions are
 in-memory, so nothing is written to `~/.pi/agent/sessions/`.
 
-## Status: step 1 — event passthrough
+## Status: step 2 — rendered conversation
 
-The browser sends text and prints every session event verbatim. No rendering
-yet; the point is to learn what pi actually emits.
+The browser shows the conversation: user messages, streamed assistant text,
+tool calls with their results, errors, and a completion marker. Everything else
+is dropped. The `raw` checkbox still shows every event verbatim, which is the
+only way to debug when the rendered view is wrong.
 
 ### Events observed
 
