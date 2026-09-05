@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import { configStore } from "../serverState";
+import { configStore, promptsStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import {
@@ -35,6 +35,7 @@ export function Composer() {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const streaming = config?.isStreaming ?? false;
+	const asking = useSyncExternalStore(promptsStore.subscribe, promptsStore.get).length > 0;
 
 	return (
 		<div className="border-t p-3">
@@ -61,10 +62,16 @@ export function Composer() {
 				</PromptInputBody>
 				<PromptInputFooter>
 					<PromptInputTools>
-						{streaming && (
-							<span className="px-1 text-xs text-muted-foreground">
-								Enter to queue · {MOD}↵ to steer
+						{asking ? (
+							<span className="px-1 text-xs text-amber-600 dark:text-amber-500">
+								pi is waiting for your answer above
 							</span>
+						) : (
+							streaming && (
+								<span className="px-1 text-xs text-muted-foreground">
+									Enter to queue · {MOD}↵ to steer
+								</span>
+							)
 						)}
 					</PromptInputTools>
 					{/* Becomes a stop button while a run streams, which is where the

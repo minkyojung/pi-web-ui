@@ -49,9 +49,41 @@ export interface UsageMsg {
 	context: { tokens: number | null; window: number; percent: number } | null;
 }
 
+export type PromptType = "select" | "input" | "confirm" | "editor" | "multiselect" | "batch";
+
+/**
+ * A question an extension asked, forwarded by the server (see prompts.ts).
+ * Not an Item: it never goes through conversation.js.
+ */
+export interface PromptRequest {
+	id: string;
+	pipeline: string;
+	type: PromptType;
+	question: string;
+	options?: string[];
+	defaultValue?: string;
+	/** `message` for explanatory text; `questions` for a batch; `toolCallId` if the extension set it. */
+	metadata?: Record<string, unknown>;
+}
+
+export interface PromptRequestMsg {
+	type: "prompt_request";
+	prompt: PromptRequest;
+}
+
+/** The question is settled — by this tab, another tab, or the extension's timeout. */
+export interface PromptDismissMsg {
+	type: "prompt_dismiss";
+	id: string;
+	answer?: string;
+	cancelled: boolean;
+}
+
 export type ServerMsg =
 	| ConfigMsg
 	| UsageMsg
+	| PromptRequestMsg
+	| PromptDismissMsg
 	| { type: "sessions"; sessions: SessionInfo[] }
 	| { type: "snapshot"; items: Item[] }
 	// Everything else is a raw pi session event, folded in by conversation.js.

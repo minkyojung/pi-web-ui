@@ -5,7 +5,7 @@
  * opening config/usage/snapshot/sessions would otherwise land with nobody
  * listening and the settings bar would stay empty until something changed.
  */
-import type { ConfigMsg, ServerMsg, SessionInfo, UsageMsg } from "./types";
+import type { ConfigMsg, PromptRequest, ServerMsg, SessionInfo, UsageMsg } from "./types";
 
 export interface Store<T> {
 	get: () => T;
@@ -34,6 +34,21 @@ export function createStore<T>(initial: T): Store<T> {
 export const configStore = createStore<ConfigMsg | null>(null);
 export const usageStore = createStore<UsageMsg | null>(null);
 export const sessionsStore = createStore<SessionInfo[]>([]);
+
+/**
+ * Questions waiting on an answer. An array rather than a Map so the snapshot
+ * useSyncExternalStore reads is a stable value; replaced by id so the replay a
+ * reconnecting tab receives cannot double a card up.
+ */
+export const promptsStore = createStore<PromptRequest[]>([]);
+
+export function addPrompt(prompt: PromptRequest): void {
+	promptsStore.set([...promptsStore.get().filter((p) => p.id !== prompt.id), prompt]);
+}
+
+export function removePrompt(id: string): void {
+	promptsStore.set(promptsStore.get().filter((p) => p.id !== id));
+}
 
 /** How many raw events the debug view keeps. Older ones are dropped, not the server's copy. */
 const RAW_LIMIT = 300;

@@ -5,9 +5,9 @@
  * twice in development, which would open two sockets and fold every event into
  * the conversation twice.
  */
-import { configStore, pushRaw, sessionsStore, usageStore } from "./serverState";
+import { addPrompt, configStore, promptsStore, pushRaw, removePrompt, sessionsStore, usageStore } from "./serverState";
 import { applyServerEvent, replaceConversation, setConnection } from "./store";
-import type { ConfigMsg, Item, ServerMsg, SessionInfo, UsageMsg } from "./types";
+import type { ConfigMsg, Item, PromptDismissMsg, PromptRequestMsg, ServerMsg, SessionInfo, UsageMsg } from "./types";
 
 export interface ClientMsg {
 	type: string;
@@ -42,7 +42,20 @@ function receive(msg: ServerMsg): void {
 			sessionsStore.set((msg as { sessions: SessionInfo[] }).sessions);
 			return;
 		case "snapshot":
+			// A snapshot means the server's session may not be the one these
+			// questions belonged to (a swap while this tab was offline). Drop
+			// them; the replay that follows a snapshot re-adds any still open.
+			promptsStore.set([]);
 			replaceConversation((msg as { items: Item[] }).items);
+			return;
+		// Questions are not conversation events and must not reach the reducer.
+		case "prompt_request":
+			pushRaw(msg);
+			addPrompt((msg as PromptRequestMsg).prompt);
+			return;
+		case "prompt_dismiss":
+			pushRaw(msg);
+			removePrompt((msg as PromptDismissMsg).id);
 			return;
 		default:
 			pushRaw(msg);
