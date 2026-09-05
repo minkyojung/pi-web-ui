@@ -170,6 +170,28 @@ and the Vite guide tells you to add one. And `npx ai-elements add` writes to
 be moved into `web/src` and its `@/lib/utils` import repointed at the `cn`
 package the shadcn components already use.
 
+### Questions from extensions
+
+The dashboard extension installed on this machine replaces pi's dialog methods
+with its own PromptBus and sends every `ask_user` question to a dashboard app
+nobody here has open, where it waits out a five-minute timeout — and `abort()`
+waits with it. The same bridge exposes `prompt:register-adapter`, documented in
+its architecture notes and used by its sibling flows plugin, so `prompts.ts`
+registers this server as an answerer: each question is broadcast as
+`prompt_request`, rendered as a card under the waiting tool, and the first
+`prompt_response` from any tab goes back to the bus; every tab then gets
+`prompt_dismiss`. Stop, New and switching sessions cancel open questions
+first, which is what actually lets the abort through; `abortWithin` remains as
+the fallback for anything else that never returns.
+
+This leans on a third-party 0.x package's extension point, not on pi. If the
+hook stops answering, the server logs a warning at bind time and questions fall
+back to timing out as before. Two things are pre-existing and not fixed here:
+after New or Resume the extension registers no tools at all (its re-entry guard
+mistakes pi's in-process session replacement for a subagent), and the
+dashboard server autostarts unless `~/.pi/dashboard/config.json` sets
+`"autoStart": false`.
+
 ### Events observed
 
 A turn with a tool call produces, in order:
