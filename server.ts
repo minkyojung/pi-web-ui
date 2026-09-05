@@ -16,6 +16,7 @@ import {
 	createAgentSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
+	createEventBus,
 	getAgentDir,
 	ModelRuntime,
 	SessionManager,
@@ -23,6 +24,7 @@ import {
 	type CreateAgentSessionRuntimeFactory,
 } from "@earendil-works/pi-coding-agent";
 import { itemsFromMessages } from "./conversation.js";
+import { createPromptBridge } from "./prompts.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 /**
@@ -100,8 +102,15 @@ if (startingModel !== requested) console.warn(`${MODEL} is not available here; s
  * object, and only the runtime can do that. Everything below reads
  * runtime.session rather than capturing it.
  */
+/**
+ * Shared with the extensions. The dashboard extension listens on it for
+ * answerers to register (see prompts.ts); passing ours into the resource loader
+ * is what makes its `pi.events` the same bus this process can emit on.
+ */
+const eventBus = createEventBus();
+
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
-	const services = await createAgentSessionServices({ cwd, modelRuntime });
+	const services = await createAgentSessionServices({ cwd, modelRuntime, resourceLoaderOptions: { eventBus } });
 	return {
 		...(await createAgentSessionFromServices({
 			services,
@@ -207,12 +216,11 @@ async function sessions() {
 
 /**
  * abort() waits for the agent to go idle, and a tool that never returns never
- * lets it. An extension tool that asks the user a question pi's own UI would
- * answer will sit there forever, and every path that aborts first — stopping,
- * starting a new session, switching to another one — used to wait with it. One
- * such call left the server unable to do anything else for the rest of its
- * life. Giving up on the abort is worse than a stuck tool but better than a
- * stuck server: the session gets replaced out from under whatever is hanging.
+ * lets it. The known case — an extension tool waiting on a question — is now
+ * handled by cancelling open questions first (prompts.cancelAll), which lets
+ * the tool finish and the abort go through. This is the fallback for whatever
+ * else might hang, and for when the extension's hook is missing: giving up on
+ * the abort is worse than a stuck tool but better than a stuck server.
  */
 async function abortWithin(ms: number): Promise<void> {
 	const timedOut = Symbol("timeout");
@@ -230,6 +238,8 @@ function broadcast(payload: unknown): void {
 		if (client.readyState === client.OPEN) client.send(text);
 	}
 }
+
+const prompts = createPromptBridge(broadcast);
 
 /**
  * The wire form of a session event, matching what pi's own print and rpc modes
@@ -263,6 +273,15 @@ let unsubscribe: (() => void) | undefined;
 async function bind(): Promise<void> {
 	unsubscribe?.();
 	await session().bindExtensions({});
+	// The extension's hook is registered inside bindExtensions (its session_start
+	// runs there), so this is the earliest point it can hear us — and it has to
+	// be repeated per bind, because a replaced session rebuilds the bus.
+	const hooked = prompts.register(eventBus);
+	if (!hooked && session().getAllTools().some((tool) => tool.name === "ask_user")) {
+		console.warn(
+			"ask_user is loaded but its prompt:register-adapter hook did not answer; questions will time out instead of showing in the UI",
+		);
+	}
 	unsubscribe = session().subscribe(onEvent);
 }
 
@@ -335,6 +354,8 @@ wss.on("connection", async (ws) => {
 	ws.send(safeStringify(config()));
 	ws.send(safeStringify(usage()));
 	ws.send(safeStringify(snapshot()));
+	// A tab opened while a question is waiting should see it too.
+	for (const prompt of prompts.open()) ws.send(safeStringify({ type: "prompt_request", prompt }));
 
 	ws.on("message", async (data) => {
 		let msg: {
@@ -346,6 +367,9 @@ wss.on("connection", async (ws) => {
 			behavior?: string;
 			path?: string;
 			name?: string;
+			id?: string;
+			answer?: string;
+			cancelled?: boolean;
 		};
 		try {
 			msg = JSON.parse(data.toString());
@@ -368,6 +392,7 @@ wss.on("connection", async (ws) => {
 				}
 
 				case "abort":
+					prompts.cancelAll();
 					await abortWithin(5000);
 					broadcast(config());
 					break;
@@ -407,6 +432,7 @@ wss.on("connection", async (ws) => {
 
 				case "new_session":
 					// A run in progress would keep writing to the session being replaced.
+					prompts.cancelAll();
 					await abortWithin(5000);
 					await runtime.newSession();
 					await bind();
@@ -422,12 +448,18 @@ wss.on("connection", async (ws) => {
 						ws.send(safeStringify({ type: "error", message: `unknown session: ${msg.path}` }));
 						return;
 					}
+					prompts.cancelAll();
 					await abortWithin(5000);
 					await runtime.switchSession(msg.path);
 					await bind();
 					await broadcastAll();
 					break;
 				}
+
+				case "prompt_response":
+					if (typeof msg.id !== "string") return;
+					prompts.answer(msg.id, typeof msg.answer === "string" ? msg.answer : undefined, msg.cancelled === true);
+					break;
 
 				case "set_session_name":
 					if (typeof msg.name !== "string") return;
@@ -459,6 +491,7 @@ let shuttingDown = false;
 process.on("SIGINT", async () => {
 	if (shuttingDown) return;
 	shuttingDown = true;
+	prompts.cancelAll();
 	await runtime.dispose();
 	// server.close() waits for open connections, and an upgraded WebSocket is
 	// one of them. ws does not close them for us when the http server was
