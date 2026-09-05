@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { configStore, promptsStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
+import { ModelSelect } from "./ModelSelect";
 import {
 	PromptInput,
 	PromptInputBody,
@@ -62,6 +63,15 @@ export function Composer() {
 				</PromptInputBody>
 				<PromptInputFooter>
 					<PromptInputTools>
+						{/* Chosen per message, so it sits with the message. Native: fifty-odd
+						    entries in provider groups are picked by typing the first letters. */}
+						{config && (
+							<ModelSelect
+								model={config.model}
+								models={config.models}
+								className="h-7 w-auto max-w-52 border-none bg-transparent shadow-none dark:bg-transparent"
+							/>
+						)}
 						{asking ? (
 							<span className="px-1 text-xs text-amber-600 dark:text-amber-500">
 								pi is waiting for your answer above

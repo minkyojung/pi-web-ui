@@ -15,12 +15,12 @@ function byProvider(models: string[]): [string, string[]][] {
 	return [...groups];
 }
 
-export function ModelSelect({ model, models }: { model: string | null; models: string[] }) {
+export function ModelSelect({ model, models, className }: { model: string | null; models: string[]; className?: string }) {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	return (
 		<NativeSelect
 			id="model"
-			className="max-w-56"
+			className={className ?? "max-w-56"}
 			disabled={!online}
 			value={model ?? ""}
 			onChange={(e) => send({ type: "set_model", model: e.target.value })}

@@ -3,7 +3,6 @@ import { useState, useSyncExternalStore } from "react";
 import { configStore, sessionsStore, usageStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
-import { ModelSelect } from "./ModelSelect";
 import { ToolToggles } from "./ToolToggles";
 import { UsageView } from "./UsageView";
 import { Badge } from "./ui/badge";
@@ -58,8 +57,6 @@ export function SettingsBar() {
 			>
 				New
 			</Button>
-
-			<ModelSelect model={config.model} models={config.models} />
 
 			<NativeSelect
 				id="thinking"
