@@ -186,11 +186,18 @@ the fallback for anything else that never returns.
 
 This leans on a third-party 0.x package's extension point, not on pi. If the
 hook stops answering, the server logs a warning at bind time and questions fall
-back to timing out as before. Two things are pre-existing and not fixed here:
-after New or Resume the extension registers no tools at all (its re-entry guard
-mistakes pi's in-process session replacement for a subagent), and the
-dashboard server autostarts unless `~/.pi/dashboard/config.json` sets
-`"autoStart": false`.
+back to timing out as before.
+
+The same extension also refused to initialise after New or Resume: pi reloads
+extensions in-process when it replaces the session, and the bridge keeps its
+state on `process` and treats a second load as a subagent, so it registered no
+tools (13 became 8) and, because the state it carried held the previous
+session's context, threw inside its own `session_start`. Before each session is
+built the server retires the previous bridge the way its own initialiser would
+— cleanup, connections, timers — and removes that state, so the reload counts
+as a first load. Internal, undocumented state again; if the key moves this is a
+no-op and the bind-time warning fires. The dashboard server still autostarts
+unless `~/.pi/dashboard/config.json` sets `"autoStart": false`.
 
 ### Events observed
 

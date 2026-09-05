@@ -109,7 +109,49 @@ if (startingModel !== requested) console.warn(`${MODEL} is not available here; s
  */
 const eventBus = createEventBus();
 
+/**
+ * The dashboard extension keeps its state on `process` so that a second load
+ * in the same process — which it assumes is a subagent — can find the first
+ * and stand down. pi replacing the session (New, Resume) reloads every
+ * extension in this process, so the reloaded bridge stood down too: no tools
+ * registered (13 became 8), no ui patch, no hook. Worse, the state it carried
+ * over held the previous session's context, and touching that threw inside its
+ * session_start, which skipped everything after.
+ *
+ * So before a session is built the previous bridge is retired the way its own
+ * initialiser retires one — cleanup, connections, timers — and its state
+ * removed, which makes the reload a first load. This is its internal state,
+ * not an interface: if the key moves this is a no-op and bind() warns that
+ * ask_user's hook did not answer.
+ */
+function retireDashboardBridge(): void {
+	const key = "__pi_dashboard_bridge__";
+	const prev = (process as unknown as Record<string, DashboardBridgeState | undefined>)[key];
+	if (!prev) return;
+	try {
+		prev.cleanup?.();
+	} catch {
+		// Its problem to report; ours is only to get out of its way.
+	}
+	for (const connection of prev.connections ?? []) {
+		try {
+			connection.disconnect();
+		} catch {
+			// As above.
+		}
+	}
+	for (const timer of prev.timers ?? []) clearInterval(timer);
+	delete (process as unknown as Record<string, unknown>)[key];
+}
+
+interface DashboardBridgeState {
+	cleanup?: () => void;
+	connections?: { disconnect(): void }[];
+	timers?: ReturnType<typeof setInterval>[];
+}
+
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
+	retireDashboardBridge();
 	const services = await createAgentSessionServices({ cwd, modelRuntime, resourceLoaderOptions: { eventBus } });
 	return {
 		...(await createAgentSessionFromServices({
