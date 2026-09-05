@@ -22,8 +22,14 @@ As a desktop app:
 
 ```bash
 npm run app       # build and open it
+npm run app:dev   # open the window on the running dev server instead — live edits
 npm run pack      # release/mac-arm64/pi.app
 ```
+
+`app:dev` expects `npm run dev` to be running and points the window at
+`http://localhost:5173`: it spawns no server and asks for no folder, so client
+edits arrive through vite's HMR and server edits through tsx's watch, after
+which the window reconnects on its own.
 
 The app is a window over the same server, started as a child process on a port
 it picks. It asks which folder the agent should work in on first run and

@@ -173,24 +173,38 @@ function buildMenu(workdir) {
 	);
 }
 
+/**
+ * DEV_URL points the window at a vite dev server that is already running
+ * (`npm run dev`), so edits show up live — the renderer through HMR, the
+ * server through tsx's watch and the client's own reconnect. No server is
+ * spawned and no folder is asked for: the dev server owns both.
+ */
+const devUrl = process.env.DEV_URL;
+
 async function main() {
-	const workdir = await resolveWorkdir();
-	if (!workdir) {
-		app.quit();
-		return;
+	let url;
+	let workdirForTitle = process.cwd();
+	if (devUrl) {
+		buildMenu(process.cwd());
+		url = devUrl;
+	} else {
+		const workdir = await resolveWorkdir();
+		if (!workdir) {
+			app.quit();
+			return;
+		}
+		workdirForTitle = workdir;
+		buildMenu(workdir);
+		const port = await freePort();
+		startServer(port, workdir);
+		url = `http://${HOST}:${port}/`;
 	}
-	buildMenu(workdir);
-
-	const port = await freePort();
-	startServer(port, workdir);
-
-	const url = `http://${HOST}:${port}/`;
 	const window = new BrowserWindow({
 		width: 1200,
 		height: 820,
 		show: false,
 		// The agent acts on this folder, so it should never be a guess.
-		title: `pi — ${basename(workdir)}`,
+		title: devUrl ? "pi — dev" : `pi — ${basename(workdirForTitle)}`,
 		// Nothing here needs node in the renderer: it talks to the server over a
 		// websocket like the browser does.
 		webPreferences: { nodeIntegration: false, contextIsolation: true },
