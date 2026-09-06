@@ -4,7 +4,7 @@ import { describeContext, type Tone } from "../contextGauge";
 import { usageStore } from "../serverState";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
-const R = 7;
+const R = 8;
 const C = 2 * Math.PI * R;
 
 const TONE: Record<Tone, string> = {
@@ -35,15 +35,15 @@ export function ContextGauge() {
 					aria-label={label}
 					role="img"
 				>
-					<svg viewBox="0 0 20 20" className="size-4 -rotate-90">
-						<circle cx="10" cy="10" r={R} fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2.5" />
+					<svg viewBox="0 0 20 20" className="size-5 -rotate-90">
+						<circle cx="10" cy="10" r={R} fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="1.75" />
 						<circle
 							cx="10"
 							cy="10"
 							r={R}
 							fill="none"
 							stroke="currentColor"
-							strokeWidth="2.5"
+							strokeWidth="1.75"
 							strokeLinecap="round"
 							strokeDasharray={C}
 							strokeDashoffset={C * (1 - fraction)}
