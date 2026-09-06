@@ -7,39 +7,43 @@ import { activeModeId, describeMode, modeToolNames } from "../web/src/toolModes.
 const MAC = ["read", "bash", "edit", "write", "grep", "find", "ls", "ask_user"];
 
 test("each rung grants everything below it and names what is still out of reach", () => {
-	assert.deepEqual(describeMode("read-only").can, ["Read, search and list files"]);
-	assert.deepEqual(describeMode("read-only").cannot, ["Edit and create files", "Run shell commands"]);
+	assert.deepEqual(describeMode("plan").can, ["Read, search and list files"]);
+	assert.deepEqual(describeMode("plan").cannot, ["Edit and create files", "Run shell commands"]);
 	assert.deepEqual(describeMode("coding").can, ["Read, search and list files", "Edit and create files"]);
 	assert.deepEqual(describeMode("coding").cannot, ["Run shell commands"]);
 	assert.deepEqual(describeMode("full").cannot, []);
 });
 
 test("the ladder is strict supersets", () => {
-	const readOnly = describeMode("read-only").tools;
+	const plan = describeMode("plan").tools;
 	const coding = describeMode("coding").tools;
 	const full = describeMode("full").tools;
-	assert.ok(readOnly.every((t) => coding.includes(t)));
+	assert.ok(plan.every((t) => coding.includes(t)));
 	assert.ok(coding.every((t) => full.includes(t)));
-	assert.ok(coding.length > readOnly.length && full.length > coding.length);
+	assert.ok(coding.length > plan.length && full.length > coding.length);
 });
 
 test("a mode only turns on tools the session has", () => {
 	// powershell is in the Full rung but not on this machine, and must not be sent.
 	assert.deepEqual(modeToolNames("full", MAC), MAC);
-	assert.deepEqual(modeToolNames("read-only", MAC), ["read", "grep", "find", "ls", "ask_user"]);
+	assert.deepEqual(modeToolNames("plan", MAC), ["read", "grep", "find", "ls", "ask_user"]);
 	assert.deepEqual(modeToolNames("coding", MAC), ["read", "edit", "write", "grep", "find", "ls", "ask_user"]);
 });
 
-test("extension tools stay on in every mode, including read-only", () => {
-	for (const id of ["read-only", "coding", "full"]) {
+test("extension tools stay on in every mode, including Plan", () => {
+	for (const id of ["plan", "coding", "full"]) {
 		assert.ok(modeToolNames(id, MAC).includes("ask_user"), `${id} dropped ask_user`);
 	}
 });
 
 test("what a mode turns on reads back as that mode", () => {
-	for (const id of ["read-only", "coding", "full"]) {
+	for (const id of ["plan", "coding", "full"]) {
 		assert.equal(activeModeId(modeToolNames(id, MAC), MAC), id);
 	}
+});
+
+test("Full access is every tool the session has — there is no rung above it", () => {
+	assert.deepEqual(modeToolNames("full", MAC).slice().sort(), MAC.slice().sort());
 });
 
 test("Full still matches on a machine without powershell", () => {
@@ -55,6 +59,6 @@ test("anything off the ladder is Custom", () => {
 });
 
 test("toggling an extension tool by hand does not rename the mode", () => {
-	assert.equal(activeModeId(["read", "grep", "find", "ls"], MAC), "read-only");
-	assert.equal(activeModeId(["read", "grep", "find", "ls", "ask_user"], MAC), "read-only");
+	assert.equal(activeModeId(["read", "grep", "find", "ls"], MAC), "plan");
+	assert.equal(activeModeId(["read", "grep", "find", "ls", "ask_user"], MAC), "plan");
 });

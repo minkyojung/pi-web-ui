@@ -15,17 +15,20 @@
  * conversational in the first place.
  */
 
-export type ToolModeId = "read-only" | "coding" | "full";
+export type ToolModeId = "plan" | "coding" | "full";
 
 /**
  * Each rung adds one capability to the one below it. Strict supersets, so the
  * ladder reads as "unlock one more thing" and a mode's grants are just the
  * rungs at or below it.
+ *
+ * Full access is the top because it is every tool pi has. There is no rung
+ * above it to add: with no approval layer there is nothing left to bypass.
  */
 const RUNGS: { id: ToolModeId; name: string; tools: string[]; grant: string }[] = [
-	{ id: "read-only", name: "Read-only", tools: ["read", "grep", "find", "ls"], grant: "Read, search and list files" },
+	{ id: "plan", name: "Plan", tools: ["read", "grep", "find", "ls"], grant: "Read, search and list files" },
 	{ id: "coding", name: "Coding", tools: ["edit", "write"], grant: "Edit and create files" },
-	{ id: "full", name: "Full", tools: ["bash", "powershell"], grant: "Run shell commands" },
+	{ id: "full", name: "Full access", tools: ["bash", "powershell"], grant: "Run shell commands" },
 ];
 
 export const MODE_IDS = RUNGS.map((r) => r.id);

@@ -1,3 +1,6 @@
+import { ClipboardListIcon, FilePenIcon, SlidersHorizontalIcon, TerminalIcon } from "lucide-react";
+import { useState } from "react";
+
 import { MODE_IDS, type ToolModeId, activeModeId, describeMode, modeToolNames } from "../toolModes";
 import { Button } from "./ui/button";
 import {
@@ -20,22 +23,20 @@ export interface ToolInfo {
 }
 
 /**
- * Rungs of the ladder, lit up to this mode — the same idiom as the thinking
- * bars beside it, because it is the same kind of thing: a level, not a choice.
+ * One icon per mode, each naming the capability that mode unlocks: a checklist
+ * for planning, a pen on a file for editing, a terminal for the shell. Custom
+ * gets sliders, since that is what it is.
  */
-function Rungs({ at }: { at: number }) {
-	return (
-		<span className="flex items-end gap-px" aria-hidden>
-			{MODE_IDS.map((id, i) => (
-				<span
-					key={id}
-					className={`w-[2px] rounded-[1px] ${i <= at ? "bg-current" : "bg-current/25"}`}
-					style={{ height: 4 + (8 * (i + 1)) / MODE_IDS.length }}
-				/>
-			))}
-		</span>
-	);
-}
+const ICONS: Record<ToolModeId, typeof TerminalIcon> = {
+	plan: ClipboardListIcon,
+	coding: FilePenIcon,
+	full: TerminalIcon,
+};
+
+const Icon = ({ id }: { id: ToolModeId | null }) => {
+	const Glyph = id ? ICONS[id] : SlidersHorizontalIcon;
+	return <Glyph className="size-3.5" aria-hidden />;
+};
 
 /**
  * What the agent is allowed to do, as a mode rather than eight checkboxes.
@@ -56,7 +57,10 @@ export function ToolModes({
 	const available = tools.map((t) => t.name);
 	// Custom is not a mode you can pick — it is what the checkboxes leave behind.
 	const current = activeModeId(active, available);
-	const shown = current ? describeMode(current) : null;
+	// The grants shown are the hovered mode's, falling back to the current one,
+	// so reading down the list explains each mode without a line of its own.
+	const [preview, setPreview] = useState<ToolModeId | null>(null);
+	const shown = preview ? describeMode(preview) : current ? describeMode(current) : null;
 
 	return (
 		<DropdownMenu>
@@ -71,21 +75,27 @@ export function ToolModes({
 							className="h-7 gap-1.5 px-2 text-xs"
 							disabled={disabled}
 						>
-							<Rungs at={current ? MODE_IDS.indexOf(current) : -1} />
-							{shown?.name ?? "Custom"}
+							<Icon id={current} />
+							{current ? describeMode(current).name : "Custom"}
 						</Button>
 					</DropdownMenuTrigger>
 				</TooltipTrigger>
 				<TooltipContent side="top">Which tools pi may call</TooltipContent>
 			</Tooltip>
-			<DropdownMenuContent align="start">
+			<DropdownMenuContent align="start" onPointerLeave={() => setPreview(null)}>
 				<DropdownMenuRadioGroup
 					value={current ?? ""}
 					onValueChange={(id) => onSetTools(modeToolNames(id as ToolModeId, available))}
 				>
-					{MODE_IDS.map((id, i) => (
-						<DropdownMenuRadioItem key={id} value={id} className="gap-3">
-							<Rungs at={i} />
+					{MODE_IDS.map((id) => (
+						<DropdownMenuRadioItem
+							key={id}
+							value={id}
+							className="gap-3"
+							// Radix focuses an item on hover, so this covers pointer and keyboard.
+							onFocus={() => setPreview(id)}
+						>
+							<Icon id={id} />
 							{describeMode(id).name}
 						</DropdownMenuRadioItem>
 					))}
@@ -106,6 +116,10 @@ export function ToolModes({
 									{line}
 								</div>
 							))}
+							{/* Nothing withheld — say so, rather than leaving an absence to read. */}
+							{shown.cannot.length === 0 && (
+								<div className="pt-0.5 text-muted-foreground">Every tool pi has.</div>
+							)}
 						</>
 					) : (
 						<span className="text-muted-foreground">A hand-picked set of tools.</span>
@@ -113,7 +127,9 @@ export function ToolModes({
 				</div>
 				<DropdownMenuSeparator />
 				<DropdownMenuSub>
-					<DropdownMenuSubTrigger className="text-xs">Individual tools</DropdownMenuSubTrigger>
+					<DropdownMenuSubTrigger className="text-xs" onFocus={() => setPreview(null)}>
+						Individual tools
+					</DropdownMenuSubTrigger>
 					<DropdownMenuSubContent className="max-h-80 overflow-auto">
 						{tools.map((tool) => (
 							<DropdownMenuCheckboxItem
