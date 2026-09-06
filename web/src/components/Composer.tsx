@@ -4,6 +4,7 @@ import { configStore, promptsStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { ModelSelect } from "./ModelSelect";
+import { ThinkingSelect } from "./ThinkingSelect";
 import {
 	PromptInput,
 	PromptInputBody,
@@ -66,7 +67,10 @@ export function Composer() {
 						{/* Chosen per message, so it sits with the message. Native: fifty-odd
 						    entries in provider groups are picked by typing the first letters. */}
 						{config && (
-							<ModelSelect model={config.model} models={config.models} />
+							<>
+								<ModelSelect model={config.model} models={config.models} />
+								<ThinkingSelect level={config.thinkingLevel} levels={config.thinkingLevels} disabled={!online} />
+							</>
 						)}
 						{asking ? (
 							<span className="px-1 text-xs text-amber-600 dark:text-amber-500">

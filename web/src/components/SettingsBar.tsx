@@ -58,21 +58,6 @@ export function SettingsBar() {
 				New
 			</Button>
 
-			<NativeSelect
-				id="thinking"
-				className="w-28"
-				title="Thinking level"
-				value={config.thinkingLevel}
-				disabled={!online || config.thinkingLevels.length === 0}
-				onChange={(e) => send({ type: "set_thinking", level: e.target.value })}
-			>
-				{config.thinkingLevels.map((level) => (
-					<option key={level} value={level}>
-						thinking {level}
-					</option>
-				))}
-			</NativeSelect>
-
 			<ToolToggles tools={config.tools} active={config.activeTools} disabled={!online} onToggle={toggleTool} />
 
 			{usage && <UsageView usage={usage} />}
