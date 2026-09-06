@@ -24,6 +24,7 @@ import {
 	type CreateAgentSessionRuntimeFactory,
 } from "@earendil-works/pi-coding-agent";
 import { itemsFromMessages } from "./conversation.js";
+import { DEFAULT_MODE, modeToolNames } from "./toolModes.ts";
 import { createPromptBridge } from "./prompts.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -356,6 +357,24 @@ async function bind(): Promise<void> {
 	unsubscribe = session().subscribe(onEvent);
 }
 
+/**
+ * Open a new session on a mode rather than on pi's four-tool default.
+ *
+ * pi persists the model and the thinking level when asked to, but not the
+ * active tools: setActiveToolsByName takes no `persist`, and `defaultTools` in
+ * its settings has a getter and no setter. Tool activation is session-scoped
+ * there by design, so this picks the same mode every time instead of carrying
+ * one over — no second settings store, and nothing to get out of step with pi's.
+ *
+ * Resumed sessions are left alone: they open the way they were left.
+ */
+function openOnDefaultMode(): void {
+	const available = session()
+		.getAllTools()
+		.map((tool) => tool.name);
+	session().setActiveToolsByName(modeToolNames(DEFAULT_MODE, available));
+}
+
 /** Push the full server state to every client. Used after a session is replaced. */
 async function broadcastAll(): Promise<void> {
 	broadcast(config());
@@ -366,6 +385,7 @@ async function broadcastAll(): Promise<void> {
 }
 
 await bind();
+openOnDefaultMode();
 
 /**
  * Where `npm run build` puts the client. Absent until it has been run once.
@@ -500,7 +520,9 @@ wss.on("connection", async (ws) => {
 					}
 					// Throws when the model has no configured auth. Thinking level is
 					// clamped to the new model, so the config broadcast reflects that too.
-					await session().setModel(next);
+					// persist writes it to pi's own settings, so the next session — here
+					// or in the CLI — opens on it; without it the choice lasts one session.
+					await session().setModel(next, { persist: true });
 					broadcast(config());
 					broadcast(contextSources());
 					break;
@@ -514,7 +536,8 @@ wss.on("connection", async (ws) => {
 						ws.send(safeStringify({ type: "error", message: `unsupported thinking level: ${msg.level}` }));
 						return;
 					}
-					session().setThinkingLevel(msg.level as ThinkingLevel);
+					// As with the model: persist makes the choice outlive this session.
+					session().setThinkingLevel(msg.level as ThinkingLevel, { persist: true });
 					broadcast(config());
 					break;
 				}
@@ -525,6 +548,7 @@ wss.on("connection", async (ws) => {
 					await abortWithin(5000);
 					await runtime.newSession();
 					await bind();
+					openOnDefaultMode();
 					await broadcastAll();
 					break;
 

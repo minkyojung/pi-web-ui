@@ -13,6 +13,10 @@
  * else in the registry is an extension tool; it sits outside the ladder and
  * stays on in every mode, because `ask_user` is what makes read-only planning
  * conversational in the first place.
+ *
+ * At the repo root, like conversation.js, because the server picks the mode a
+ * new session opens on and the browser names the one it is in. One ladder, not
+ * two that can drift.
  */
 
 export type ToolModeId = "plan" | "coding" | "full";
@@ -32,6 +36,19 @@ const RUNGS: { id: ToolModeId; name: string; tools: string[]; grant: string }[] 
 ];
 
 export const MODE_IDS = RUNGS.map((r) => r.id);
+
+/**
+ * What a new session opens on. pi starts one on read, bash, edit and write and
+ * does not remember a change to that — tool activation is session-scoped there,
+ * and there is no `persist` on setActiveToolsByName the way there is on
+ * setModel. So the mode is chosen here, the same one every time, rather than
+ * accumulated somewhere.
+ *
+ * Full access because it is pi's own default plus the search tools: everything
+ * that worked before still works, and the agent stops shelling out to grep.
+ * Starting a rung lower would take the shell away from someone who had it.
+ */
+export const DEFAULT_MODE: ToolModeId = "full";
 
 const LADDER_TOOLS = new Set(RUNGS.flatMap((r) => r.tools));
 

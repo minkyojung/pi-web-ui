@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { activeModeId, describeMode, modeToolNames } from "../web/src/toolModes.ts";
+import { activeModeId, describeMode, modeToolNames } from "../toolModes.ts";
 
 /** What a mac session actually offers: pi's built-ins minus powershell, plus an extension tool. */
 const MAC = ["read", "bash", "edit", "write", "grep", "find", "ls", "ask_user"];

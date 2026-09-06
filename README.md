@@ -104,19 +104,35 @@ mid-execution returns with no result and stays that way. Nothing is queued while
 the socket is down; a prompt replayed afterwards could land in a session that
 was swapped underneath it. The controls disable instead.
 
-The settings bar exposes four controls, all applied to the live session:
+The controls sit with the message they apply to, under the composer, since all
+three are chosen per message:
 
 - **Model** — any model with usable credentials, grouped by provider. Switching
   is live; `MODEL=` only sets the starting point. Thinking level is clamped to
-  the new model, which the config broadcast reflects.
-- **Tools** — which of the session's tools the agent may call, behind a popover
-  because a session can expose a dozen. Checking only `read` genuinely prevents
-  shell execution; the model says so and calls nothing. Takes effect on the next
-  turn, not the one in flight.
+  the new model, which the config broadcast reflects. Set with `persist`, so
+  pi writes it to its own settings and the next session opens on it.
 - **Thinking** — only the levels the current model supports. `setThinkingLevel`
   clamps rather than rejects, so the server validates the value first;
-  otherwise an unknown level silently becomes `off`.
-- **Stop** — `abort()`. Enabled only while streaming.
+  otherwise an unknown level silently becomes `off`. Persisted the same way.
+- **Tools** — a mode rather than a row of checkboxes: Plan, Coding, Full access,
+  each a strict superset of the one below, with the per-tool list still a
+  submenu. Turning a tool off genuinely prevents its use; the model is told what
+  it has and calls nothing else. Takes effect on the next turn, not the one in
+  flight.
+
+The ladder is in `toolModes.ts` at the repo root, shared like `conversation.js`,
+because the server picks the mode a new session opens on and the browser names
+the one it is in.
+
+That mode is fixed rather than remembered. pi persists the model and the
+thinking level when asked, but not the active tools — `setActiveToolsByName`
+takes no `persist` and `defaultTools` has a getter and no setter, so tool
+activation is session-scoped there by design. Rather than keep a second
+settings store beside pi's, every new session opens on `DEFAULT_MODE`. Resumed
+sessions are left as they were.
+
+Stopping a run is the composer's submit button, which becomes a stop button
+while streaming.
 
 Sessions are owned by an `AgentSessionRuntime`, since `/new` and `/resume`
 replace the `AgentSession` object rather than mutating it. Every read goes

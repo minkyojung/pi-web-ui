@@ -1,6 +1,6 @@
 import { ClipboardListIcon, FilePenIcon, SlidersHorizontalIcon, TerminalIcon } from "lucide-react";
 
-import { MODE_IDS, type ToolModeId, activeModeId, describeMode, modeToolNames } from "../toolModes";
+import { MODE_IDS, type ToolModeId, activeModeId, describeMode, modeToolNames } from "../../../toolModes";
 import { Button } from "./ui/button";
 import {
 	DropdownMenu,
