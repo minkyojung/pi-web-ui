@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { configStore, promptsStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
+import { ContextGauge } from "./ContextGauge";
 import { ModelSelect } from "./ModelSelect";
 import { ThinkingSelect } from "./ThinkingSelect";
 import {
@@ -84,13 +85,16 @@ export function Composer() {
 							)
 						)}
 					</PromptInputTools>
-					{/* Becomes a stop button while a run streams, which is where the
-					    settings bar's own stop button went. */}
-					<PromptInputSubmit
-						disabled={!online}
-						status={streaming ? "streaming" : "ready"}
-						onStop={() => send({ type: "abort" })}
-					/>
+					<span className="flex items-center gap-1">
+						<ContextGauge />
+						{/* Becomes a stop button while a run streams, which is where the
+						    settings bar's own stop button went. */}
+						<PromptInputSubmit
+							disabled={!online}
+							status={streaming ? "streaming" : "ready"}
+							onStop={() => send({ type: "abort" })}
+						/>
+					</span>
 				</PromptInputFooter>
 			</PromptInput>
 		</div>
