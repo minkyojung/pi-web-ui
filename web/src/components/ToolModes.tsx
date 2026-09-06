@@ -1,5 +1,4 @@
 import { ClipboardListIcon, FilePenIcon, SlidersHorizontalIcon, TerminalIcon } from "lucide-react";
-import { useState } from "react";
 
 import { MODE_IDS, type ToolModeId, activeModeId, describeMode, modeToolNames } from "../toolModes";
 import { Button } from "./ui/button";
@@ -39,6 +38,33 @@ const Icon = ({ id }: { id: ToolModeId | null }) => {
 };
 
 /**
+ * What a mode allows and withholds. Lives in a tooltip, so the colours are for
+ * the inverted surface rather than the page.
+ */
+function Grants({ id }: { id: ToolModeId | null }) {
+	if (!id) return <span className="text-background/60">A hand-picked set of tools.</span>;
+	const mode = describeMode(id);
+	return (
+		<div className="flex flex-col text-left">
+			{mode.can.map((line) => (
+				<span key={line} className="flex gap-1.5">
+					<span className="text-emerald-400">✓</span>
+					{line}
+				</span>
+			))}
+			{mode.cannot.map((line) => (
+				<span key={line} className="flex gap-1.5 text-background/60">
+					<span>✗</span>
+					{line}
+				</span>
+			))}
+			{/* Nothing withheld — say so, rather than leaving an absence to read. */}
+			{mode.cannot.length === 0 && <span className="pt-0.5 text-background/60">Every tool pi has.</span>}
+		</div>
+	);
+}
+
+/**
  * What the agent is allowed to do, as a mode rather than eight checkboxes.
  * Picking a mode is the common case; the per-tool list stays a submenu for the
  * times it isn't. See toolModes.ts for why the ladder is what it is.
@@ -57,10 +83,6 @@ export function ToolModes({
 	const available = tools.map((t) => t.name);
 	// Custom is not a mode you can pick — it is what the checkboxes leave behind.
 	const current = activeModeId(active, available);
-	// The grants shown are the hovered mode's, falling back to the current one,
-	// so reading down the list explains each mode without a line of its own.
-	const [preview, setPreview] = useState<ToolModeId | null>(null);
-	const shown = preview ? describeMode(preview) : current ? describeMode(current) : null;
 
 	return (
 		<DropdownMenu>
@@ -80,56 +102,34 @@ export function ToolModes({
 						</Button>
 					</DropdownMenuTrigger>
 				</TooltipTrigger>
-				<TooltipContent side="top">Which tools pi may call</TooltipContent>
+				<TooltipContent side="top">
+					<Grants id={current} />
+				</TooltipContent>
 			</Tooltip>
-			<DropdownMenuContent align="start" onPointerLeave={() => setPreview(null)}>
+			<DropdownMenuContent align="start">
 				<DropdownMenuRadioGroup
 					value={current ?? ""}
 					onValueChange={(id) => onSetTools(modeToolNames(id as ToolModeId, available))}
 				>
 					{MODE_IDS.map((id) => (
-						<DropdownMenuRadioItem
-							key={id}
-							value={id}
-							className="gap-3"
-							// Radix focuses an item on hover, so this covers pointer and keyboard.
-							onFocus={() => setPreview(id)}
-						>
-							<Icon id={id} />
-							{describeMode(id).name}
-						</DropdownMenuRadioItem>
+						// Beside the row rather than in a panel below it: the explanation of
+						// what you are pointing at should not be somewhere else on screen.
+						<Tooltip key={id}>
+							<TooltipTrigger asChild>
+								<DropdownMenuRadioItem value={id} className="gap-3">
+									<Icon id={id} />
+									{describeMode(id).name}
+								</DropdownMenuRadioItem>
+							</TooltipTrigger>
+							<TooltipContent side="right" sideOffset={8}>
+								<Grants id={id} />
+							</TooltipContent>
+						</Tooltip>
 					))}
 				</DropdownMenuRadioGroup>
 				<DropdownMenuSeparator />
-				<div className="px-2 py-0.5 text-[11px]">
-					{shown ? (
-						<>
-							{shown.can.map((line) => (
-								<div key={line} className="flex gap-1.5">
-									<span className="text-emerald-600 dark:text-emerald-500">✓</span>
-									{line}
-								</div>
-							))}
-							{shown.cannot.map((line) => (
-								<div key={line} className="flex gap-1.5 text-muted-foreground">
-									<span>✗</span>
-									{line}
-								</div>
-							))}
-							{/* Nothing withheld — say so, rather than leaving an absence to read. */}
-							{shown.cannot.length === 0 && (
-								<div className="pt-0.5 text-muted-foreground">Every tool pi has.</div>
-							)}
-						</>
-					) : (
-						<span className="text-muted-foreground">A hand-picked set of tools.</span>
-					)}
-				</div>
-				<DropdownMenuSeparator />
 				<DropdownMenuSub>
-					<DropdownMenuSubTrigger className="text-xs" onFocus={() => setPreview(null)}>
-						Individual tools
-					</DropdownMenuSubTrigger>
+					<DropdownMenuSubTrigger className="text-xs">Individual tools</DropdownMenuSubTrigger>
 					<DropdownMenuSubContent className="max-h-80 overflow-auto">
 						{tools.map((tool) => (
 							<DropdownMenuCheckboxItem
