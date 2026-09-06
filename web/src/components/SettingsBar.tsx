@@ -3,7 +3,7 @@ import { useState, useSyncExternalStore } from "react";
 import { configStore, sessionsStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
-import { ToolToggles } from "./ToolToggles";
+import { ToolModes } from "./ToolModes";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { NativeSelect } from "./ui/native-select";
@@ -24,8 +24,7 @@ export function SettingsBar() {
 	const current = sessions.find((s) => s.current);
 	const pending = config.queued.steering.length + config.queued.followUp.length;
 
-	const toggleTool = (name: string, on: boolean) => {
-		const names = on ? [...config.activeTools, name] : config.activeTools.filter((n) => n !== name);
+	const setTools = (names: string[]) => {
 		send({ type: "set_tools", names });
 		setNote("Tool changes apply from the next turn");
 	};
@@ -56,7 +55,7 @@ export function SettingsBar() {
 				New
 			</Button>
 
-			<ToolToggles tools={config.tools} active={config.activeTools} disabled={!online} onToggle={toggleTool} />
+			<ToolModes tools={config.tools} active={config.activeTools} disabled={!online} onSetTools={setTools} />
 
 			{pending > 0 && (
 				<Badge id="queued" variant="secondary">
