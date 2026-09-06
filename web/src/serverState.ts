@@ -37,6 +37,12 @@ export const sessionsStore = createStore<SessionInfo[]>([]);
 export const contextSourcesStore = createStore<ContextSourcesMsg | null>(null);
 
 /**
+ * Text a cleared queue handed back, waiting to be put in the composer. Emptied
+ * by whoever takes it, so a second clear is not confused for the first.
+ */
+export const restoredStore = createStore<string | null>(null);
+
+/**
  * Questions waiting on an answer. An array rather than a Map so the snapshot
  * useSyncExternalStore reads is a stable value; replaced by id so the replay a
  * reconnecting tab receives cannot double a card up.

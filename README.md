@@ -131,8 +131,15 @@ Messages sent while a run is in progress are queued as either `steer` or
 `followUp`, chosen next to the input. Steering is delivered at the next turn
 boundary — after the current turn's tool calls, before the next model call —
 so it cuts a tool-using run short but cannot interrupt a single long
-generation. Follow-ups wait for the run to finish. The pending count comes
-from `queue_update`.
+generation. Follow-ups wait for the run to finish. Both are listed above the
+composer, in delivery order, and refresh from `queue_update`.
+
+`clear_queue` empties the queue and returns what was in it, so the tab that
+asked can put the text back in its input box. It is all of them at once because
+that is the only queue edit pi has: `clearQueue()` is the whole API, and
+removing one message by clearing and re-queueing the rest would run `steer()`
+over text it had already expanded once and throw on anything that expanded to
+an extension command.
 
 A `usage` message carries `getSessionStats()` and `getContextUsage()`: accrued
 cost, token breakdown, and how full the context window is. Sent on connect and

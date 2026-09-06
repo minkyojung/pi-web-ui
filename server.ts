@@ -470,6 +470,20 @@ wss.on("connection", async (ws) => {
 					broadcast(config());
 					break;
 
+				case "clear_queue": {
+					// pi clears the queue whole or not at all: there is no removing one
+					// message. Re-queueing the survivors is not a substitute, because
+					// steer() expands skill commands and templates again over text it
+					// already expanded once, and throws outright on an extension command.
+					//
+					// Nothing is lost by clearing: the messages come back, and go to the
+					// tab that asked so they land in the box it was typed in. Every tab
+					// learns the queue is empty from the queue_update this emits.
+					const cleared = session().clearQueue();
+					ws.send(safeStringify({ type: "queue_cleared", ...cleared }));
+					break;
+				}
+
 				case "set_tools":
 					if (!Array.isArray(msg.names)) return;
 					// Takes effect on the next turn, not the one in flight.

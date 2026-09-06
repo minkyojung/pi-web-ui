@@ -3,7 +3,6 @@ import { useSyncExternalStore } from "react";
 import { configStore, sessionsStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { NativeSelect } from "./ui/native-select";
 
@@ -43,7 +42,6 @@ export function SettingsBar() {
 		);
 
 	const current = sessions.find((s) => s.current);
-	const pending = config.queued.steering.length + config.queued.followUp.length;
 
 	return (
 		<div id="settings" className={BAR}>
@@ -70,12 +68,6 @@ export function SettingsBar() {
 			>
 				New
 			</Button>
-
-			{pending > 0 && (
-				<Badge id="queued" variant="secondary">
-					{pending} queued
-				</Badge>
-			)}
 			<Connection />
 		</div>
 	);

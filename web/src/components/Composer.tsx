@@ -1,10 +1,11 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
-import { configStore, promptsStore } from "../serverState";
+import { configStore, promptsStore, restoredStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { ContextPopover } from "./ContextPopover";
 import { ModelSelect } from "./ModelSelect";
+import { QueuedMessages } from "./QueuedMessages";
 import { ThinkingSelect } from "./ThinkingSelect";
 import { ToolModes } from "./ToolModes";
 import {
@@ -41,8 +42,22 @@ export function Composer() {
 	const streaming = config?.isStreaming ?? false;
 	const asking = useSyncExternalStore(promptsStore.subscribe, promptsStore.get).length > 0;
 
+	// Text a cleared queue handed back. The box is uncontrolled — PromptInput
+	// reads it out of the form on submit — so it is written directly, appended
+	// rather than assigned so it cannot overwrite something half-typed.
+	const box = useRef<HTMLTextAreaElement>(null);
+	const restored = useSyncExternalStore(restoredStore.subscribe, restoredStore.get);
+	useEffect(() => {
+		if (!restored || !box.current) return;
+		const existing = box.current.value;
+		box.current.value = existing ? `${existing}\n\n${restored}` : restored;
+		box.current.focus();
+		restoredStore.set(null);
+	}, [restored]);
+
 	return (
 		<div className="border-t p-3">
+			<QueuedMessages />
 			<PromptInput
 				onSubmit={(message, event) => submit(event.currentTarget, message.text, "followUp")}
 			>
@@ -50,6 +65,7 @@ export function Composer() {
 					{/* The component asks for four lines of empty box; one is enough until
 					    there is something to show, and it grows from there. */}
 					<PromptInputTextarea
+						ref={box}
 						className="min-h-9"
 						placeholder="Message pi"
 						disabled={!online}

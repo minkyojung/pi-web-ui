@@ -5,9 +5,29 @@
  * twice in development, which would open two sockets and fold every event into
  * the conversation twice.
  */
-import { addPrompt, configStore, contextSourcesStore, promptsStore, pushRaw, removePrompt, sessionsStore, usageStore } from "./serverState";
+import {
+	addPrompt,
+	configStore,
+	contextSourcesStore,
+	promptsStore,
+	pushRaw,
+	removePrompt,
+	restoredStore,
+	sessionsStore,
+	usageStore,
+} from "./serverState";
 import { applyServerEvent, replaceConversation, setConnection } from "./store";
-import type { ConfigMsg, ContextSourcesMsg, Item, PromptDismissMsg, PromptRequestMsg, ServerMsg, SessionInfo, UsageMsg } from "./types";
+import type {
+	ConfigMsg,
+	ContextSourcesMsg,
+	Item,
+	PromptDismissMsg,
+	PromptRequestMsg,
+	QueueClearedMsg,
+	ServerMsg,
+	SessionInfo,
+	UsageMsg,
+} from "./types";
 
 export interface ClientMsg {
 	type: string;
@@ -51,6 +71,13 @@ function receive(msg: ServerMsg): void {
 			promptsStore.set([]);
 			replaceConversation((msg as { items: Item[] }).items);
 			return;
+		// The messages a clear took out of the queue, on their way back to the box.
+		case "queue_cleared": {
+			const { steering, followUp } = msg as QueueClearedMsg;
+			const text = [...steering, ...followUp].join("\n\n");
+			if (text) restoredStore.set(text);
+			return;
+		}
 		// Questions are not conversation events and must not reach the reducer.
 		case "prompt_request":
 			pushRaw(msg);

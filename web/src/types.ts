@@ -81,6 +81,13 @@ export interface PromptRequestMsg {
 	prompt: PromptRequest;
 }
 
+/** The messages a clear took out of the queue, returned so they can go back in the box. */
+export interface QueueClearedMsg {
+	type: "queue_cleared";
+	steering: string[];
+	followUp: string[];
+}
+
 /** The question is settled — by this tab, another tab, or the extension's timeout. */
 export interface PromptDismissMsg {
 	type: "prompt_dismiss";
@@ -95,6 +102,7 @@ export type ServerMsg =
 	| ContextSourcesMsg
 	| PromptRequestMsg
 	| PromptDismissMsg
+	| QueueClearedMsg
 	| { type: "sessions"; sessions: SessionInfo[] }
 	| { type: "snapshot"; items: Item[] }
 	// Everything else is a raw pi session event, folded in by conversation.js.
