@@ -17,18 +17,18 @@ export function Article({ item }: { item: FullItem | null }) {
   }, [item?.id]);
 
   if (!item)
-    return <div className="grid h-full place-items-center text-sm text-neutral-400">왼쪽에서 고르세요</div>;
+    return <div className="grid h-full place-items-center text-sm text-muted-foreground">왼쪽에서 고르세요</div>;
 
   return (
     <div ref={box} className="h-full overflow-y-auto overscroll-contain">
       <article className="mx-auto max-w-[68ch] px-8 py-10">
         <header className="mb-8">
-          <h1 className="reading font-serif text-[28px] leading-tight font-semibold">{item.title}</h1>
+          <h1 className="reading font-serif text-3xl leading-tight font-semibold">{item.title}</h1>
           <a
             href={item.url}
             target="_blank"
             rel="noreferrer"
-            className="mt-2 inline-block text-[13px] text-neutral-500 underline-offset-4 hover:underline"
+            className="mt-2 inline-block text-sm text-muted-foreground underline-offset-4 hover:underline"
           >
             {host(item.url)} ↗
           </a>
@@ -46,8 +46,8 @@ export function Article({ item }: { item: FullItem | null }) {
  */
 function Gist({ text }: { text: string }) {
   return (
-    <p className="mt-5 border-l-2 border-neutral-300 pl-4 text-[14px] leading-relaxed text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
-      <span className="mr-2 align-[1px] font-mono text-[10px] tracking-wide text-neutral-400 dark:text-neutral-600">
+    <p className="mt-5 border-l-2 pl-4 text-sm leading-relaxed text-muted-foreground">
+      <span className="mr-2 align-[1px] font-mono text-xs tracking-wide text-muted-foreground/70">
         pi
       </span>
       {text}
@@ -60,7 +60,7 @@ function Body({ item }: { item: FullItem }) {
   if (item.html) return <Html html={item.html} />;
 
   return (
-    <p className="rounded-md bg-neutral-50 p-4 text-sm text-neutral-500 dark:bg-neutral-900">
+    <p className="rounded-md bg-muted p-4 text-sm text-muted-foreground">
       본문을 가져오지 못했습니다({STATUS_LABEL[item.status] ?? item.status}). 원문에서 읽어야 합니다.
     </p>
   );
@@ -96,14 +96,14 @@ function Transcript({ text, url }: { text: string; url: string }) {
   }, [text]);
 
   return (
-    <div className="reading space-y-5 text-[15px] leading-relaxed">
+    <div className="reading space-y-5 text-base leading-relaxed">
       {blocks.map((b) => (
         <p key={b.at} className="flex gap-4">
           <a
             href={`${url}${url.includes("?") ? "&" : "?"}t=${b.at}`}
             target="_blank"
             rel="noreferrer"
-            className="w-10 shrink-0 pt-1 font-mono text-[11px] text-neutral-400 tabular-nums hover:text-neutral-700 dark:hover:text-neutral-300"
+            className="w-10 shrink-0 pt-1 font-mono text-xs text-muted-foreground tabular-nums hover:text-foreground"
           >
             {b.stamp}
           </a>

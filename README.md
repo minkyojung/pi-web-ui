@@ -7,8 +7,11 @@ A minimal web UI over the pi coding agent.
 ```bash
 npm install
 npm run dev            # api on :3000, vite with HMR on :5173 — open :5173
-MODEL=anthropic/claude-opus-4-8 npm run dev
 ```
+
+It opens on the model pi would: the one the session was on, else the default
+pi has persisted (`pi` → `/model`, or the picker here), else the first with
+credentials.
 
 The client is a Vite build, so `npm run dev` runs two processes: the API server,
 which owns the pi session, and the Vite dev server, which proxies `/ws` to it.
@@ -116,10 +119,13 @@ worse than none, because it looks handled.
 The controls sit with the message they apply to, under the composer, since all
 three are chosen per message:
 
-- **Model** — any model with usable credentials, grouped by provider. Switching
-  is live; `MODEL=` only sets the starting point. Thinking level is clamped to
-  the new model, which the config broadcast reflects. Set with `persist`, so
-  pi writes it to its own settings and the next session opens on it.
+- **Model** — any model with usable credentials, grouped by provider, read from
+  pi each time it is sent rather than copied at startup: pi's first availability
+  pass can be cut short by a credential refresh and come back with one provider,
+  and a copy of that would have stayed wrong until a restart. Switching is live.
+  Thinking level is clamped to the new model, which the config broadcast
+  reflects. Set with `persist`, so pi writes it to its own settings and the next
+  session opens on it.
 - **Thinking** — only the levels the current model supports. `setThinkingLevel`
   clamps rather than rejects, so the server validates the value first;
   otherwise an unknown level silently becomes `off`. Persisted the same way.

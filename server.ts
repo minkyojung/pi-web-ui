@@ -38,8 +38,6 @@ const PORT = Number(process.env.PORT ?? 3000);
  * HOST=0.0.0.0 to expose it on purpose.
  */
 const HOST = process.env.HOST ?? "127.0.0.1";
-/** "provider/id". Only the starting model; the UI can switch it live. */
-const MODEL = process.env.MODEL ?? "openai/gpt-5.4";
 /**
  * Where the agent reads and writes. Inherited from the shell when this is run
  * from a terminal, which is what you want there; the desktop app has no useful
@@ -79,26 +77,19 @@ function safeStringify(value: unknown): string {
 
 const modelRuntime = await ModelRuntime.create();
 
-/** Models with usable credentials. Fixed for the process; auth does not change while running. */
-const availableModels = await modelRuntime.getAvailable();
 const modelKey = (m: { provider: string; id: string }) => `${m.provider}/${m.id}`;
 
-if (availableModels.length === 0) {
-	// The desktop shell puts whatever this prints in front of the user, and this
-	// is the one message someone starting out is likely to need.
-	console.error("No model has usable credentials. Run `pi` in a terminal, sign in with /login, then start this again.");
-	process.exit(1);
-}
-
-const [provider, ...rest] = MODEL.split("/");
-// getModel only says whether the name is in the catalogue, which is a different
-// question from whether this machine can call it. A default that suits the
-// person who built this is no use to whoever runs it with another provider's
-// key, so an unusable name falls back rather than killing the process.
-const requested = modelRuntime.getModel(provider, rest.join("/"));
-const startingModel =
-	requested && availableModels.some((m) => modelKey(m) === modelKey(requested)) ? requested : availableModels[0];
-if (startingModel !== requested) console.warn(`${MODEL} is not available here; starting on ${modelKey(startingModel)}`);
+/**
+ * Models with usable credentials, as pi sees them right now.
+ *
+ * Read each time rather than once at startup, the way pi's own rpc and
+ * interactive modes do. pi's availability pass can be invalidated by a
+ * credential write that lands while it runs — a provider's OAuth token being
+ * renewed as the process starts — and what that pass returns is then only the
+ * provider that wrote. pi recovers on its next pass; a copy taken at startup
+ * never would, and it showed one provider's models until a restart.
+ */
+const availableModels = () => modelRuntime.getAvailableSnapshot();
 
 /**
  * The runtime, not a bare session: /new and /resume replace the AgentSession
@@ -177,11 +168,13 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 		},
 	});
 	return {
+		// No `model`: pi picks it the way the CLI does — the one the session was
+		// on, else the persisted default (which set_model writes), else the first
+		// with credentials. Choosing here would bypass the first two.
 		...(await createAgentSessionFromServices({
 			services,
 			sessionManager,
 			sessionStartEvent,
-			model: startingModel,
 		})),
 		services,
 		diagnostics: services.diagnostics,
@@ -207,7 +200,7 @@ function config() {
 	return {
 		type: "config",
 		model: model ? modelKey(model) : null,
-		models: availableModels.map(modelKey),
+		models: availableModels().map(modelKey),
 		thinkingLevel: s.thinkingLevel,
 		thinkingLevels: s.supportsThinking() ? s.getAvailableThinkingLevels() : [],
 		tools: s.getAllTools().map((tool) => ({ name: tool.name, description: tool.description })),
@@ -409,6 +402,25 @@ async function broadcastAll(): Promise<void> {
 await bind();
 openOnDefaultMode();
 
+if (!session().model) {
+	// The desktop shell puts whatever this prints in front of the user, and this
+	// is the one message someone starting out is likely to need.
+	console.error("No model has usable credentials. Run `pi` in a terminal, sign in with /login, then start this again.");
+	process.exit(1);
+}
+
+// As pi's rpc mode does after startup: bring the model catalogues up to date in
+// the background, and tell the clients if that changed what is on offer.
+{
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), 15_000);
+	void modelRuntime
+		.refresh({ signal: controller.signal })
+		.then(() => broadcast(config()))
+		.catch(() => {})
+		.finally(() => clearTimeout(timeout));
+}
+
 /**
  * Where `npm run build` puts the client. Absent until it has been run once.
  *
@@ -556,7 +568,15 @@ wss.on("connection", async (ws) => {
 					break;
 
 				case "set_model": {
-					const next = availableModels.find((m) => modelKey(m) === msg.model);
+					let next = availableModels().find((m) => modelKey(m) === msg.model);
+					if (!next && typeof msg.model === "string") {
+						// The snapshot may be the truncated one described at
+						// availableModels. Asking for one provider returns that
+						// provider's list directly, not the snapshot, so it cannot
+						// be truncated the same way.
+						const provider = msg.model.slice(0, msg.model.indexOf("/"));
+						if (provider) next = (await modelRuntime.getAvailable(provider)).find((m) => modelKey(m) === msg.model);
+					}
 					if (!next) {
 						ws.send(safeStringify({ type: "error", message: `unknown model: ${msg.model}` }));
 						return;
