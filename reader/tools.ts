@@ -12,17 +12,17 @@ import { LIBRARY_DIR, type Library } from "./store.ts";
  * run of every file on disk; this grants that line. It is the argument
  * toolModes.ts makes about bash, one rung down.
  *
- * What it deliberately does *not* do is judge the sentence. No schema can tell
- * a claim from an opinion — that is the prompt's job, and the guidelines below
- * are where it is said.
+ * What it deliberately does *not* do is judge the sentence. Six written rules
+ * were tried and dropped: against a plain "Write a TL;DR." they bought shorter
+ * lines that held their numbers, and lost the closing clause that says what the
+ * piece is *for* — which turned out to be the half worth reading.
  */
 const PARAMS = Type.Object({
   id: Type.Number({
     description: "The item's id, from its frontmatter or its file name.",
   }),
   gist: Type.String({
-    description:
-      "One line saying what the piece claims. State it, do not rate it. No line break.",
+    description: "Write a TL;DR.",
   }),
 });
 
@@ -39,31 +39,14 @@ export const readerExtension = (library: Library) => {
       label: "gist",
       parameters: PARAMS,
       description:
-        "Record, on one item in the reading library, a single line saying what that " +
-        "piece claims. Read the item first: the library is " +
+        "Record a TL;DR on one item in the reading library. Read the item first: " +
+        "the library is " +
         LIBRARY_DIR +
-        ", one " +
-        "markdown file per item, named `date-id-slug.md`. An item that already has a " +
-        "gist carries it as a `> ` line under the frontmatter, so the ones still " +
-        "missing one are `grep -L '^> ' <files>`.",
-      promptSnippet: "Leave a one-line claim on an item in the reading library",
-      promptGuidelines: [
-        "A gist states what the piece claims, in the reader's own terms, so that " +
-          "reading the line is enough to decide whether to open the piece.",
-        'Write the claim, never a verdict on it. "Moved off Kubernetes to one ' +
-          'server and cut cost to an eighth" is a gist; "an interesting take on ' +
-          'infrastructure" is not, and neither is "explains this well".',
-        "The title is already on screen next to the gist. A line that could be " +
-          "reconstructed from the title is worth nothing — say the thing the title " +
-          "leaves out: the number, the reversal, the specific case, the cost. For " +
-          '"Falsehoods Programmers Believe About LANs", listing the topics is a ' +
-          "restatement; naming the two or three assumptions that actually bite is not.",
-        "If a piece argues nothing — it announces, or it is a list — say what it " +
-          "announces, concretely. Do not manufacture a thesis it does not have.",
-        "One line, and short enough to take in at a glance — around 120 characters. " +
-          "If it needs two, the second one is usually the opinion.",
-        "Write it in English, whatever language the piece is in.",
-      ],
+        ", one markdown file per item, named " +
+        "`date-id-slug.md`. An item that already has one carries it as a `> ` line " +
+        "under the frontmatter, so the ones still missing it are " +
+        "`grep -L '^> ' <files>`.",
+      promptSnippet: "Leave a TL;DR on an item in the reading library",
 
       async execute(_toolCallId, params) {
         try {
