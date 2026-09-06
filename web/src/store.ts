@@ -20,8 +20,7 @@ let convo: Conversation = createConversation();
 let items: Item[] = [];
 /** Where each of the reducer's own item objects landed in `items`. */
 let index = new Map<object, number>();
-let agentStatus = "idle";
-/** Whether the socket is up. Separate from agentStatus, which describes the run. */
+/** Whether the socket is up. */
 let connection: Connection = "connecting";
 
 const listeners = new Set<() => void>();
@@ -35,7 +34,6 @@ export function subscribe(listener: () => void): () => void {
 export type Connection = "connecting" | "open" | "reconnecting";
 
 export const getItems = (): Item[] => items;
-export const getAgentStatus = (): string => agentStatus;
 export const getConnection = (): Connection => connection;
 
 export function setConnection(next: Connection): void {
@@ -56,11 +54,8 @@ function notify(): void {
 	});
 }
 
-const STATUS_LABEL: Record<string, string> = { working: "working…", idle: "idle" };
-
 export function applyServerEvent(event: ServerMsg): void {
 	const { added, changed } = applyEvent(convo, event) as { added: Item[]; changed: Item[] };
-	agentStatus = STATUS_LABEL[convo.status] ?? convo.status;
 
 	if (added.length || changed.length) {
 		// A tool writes partial output into `result` while it is still running, so
@@ -93,6 +88,5 @@ export function replaceConversation(snapshot: Item[]): void {
 	index = new Map(snapshot.map((item, i) => [item, i]));
 	// A snapshot is stored history, which by definition has no tool still running.
 	items = snapshot.map((item) => ({ ...item, pending: false }));
-	agentStatus = STATUS_LABEL[convo.status] ?? convo.status;
 	notify();
 }

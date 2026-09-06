@@ -53,9 +53,14 @@ export function removePrompt(id: string): void {
 
 /** How many raw events the debug view keeps. Older ones are dropped, not the server's copy. */
 const RAW_LIMIT = 300;
-export const rawStore = createStore<string[]>([]);
+export const rawStore = createStore<ServerMsg[]>([]);
 
+/**
+ * The message itself, not its JSON. Serialising here would run on every text
+ * delta of every run to feed a view that is almost always closed; RawView does
+ * it instead, when someone is looking.
+ */
 export function pushRaw(event: ServerMsg): void {
-	const next = rawStore.get().concat(JSON.stringify(event, null, 2));
+	const next = rawStore.get().concat(event);
 	rawStore.set(next.length > RAW_LIMIT ? next.slice(next.length - RAW_LIMIT) : next);
 }

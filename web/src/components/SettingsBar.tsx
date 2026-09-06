@@ -9,6 +9,22 @@ import { NativeSelect } from "./ui/native-select";
 
 const BAR = "flex flex-wrap items-center gap-3 border-b px-3 py-1.5 text-xs";
 
+/**
+ * Reconnection is automatic and unattended — a backoff of at most five seconds,
+ * skipped entirely when the network returns or the tab is looked at again. So
+ * this reports and is careful not to look like it is asking for something.
+ * While the socket is up it draws nothing at all.
+ */
+function Connection() {
+	const connection = useSyncExternalStore(subscribe, getConnection);
+	if (connection === "open") return null;
+	return (
+		<span id="status" className="ml-auto text-amber-600 dark:text-amber-500">
+			{connection === "connecting" ? "Connecting…" : "Offline — reconnecting automatically"}
+		</span>
+	);
+}
+
 export function SettingsBar() {
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const sessions = useSyncExternalStore(sessionsStore.subscribe, sessionsStore.get);
@@ -16,8 +32,15 @@ export function SettingsBar() {
 	// live would silently do nothing.
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 
-	// The server is the source of truth for all of this, and it has not spoken yet.
-	if (!config) return <div id="settings" className={BAR} />;
+	// The server is the source of truth for all of this and has not spoken yet —
+	// which is exactly when the connection line has something to say, so it is
+	// drawn on this path too.
+	if (!config)
+		return (
+			<div id="settings" className={BAR}>
+				<Connection />
+			</div>
+		);
 
 	const current = sessions.find((s) => s.current);
 	const pending = config.queued.steering.length + config.queued.followUp.length;
@@ -53,6 +76,7 @@ export function SettingsBar() {
 					{pending} queued
 				</Badge>
 			)}
+			<Connection />
 		</div>
 	);
 }

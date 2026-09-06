@@ -57,8 +57,9 @@ The browser shows the conversation: user messages, assistant text rendered as
 markdown as it streams, tool calls as collapsible cards that fill in with their
 partial output while they run, errors,
 notices for the work pi does without being asked (auto retries, compaction), and
-a completion marker. Everything else is dropped. The `raw` checkbox still shows
-every event, which is the only way to debug when the rendered view is wrong.
+a completion marker. Everything else is dropped. The raw view — ⌘⇧D — still
+shows every event, which is the only way to debug when the rendered view is
+wrong.
 Events go out in the same shape pi's own print and rpc modes use: a
 `message_update` carries its delta, not the two full copies of the in-flight
 message it also ships as `message` and `assistantMessageEvent.partial`.
@@ -83,8 +84,10 @@ in place, which React cannot see, so the client copies the items the reducer
 reports as touched into a fresh array — every other item keeps its identity and
 its memoized component skips the render. Updates are coalesced into one
 animation frame, which a browser does not run in a hidden tab, so a background
-tab catches up when it is focused. The raw view keeps the last 300 events and is
-mounted only while it is on.
+tab catches up when it is focused. The raw view keeps the last 300 events, and
+keeps them whether or not it is open — you turn it on after seeing something
+odd, so the history has to already be there — but serialises them only where
+they are read, rather than on every delta of every run.
 
 The design comes from the hand-written DOM client that preceded it, where
 rebuilding everything per event cost 63ms for the first turn and 534ms by the
