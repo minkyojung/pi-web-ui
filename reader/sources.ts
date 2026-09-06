@@ -1,5 +1,5 @@
 import Parser from "rss-parser";
-import type { Item } from "./db.ts";
+import type { Item } from "./store.ts";
 
 export type Subscription =
   | { kind: "hn"; minScore: number }

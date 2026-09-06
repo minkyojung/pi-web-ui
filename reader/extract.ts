@@ -1,7 +1,7 @@
 import { Readability } from "@mozilla/readability";
 import { JSDOM, VirtualConsole } from "jsdom";
 import { YoutubeTranscript } from "youtube-transcript";
-import type { Status } from "./db.ts";
+import type { Status } from "./store.ts";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
