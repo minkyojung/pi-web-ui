@@ -5,9 +5,9 @@
  * twice in development, which would open two sockets and fold every event into
  * the conversation twice.
  */
-import { addPrompt, configStore, promptsStore, pushRaw, removePrompt, sessionsStore, usageStore } from "./serverState";
+import { addPrompt, configStore, contextSourcesStore, promptsStore, pushRaw, removePrompt, sessionsStore, usageStore } from "./serverState";
 import { applyServerEvent, replaceConversation, setConnection } from "./store";
-import type { ConfigMsg, Item, PromptDismissMsg, PromptRequestMsg, ServerMsg, SessionInfo, UsageMsg } from "./types";
+import type { ConfigMsg, ContextSourcesMsg, Item, PromptDismissMsg, PromptRequestMsg, ServerMsg, SessionInfo, UsageMsg } from "./types";
 
 export interface ClientMsg {
 	type: string;
@@ -37,6 +37,9 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "usage":
 			usageStore.set(msg as UsageMsg);
+			return;
+		case "context_sources":
+			contextSourcesStore.set(msg as ContextSourcesMsg);
 			return;
 		case "sessions":
 			sessionsStore.set((msg as { sessions: SessionInfo[] }).sessions);

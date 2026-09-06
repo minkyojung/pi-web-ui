@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 import { configStore, promptsStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
-import { ContextGauge } from "./ContextGauge";
+import { ContextPopover } from "./ContextPopover";
 import { ModelSelect } from "./ModelSelect";
 import { ThinkingSelect } from "./ThinkingSelect";
 import {
@@ -86,7 +86,7 @@ export function Composer() {
 						)}
 					</PromptInputTools>
 					<span className="flex items-center gap-1">
-						<ContextGauge />
+						<ContextPopover />
 						{/* Becomes a stop button while a run streams, which is where the
 						    settings bar's own stop button went. */}
 						<PromptInputSubmit

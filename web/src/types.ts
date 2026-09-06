@@ -49,6 +49,16 @@ export interface UsageMsg {
 	context: { tokens: number | null; window: number; percent: number } | null;
 }
 
+/** Sizes of what fills the context besides the conversation. See contextBreakdown.ts. */
+export interface ContextSourcesMsg {
+	type: "context_sources";
+	systemPromptChars: number;
+	tools: { name: string; chars: number; active: boolean }[];
+	skills: number;
+	memoryFiles: { count: number; chars: number };
+	login: { oauth: boolean; subscription: boolean };
+}
+
 export type PromptType = "select" | "input" | "confirm" | "editor" | "multiselect" | "batch";
 
 /**
@@ -82,6 +92,7 @@ export interface PromptDismissMsg {
 export type ServerMsg =
 	| ConfigMsg
 	| UsageMsg
+	| ContextSourcesMsg
 	| PromptRequestMsg
 	| PromptDismissMsg
 	| { type: "sessions"; sessions: SessionInfo[] }

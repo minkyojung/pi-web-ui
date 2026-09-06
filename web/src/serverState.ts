@@ -5,7 +5,7 @@
  * opening config/usage/snapshot/sessions would otherwise land with nobody
  * listening and the settings bar would stay empty until something changed.
  */
-import type { ConfigMsg, PromptRequest, ServerMsg, SessionInfo, UsageMsg } from "./types";
+import type { ConfigMsg, ContextSourcesMsg, PromptRequest, ServerMsg, SessionInfo, UsageMsg } from "./types";
 
 export interface Store<T> {
 	get: () => T;
@@ -34,6 +34,7 @@ export function createStore<T>(initial: T): Store<T> {
 export const configStore = createStore<ConfigMsg | null>(null);
 export const usageStore = createStore<UsageMsg | null>(null);
 export const sessionsStore = createStore<SessionInfo[]>([]);
+export const contextSourcesStore = createStore<ContextSourcesMsg | null>(null);
 
 /**
  * Questions waiting on an answer. An array rather than a Map so the snapshot

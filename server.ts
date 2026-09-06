@@ -225,6 +225,35 @@ function snapshot() {
 	return { type: "snapshot", items: itemsFromMessages(session().messages) };
 }
 
+/**
+ * What fills the context window besides the conversation, as sizes. pi counts
+ * only the total, after each response; these let the client estimate the
+ * fixed parts the way pi itself estimates — four characters a token. Sent when
+ * a session is built and when the tools or model change, not per message.
+ */
+function contextSources() {
+	const s = session();
+	const active = new Set(s.getActiveToolNames());
+	const loader = runtime.services.resourceLoader;
+	const provider = s.model?.provider;
+	const files = loader.getAgentsFiles().agentsFiles;
+	return {
+		type: "context_sources",
+		systemPromptChars: s.systemPrompt.length,
+		tools: s.getAllTools().map((tool) => ({
+			name: tool.name,
+			chars: JSON.stringify({ name: tool.name, description: tool.description, parameters: tool.parameters }).length,
+			active: active.has(tool.name),
+		})),
+		skills: loader.getSkills().skills.length,
+		memoryFiles: { count: files.length, chars: files.reduce((n, f) => n + f.content.length, 0) },
+		login: {
+			oauth: provider ? modelRuntime.isUsingOAuth(provider) : false,
+			subscription: provider ? modelRuntime.isUsingSubscription(provider) : false,
+		},
+	};
+}
+
 /** Saved sessions for this working directory, newest first. */
 async function sessions() {
 	const current = session().sessionFile;
@@ -331,6 +360,7 @@ async function bind(): Promise<void> {
 async function broadcastAll(): Promise<void> {
 	broadcast(config());
 	broadcast(usage());
+	broadcast(contextSources());
 	broadcast(snapshot());
 	broadcast(await sessions());
 }
@@ -395,6 +425,7 @@ wss.on("connection", async (ws) => {
 	});
 	ws.send(safeStringify(config()));
 	ws.send(safeStringify(usage()));
+	ws.send(safeStringify(contextSources()));
 	ws.send(safeStringify(snapshot()));
 	// A tab opened while a question is waiting should see it too.
 	for (const prompt of prompts.open()) ws.send(safeStringify({ type: "prompt_request", prompt }));
@@ -444,6 +475,7 @@ wss.on("connection", async (ws) => {
 					// Takes effect on the next turn, not the one in flight.
 					session().setActiveToolsByName(msg.names);
 					broadcast(config());
+					broadcast(contextSources());
 					break;
 
 				case "set_model": {
@@ -456,6 +488,7 @@ wss.on("connection", async (ws) => {
 					// clamped to the new model, so the config broadcast reflects that too.
 					await session().setModel(next);
 					broadcast(config());
+					broadcast(contextSources());
 					break;
 				}
 

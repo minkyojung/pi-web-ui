@@ -1,10 +1,9 @@
 import { useState, useSyncExternalStore } from "react";
 
-import { configStore, sessionsStore, usageStore } from "../serverState";
+import { configStore, sessionsStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { ToolToggles } from "./ToolToggles";
-import { UsageView } from "./UsageView";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { NativeSelect } from "./ui/native-select";
@@ -13,7 +12,6 @@ const BAR = "flex flex-wrap items-center gap-3 border-b px-3 py-1.5 text-xs";
 
 export function SettingsBar() {
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
-	const usage = useSyncExternalStore(usageStore.subscribe, usageStore.get);
 	const sessions = useSyncExternalStore(sessionsStore.subscribe, sessionsStore.get);
 	const [note, setNote] = useState("");
 	// Nothing is queued while the socket is down, so a control that still looked
@@ -60,7 +58,6 @@ export function SettingsBar() {
 
 			<ToolToggles tools={config.tools} active={config.activeTools} disabled={!online} onToggle={toggleTool} />
 
-			{usage && <UsageView usage={usage} />}
 			{pending > 0 && (
 				<Badge id="queued" variant="secondary">
 					{pending} queued
