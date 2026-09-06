@@ -6,6 +6,7 @@ import { send } from "../ws";
 import { ContextPopover } from "./ContextPopover";
 import { ModelSelect } from "./ModelSelect";
 import { ThinkingSelect } from "./ThinkingSelect";
+import { ToolModes } from "./ToolModes";
 import {
 	PromptInput,
 	PromptInputBody,
@@ -71,6 +72,12 @@ export function Composer() {
 							<>
 								<ModelSelect model={config.model} models={config.models} />
 								<ThinkingSelect level={config.thinkingLevel} levels={config.thinkingLevels} disabled={!online} />
+								<ToolModes
+									tools={config.tools}
+									active={config.activeTools}
+									disabled={!online}
+									onSetTools={(names) => send({ type: "set_tools", names })}
+								/>
 							</>
 						)}
 						{asking ? (
