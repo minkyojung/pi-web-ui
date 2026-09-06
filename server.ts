@@ -153,6 +153,17 @@ interface DashboardBridgeState {
 	timers?: ReturnType<typeof setInterval>[];
 }
 
+/**
+ * The reading library. The list route leaves the bodies out: carrying html for
+ * every row would make the sidebar's first request several megabytes, and the
+ * sidebar has no use for it. Stories still waiting below the score bar stay out
+ * too — they have titles and nothing else.
+ *
+ * Opened here rather than beside the routes that read it, because the first
+ * session is created a few lines below and its set_gist tool closes over this.
+ */
+const library = openLibrary();
+
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
 	retireDashboardBridge();
 	const services = await createAgentSessionServices({
@@ -419,13 +430,6 @@ const CONTENT_TYPES: Record<string, string> = {
 	".woff2": "font/woff2",
 };
 
-/**
- * The reading library, read-only. The list leaves the bodies out: carrying
- * html for every row would make the sidebar's first request several
- * megabytes, and the sidebar has no use for it. Stories still waiting below
- * the score bar stay out too — they have titles and nothing else.
- */
-const library = openLibrary();
 
 const server = createServer(async (req, res) => {
 	const url = new URL(req.url ?? "/", "http://localhost");

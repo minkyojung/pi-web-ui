@@ -76,7 +76,8 @@ function Row({
         </span>
         {item.gist && (
           // 3단계. 제목 낚시에 매번 속지 않으려면, 열기 전에 주장을 봐야 한다.
-          <span className="reading mt-1 block text-[12px] leading-snug text-neutral-500 dark:text-neutral-400">
+          // 두 줄에서 자른다. 한 줄이 길어져도 목록의 리듬이 안 깨지도록.
+          <span className="reading mt-1 line-clamp-2 block text-[12px] leading-snug text-neutral-500 dark:text-neutral-400">
             {item.gist}
           </span>
         )}
