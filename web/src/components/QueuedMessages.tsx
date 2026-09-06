@@ -1,6 +1,7 @@
 import { Trash2Icon } from "lucide-react";
 import { useSyncExternalStore } from "react";
 
+import { queuedInOrder } from "../queue";
 import { configStore } from "../serverState";
 import { send } from "../ws";
 import {
@@ -32,12 +33,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  */
 export function QueuedMessages() {
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
-	// Steering first: it is delivered at the next turn boundary, follow-ups only
-	// once the run is done, so this is the order they will actually be sent in.
-	const queued = [
-		...(config?.queued.steering ?? []).map((text) => ({ text, steer: true })),
-		...(config?.queued.followUp ?? []).map((text) => ({ text, steer: false })),
-	];
+	const queued = queuedInOrder(config?.queued);
 	if (queued.length === 0) return null;
 
 	return (

@@ -16,6 +16,7 @@ import {
 	sessionsStore,
 	usageStore,
 } from "./serverState";
+import { clearedText } from "./queue";
 import { applyServerEvent, replaceConversation, setConnection } from "./store";
 import type {
 	ConfigMsg,
@@ -73,8 +74,7 @@ function receive(msg: ServerMsg): void {
 			return;
 		// The messages a clear took out of the queue, on their way back to the box.
 		case "queue_cleared": {
-			const { steering, followUp } = msg as QueueClearedMsg;
-			const text = [...steering, ...followUp].join("\n\n");
+			const text = clearedText(msg as QueueClearedMsg);
 			if (text) restoredStore.set(text);
 			return;
 		}

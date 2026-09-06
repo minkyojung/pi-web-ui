@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
+import { appendRestored } from "../queue";
 import { configStore, promptsStore, restoredStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
@@ -49,8 +50,7 @@ export function Composer() {
 	const restored = useSyncExternalStore(restoredStore.subscribe, restoredStore.get);
 	useEffect(() => {
 		if (!restored || !box.current) return;
-		const existing = box.current.value;
-		box.current.value = existing ? `${existing}\n\n${restored}` : restored;
+		box.current.value = appendRestored(box.current.value, restored);
 		box.current.focus();
 		restoredStore.set(null);
 	}, [restored]);
