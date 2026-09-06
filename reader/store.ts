@@ -53,6 +53,13 @@ export type Meta = {
   comments: number | null;
   status: Status;
   kind: string | null;
+  /**
+   * 화면이 남기는 것. 셋 다 참일 때만 적힌다 — 서재의 대부분은 아무것도 아니고,
+   * 매 파일에 false 세 줄을 얹으면 정작 읽을 게 밀린다.
+   */
+  read?: boolean;
+  queued?: boolean;
+  archived?: boolean;
   /** 5단계. 이 글과 부딪히는 서재의 글 id. */
   conflicts: number[];
   first_seen: string;
@@ -346,6 +353,30 @@ export class Library {
       delete this.index.items[meta.url];
       this.dirty = true;
     }
+  }
+
+  /**
+   * 읽음·큐·보관 표시. 서재에서 화면이 쓰는 유일한 자리.
+   *
+   * 브라우저에만 두지 않는 이유는 pi도 이 파일을 읽기 때문이다. 내가 무엇을
+   * 치웠는지 pi가 모르면 "또 한 명의 유저"는 한쪽만 보는 사이가 된다.
+   */
+  setFlags(id: number, patch: Pick<Meta, "read" | "queued" | "archived">): Row {
+    this.scan();
+    const name = this.files.get(id);
+    const meta = name
+      ? this.cache.get(name)!.meta
+      : Object.values(this.index.items).find((m) => m.id === id);
+    if (!meta) throw new Error(`No item ${id}`);
+    const next = { ...meta };
+    for (const key of ["read", "queued", "archived"] as const) {
+      if (patch[key] === undefined) continue;
+      if (patch[key]) next[key] = true;
+      else delete next[key];
+    }
+    this.put(next);
+    this.flush();
+    return toRow(next, name ? (this.cache.get(fileName(next))?.gist ?? null) : null, !!name);
   }
 
   /**

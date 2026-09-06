@@ -198,3 +198,47 @@ test("a gist is refused where there is nothing to have read", () => {
 	lib.save(ok.id, "ok", null, "body", "html");
 	assert.throws(() => lib.setGist(ok.id, "   "), /비어 있다/);
 });
+
+test("read, queued and archived are only written when true", () => {
+	const lib = store.open();
+	const { id } = lib.see(item({ url: "https://example.com/flags", title: "Flags" }));
+	lib.save(id, "ok", null, "body", "html");
+
+	const file = () => readFileSync(join(DIR, "library", libraryFiles().find((n) => n.includes(`-${id}-`))), "utf8");
+	assert.equal(/"read"|"queued"|"archived"/.test(file()), false, "기본은 아무것도 안 적힌다");
+
+	const after = lib.setFlags(id, { read: true, archived: true });
+	assert.equal(after.read, true);
+	assert.equal(after.archived, true);
+	assert.equal(after.queued, undefined);
+	assert.match(file(), /"read": true/);
+	assert.equal(/"queued"/.test(file()), false);
+
+	// 끄면 필드가 false로 남는 게 아니라 사라진다.
+	lib.setFlags(id, { archived: false });
+	assert.equal(/"archived"/.test(file()), false);
+	assert.equal(lib.get(id).read, true, "건드리지 않은 것은 그대로");
+});
+
+test("a bodyless item can be archived too", () => {
+	const lib = store.open();
+	const { id } = lib.see(item({ url: "https://example.com/flagless" }));
+	lib.save(id, "blocked", null, null, "html");
+	assert.equal(lib.setFlags(id, { archived: true }).archived, true);
+	assert.equal(lib.list(300).find((r) => r.id === id).archived, true);
+	assert.throws(() => lib.setFlags(999999, { read: true }), /No item/);
+});
+
+test("flags survive the next fetch pass and do not disturb the gist", () => {
+	const lib = store.open();
+	const { id } = lib.see(item({ url: "https://example.com/flags2", title: "Keep" }));
+	lib.save(id, "ok", null, "body", "html");
+	lib.setGist(id, "a line");
+	lib.setFlags(id, { queued: true });
+
+	lib.see(item({ url: "https://example.com/flags2", title: "Keep", score: 777 }));
+	const row = lib.get(id);
+	assert.equal(row.queued, true);
+	assert.equal(row.gist, "a line");
+	assert.equal(row.score, 777);
+});

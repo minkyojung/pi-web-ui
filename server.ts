@@ -10,7 +10,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
 	createAgentSessionFromServices,
@@ -443,6 +443,19 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 
+/** A small request body, whole. Capped: this endpoint takes three booleans. */
+function text(req: IncomingMessage): Promise<string> {
+	return new Promise((resolve, reject) => {
+		let out = "";
+		req.on("data", (chunk) => {
+			out += chunk;
+			if (out.length > 4096) reject(new Error("too large"));
+		});
+		req.on("end", () => resolve(out));
+		req.on("error", reject);
+	});
+}
+
 const server = createServer(async (req, res) => {
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const { pathname } = url;
@@ -452,6 +465,28 @@ const server = createServer(async (req, res) => {
 			res.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
 			res.end(JSON.stringify(body));
 		};
+		// The one thing the browser writes. `fetch` owns a piece's body, `set_gist`
+		// owns its line, and this owns read/queued/archived — one writer per field,
+		// which is what keeps three of them out of each other's way.
+		const flags = pathname.match(/^\/api\/items\/(\d+)\/flags$/);
+		if (flags && req.method === "POST") {
+			let patch: Record<string, unknown>;
+			try {
+				patch = JSON.parse(await text(req));
+			} catch {
+				return json(400, { error: "invalid JSON" });
+			}
+			const pick = (k: string) => (typeof patch[k] === "boolean" ? (patch[k] as boolean) : undefined);
+			try {
+				return json(200, library.setFlags(Number(flags[1]), {
+					read: pick("read"),
+					queued: pick("queued"),
+					archived: pick("archived"),
+				}));
+			} catch {
+				return json(404, { error: "not found" });
+			}
+		}
 		if (req.method !== "GET") return json(405, { error: "read only" });
 		if (pathname === "/api/items") {
 			const limit = Math.min(Number(url.searchParams.get("limit") ?? 200) || 200, 1000);
