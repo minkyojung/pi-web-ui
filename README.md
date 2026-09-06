@@ -104,6 +104,15 @@ mid-execution returns with no result and stays that way. Nothing is queued while
 the socket is down; a prompt replayed afterwards could land in a session that
 was swapped underneath it. The controls disable instead.
 
+`ws.ts` opts out of HMR: it accepts its own update and invalidates, so an edit
+that reaches it reloads the page. The module owns a socket, a timer and two
+window listeners, and a hot swap that undoes all but one of those leaves a
+second instance in the page folding the same events into the same store —
+which reads as every delta applied twice, an answer interleaved with itself.
+The rule this comes from: a module that takes something at module scope either
+gives all of it back in `hot.dispose`, or refuses the swap. Half a teardown is
+worse than none, because it looks handled.
+
 The controls sit with the message they apply to, under the composer, since all
 three are chosen per message:
 

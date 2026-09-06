@@ -177,6 +177,18 @@ import.meta.hot?.dispose(() => {
 	socket?.close();
 });
 
+// This module owns one socket, so it opts out of being hot-swapped: accepting
+// its own update and immediately invalidating turns any update that reaches
+// here — its own, or one propagated from store, serverState or queue — into a
+// page reload. The teardown above then only has to survive that, rather than
+// keep a retired instance harmless while it stays in the page.
+//
+// A reload costs nothing here. The conversation lives on the server and comes
+// back as a snapshot on connect.
+import.meta.hot?.accept(() => {
+	import.meta.hot?.invalidate("ws.ts owns the socket; reload rather than run two of them");
+});
+
 connect();
 
 /**
