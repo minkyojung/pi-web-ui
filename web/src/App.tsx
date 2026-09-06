@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 
 import { Composer } from "./components/Composer";
@@ -9,10 +9,9 @@ import { List } from "./components/reader/List";
 import { SettingsBar } from "./components/SettingsBar";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 import { TooltipProvider } from "./components/ui/tooltip";
+import type { Flags } from "./components/reader/RowActions";
 import type { FullItem, ListItem } from "./reader";
 import { getConnection, getItems, subscribe } from "./store";
-
-const READ_KEY = "reader.read";
 
 /** The address carries the open piece, so a reload lands where you left off. */
 const idFromHash = () => {
@@ -56,7 +55,12 @@ export function App() {
 		<TooltipProvider delayDuration={300}>
 			<ResizablePanelGroup orientation="horizontal" className="h-screen">
 				<ResizablePanel id="list" defaultSize="22%" minSize="16%" className="min-w-0">
-					<List items={lib.items} selectedId={lib.selectedId} readIds={lib.readIds} onSelect={lib.select} />
+					<List
+						items={lib.items}
+						selectedId={lib.selectedId}
+						onSelect={lib.select}
+						onFlags={lib.setFlags}
+					/>
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel id="article" minSize="30%" className="min-w-0">
@@ -85,16 +89,30 @@ export function App() {
 
 /**
  * The library's list and the open piece share one selection, kept in the hash.
- * Read marks live in the browser for now; recording them in the library is the
- * feedback stage's job.
+ *
+ * Read, queued and archived go to the library rather than to this browser. pi
+ * reads the same files; a mark it cannot see would make it the one participant
+ * who does not know what has already been dealt with.
  */
 function useLibrary() {
 	const [items, setItems] = useState<ListItem[]>([]);
 	const [selectedId, setSelectedId] = useState<number | null>(idFromHash);
 	const [current, setCurrent] = useState<FullItem | null>(null);
-	const [readIds, setReadIds] = useState<Set<number>>(
-		() => new Set<number>(JSON.parse(localStorage.getItem(READ_KEY) ?? "[]")),
-	);
+
+	// The row is updated from the server's answer, not from a guess made here, so
+	// the list cannot drift from the file if a write is refused.
+	const setFlags = useCallback((id: number, patch: Flags) => {
+		fetch(`/api/items/${id}/flags`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(patch),
+		})
+			.then((r) => (r.ok ? r.json() : null))
+			.then((row: ListItem | null) => {
+				if (row) setItems((prev) => prev.map((it) => (it.id === row.id ? row : it)));
+			})
+			.catch(() => {});
+	}, []);
 
 	// The list is fetched once the socket is up, not on mount: the server takes a
 	// few seconds to bring the pi session up, and a request before that gets a
@@ -123,12 +141,8 @@ function useLibrary() {
 			.then((r) => (r.ok ? r.json() : null))
 			.then(setCurrent)
 			.catch(() => {});
-		setReadIds((prev) => {
-			const next = new Set(prev).add(selectedId);
-			localStorage.setItem(READ_KEY, JSON.stringify([...next]));
-			return next;
-		});
-	}, [selectedId]);
+		setFlags(selectedId, { read: true });
+	}, [selectedId, setFlags]);
 
-	return { items, selectedId, current, readIds, select: setSelectedId };
+	return { items, selectedId, current, select: setSelectedId, setFlags };
 }

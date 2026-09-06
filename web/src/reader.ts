@@ -14,6 +14,10 @@ export type ListItem = {
   kind: string | null;
   /** 이 글이 무엇을 주장하는가, 한 줄. pi가 set_gist로 남긴다. 아직 없으면 null. */
   gist: string | null;
+  /** 화면이 남기는 표시. 참일 때만 온다 — 서재 대부분은 셋 다 없다. */
+  read?: boolean;
+  queued?: boolean;
+  archived?: boolean;
   has_text: number;
 };
 
@@ -25,14 +29,14 @@ export const host = (url: string) => {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 };
 
-/** 오늘 · 어제 · 9월 4일 (금) */
+/** Today · Yesterday · Fri, Sep 4 */
 export function dayLabel(ms: number) {
   const d = new Date(ms);
   const midnight = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = Math.round((midnight(new Date()) - midnight(d)) / 86400000);
-  if (diff === 0) return "오늘";
-  if (diff === 1) return "어제";
-  return d.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" });
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
 export const STATUS_LABEL: Partial<Record<Status, string>> = {
