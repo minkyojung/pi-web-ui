@@ -1,3 +1,4 @@
+import { Trash2Icon } from "lucide-react";
 import { useSyncExternalStore } from "react";
 
 import { configStore } from "../serverState";
@@ -14,6 +15,7 @@ import {
 	QueueSectionTrigger,
 } from "./ai-elements/queue";
 import { Button } from "./ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
  * Messages typed during a run, which pi is holding until it can take them. It
@@ -39,20 +41,28 @@ export function QueuedMessages() {
 	if (queued.length === 0) return null;
 
 	return (
-		<Queue className="rounded-b-none border-b-0">
+		// Inset and sitting on the composer rather than flush with it, so it reads
+		// as a drawer the input is pulling out from under itself.
+		<Queue className="mx-2 rounded-b-none border-b-0 pb-4">
 			<QueueSection>
 				<div className="flex items-center gap-1">
 					<QueueSectionTrigger className="flex-1">
 						<QueueSectionLabel count={queued.length} label="queued" />
 					</QueueSectionTrigger>
-					<Button
-						variant="ghost"
-						size="sm"
-						className="h-7 text-xs"
-						onClick={() => send({ type: "clear_queue" })}
-					>
-						Clear
-					</Button>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon"
+								className="size-7 text-muted-foreground"
+								onClick={() => send({ type: "clear_queue" })}
+							>
+								<Trash2Icon className="size-4" />
+								<span className="sr-only">Clear the queue</span>
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent side="top">Clear the queue — the text goes back in the box</TooltipContent>
+					</Tooltip>
 				</div>
 				<QueueSectionContent>
 					<QueueList>
