@@ -24,7 +24,7 @@ import {
 	type CreateAgentSessionRuntimeFactory,
 } from "@earendil-works/pi-coding-agent";
 import { itemsFromMessages } from "./conversation.js";
-import { open as openLibrary } from "./reader/db.ts";
+import { open as openLibrary } from "./reader/store.ts";
 import { DEFAULT_MODE, modeToolNames } from "./toolModes.ts";
 import { createPromptBridge } from "./prompts.ts";
 
@@ -416,12 +416,6 @@ const CONTENT_TYPES: Record<string, string> = {
  * the score bar stay out too — they have titles and nothing else.
  */
 const library = openLibrary();
-const LIBRARY_COLS = "id, url, title, source, score, comments, published_at, first_seen, status, kind";
-const libraryList = library.prepare(
-	`SELECT ${LIBRARY_COLS}, (text IS NOT NULL) AS has_text FROM items
-	 WHERE status != 'pending' ORDER BY COALESCE(published_at, first_seen) DESC LIMIT ?`,
-);
-const libraryItem = library.prepare(`SELECT ${LIBRARY_COLS}, html, text FROM items WHERE id = ?`);
 
 const server = createServer(async (req, res) => {
 	const url = new URL(req.url ?? "/", "http://localhost");
@@ -435,11 +429,11 @@ const server = createServer(async (req, res) => {
 		if (req.method !== "GET") return json(405, { error: "read only" });
 		if (pathname === "/api/items") {
 			const limit = Math.min(Number(url.searchParams.get("limit") ?? 200) || 200, 1000);
-			return json(200, libraryList.all(limit));
+			return json(200, library.list(limit));
 		}
 		const m = pathname.match(/^\/api\/items\/(\d+)$/);
 		if (m) {
-			const row = libraryItem.get(Number(m[1]));
+			const row = library.get(Number(m[1]));
 			return row ? json(200, row) : json(404, { error: "not found" });
 		}
 		return json(404, { error: "not found" });
