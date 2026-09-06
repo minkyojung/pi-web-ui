@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "cn";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -114,6 +114,13 @@ function Row({
   const showing = hover || menu;
   const read = !!item.read;
 
+  // 컨트롤이 가리는 폭. 제목은 이만큼 **덜 그려질** 뿐 좁아지지는 않는다 —
+  // 폭을 줄이면 딱 맞던 제목이 갑자기 넘쳐서, 볼 것도 없이 앞부분을 흘린다.
+  const [reserve, setReserve] = useState(0);
+  const actions = useCallback((el: HTMLSpanElement | null) => {
+    if (el) setReserve(el.offsetWidth);
+  }, []);
+
   return (
     // 컨트롤은 행 버튼의 형제다. 안에 넣으면 버튼 속의 버튼이 되고,
     // 그러면 클릭이 어느 쪽 것인지 브라우저가 정하게 둬야 한다.
@@ -130,13 +137,11 @@ function Row({
         onBlur={() => setHover(false)}
         aria-current={selected ? "page" : undefined}
         className={cn(
-          "block w-full cursor-default py-2 pl-4 text-left outline-none transition-[padding,background-color]",
+          "block w-full cursor-default px-4 py-2 text-left outline-none transition-colors",
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
           // 행은 서로 맞붙어 있어 바깥으로 나가는 링은 옆 행에 가린다. 안쪽으로 그린다.
           "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset",
           "data-[active=true]:bg-accent data-[active=true]:text-accent-foreground",
-          // 컨트롤이 나올 자리를 비운다. 겹쳐 그리면 밀리는 제목이 그 아래로 지나간다.
-          showing ? "pr-[7.5rem]" : "pr-4",
         )}
       >
         <span className="flex items-center gap-2.5">
@@ -144,6 +149,7 @@ function Row({
           <Title
             text={item.title}
             slide={hover}
+            reserve={showing ? reserve : 0}
             className={cn(
               "reading text-sm leading-snug",
               read && !selected && "text-muted-foreground",
@@ -153,7 +159,7 @@ function Row({
         </span>
       </button>
       {showing && (
-        <span className="pointer-events-auto absolute inset-y-0 right-0 flex items-center">
+        <span ref={actions} className="absolute inset-y-0 right-0 flex items-center">
           <RowActions item={item} at={when(item)} onFlags={onFlags} onMenuChange={setMenu} />
         </span>
       )}
@@ -200,33 +206,45 @@ const PIXELS_PER_SECOND = 45;
  * means a title that fits never moves at all — the pointer crossing the list
  * would otherwise set every row in it twitching.
  */
-function Title({ text, slide, className }: { text: string; slide: boolean; className?: string }) {
+function Title({
+  text, slide, reserve, className,
+}: { text: string; slide: boolean; reserve: number; className?: string }) {
   const frame = useRef<HTMLSpanElement>(null);
-  const [over, setOver] = useState(0);
+  const [width, setWidth] = useState({ text: 0, frame: 0 });
 
   // 잘리는지는 쉴 때도 알아야 페이드를 칠 수 있고, 칸은 끌어서 넓힐 수 있다.
   // 그래서 한 번 재고 마는 게 아니라 폭이 바뀔 때마다 다시 잰다.
   useLayoutEffect(() => {
     const el = frame.current;
     if (!el) return;
-    const measure = () => setOver(Math.max(0, el.scrollWidth - el.clientWidth));
+    const measure = () => setWidth({ text: el.scrollWidth, frame: el.clientWidth });
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, [text]);
 
+  // 보이는 폭은 컨트롤이 덮은 만큼 좁다. 레이아웃이 아니라 칠하는 범위만 줄이므로,
+  // 포인터가 얹혔다고 글자가 다시 배치되는 일은 없다.
+  const visible = Math.max(0, width.frame - reserve);
+  // 미는 건 **쉴 때 이미 잘려 있던** 제목뿐이다. 컨트롤이 덮었다는 이유로 밀면,
+  // 방금까지 다 읽히던 제목이 앞부분을 흘리며 사라진다 — 얻는 것 없이.
+  const cut = width.text > width.frame;
+  const over = cut ? Math.max(0, width.text - visible) : 0;
   const shift = slide ? over : 0;
+
   // 자른 자리를 딱 끊지 않고 흐린다. 말줄임표는 "여기서 끝"이라고 말하는데,
   // 페이드는 "계속 있다"고 말한다 — 실제로 밀면 나오므로 그쪽이 사실이다.
-  const fade = over
-    ? `linear-gradient(to right,${shift ? " transparent, black var(--fade)," : ""} black calc(100% - var(--fade)), transparent)`
-    : undefined;
+  const edge = `${visible}px`;
+  const fade =
+    over || reserve || cut
+      ? `linear-gradient(to right,${shift ? " transparent, black 1.5rem," : ""} black calc(${edge} - 1.5rem), transparent ${edge})`
+      : undefined;
 
   return (
     <span
       ref={frame}
-      className="min-w-0 flex-1 overflow-hidden [--fade:1.5rem]"
+      className="min-w-0 flex-1 overflow-hidden"
       style={{ maskImage: fade, WebkitMaskImage: fade }}
     >
       <span
