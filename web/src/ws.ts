@@ -44,6 +44,12 @@ let socket: WebSocket | null = null;
 let generation = 0;
 let attempt = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * Set when a hot update replaces this module. `generation` cannot stand in for
+ * it: connect() bumps that counter itself, so a retired instance that reaches
+ * connect() writes its way back past its own guard.
+ */
+let disposed = false;
 
 /**
  * Full jitter, capped low. This is localhost and the usual cause is the server
@@ -139,23 +145,34 @@ function connect(): void {
 
 /** Skip the wait when something says the connection should work now. */
 function retryNow(): void {
+	if (disposed) return;
 	if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
 	attempt = 0;
 	connect();
 }
 
-addEventListener("online", retryNow);
 // A hidden tab does not run requestAnimationFrame, which is what the store
 // renders on, so a backgrounded tab should come back live the moment it is
 // looked at rather than at the end of some backoff.
-addEventListener("visibilitychange", () => {
+const onVisible = (): void => {
 	if (document.visibilityState === "visible") retryNow();
-});
+};
+
+addEventListener("online", retryNow);
+addEventListener("visibilitychange", onVisible);
 
 // Without this, every hot update of this module leaks a socket and doubles
 // every event — the exact bug the module-scope connection exists to avoid.
+//
+// Closing the socket is not enough on its own: these two listeners live on
+// window, outlive the module that registered them, and call a retryNow that
+// still holds the retired instance's closed socket. The next window switch
+// then reopens it, and both instances fold the same events into one store.
 import.meta.hot?.dispose(() => {
+	disposed = true;
 	generation++;
+	removeEventListener("online", retryNow);
+	removeEventListener("visibilitychange", onVisible);
 	if (timer !== null) clearTimeout(timer);
 	socket?.close();
 });
