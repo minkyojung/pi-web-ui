@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 
 import { breakdown, compact } from "../contextBreakdown";
 import { configStore, contextSourcesStore, usageStore } from "../serverState";
@@ -30,6 +30,20 @@ const pct = (n: number) => `${n < 10 ? n.toFixed(1) : Math.round(n)}%`;
  * four characters a token, and say so with a ≈. Messages are the remainder.
  */
 export function ContextPopover() {
+	// Opens on hover and closes on leave; a click pins it until the next click,
+	// Escape, or a click elsewhere. Everything shown is already in memory, so
+	// there is nothing to wait for on open.
+	const [open, setOpen] = useState(false);
+	const [pinned, setPinned] = useState(false);
+	const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const enter = () => {
+		if (leaveTimer.current) clearTimeout(leaveTimer.current);
+		setOpen(true);
+	};
+	const leave = () => {
+		if (pinned) return;
+		leaveTimer.current = setTimeout(() => setOpen(false), 150);
+	};
 	const usage = useSyncExternalStore(usageStore.subscribe, usageStore.get);
 	const sources = useSyncExternalStore(contextSourcesStore.subscribe, contextSourcesStore.get);
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
@@ -38,13 +52,42 @@ export function ContextPopover() {
 	const login = !sources ? "—" : sources.login.subscription ? "Subscription (OAuth)" : sources.login.oauth ? "OAuth" : "API key";
 
 	return (
-		<Popover>
+		<Popover
+			open={open}
+			onOpenChange={(next) => {
+				// Escape and outside clicks: close and unpin. The trigger's own click
+				// is handled below, since Radix would only toggle it.
+				if (!next) {
+					setOpen(false);
+					setPinned(false);
+				}
+			}}
+		>
 			<PopoverTrigger asChild>
-				<button type="button" className="rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" aria-label="Context usage">
+				<button
+					type="button"
+					className="rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+					aria-label="Context usage"
+					onPointerEnter={enter}
+					onPointerLeave={leave}
+					onClick={(e) => {
+						// preventDefault keeps Radix from toggling; a click pins, a second unpins.
+						e.preventDefault();
+						setPinned(!pinned);
+						setOpen(!pinned);
+					}}
+				>
 					<ContextGauge />
 				</button>
 			</PopoverTrigger>
-			<PopoverContent align="end" side="top" className="flex w-80 flex-col gap-3">
+			<PopoverContent
+				align="end"
+				side="top"
+				className="flex w-80 flex-col gap-3"
+				onPointerEnter={enter}
+				onPointerLeave={leave}
+				onOpenAutoFocus={(e) => e.preventDefault()}
+			>
 				<Section>
 					<div className="flex items-baseline justify-between">
 						<span className="text-sm font-semibold">Context</span>
