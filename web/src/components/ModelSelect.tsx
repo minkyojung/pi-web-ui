@@ -1,4 +1,3 @@
-import { ChevronDownIcon } from "lucide-react";
 import { useSyncExternalStore } from "react";
 
 import { getConnection, subscribe } from "../store";
@@ -37,12 +36,11 @@ export function ModelSelect({ model, models }: { model: string | null; models: s
 				type="button"
 				variant="ghost"
 				size="sm"
-				className="h-7 gap-1 px-2 text-xs group-hover:bg-accent group-hover:text-accent-foreground dark:group-hover:bg-accent/50"
+				className="h-7 px-2 text-xs group-hover:bg-accent group-hover:text-accent-foreground dark:group-hover:bg-accent/50"
 				disabled={!online}
 				tabIndex={-1}
 			>
 				{label}
-				<ChevronDownIcon className="size-3.5 opacity-60" />
 			</Button>
 			<select
 				id="model"

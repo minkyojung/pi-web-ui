@@ -1,4 +1,3 @@
-import { ChevronDownIcon } from "lucide-react";
 import { useEffect } from "react";
 
 import { send } from "../ws";
@@ -31,7 +30,7 @@ function Bars({ levels, current }: { levels: string[]; current: string }) {
 			{steps.map((step, i) => (
 				<span
 					key={step}
-					className={`w-[3px] rounded-[1px] ${i < lit ? "bg-current" : "bg-current/25"}`}
+					className={`w-[2px] rounded-[1px] ${i < lit ? "bg-current" : "bg-current/25"}`}
 					style={{ height: 4 + (8 * (i + 1)) / steps.length }}
 				/>
 			))}
@@ -81,7 +80,6 @@ export function ThinkingSelect({ level, levels, disabled }: { level: string; lev
 									{label(level)}
 								</>
 							)}
-							<ChevronDownIcon className="size-3.5 opacity-60" />
 						</Button>
 					</DropdownMenuTrigger>
 				</TooltipTrigger>
