@@ -25,6 +25,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { itemsFromMessages } from "./conversation.js";
 import { open as openLibrary } from "./reader/store.ts";
+import { readerExtension } from "./reader/tools.ts";
 import { DEFAULT_MODE, modeToolNames } from "./toolModes.ts";
 import { createPromptBridge } from "./prompts.ts";
 
@@ -154,7 +155,16 @@ interface DashboardBridgeState {
 
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
 	retireDashboardBridge();
-	const services = await createAgentSessionServices({ cwd, modelRuntime, resourceLoaderOptions: { eventBus } });
+	const services = await createAgentSessionServices({
+		cwd,
+		modelRuntime,
+		// Inline rather than a file under .pi/extensions/: that path needs the
+		// project trusted, and the desktop shell's cwd is wherever it was opened.
+		resourceLoaderOptions: {
+			eventBus,
+			extensionFactories: [{ name: "reader", factory: readerExtension(library) }],
+		},
+	});
 	return {
 		...(await createAgentSessionFromServices({
 			services,

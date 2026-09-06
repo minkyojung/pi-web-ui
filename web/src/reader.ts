@@ -12,6 +12,8 @@ export type ListItem = {
   first_seen: number;
   status: Status;
   kind: string | null;
+  /** 이 글이 무엇을 주장하는가, 한 줄. pi가 set_gist로 남긴다. 아직 없으면 null. */
+  gist: string | null;
   has_text: number;
 };
 

@@ -74,6 +74,12 @@ function Row({
         >
           {item.title}
         </span>
+        {item.gist && (
+          // 3단계. 제목 낚시에 매번 속지 않으려면, 열기 전에 주장을 봐야 한다.
+          <span className="reading mt-1 block text-[12px] leading-snug text-neutral-500 dark:text-neutral-400">
+            {item.gist}
+          </span>
+        )}
         <span className="mt-1 flex items-center gap-1.5 text-[11px] text-neutral-400 dark:text-neutral-600">
           <span className="truncate">{host(item.url)}</span>
           {item.score != null && item.score > 0 && <span>· {item.score}↑</span>}

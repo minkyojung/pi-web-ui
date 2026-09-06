@@ -39,13 +39,22 @@ test("frontmatter survives the titles a feed actually hands over", () => {
 		fetched_at: null,
 		kind: null,
 		status: "ok",
-		gist: null,
 		conflicts: [],
 	};
 	// A body that opens with the fence must not be mistaken for the end of it.
-	const parsed = store.parse(store.serialize(meta, "---\nnot the header\n---\nbody"));
+	const parsed = store.parse(store.serialize(meta, null, "---\nnot the header\n---\nbody"));
 	assert.deepEqual(parsed.meta, meta);
+	assert.equal(parsed.gist, null);
 	assert.equal(parsed.body, "---\nnot the header\n---\nbody");
+});
+
+test("a gist with quotes in it cannot break the item, because it is outside the JSON", () => {
+	const meta = { id: 2, url: "u", title: "t", conflicts: [] };
+	const gist = 'Rust "zero-cost"라 주장했지만, 컴파일 시간이 3배가 됐다';
+	const parsed = store.parse(store.serialize(meta, gist, "body\n> not a gist"));
+	assert.equal(parsed.gist, gist);
+	assert.equal(parsed.body, "body\n> not a gist");
+	assert.equal(parsed.meta.id, 2);
 });
 
 test("a torn or foreign file is skipped, not guessed at", () => {
@@ -158,4 +167,34 @@ test("a fetch running beside the server is picked up, not cached over", () => {
 
 	assert.equal(server.list(100).length, before + 1);
 	assert.equal(server.get(id).text, "written by the other process");
+});
+
+test("a gist lands on the item and survives the next fetch pass", () => {
+	const lib = store.open();
+	const { id } = lib.see(item({ url: "https://example.com/gist", title: "Off Kubernetes" }));
+	lib.save(id, "ok", "<p>b</p>", "the body", "html");
+
+	const wrote = lib.setGist(id, "  쿠버네티스에서 단일 서버로 되돌렸고,\n  비용이 1/8이 됐다  ");
+	// 줄바꿈과 여백은 접는다 — 목록의 한 줄이고, 파일의 한 줄이다.
+	assert.equal(wrote.gist, "쿠버네티스에서 단일 서버로 되돌렸고, 비용이 1/8이 됐다");
+	assert.equal(lib.get(id).gist, wrote.gist);
+	assert.equal(lib.list(100).find((r) => r.id === id).gist, wrote.gist);
+	assert.equal(lib.get(id).text, "the body", "본문은 그대로");
+
+	// 점수가 올라 파일이 다시 쓰여도 한 줄은 남는다.
+	lib.see(item({ url: "https://example.com/gist", title: "Off Kubernetes", score: 999 }));
+	assert.equal(lib.get(id).gist, wrote.gist);
+	assert.equal(lib.get(id).score, 999);
+});
+
+test("a gist is refused where there is nothing to have read", () => {
+	const lib = store.open();
+	const { id } = lib.see(item({ url: "https://example.com/nobody" }));
+	lib.save(id, "blocked", null, null, "html");
+	assert.throws(() => lib.setGist(id, "무언가"), /본문이 없어서/);
+	assert.throws(() => lib.setGist(999999, "무언가"), /본문이 없어서/);
+
+	const ok = lib.see(item({ url: "https://example.com/empty-gist" }));
+	lib.save(ok.id, "ok", null, "body", "html");
+	assert.throws(() => lib.setGist(ok.id, "   "), /비어 있다/);
 });

@@ -53,8 +53,6 @@ export type Meta = {
   comments: number | null;
   status: Status;
   kind: string | null;
-  /** 3단계. 이 글이 무엇을 주장하는가, 한 줄. 사실만, 평가 없음. */
-  gist: string | null;
   /** 5단계. 이 글과 부딪히는 서재의 글 id. */
   conflicts: number[];
   first_seen: string;
@@ -69,17 +67,20 @@ export type Row = Omit<Meta, "published_at" | "first_seen" | "fetched_at"> & {
   published_at: number | null;
   first_seen: number;
   fetched_at: number | null;
+  /** 3단계. 이 글이 무엇을 주장하는가, 한 줄. 사실만, 평가 없음. */
+  gist: string | null;
   has_text: number;
 };
 
 const ms = (iso: string | null) => (iso ? Date.parse(iso) : null);
 
-function toRow(meta: Meta, hasText: boolean): Row {
+function toRow(meta: Meta, gist: string | null, hasText: boolean): Row {
   return {
     ...meta,
     published_at: ms(meta.published_at),
     first_seen: ms(meta.first_seen) ?? 0,
     fetched_at: ms(meta.fetched_at),
+    gist,
     has_text: hasText ? 1 : 0,
   };
 }
@@ -97,11 +98,22 @@ function toRow(meta: Meta, hasText: boolean): Row {
  */
 const FENCE = "---";
 
-export function serialize(meta: Meta, body: string): string {
-  return `${FENCE}\n${JSON.stringify(meta, null, 2)}\n${FENCE}\n\n${body.trim()}\n`;
+/**
+ * The gist is a quoted line under the frontmatter rather than a field inside
+ * it. It is the one thing an agent writes, and a stray quote in a sentence
+ * would break the JSON — which does not mangle a field, it makes the whole
+ * item unparseable and drops it out of the library without a sound. Out here
+ * the worst case is a line that reads oddly.
+ */
+const GIST = "> ";
+
+export function serialize(meta: Meta, gist: string | null, body: string): string {
+  const head = `${FENCE}\n${JSON.stringify(meta, null, 2)}\n${FENCE}\n`;
+  const line = gist ? `\n${GIST}${gist.replace(/\s+/g, " ").trim()}\n` : "";
+  return `${head}${line}\n${body.trim()}\n`;
 }
 
-export function parse(file: string): { meta: Meta; body: string } | null {
+export function parse(file: string): { meta: Meta; gist: string | null; body: string } | null {
   if (!file.startsWith(FENCE + "\n")) return null;
   const end = file.indexOf(`\n${FENCE}\n`, FENCE.length);
   if (end < 0) return null;
@@ -112,7 +124,16 @@ export function parse(file: string): { meta: Meta; body: string } | null {
     return null;
   }
   if (typeof meta?.id !== "number" || typeof meta?.url !== "string") return null;
-  return { meta, body: file.slice(end + FENCE.length + 2).trim() };
+
+  const rest = file.slice(end + FENCE.length + 2).replace(/^\n+/, "");
+  if (!rest.startsWith(GIST)) return { meta, gist: null, body: rest.trim() };
+  const eol = rest.indexOf("\n");
+  const cut = eol < 0 ? rest.length : eol;
+  return {
+    meta,
+    gist: rest.slice(GIST.length, cut).trim() || null,
+    body: rest.slice(cut).trim(),
+  };
 }
 
 /**
@@ -156,7 +177,7 @@ function writeAtomic(path: string, content: string) {
  */
 type Index = { nextId: number; items: Record<string, Meta> };
 
-type Cached = { key: string; meta: Meta };
+type Cached = { key: string; meta: Meta; gist: string | null };
 
 export class Library {
   private index: Index;
@@ -210,7 +231,7 @@ export class Library {
       }
       const parsed = parse(readFileSync(path, "utf8"));
       if (!parsed) continue;
-      this.cache.set(name, { key, meta: parsed.meta });
+      this.cache.set(name, { key, meta: parsed.meta, gist: parsed.gist });
       this.files.set(parsed.meta.id, name);
       this.urls.set(parsed.meta.url, name);
     }
@@ -264,7 +285,6 @@ export class Library {
       comments: it.comments ?? null,
       status: it.status,
       kind: it.kind ?? null,
-      gist: null,
       conflicts: [],
       first_seen: new Date().toISOString(),
       fetched_at: null,
@@ -292,11 +312,11 @@ export class Library {
    * Put an item where its body says it belongs: a file if it has text, the
    * index if it does not. `text === undefined` means "leave the body alone".
    */
-  private put(meta: Meta, text?: string | null) {
+  private put(meta: Meta, text?: string | null, gist?: string | null) {
     const oldName = this.files.get(meta.id);
-    const body = text === undefined
-      ? (oldName ? parse(readFileSync(join(LIBRARY_DIR, oldName), "utf8"))?.body ?? "" : "")
-      : (text ?? "");
+    const old = oldName ? parse(readFileSync(join(LIBRARY_DIR, oldName), "utf8")) : null;
+    const body = text === undefined ? (old?.body ?? "") : (text ?? "");
+    const line = gist === undefined ? (old?.gist ?? null) : gist;
 
     if (!body) {
       if (oldName) {
@@ -312,14 +332,14 @@ export class Library {
 
     const name = fileName(meta);
     const path = join(LIBRARY_DIR, name);
-    writeAtomic(path, serialize(meta, body));
+    writeAtomic(path, serialize(meta, line, body));
     // 제목이 바뀌면 파일명도 바뀐다. 옛 이름을 남기면 같은 글이 두 번 잡힌다.
     if (oldName && oldName !== name) {
       rmSync(join(LIBRARY_DIR, oldName), { force: true });
       this.cache.delete(oldName);
     }
     const s = statSync(path);
-    this.cache.set(name, { key: `${s.mtimeMs}:${s.size}`, meta });
+    this.cache.set(name, { key: `${s.mtimeMs}:${s.size}`, meta, gist: line });
     this.files.set(meta.id, name);
     this.urls.set(meta.url, name);
     if (this.index.items[meta.url]) {
@@ -328,14 +348,29 @@ export class Library {
     }
   }
 
+  /**
+   * 한 줄을 남긴다. 서재에서 에이전트가 쓰는 유일한 자리.
+   * 본문이 있는 글에만 붙는다 — 없는 글은 읽은 적이 없으니 주장할 것도 없다.
+   */
+  setGist(id: number, gist: string): { id: number; title: string; gist: string } {
+    this.scan();
+    const name = this.files.get(id);
+    if (!name) throw new Error(`${id}번 글은 본문이 없어서 한 줄을 붙일 수 없다`);
+    const meta = this.cache.get(name)!.meta;
+    const line = gist.replace(/\s+/g, " ").trim();
+    if (!line) throw new Error("한 줄이 비어 있다");
+    this.put(meta, undefined, line);
+    return { id, title: meta.title, gist: line };
+  }
+
   /** 목록. 본문은 빼고, 아직 점수 미달인 것도 뺀다. */
   list(limit: number): Row[] {
     this.scan();
     const rows = [
-      ...[...this.cache.values()].map(({ meta }) => toRow(meta, true)),
+      ...[...this.cache.values()].map(({ meta, gist }) => toRow(meta, gist, true)),
       ...Object.values(this.index.items)
         .filter((m) => m.status !== "pending")
-        .map((m) => toRow(m, false)),
+        .map((m) => toRow(m, null, false)),
     ];
     rows.sort((a, b) => (b.published_at ?? b.first_seen) - (a.published_at ?? a.first_seen));
     return rows.slice(0, limit);
@@ -350,13 +385,13 @@ export class Library {
       if (!parsed) return null;
       const htmlPath = join(HTML_DIR, `${id}.html`);
       return {
-        ...toRow(parsed.meta, true),
+        ...toRow(parsed.meta, parsed.gist, true),
         html: existsSync(htmlPath) ? readFileSync(htmlPath, "utf8") : null,
         text: parsed.body,
       };
     }
     const meta = Object.values(this.index.items).find((m) => m.id === id);
-    return meta ? { ...toRow(meta, false), html: null, text: null } : null;
+    return meta ? { ...toRow(meta, null, false), html: null, text: null } : null;
   }
 
   counts() {
