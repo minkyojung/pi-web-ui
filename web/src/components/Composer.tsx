@@ -66,11 +66,7 @@ export function Composer() {
 						{/* Chosen per message, so it sits with the message. Native: fifty-odd
 						    entries in provider groups are picked by typing the first letters. */}
 						{config && (
-							<ModelSelect
-								model={config.model}
-								models={config.models}
-								className="h-7 w-auto max-w-52 border-none bg-transparent shadow-none dark:bg-transparent"
-							/>
+							<ModelSelect model={config.model} models={config.models} />
 						)}
 						{asking ? (
 							<span className="px-1 text-xs text-amber-600 dark:text-amber-500">
