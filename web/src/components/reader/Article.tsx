@@ -32,10 +32,26 @@ export function Article({ item }: { item: FullItem | null }) {
           >
             {host(item.url)} ↗
           </a>
+          {item.gist && <Gist text={item.gist} />}
         </header>
         <Body item={item} />
       </article>
     </div>
+  );
+}
+
+/**
+ * pi가 남긴 한 줄. 본문 위에 있지만 본문이 아니므로, 저자의 글과 같은 활자로
+ * 쓰지 않는다 — 누가 한 말인지가 보여야 무시할지 반박할지 고를 수 있다.
+ */
+function Gist({ text }: { text: string }) {
+  return (
+    <p className="mt-5 border-l-2 border-neutral-300 pl-4 text-[14px] leading-relaxed text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+      <span className="mr-2 align-[1px] font-mono text-[10px] tracking-wide text-neutral-400 dark:text-neutral-600">
+        pi
+      </span>
+      {text}
+    </p>
   );
 }
 
