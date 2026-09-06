@@ -26,6 +26,7 @@ import {
 import { itemsFromMessages } from "./conversation.js";
 import { open as openLibrary } from "./reader/store.ts";
 import { readerExtension } from "./reader/tools.ts";
+import { icon, safeHost } from "./reader/icons.ts";
 import { DEFAULT_MODE, modeToolNames } from "./toolModes.ts";
 import { createPromptBridge } from "./prompts.ts";
 
@@ -496,6 +497,15 @@ const server = createServer(async (req, res) => {
 		if (m) {
 			const row = library.get(Number(m[1]));
 			return row ? json(200, row) : json(404, { error: "not found" });
+		}
+		const ico = pathname.match(/^\/api\/icon\/(.+)$/);
+		if (ico) {
+			const host = safeHost(decodeURIComponent(ico[1]));
+			const bytes = host && (await icon(host));
+			if (!bytes) return json(404, { error: "no icon" });
+			// Kept on disk anyway; the header is so a scroll back up costs nothing.
+			res.writeHead(200, { "content-type": "image/x-icon", "cache-control": "max-age=86400" });
+			return res.end(bytes);
 		}
 		return json(404, { error: "not found" });
 	}
