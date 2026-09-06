@@ -1,0 +1,5 @@
+[
+  { "kind": "hn", "minScore": 50 },
+  { "kind": "rss", "url": "https://simonwillison.net/atom/everything/" },
+  { "kind": "rss", "url": "https://bcantrill.dtrace.org/index.xml" }
+]

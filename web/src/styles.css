@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Article bodies from the reading library render through the prose classes. */
+@plugin "@tailwindcss/typography";
 /* Vite's root is web/, so pin the scan rather than rely on detection: when it
    goes wrong it goes wrong silently, as a few classes that just do nothing. */
 @source "./";
@@ -138,3 +140,12 @@
 #root {
   display: contents;
 }
+
+/*
+ * Reading. Korean breaks between words, not inside them, so keep-all; anywhere
+ * so a long URL still cannot push the column wide. Readability leaves the odd
+ * form or embed behind, and none of it works out of context.
+ */
+.reading { word-break: keep-all; overflow-wrap: anywhere; }
+.reading :is(iframe, video, form, button, input) { display: none; }
+.reading img { border-radius: var(--radius); }
