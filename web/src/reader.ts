@@ -21,7 +21,12 @@ export type ListItem = {
   has_text: number;
 };
 
-export type FullItem = ListItem & { html: string | null; text: string | null };
+export type FullItem = ListItem & {
+  html: string | null;
+  text: string | null;
+  /** 서재 파일의 절대 경로. pi에게 건넬 유일한 것 — 본문은 pi가 직접 읽는다. */
+  path: string | null;
+};
 
 export const when = (it: ListItem) => it.published_at ?? it.first_seen;
 

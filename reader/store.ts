@@ -407,8 +407,14 @@ export class Library {
     return rows.slice(0, limit);
   }
 
-  /** 하나. 화면이 그릴 html과, 모델이 읽을 text를 함께. */
-  get(id: number): (Row & { html: string | null; text: string | null }) | null {
+  /**
+   * 하나. 화면이 그릴 html과, 모델이 읽을 text를 함께.
+   *
+   * `path`는 pi에게 건네려고 있다. 화면이 열어둔 글을 pi가 알게 하는 방법은
+   * 본문 4천 자를 프롬프트에 싣는 것이 아니라 이 한 줄을 주는 것이다 —
+   * 서재가 파일이고 pi에게 read가 있으니, 필요하면 직접 읽는다.
+   */
+  get(id: number): (Row & { html: string | null; text: string | null; path: string | null }) | null {
     this.scan();
     const name = this.files.get(id);
     if (name) {
@@ -419,10 +425,11 @@ export class Library {
         ...toRow(parsed.meta, parsed.gist, true),
         html: existsSync(htmlPath) ? readFileSync(htmlPath, "utf8") : null,
         text: parsed.body,
+        path: join(LIBRARY_DIR, name),
       };
     }
     const meta = Object.values(this.index.items).find((m) => m.id === id);
-    return meta ? { ...toRow(meta, null, false), html: null, text: null } : null;
+    return meta ? { ...toRow(meta, null, false), html: null, text: null, path: null } : null;
   }
 
   counts() {

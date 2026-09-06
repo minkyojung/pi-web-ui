@@ -80,7 +80,7 @@ export function App() {
 					{/* The two views used to be swapped by a body.raw class, which has no
 					    home in a utility stylesheet — and only one was ever read. */}
 					{raw ? <RawView /> : <Conversation items={items} />}
-					<Composer />
+					<Composer piece={lib.attached} onDetach={lib.detach} />
 				</ResizablePanel>
 			</ResizablePanelGroup>
 		</TooltipProvider>
@@ -98,6 +98,9 @@ function useLibrary() {
 	const [items, setItems] = useState<ListItem[]>([]);
 	const [selectedId, setSelectedId] = useState<number | null>(idFromHash);
 	const [current, setCurrent] = useState<FullItem | null>(null);
+	// Attached again whenever another piece is opened: the common case is asking
+	// about what is on screen, and detaching is about this question, not for good.
+	const [detached, setDetached] = useState(false);
 
 	// The row is updated from the server's answer, not from a guess made here, so
 	// the list cannot drift from the file if a write is refused.
@@ -137,6 +140,7 @@ function useLibrary() {
 		if (selectedId == null) return;
 		if (idFromHash() !== selectedId) location.hash = String(selectedId);
 		setCurrent(null);
+		setDetached(false);
 		fetch(`/api/items/${selectedId}`)
 			.then((r) => (r.ok ? r.json() : null))
 			.then(setCurrent)
@@ -144,5 +148,13 @@ function useLibrary() {
 		setFlags(selectedId, { read: true });
 	}, [selectedId, setFlags]);
 
-	return { items, selectedId, current, select: setSelectedId, setFlags };
+	return {
+		items,
+		selectedId,
+		current,
+		attached: detached ? null : current,
+		detach: () => setDetached(true),
+		select: setSelectedId,
+		setFlags,
+	};
 }

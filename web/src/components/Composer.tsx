@@ -1,8 +1,11 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
+import { X } from "lucide-react";
+
 import { appendRestored } from "../queue";
 import { configStore, promptsStore, restoredStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
+import type { FullItem } from "../reader";
 import { send } from "../ws";
 import { ContextPopover } from "./ContextPopover";
 import { ModelSelect } from "./ModelSelect";
@@ -20,11 +23,18 @@ import {
 
 const MOD = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
 
-/** Send the text and empty the box, whichever way it was sent. */
-function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "steer") {
+/**
+ * Send the text and empty the box, whichever way it was sent.
+ *
+ * An open piece rides along as its path, not its body. pi has no attachment
+ * type for text — its own @file inlines the whole thing — but the library is
+ * files and pi has `read`, so a line naming the file does the same work for
+ * one line of tokens instead of four thousand characters of them.
+ */
+function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "steer", path?: string) {
 	const trimmed = text.trim();
 	if (!trimmed) return;
-	send({ type: "prompt", text: trimmed, behavior });
+	send({ type: "prompt", text: path ? `Open in the reader: ${path}\n\n${trimmed}` : trimmed, behavior });
 	form.reset();
 }
 
@@ -37,7 +47,7 @@ function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "ste
  * agents that will — Cursor, Claude Code — make it a gesture on the key you
  * press. So it is one here too, and only while a run is going.
  */
-export function Composer() {
+export function Composer({ piece, onDetach }: { piece: FullItem | null; onDetach: () => void }) {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const streaming = config?.isStreaming ?? false;
@@ -59,9 +69,10 @@ export function Composer() {
 		<div className="border-t p-3">
 			<QueuedMessages />
 			<PromptInput
-				onSubmit={(message, event) => submit(event.currentTarget, message.text, "followUp")}
+				onSubmit={(message, event) => submit(event.currentTarget, message.text, "followUp", piece?.path ?? undefined)}
 			>
 				<PromptInputBody>
+					{piece?.path && <Attached title={piece.title} onDetach={onDetach} />}
 					{/* The component asks for four lines of empty box; one is enough until
 					    there is something to show, and it grows from there. */}
 					<PromptInputTextarea
@@ -75,7 +86,7 @@ export function Composer() {
 							// cuts a tool-using run short. Enter alone queues instead.
 							if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
 								e.preventDefault();
-								submit(e.currentTarget.form!, e.currentTarget.value, "steer");
+								submit(e.currentTarget.form!, e.currentTarget.value, "steer", piece?.path ?? undefined);
 							}
 						}}
 					/>
@@ -120,6 +131,29 @@ export function Composer() {
 					</span>
 				</PromptInputFooter>
 			</PromptInput>
+		</div>
+	);
+}
+
+/**
+ * What pi will be told is open, shown because it would otherwise be a line
+ * appearing in a message nobody typed. Removable for the times the question is
+ * not about the piece on screen.
+ */
+function Attached({ title, onDetach }: { title: string; onDetach: () => void }) {
+	return (
+		<div className="flex w-full items-center gap-1.5 px-3 pt-2.5">
+			<span className="flex min-w-0 items-center gap-1.5 rounded-md border bg-muted/50 py-0.5 pr-0.5 pl-2 text-xs text-muted-foreground">
+				<span className="truncate">{title}</span>
+				<button
+					type="button"
+					onClick={onDetach}
+					aria-label="Detach"
+					className="rounded-sm p-0.5 hover:bg-accent hover:text-accent-foreground"
+				>
+					<X className="size-3" />
+				</button>
+			</span>
 		</div>
 	);
 }
