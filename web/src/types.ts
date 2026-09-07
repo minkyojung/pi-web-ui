@@ -6,6 +6,15 @@ export interface Item {
 	args?: unknown;
 	result?: string | null;
 	isError?: boolean;
+	/** ms, on `done`: when the run's first message was written, and its last. */
+	startedAt?: number;
+	endedAt?: number;
+	/** On `done`: why the run's last message stopped, and what the run billed. */
+	stopReason?: string;
+	tokens?: number;
+	cost?: number;
+	/** On `done`: what the run said, carried so the footer can offer to copy it. */
+	answer?: string;
 	/**
 	 * Whether a tool is still running. Projected by the store from the reducer's
 	 * openTools; conversation.js has no such field. It is needed because a tool

@@ -54,8 +54,29 @@ const recorded: Scenario[] = Object.entries(recordings).map(([path, load]) => {
 // ---------------------------------------------------------------------------
 // Written scenarios.
 
+/**
+ * What one assistant message bills.
+ *
+ * Roughly what a short turn on a large model costs, so the footer has real
+ * figures to be laid out against; the shape is pi's Usage.
+ */
+const usage = (output: number) => ({
+	input: 12_400,
+	output,
+	cacheRead: 11_200,
+	cacheWrite: 0,
+	totalTokens: 12_400 + output,
+	cost: {
+		input: 0.0037,
+		output: output * 0.00001,
+		cacheRead: 0.0003,
+		cacheWrite: 0,
+		total: 0.004 + output * 0.00001,
+	},
+});
+
 /** One streamed assistant message, chopped the way a provider chops it. */
-function say(text: string): Record<string, unknown>[] {
+function say(text: string, stopReason = "stop"): Record<string, unknown>[] {
 	const chunks = text.match(/.{1,12}/gs) ?? [];
 	return [
 		{ type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0 } },
@@ -66,7 +87,7 @@ function say(text: string): Record<string, unknown>[] {
 		{ type: "message_update", assistantMessageEvent: { type: "text_end", contentIndex: 0, content: text } },
 		{
 			type: "message_end",
-			message: { role: "assistant", content: [{ type: "text", text }], stopReason: "stop" },
+			message: { role: "assistant", content: [{ type: "text", text }], stopReason, usage: usage(text.length * 2) },
 		},
 	];
 }
@@ -98,13 +119,30 @@ function run(
 	];
 }
 
+/**
+ * A written run, on the wire and on a clock.
+ *
+ * Recordings carry pi's own timestamps; written events have none, so a `done`
+ * would have no duration to show. The clock starts a few minutes ago and walks
+ * forward, spending longer on a tool than on a message, which is what makes a
+ * replayed run read like a run rather than like an instant.
+ */
+function script(events: Record<string, unknown>[]): ServerMsg[] {
+	let at = Date.now() - 4 * 60_000;
+	return events.map((event) => {
+		at += event.type === "tool_execution_end" ? 2400 : 500;
+		const message = event.message as Record<string, unknown> | undefined;
+		return wire(message ? { ...event, message: { ...message, timestamp: at } } : event);
+	});
+}
+
 const written: Scenario[] = [
 	{
 		id: "tool-headers",
 		name: "Tool rows",
 		note: "Every rule in toolSummary.ts on one screen. The last two tools have no rule, so they keep the bare tool name — that is the correct outcome. Narrow the width slider to find where a line gives out.",
 		load: async () =>
-			[
+			script([
 				{ type: "agent_start" },
 				ask("Take a walk around this repository."),
 				...run("h1", "ls", {}, ["conversation.js\nserver.ts\nweb\n"]),
@@ -123,14 +161,14 @@ const written: Scenario[] = [
 				...run("h13", "some_extension_tool", { whatever: 1 }, ["ok"]),
 				...say("That is the walk around."),
 				{ type: "agent_settled" },
-			].map(wire),
+			]),
 	},
 	{
 		id: "tools",
 		name: "Tool chain",
 		note: "Four tools in one turn. This is where you see whether the collapsed cards alone tell you what happened.",
 		load: async () =>
-			[
+			script([
 				{ type: "agent_start" },
 				ask("Explain how a conversation is built in this project."),
 				...say("Let me look."),
@@ -144,14 +182,14 @@ const written: Scenario[] = [
 				]),
 				...say("`applyEvent` in `conversation.js` folds session events into items. Both paths live in one file so a live stream and a resumed session end up the same."),
 				{ type: "agent_settled" },
-			].map(wire),
+			]),
 	},
 	{
 		id: "long-output",
 		name: "Long output · failed tool",
-		note: "A result longer than the screen, and a tool that died. ToolOutput's max-h-72 is tested here.",
+		note: "A result longer than the screen, a tool that died, and a run cut off at the token limit — the footer should say `truncated`, because a cut answer reads exactly like a finished one.",
 		load: async () =>
-			[
+			script([
 				{ type: "agent_start" },
 				ask("Run the tests and fix what fails."),
 				...run(
@@ -164,16 +202,16 @@ const written: Scenario[] = [
 					isError: true,
 				}),
 				...run("t3", "edit", { path: "web/src/store.ts", edits: [{ oldText: "…", newText: "…" }] }, [""]),
-				...say("`web/src/nope.ts` did not exist."),
+				...say("`web/src/nope.ts` did not exist, and this answer was cut off at the token limit before it could say what to do about", "length"),
 				{ type: "agent_settled" },
-			].map(wire),
+			]),
 	},
 	{
 		id: "notices",
 		name: "Rules · retry · compaction",
 		note: "Notices and done markers — the rules drawn across a conversation. Four of them stack up here, which is where it shows whether they mark the flow or cut it. A retry is one item being reworded, so play it slowly to watch the line change.",
 		load: async () =>
-			[
+			script([
 				{ type: "agent_start" },
 				ask("Let us continue this long conversation."),
 				{ type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "529 overloaded" },
@@ -190,14 +228,14 @@ const written: Scenario[] = [
 				{ type: "auto_retry_start", attempt: 1, maxAttempts: 2, delayMs: 2000, errorMessage: "529 overloaded" },
 				{ type: "auto_retry_end", success: false, attempt: 2, finalError: '429 {"error":{"message":"rate limit exceeded"}}' },
 				{ type: "agent_settled" },
-			].map(wire),
+			]),
 	},
 	{
 		id: "error",
 		name: "Provider error",
 		note: "Both paths: stopReason:error on message_end, and a top-level error event.",
 		load: async () =>
-			[
+			script([
 				{ type: "agent_start" },
 				ask("Read this very long file in full."),
 				{
@@ -212,7 +250,7 @@ const written: Scenario[] = [
 				},
 				{ type: "error", message: "ECONNRESET" },
 				{ type: "agent_settled" },
-			].map(wire),
+			]),
 	},
 	{
 		id: "thinking",
@@ -221,7 +259,7 @@ const written: Scenario[] = [
 		load: async () => {
 			const thought =
 				"The user asked how a conversation is built. applyEvent in conversation.js is the core, and store.ts projects it into something React can see. Both need to be mentioned.";
-			return [
+			return script([
 				{ type: "agent_start" },
 				ask("How is a conversation built?"),
 				{ type: "message_update", assistantMessageEvent: { type: "thinking_start", contentIndex: 0 } },
@@ -232,7 +270,7 @@ const written: Scenario[] = [
 				{ type: "message_update", assistantMessageEvent: { type: "thinking_end", contentIndex: 0, content: thought } },
 				...say("`applyEvent` in `conversation.js` folds, and `store.ts` projects."),
 				{ type: "agent_settled" },
-			].map(wire);
+			]);
 		},
 	},
 ];

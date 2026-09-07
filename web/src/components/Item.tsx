@@ -1,10 +1,10 @@
 import { memo } from "react";
-import { CircleCheckIcon, InfoIcon } from "lucide-react";
+import { InfoIcon } from "lucide-react";
 
 import type { Item } from "../types";
-import { Checkpoint, CheckpointIcon } from "./ai-elements/checkpoint";
 import { Message, MessageContent, MessageResponse } from "./ai-elements/message";
 import { ToolRow } from "./ToolRow";
+import { TurnFooter } from "./TurnFooter";
 
 /**
  * One conversation item.
@@ -49,31 +49,20 @@ export const ItemView = memo(function ItemView({ item }: { item: Item }) {
 				</div>
 			);
 
-		// The end of a run. A rule with the word on it, rather than a line of
-		// dashes centred in the column: a turn boundary is a mark in the flow,
-		// and the flow is what the eye follows down the left edge.
+		// The end of a run.
 		case "done":
-			return (
-				<Checkpoint>
-					<CheckpointIcon>
-						<CircleCheckIcon className="size-3.5 shrink-0" />
-					</CheckpointIcon>
-					<span className="px-1.5 text-xs">done</span>
-				</Checkpoint>
-			);
+			return <TurnFooter item={item} />;
 
 		// A notice is something that happened to the conversation without being
-		// asked for — a compaction, a retry. Same mark as `done`, because it is
-		// the same kind of thing: not a turn, but worth knowing a turn passed
-		// through it. Amber said "warning", which a finished compaction is not.
+		// asked for — a compaction, a retry. A sentence, so it is allowed to wrap
+		// across the full width, with the icon held to its first line. Amber said
+		// "warning", which a finished compaction is not.
 		default:
 			return (
-				<Checkpoint>
-					<CheckpointIcon>
-						<InfoIcon className="size-3.5 shrink-0" />
-					</CheckpointIcon>
-					<span className="px-1.5 text-xs">{item.text}</span>
-				</Checkpoint>
+				<div className="flex items-start gap-1.5 px-1 text-sm text-muted-foreground">
+					<InfoIcon className="mt-0.5 size-3.5 shrink-0" />
+					<span className="min-w-0">{item.text}</span>
+				</div>
 			);
 	}
 });

@@ -14,6 +14,12 @@
  * @property {unknown} [args]    tool arguments
  * @property {string|null} [result]
  * @property {boolean} [isError]
+ * @property {number} [startedAt]  ms, on `done`: when the run's first message was written
+ * @property {number} [endedAt]    ms, on `done`: when its last one was
+ * @property {string} [stopReason] on `done`: why the run's last message stopped
+ * @property {number} [tokens]     on `done`: tokens the run billed, across its messages
+ * @property {number} [cost]       on `done`: what it cost, in dollars
+ * @property {string} [answer]     on `done`: what the run said, for copying
  */
 
 /** Concatenate the text parts of a message content array. */
@@ -64,6 +70,41 @@ const COMPACTION_REASON = {
 	overflow: "context overflow",
 };
 
+/** Widen the run's span to include a message, if it came with a time. */
+function stamp(state, message) {
+	const at = message?.timestamp;
+	if (typeof at !== "number") return;
+	if (state.runStartedAt === null || at < state.runStartedAt) state.runStartedAt = at;
+	if (state.runEndedAt === null || at > state.runEndedAt) state.runEndedAt = at;
+}
+
+/** Add a message's usage to the run's, and take its ending as the run's so far. */
+function bill(state, message) {
+	if (message?.role !== "assistant") return;
+	const usage = message.usage;
+	if (typeof usage?.totalTokens === "number") state.runTokens += usage.totalTokens;
+	if (typeof usage?.cost?.total === "number") state.runCost += usage.cost.total;
+	// The last assistant message of a run is the one that says how it ended; the
+	// ones before it stopped for `toolUse` on the way here.
+	if (typeof message.stopReason === "string") state.runStopReason = message.stopReason;
+}
+
+/**
+ * What the run said, for whoever wants to copy it.
+ *
+ * Read back off the items rather than accumulated as the text streams: the
+ * items are already the answer, and a second copy kept alongside them is a
+ * second copy to keep in step.
+ */
+function answerOf(items) {
+	const said = [];
+	for (let i = items.length - 1; i >= 0; i--) {
+		if (items[i].kind === "done") break;
+		if (items[i].kind === "assistant" && items[i].text) said.unshift(items[i].text);
+	}
+	return said.join("\n\n");
+}
+
 export function createConversation() {
 	return {
 		/** @type {Item[]} */
@@ -79,6 +120,25 @@ export function createConversation() {
 		openRetry: null,
 		/** The notice tracking a compaction in progress, if any. */
 		openCompaction: null,
+		/**
+		 * When the messages of the run in flight were written, in ms.
+		 *
+		 * Taken from the messages themselves rather than read off a clock here:
+		 * a reducer that calls Date.now() cannot be replayed, and a recording
+		 * would then produce a different conversation every time it was run.
+		 */
+		runStartedAt: null,
+		runEndedAt: null,
+		/**
+		 * What the run in flight has spent, and how its last message ended.
+		 *
+		 * Summed across messages rather than taken from the last one: a turn that
+		 * calls tools is several assistant messages, each billed, and the last of
+		 * them is usually the cheapest.
+		 */
+		runTokens: 0,
+		runCost: 0,
+		runStopReason: null,
 	};
 }
 
@@ -115,9 +175,15 @@ export function applyEvent(state, event) {
 	switch (event.type) {
 		case "agent_start":
 			state.status = "working";
+			state.runStartedAt = null;
+			state.runEndedAt = null;
+			state.runTokens = 0;
+			state.runCost = 0;
+			state.runStopReason = null;
 			break;
 
 		case "message_start":
+			stamp(state, event.message);
 			if (event.message?.role === "user") {
 				const text = textOf(event.message.content);
 				if (text) add({ kind: "user", text });
@@ -143,6 +209,8 @@ export function applyEvent(state, event) {
 		}
 
 		case "message_end":
+			stamp(state, event.message);
+			bill(state, event.message);
 			// Provider failures arrive here rather than as a thrown error.
 			if (event.message?.stopReason === "error") {
 				add({ kind: "error", text: errorText(event.message.errorMessage ?? "unknown error") });
@@ -236,9 +304,25 @@ export function applyEvent(state, event) {
 			}
 			break;
 
+		// What the run cost, how long it took, when it ended, and the answer it
+		// produced — everything that is only true of a whole run, on the one
+		// item that marks the end of one.
 		case "agent_settled":
 			state.status = "idle";
-			add({ kind: "done" });
+			add({
+				kind: "done",
+				startedAt: state.runStartedAt,
+				endedAt: state.runEndedAt,
+				stopReason: state.runStopReason,
+				// Zero is nothing to say rather than a fact about the run: a
+				// provider that reports no usage should read the same as silence.
+				tokens: state.runTokens || null,
+				cost: state.runCost || null,
+				// Its own field rather than `text`, which everywhere else in this
+				// type means the thing on screen. A `done` shows figures; the
+				// answer rides along only so it can be copied.
+				answer: answerOf(state.items),
+			});
 			break;
 
 		case "error":
