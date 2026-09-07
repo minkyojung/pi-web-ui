@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "cn";
+import { CalendarDays } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,8 @@ type Props = {
   onSelect: (id: number) => void;
   onFlags: (id: number, patch: Flags) => void;
   onSave: (url: string) => Promise<{ created: boolean; row: ListItem }>;
+  today: boolean;
+  onToday: () => void;
 };
 
 /**
@@ -31,7 +34,7 @@ const VIEWS = {
 
 type View = keyof typeof VIEWS;
 
-export function List({ items, selectedId, onSelect, onFlags, onSave }: Props) {
+export function List({ items, selectedId, onSelect, onFlags, onSave, today, onToday }: Props) {
   const [view, setView] = useState<View>("inbox");
   const shown = useMemo(() => items.filter(VIEWS[view].keep), [items, view]);
   const queued = useMemo(() => items.filter(VIEWS.queue.keep).length, [items]);
@@ -74,6 +77,25 @@ export function List({ items, selectedId, onSelect, onFlags, onSave }: Props) {
         <SaveBox onSave={onSave} />
         <Settings />
       </div>
+      {/* Above the list rather than beside Inbox and Queue: those are three views
+          of one library, and the day is not a fourth. It stays put while the
+          list scrolls, since it is where the morning starts. */}
+      <button
+        type="button"
+        data-slot="today-row"
+        onClick={onToday}
+        data-active={today}
+        aria-current={today ? "page" : undefined}
+        className={cn(
+          "flex shrink-0 cursor-default items-center gap-2.5 border-b px-4 py-2 text-left text-sm outline-none transition-colors",
+          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+          "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset",
+          "data-[active=true]:bg-accent data-[active=true]:text-accent-foreground",
+        )}
+      >
+        <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
+        Today
+      </button>
       <div className="flex-1 overflow-y-auto overscroll-contain">
       {days.map((day) => (
         <section key={day.label}>

@@ -7,17 +7,27 @@ import { RawView } from "./components/RawView";
 import { Article } from "./components/reader/Article";
 import { List } from "./components/reader/List";
 import { SettingsBar } from "./components/SettingsBar";
+import { Today } from "./components/today/Today";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 import { TooltipProvider } from "./components/ui/tooltip";
 import type { Flags } from "./components/reader/RowActions";
 import type { FullItem, ListItem } from "./reader";
 import { getConnection, getItems, subscribe } from "./store";
 
-/** The address carries the open piece, so a reload lands where you left off. */
-const idFromHash = () => {
+/**
+ * The address carries what is open — a piece by id, or the day's page — so a
+ * reload lands where you left off.
+ */
+type Route = { kind: "today" } | { kind: "piece"; id: number } | { kind: "none" };
+
+const routeFromHash = (): Route => {
+	if (location.hash === "#today") return { kind: "today" };
 	const n = Number(location.hash.slice(1));
-	return Number.isInteger(n) && n > 0 ? n : null;
+	return Number.isInteger(n) && n > 0 ? { kind: "piece", id: n } : { kind: "none" };
 };
+
+const hashFor = (route: Route) =>
+	route.kind === "today" ? "#today" : route.kind === "piece" ? `#${route.id}` : "";
 
 /**
  * Four columns: rail, list, the piece, and pi. pi is not an assistant off to
@@ -61,11 +71,15 @@ export function App() {
 						selectedId={lib.selectedId}
 						onSelect={lib.select}
 						onFlags={lib.setFlags}
+						today={lib.today}
+						onToday={lib.openToday}
 					/>
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel id="article" minSize="30%" className="min-w-0">
-					<Article item={lib.current} onRefetch={lib.refetch} />
+					{/* The middle column draws a piece or the day; the list and pi do not
+					    know which, and neither does the column's size. */}
+					{lib.today ? <Today /> : <Article item={lib.current} onRefetch={lib.refetch} />}
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel
@@ -97,7 +111,8 @@ export function App() {
  */
 function useLibrary() {
 	const [items, setItems] = useState<ListItem[]>([]);
-	const [selectedId, setSelectedId] = useState<number | null>(idFromHash);
+	const [route, setRoute] = useState<Route>(routeFromHash);
+	const selectedId = route.kind === "piece" ? route.id : null;
 	const [current, setCurrent] = useState<FullItem | null>(null);
 	// Attached again whenever another piece is opened: the common case is asking
 	// about what is on screen, and detaching is about this question, not for good.
@@ -133,7 +148,7 @@ function useLibrary() {
 		const row = body as ListItem;
 		const created = r.status === 201;
 		setItems((prev) => (created ? [row, ...prev] : prev.map((it) => (it.id === row.id ? row : it))));
-		if (!created) setSelectedId(row.id);
+		if (!created) setRoute({ kind: "piece", id: row.id });
 		return { created, row };
 	}, []);
 
@@ -163,14 +178,25 @@ function useLibrary() {
 	}, [online]);
 
 	useEffect(() => {
-		const onHash = () => setSelectedId(idFromHash());
+		const onHash = () => setRoute(routeFromHash());
 		addEventListener("hashchange", onHash);
 		return () => removeEventListener("hashchange", onHash);
 	}, []);
 
+	// The hash follows the route rather than each place that changes it, so the
+	// day's page and a piece are written the same way.
 	useEffect(() => {
-		if (selectedId == null) return;
-		if (idFromHash() !== selectedId) location.hash = String(selectedId);
+		const want = hashFor(route);
+		if (want && location.hash !== want) location.hash = want;
+	}, [route]);
+
+	useEffect(() => {
+		// Nothing open also means nothing attached: the composer offers what is on
+		// screen, and on the day's page that is not a piece.
+		if (selectedId == null) {
+			setCurrent(null);
+			return;
+		}
 		setCurrent(null);
 		setDetached(false);
 		fetch(`/api/items/${selectedId}`)
@@ -183,10 +209,12 @@ function useLibrary() {
 	return {
 		items,
 		selectedId,
+		today: route.kind === "today",
 		current,
 		attached: detached ? null : current,
 		detach: () => setDetached(true),
-		select: setSelectedId,
+		select: (id: number) => setRoute({ kind: "piece", id }),
+		openToday: () => setRoute({ kind: "today" }),
 		setFlags,
 		save,
 		refetch,

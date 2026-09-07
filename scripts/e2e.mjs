@@ -21,7 +21,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -153,7 +153,20 @@ async function openPage(devtoolsPort, url) {
 	// looked at. Worth knowing that it is needed, and not a bug being papered
 	// over: a real background tab really does stop drawing, on purpose.
 	await call("Emulation.setFocusEmulationEnabled", { enabled: true });
-	return { evaluate, errors, close: () => socket.close() };
+	/**
+	 * A picture of the page, written where SHOTS points and nowhere otherwise.
+	 *
+	 * The checks below read the page as text, which is the right way to assert
+	 * on it — but a section can be present, named and empty, and text cannot
+	 * tell you the layout came out wrong. This is for looking, by hand.
+	 */
+	const shot = async (name) => {
+		if (!process.env.SHOTS) return;
+		const { result } = await call("Page.captureScreenshot", { format: "png" });
+		mkdirSync(process.env.SHOTS, { recursive: true });
+		writeFileSync(join(process.env.SHOTS, `${name}.png`), Buffer.from(result.data, "base64"));
+	};
+	return { evaluate, shot, errors, close: () => socket.close() };
 }
 
 /**
@@ -281,6 +294,48 @@ check("changing your mind about it costs nothing", async ({ app }) => {
 	// The text stays in the box: it was copied in, and cancelling is about
 	// where it will be sent, not about what was typed.
 	assert.ok(await app.evaluate(`document.querySelector('textarea')?.value?.includes("rewrite the reducer")`));
+});
+
+/**
+ * The day's page, in the column the article usually has.
+ *
+ * Its sections are named and in a fixed order, and that order is the whole
+ * design — so the check is the order, not that something rendered.
+ */
+check("the list opens the day's page, with its sections in order", async ({ app }) => {
+	assert.equal(
+		await app.evaluate(`(() => { const b = document.querySelector('[data-slot="today-row"]'); if (!b) return false; b.click(); return true; })()`),
+		true,
+	);
+	await until("the day's page", () => app.evaluate("!!document.getElementById('today')"));
+	assert.equal(
+		await app.evaluate(`[...document.querySelectorAll('#today [data-slot="today-section"]')].map((s) => s.dataset.title).join(",")`),
+		"Time,To do,Brief,Read today,Wrap up",
+	);
+	assert.equal(await app.evaluate("location.hash"), "#today");
+	// Waited for rather than asserted on: the hours come from a record this
+	// machine may not have handed over, and the section says which of the two
+	// happened. That it stopped waiting is the part that is always true.
+	await until("the day to answer", () =>
+		app.evaluate(`!document.querySelector('#today [data-title="Time"] [data-slot="skeleton"]')`),
+	);
+	// A bar with width, not a bar element: the chart draws its rectangles at
+	// nothing and grows them, so an element is on the page a second before
+	// there is anything to look at.
+	await until("a bar with something in it", () =>
+		app.evaluate(
+			`[...document.querySelectorAll('#today .recharts-bar-rectangle path')].some((p) => p.getBBox().width > 2)`,
+		),
+	);
+	await app.shot("today");
+});
+
+// The address, not a row: what the library holds here is whatever the machine
+// happens to have read, and a check that needs a piece to exist would pass or
+// fail on that rather than on the routing this is about.
+check("and leaves the day's page again when the address does", async ({ app }) => {
+	await app.evaluate(`location.hash = ""`);
+	await until("the piece column", () => app.evaluate("!document.getElementById('today')"));
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {

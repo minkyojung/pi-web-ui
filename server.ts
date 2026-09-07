@@ -34,6 +34,7 @@ import { modeToolNames } from "./toolModes.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
+import { readUsage } from "./today/usage.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 /**
@@ -636,6 +637,10 @@ const server = createServer(async (req, res) => {
 			}
 		}
 		if (req.method !== "GET") return json(405, { error: "read only" });
+		// The day, section by section, in one answer. They are all about the same
+		// date, and a page that fills in five times is a page that moves under
+		// whoever is reading it.
+		if (pathname === "/api/today") return json(200, { usage: readUsage() });
 		if (pathname === "/api/settings") return json(200, readSettings());
 		if (pathname === "/api/subscriptions") {
 			return json(200, { subscriptions: describeSubscriptions(readSubscriptions()) });
