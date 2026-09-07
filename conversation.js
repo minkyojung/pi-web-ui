@@ -16,6 +16,7 @@
  * @property {boolean} [isError]
  * @property {{diff?: string, omittedLines?: number, fullOutputPath?: string, limit?: number}} [details]
  *   on `tool`: what the result carried besides its text
+ * @property {string} [entryId]    on `user`: where this message sits in the session tree
  * @property {number} [startedAt]  ms, on `done`: when the run's first message was written
  * @property {number} [endedAt]    ms, on `done`: when its last one was
  * @property {string} [stopReason] on `done`: why the run's last message stopped
@@ -417,12 +418,19 @@ export function applyEvent(state, event) {
  * The same conversation, rebuilt from a session's stored messages.
  *
  * A resumed session emits no events for the history it already has, so this is
- * the only way to show it. `agent_settled` has no counterpart in stored
- * messages, so no `done` items are produced.
+ * the only way to show it.
+ *
+ * `entryIdOf` says where a message sits in the session tree, which is what a
+ * user message needs to be offered its alternatives. It is passed rather than
+ * looked up because only the server can read a tree, and it is keyed on the
+ * message object rather than on position because pi hands the same object to
+ * the agent and to the session file — it says so itself, and relies on it. A
+ * conversation folded from live events has no ids and does not need any: a
+ * message just sent has nothing to be an alternative to.
  *
  * @returns {Item[]}
  */
-export function itemsFromMessages(messages) {
+export function itemsFromMessages(messages, entryIdOf) {
 	/** @type {Item[]} */
 	const items = [];
 	const toolItems = new Map();
@@ -453,7 +461,14 @@ export function itemsFromMessages(messages) {
 			settle();
 			stamp(run, message);
 			const text = textOf(message.content);
-			if (text) items.push({ kind: "user", text });
+			if (text) {
+				const item = { kind: "user", text };
+				// Set only when there is one, so an item folded from events and the
+				// same item read back from a file stay comparable.
+				const entryId = entryIdOf?.(message);
+				if (entryId) item.entryId = entryId;
+				items.push(item);
+			}
 		} else if (message.role === "assistant") {
 			// Live, the same two numbers come off message_start and message_end,
 			// and a tool result is not a message there — so it is not one here.

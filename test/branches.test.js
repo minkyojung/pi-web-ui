@@ -4,6 +4,7 @@ import test from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 import { branchPoints } from "../branches.ts";
+import { itemsFromMessages } from "../conversation.js";
 
 /**
  * Sessions built with pi's own SessionManager rather than by hand.
@@ -118,4 +119,35 @@ test("only the ways of asking count, not what came back", () => {
 	s.appendMessage(replied("B"));
 
 	assert.deepEqual(branchPoints(s), []);
+});
+
+test("the alternatives found in the tree land on the message they belong to", () => {
+	const s = session();
+	const first = s.appendMessage(said("fix this"));
+	s.appendMessage(replied("A"));
+	reask(s, first);
+	s.appendMessage(said("fix this, but shorter"));
+	s.appendMessage(replied("B"));
+
+	// What the server does: the same message object is in the agent's list and
+	// in the session file, so identity is what carries the tree position across.
+	const ids = new Map();
+	for (const entry of s.buildContextEntries()) if (entry.type === "message") ids.set(entry.message, entry.id);
+	const items = itemsFromMessages(s.buildSessionContext().messages, (message) => ids.get(message));
+
+	const [point] = branchPoints(s);
+	const user = items.find((item) => item.kind === "user");
+	assert.equal(user.text, "fix this, but shorter");
+	// Without this the arrows would have to be matched by counting, which is
+	// right until the day one of the two lists skips something.
+	assert.equal(user.entryId, point.entryId);
+});
+
+test("a conversation folded without a tree to read carries no positions", () => {
+	const s = session();
+	s.appendMessage(said("one"));
+	s.appendMessage(replied("A"));
+	for (const item of itemsFromMessages(s.buildSessionContext().messages)) {
+		assert.ok(!("entryId" in item), item.kind);
+	}
 });

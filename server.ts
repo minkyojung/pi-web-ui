@@ -241,7 +241,15 @@ function usage() {
  * this the browser would show an empty conversation.
  */
 function snapshot() {
-	return { type: "snapshot", items: itemsFromMessages(session().messages) };
+	// The same objects, not copies: pi hands the message the agent holds to the
+	// session file — "keeps agent state ... and persistence in sync", as it puts
+	// it — so identity is what ties a message on screen to its place in the tree.
+	// Position would work today and break the day one of them is filtered.
+	const ids = new Map<unknown, string>();
+	for (const entry of session().sessionManager.buildContextEntries()) {
+		if (entry.type === "message") ids.set(entry.message, entry.id);
+	}
+	return { type: "snapshot", items: itemsFromMessages(session().messages, (message: unknown) => ids.get(message)) };
 }
 
 /**
