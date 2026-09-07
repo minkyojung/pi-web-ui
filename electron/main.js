@@ -181,6 +181,23 @@ function buildMenu(workdir) {
  */
 const devUrl = process.env.DEV_URL;
 
+/**
+ * The window has no title bar of its own, so the page draws the top row and has
+ * to know two things the DOM cannot see for itself: whether it is inside the
+ * shell at all — the same page served to a browser tab has no traffic lights to
+ * leave room for — and whether those lights are on screen right now, because
+ * full screen takes them away and the gap held open for them would be a hole.
+ *
+ * A class on <html> rather than IPC: there is no preload script, and adding one
+ * to carry a single boolean would cost more than it explains.
+ */
+function markTrafficLights(window) {
+	const showing = process.platform === "darwin" && !window.isFullScreen();
+	window.webContents
+		.executeJavaScript(`document.documentElement.classList.toggle("traffic-lights", ${showing})`)
+		.catch(() => {});
+}
+
 async function main() {
 	let url;
 	let workdirForTitle = process.cwd();
@@ -205,10 +222,21 @@ async function main() {
 		show: false,
 		// The agent acts on this folder, so it should never be a guess.
 		title: devUrl ? "pi — dev" : `pi — ${basename(workdirForTitle)}`,
+		// The columns are the app. A title bar above them would be a fourth band
+		// of chrome saying what the folder menu already says, so it is dropped and
+		// the traffic lights are dropped onto the list's own header instead —
+		// 'hidden' rather than 'hiddenInset' because only the former lets us say
+		// where, and the lights have to line up with a row we chose the height of.
+		...(process.platform === "darwin"
+			? { titleBarStyle: "hidden", trafficLightPosition: { x: 20, y: 16 } }
+			: {}),
 		// Nothing here needs node in the renderer: it talks to the server over a
 		// websocket like the browser does.
 		webPreferences: { nodeIntegration: false, contextIsolation: true },
 	});
+	window.webContents.on("did-finish-load", () => markTrafficLights(window));
+	window.on("enter-full-screen", () => markTrafficLights(window));
+	window.on("leave-full-screen", () => markTrafficLights(window));
 
 	const cancel = new AbortController();
 	window.on("closed", () => cancel.abort());

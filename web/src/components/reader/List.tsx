@@ -48,7 +48,9 @@ export function List({ items, selectedId, onSelect, onFlags, onSave }: Props) {
 
   return (
     <nav className="flex h-full flex-col border-r">
-      <div className="flex shrink-0 items-center gap-1 border-b px-2 py-1.5">
+      {/* The window's own top-left corner: the traffic lights sit in this row,
+          which is why it has a fixed height rather than one its buttons decide. */}
+      <div className="drag-region titlebar-inset flex h-11 shrink-0 items-center gap-1 border-b px-2">
         {(Object.keys(VIEWS) as View[]).map((key) => (
           <Button
             key={key}

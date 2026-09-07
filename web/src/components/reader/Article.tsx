@@ -24,13 +24,39 @@ export function Article({
     return () => el.removeEventListener("scroll", save);
   }, [item?.id]);
 
-  if (!item)
-    return <div className="grid h-full place-items-center text-sm text-muted-foreground">Pick something on the left</div>;
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Level with the headers either side of it, and empty when nothing is
+          open: the row is here to carry the window's drag area and to keep the
+          three columns starting on the same line, not to announce itself. */}
+      <div className="drag-region flex h-11 shrink-0 items-center gap-2 border-b px-4 text-xs text-muted-foreground">
+        {/* The title, not the source: the piece already prints its origin under
+            the headline, and this line is worth having only once the headline
+            has been scrolled past. */}
+        {item && <span className="truncate">{item.title}</span>}
+      </div>
+      {item ? (
+        <Piece item={item} onRefetch={onRefetch} box={box} />
+      ) : (
+        <div className="grid flex-1 place-items-center text-sm text-muted-foreground">Pick something on the left</div>
+      )}
+    </div>
+  );
+}
 
+function Piece({
+  item,
+  onRefetch,
+  box,
+}: {
+  item: FullItem;
+  onRefetch: (id: number) => Promise<void>;
+  box: React.RefObject<HTMLDivElement | null>;
+}) {
   return (
     // overflow-x is clip, not left alone: with only overflow-y set, CSS computes
     // the other axis to auto, and a single wide figure slides the whole article.
-    <div ref={box} className="h-full overflow-y-auto overflow-x-clip overscroll-contain">
+    <div ref={box} className="min-h-0 flex-1 overflow-y-auto overflow-x-clip overscroll-contain">
       <article className="reading-canvas mx-auto max-w-[80rem] px-8 py-10">
         <header className="reading mb-8">
           <h1 className="reading font-serif text-3xl leading-tight font-semibold">{item.title}</h1>

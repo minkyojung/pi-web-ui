@@ -6,7 +6,9 @@ import { send } from "../ws";
 import { Button } from "./ui/button";
 import { NativeSelect } from "./ui/native-select";
 
-const BAR = "flex flex-wrap items-center gap-3 border-b px-3 py-1.5 text-xs";
+// One height with the other two column headers, so the top of the window reads
+// as a single row. Fixed rather than grown into, which also rules out wrapping.
+const BAR = "drag-region flex h-11 shrink-0 items-center gap-3 border-b px-3 text-xs";
 
 /**
  * Reconnection is automatic and unattended — a backoff of at most five seconds,

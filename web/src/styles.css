@@ -200,3 +200,22 @@
 
 /* A caption is prose. It reads at the measure even under a figure twice as wide. */
 .reading figcaption { max-width: var(--measure); margin-inline: auto; }
+
+/*
+ * The window's top row. With the title bar hidden the shell no longer offers
+ * anywhere to grab, so the column headers take that over — but a drag region
+ * swallows every click inside it, which would make the controls sitting in
+ * those same headers unpressable. Hence the exception for anything you can act
+ * on; it has to be an explicit list because "is interactive" is not a selector.
+ */
+.drag-region { -webkit-app-region: drag; app-region: drag; }
+.drag-region :is(a, button, input, select, textarea, label, [role="button"]) {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* Room for the traffic lights, held open only while there are traffic lights:
+   the class is absent in a browser tab and while full screen. 88px clears the
+   three buttons at the inset the shell asks for, plus a gap — flush against
+   them, the first tab reads as a fourth button. */
+.traffic-lights .titlebar-inset { padding-left: 88px; }
