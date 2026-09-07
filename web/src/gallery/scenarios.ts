@@ -101,12 +101,12 @@ function run(
 const written: Scenario[] = [
 	{
 		id: "tool-headers",
-		name: "툴 헤더 요약",
-		note: "toolSummary.ts 의 규칙 전부, 한 화면에. 마지막 두 개는 규칙이 없는 툴이라 툴 이름만 남아야 한다 — 그게 정상이다. 폭 슬라이더를 좁혀서 어디서 줄이 넘치는지 본다.",
+		name: "Tool rows",
+		note: "Every rule in toolSummary.ts on one screen. The last two tools have no rule, so they keep the bare tool name — that is the correct outcome. Narrow the width slider to find where a line gives out.",
 		load: async () =>
 			[
 				{ type: "agent_start" },
-				ask("이 저장소를 한 바퀴 둘러봐줘."),
+				ask("Take a walk around this repository."),
 				...run("h1", "ls", {}, ["conversation.js\nserver.ts\nweb\n"]),
 				...run("h2", "ls", { path: "web/src/components" }, ["Composer.tsx\nItem.tsx\n"]),
 				...run("h3", "find", { pattern: "**/*.test.js" }, ["test/conversation.test.js\n"]),
@@ -116,12 +116,12 @@ const written: Scenario[] = [
 				...run("h7", "edit", { path: "web/src/store.ts", edits: [{ oldText: "a", newText: "b" }] }, ["1 edit applied"]),
 				...run("h8", "edit", { path: "web/src/gallery/scenarios.ts", edits: [1, 2, 3].map(() => ({ oldText: "a", newText: "b" })) }, ["3 edits applied"]),
 				...run("h9", "bash", { command: "npm test 2>&1 | tail -5" }, ["# pass 104\n"]),
-				...run("h10", "bash", { command: `echo ${"긴 명령 ".repeat(20)}` }, ["…"]),
-				...run("h11", "set_gist", { id: 12, gist: "한 줄 요약" }, ["12 · 어떤 글\n> 한 줄 요약"]),
-				// No rule for these two, so the card keeps the plain tool name.
-				...run("h12", "ask_user", { question: "계속할까요?" }, ["네"]),
+				...run("h10", "bash", { command: `echo ${"a long command ".repeat(20)}` }, ["…"]),
+				...run("h11", "set_gist", { id: 12, gist: "One line about it" }, ["12 · Some piece\n> One line about it"]),
+				// No rule for these two, so the row keeps the plain tool name.
+				...run("h12", "ask_user", { question: "Carry on?" }, ["yes"]),
 				...run("h13", "some_extension_tool", { whatever: 1 }, ["ok"]),
-				...say("한 바퀴 돌았습니다."),
+				...say("That is the walk around."),
 				{ type: "agent_settled" },
 			].map(wire),
 	},
@@ -170,8 +170,8 @@ const written: Scenario[] = [
 	},
 	{
 		id: "notices",
-		name: "Retry · compaction",
-		note: "Notice items. Today they fall through Item.tsx's default branch into a single amber line.",
+		name: "Rules · retry · compaction",
+		note: "Notices and done markers — the rules drawn across a conversation. Four of them stack up here, which is where it shows whether they mark the flow or cut it. A retry is one item being reworded, so play it slowly to watch the line change.",
 		load: async () =>
 			[
 				{ type: "agent_start" },
@@ -179,9 +179,16 @@ const written: Scenario[] = [
 				{ type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "529 overloaded" },
 				{ type: "auto_retry_start", attempt: 2, maxAttempts: 3, delayMs: 4000, errorMessage: "529 overloaded" },
 				{ type: "auto_retry_end", success: true, attempt: 2 },
+				...say("Continuing."),
+				{ type: "agent_settled" },
+				ask("Keep going."),
 				{ type: "compaction_start", reason: "threshold" },
 				{ type: "compaction_end", reason: "threshold", result: { tokensBefore: 184320 }, aborted: false, willRetry: false },
-				...say("Continuing."),
+				...say("Compacted, and carrying on."),
+				{ type: "agent_settled" },
+				ask("Once more."),
+				{ type: "auto_retry_start", attempt: 1, maxAttempts: 2, delayMs: 2000, errorMessage: "529 overloaded" },
+				{ type: "auto_retry_end", success: false, attempt: 2, finalError: '429 {"error":{"message":"rate limit exceeded"}}' },
 				{ type: "agent_settled" },
 			].map(wire),
 	},
