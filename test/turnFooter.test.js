@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { applyEvent, createConversation, itemsFromMessages } from "../conversation.js";
-import { formatCost, formatDuration, formatTokens, stopNote, turnParts } from "../web/src/turn.ts";
+import { answerAbove, formatCost, formatDuration, formatTokens, stopNote, turnParts } from "../web/src/turn.ts";
 
 const at = (timestamp) => ({ role: "assistant", content: [], timestamp });
 
@@ -135,7 +135,7 @@ test("figures are written at the precision they are read at", () => {
 	assert.equal(formatCost(0), "");
 });
 
-test("the answer travels with the run that produced it, for copying", () => {
+test("the answer is read back off the run that produced it, for copying", () => {
 	const state = createConversation();
 	const run = (text) => {
 		applyEvent(state, { type: "agent_start" });
@@ -147,11 +147,13 @@ test("the answer travels with the run that produced it, for copying", () => {
 	};
 	run("first answer");
 	run("second answer");
-	const [first, second] = state.items.filter((item) => item.kind === "done");
-	assert.equal(first.answer, "first answer");
+	const dones = state.items.map((item, i) => (item.kind === "done" ? i : -1)).filter((i) => i >= 0);
+	assert.equal(answerAbove(state.items, dones[0]), "first answer");
 	// The second run copies its own answer, not everything said so far, and
 	// nothing a tool printed.
-	assert.equal(second.answer, "second answer");
+	assert.equal(answerAbove(state.items, dones[1]), "second answer");
+	// Nothing is carried on the item itself.
+	assert.equal(state.items[dones[0]].answer, undefined);
 });
 
 // ---------------------------------------------------------------------------
@@ -185,7 +187,6 @@ test("a resumed run is dated, billed and ended the same as a live one", () => {
 	assert.equal(done.tokens, 1440);
 	assert.equal(Math.round(done.cost * 10_000), 75);
 	assert.equal(done.stopReason, "length");
-	assert.equal(done.answer, "here");
 });
 
 test("a session file is cut into runs by its user messages", () => {
@@ -204,7 +205,6 @@ test("a session file is cut into runs by its user messages", () => {
 	// Each run is dated and copied on its own, not from the first message on.
 	assert.deepEqual([first.startedAt, first.endedAt], [1000, 2000]);
 	assert.deepEqual([second.startedAt, second.endedAt], [3000, 4000]);
-	assert.equal(second.answer, "second");
 });
 
 test("a user message with nothing after it closes no run", () => {

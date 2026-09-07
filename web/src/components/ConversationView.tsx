@@ -1,6 +1,10 @@
+import { useCallback, useRef } from "react";
+
+import { answerAbove } from "../turn";
 import type { Item } from "../types";
 import { Conversation as Scroller, ConversationContent, ConversationScrollButton } from "./ai-elements/conversation";
 import { ItemView } from "./Item";
+import { RunAnswer } from "./TurnFooter";
 
 /**
  * The scroll container. use-stick-to-bottom replaces the hand-rolled follow
@@ -13,16 +17,25 @@ import { ItemView } from "./Item";
  * one — would come with the module whether or not the export was used.
  */
 export function ConversationView({ items, children }: { items: Item[]; children?: React.ReactNode }) {
+	// Through a ref, so the lookup a footer holds does not change identity when
+	// the list does — a new one every render would re-render every finished run
+	// on every delta, which memoizing the rows exists to avoid.
+	const latest = useRef(items);
+	latest.current = items;
+	const answerAt = useCallback((index: number) => answerAbove(latest.current, index), []);
+
 	return (
-		<Scroller className="relative flex-1 overflow-y-auto">
-			<ConversationContent id="chat" className="flex flex-col gap-3 p-3">
-				{/* Items are only ever appended, never reordered, so the index is a stable key. */}
-				{items.map((item, i) => (
-					<ItemView key={i} item={item} />
-				))}
-				{children}
-			</ConversationContent>
-			<ConversationScrollButton />
-		</Scroller>
+		<RunAnswer value={answerAt}>
+			<Scroller className="relative flex-1 overflow-y-auto">
+				<ConversationContent id="chat" className="flex flex-col gap-3 p-3">
+					{/* Items are only ever appended, never reordered, so the index is a stable key. */}
+					{items.map((item, i) => (
+						<ItemView key={i} item={item} index={i} />
+					))}
+					{children}
+				</ConversationContent>
+				<ConversationScrollButton />
+			</Scroller>
+		</RunAnswer>
 	);
 }

@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { InfoIcon } from "lucide-react";
+import { CircleAlertIcon, InfoIcon } from "lucide-react";
 
 import type { Item } from "../types";
 import { Message, MessageContent, MessageResponse } from "./ai-elements/message";
@@ -19,7 +19,7 @@ import { TurnFooter } from "./TurnFooter";
  * Memoized on the item object, which the store replaces only when the reducer
  * says that item changed — so a delta re-renders the one row it landed in.
  */
-export const ItemView = memo(function ItemView({ item }: { item: Item }) {
+export const ItemView = memo(function ItemView({ item, index }: { item: Item; index: number }) {
 	switch (item.kind) {
 		case "user":
 			// Deliberately not markdown: a * or a # the user typed is literal.
@@ -46,16 +46,20 @@ export const ItemView = memo(function ItemView({ item }: { item: Item }) {
 		case "tool":
 			return <ToolRow item={item} />;
 
+		// A row like the rest of the column, since it is the same kind of thing —
+		// something that happened on the way to an answer. It keeps the
+		// destructive colour, which is what a border was being spent on.
 		case "error":
 			return (
-				<div className="rounded-md border border-destructive/50 px-3 py-2 text-destructive whitespace-pre-wrap">
-					{item.text}
+				<div className="flex items-start gap-1.5 px-1 text-sm text-destructive">
+					<CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+					<span className="min-w-0 whitespace-pre-wrap">{item.text}</span>
 				</div>
 			);
 
 		// The end of a run.
 		case "done":
-			return <TurnFooter item={item} />;
+			return <TurnFooter item={item} index={index} />;
 
 		// A notice is something that happened to the conversation without being
 		// asked for — a compaction, a retry. A sentence, so it is allowed to wrap

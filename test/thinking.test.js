@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { applyEvent, createConversation, itemsFromMessages } from "../conversation.js";
+import { answerAbove } from "../web/src/turn.ts";
 
 const think = (delta) => ({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta } });
 const speak = (delta) => ({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta } });
@@ -114,5 +115,5 @@ test("a thought does not end up in what the copy button copies", () => {
 		speak("This."),
 		{ type: "agent_settled" },
 	]);
-	assert.equal(state.items.at(-1).answer, "This.");
+	assert.equal(answerAbove(state.items, state.items.length - 1), "This.");
 });

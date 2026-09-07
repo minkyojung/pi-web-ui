@@ -95,3 +95,25 @@ export function turnParts({
 	}
 	return parts;
 }
+
+/**
+ * What the run above a `done` said.
+ *
+ * Read off the conversation when someone reaches for it, rather than carried on
+ * the item. Carrying it meant every run in a session file arrived with a second
+ * copy of its own answer inside the marker that ends it — seventeen per cent of
+ * a snapshot in one recording, and close to double the text of a conversation
+ * that is mostly prose, crossing the socket again on every reconnect to be read
+ * by nobody who did not click.
+ *
+ * Tool output is left out: someone reaching for a copy button wants the answer,
+ * not the work that produced it.
+ */
+export function answerAbove(items: { kind: string; text?: string }[], index: number): string {
+	const said = [];
+	for (let i = index - 1; i >= 0; i--) {
+		if (items[i].kind === "done") break;
+		if (items[i].kind === "assistant" && items[i].text) said.unshift(items[i].text);
+	}
+	return said.join("\n\n");
+}

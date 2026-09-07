@@ -20,13 +20,6 @@ export interface Item {
 	cost?: number;
 	/** On `done`: what the run said, carried so the footer can offer to copy it. */
 	answer?: string;
-	/**
-	 * Whether a tool is still running. Projected by the store from the reducer's
-	 * openTools; conversation.js has no such field. It is needed because a tool
-	 * writes partial output into `result` while it runs, so `result !== null`
-	 * does not mean finished.
-	 */
-	pending?: boolean;
 }
 
 export interface SessionInfo {

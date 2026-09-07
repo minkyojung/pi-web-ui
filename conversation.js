@@ -21,7 +21,6 @@
  * @property {string} [stopReason] on `done`: why the run's last message stopped
  * @property {number} [tokens]     on `done`: tokens the run billed, across its messages
  * @property {number} [cost]       on `done`: what it cost, in dollars
- * @property {string} [answer]     on `done`: what the run said, for copying
  */
 
 /** Concatenate the text parts of a message content array. */
@@ -134,7 +133,7 @@ function newRun() {
 	};
 }
 
-function doneItem(run, answer) {
+function doneItem(run) {
 	return {
 		kind: "done",
 		startedAt: run.runStartedAt,
@@ -144,10 +143,6 @@ function doneItem(run, answer) {
 		// that reports no usage should read the same as silence.
 		tokens: run.runTokens || null,
 		cost: run.runCost || null,
-		// Its own field rather than `text`, which everywhere else in this type
-		// means the thing on screen. A `done` shows figures; the answer rides
-		// along only so it can be copied.
-		answer,
 	};
 }
 
@@ -168,22 +163,6 @@ function bill(state, message) {
 	// The last assistant message of a run is the one that says how it ended; the
 	// ones before it stopped for `toolUse` on the way here.
 	if (typeof message.stopReason === "string") state.runStopReason = message.stopReason;
-}
-
-/**
- * What the run said, for whoever wants to copy it.
- *
- * Read back off the items rather than accumulated as the text streams: the
- * items are already the answer, and a second copy kept alongside them is a
- * second copy to keep in step.
- */
-function answerOf(items) {
-	const said = [];
-	for (let i = items.length - 1; i >= 0; i--) {
-		if (items[i].kind === "done") break;
-		if (items[i].kind === "assistant" && items[i].text) said.unshift(items[i].text);
-	}
-	return said.join("\n\n");
 }
 
 export function createConversation() {
@@ -419,12 +398,11 @@ export function applyEvent(state, event) {
 			}
 			break;
 
-		// What the run cost, how long it took, when it ended, and the answer it
-		// produced — everything that is only true of a whole run, on the one
-		// item that marks the end of one.
+		// What the run cost, how long it took and when it ended — everything that
+		// is only true of a whole run, on the one item that marks the end of one.
 		case "agent_settled":
 			state.status = "idle";
-			add(doneItem(state, answerOf(state.items)));
+			add(doneItem(state));
 			break;
 
 		case "error":
@@ -465,7 +443,7 @@ export function itemsFromMessages(messages) {
 	 * a smaller lie than a truncated answer that looks finished.
 	 */
 	const settle = () => {
-		if (running) items.push(doneItem(run, answerOf(items)));
+		if (running) items.push(doneItem(run));
 		run = newRun();
 		running = false;
 	};
