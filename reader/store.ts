@@ -27,6 +27,7 @@ export type Item = {
   url: string;
   title: string;
   source: string;
+  resolved_url?: string | null;
   external_id?: string | null;
   score?: number | null;
   comments?: number | null;
@@ -48,6 +49,12 @@ export type Meta = {
   url: string;
   title: string;
   source: string;
+  /**
+   * Where `url` ended up after redirects, when that is somewhere else. A short
+   * link, a newsletter's tracking hop and the page itself are one piece, and
+   * this is what lets a second copy of it be recognised as the first.
+   */
+  resolved_url?: string;
   published_at: string | null;
   score: number | null;
   comments: number | null;
@@ -90,6 +97,27 @@ function toRow(meta: Meta, gist: string | null, hasText: boolean): Row {
     gist,
     has_text: hasText ? 1 : 0,
   };
+}
+
+/**
+ * The form two urls are compared in. Not the form they are kept in: `url` is
+ * what was handed over and stays that way, so opening the original opens it
+ * exactly as it was found. This only decides whether two of them are the same
+ * piece — which they are across `www.`, a trailing slash, a fragment, and the
+ * tracking a newsletter or a share button tacks on.
+ */
+const TRACKING = /^(utm_|fbclid$|gclid$|ref$|ref_src$|mc_cid$|mc_eid$)/;
+
+export function normalize(url: string): string {
+  let u: URL;
+  try { u = new URL(url); } catch { return url; }
+  // 같은 글이 http로도 https로도 온다. 어느 쪽이 먼저 왔는지는 글의 정체가 아니다.
+  if (u.protocol === "http:") u.protocol = "https:";
+  u.hostname = u.hostname.toLowerCase().replace(/^www\./, "");
+  u.hash = "";
+  for (const key of [...u.searchParams.keys()]) if (TRACKING.test(key)) u.searchParams.delete(key);
+  u.searchParams.sort();
+  return u.toString().replace(/\/$/, "").replace(/\/\?/, "?");
 }
 
 // ---------------------------------------------------------------------------
@@ -192,8 +220,11 @@ export class Library {
   private cache = new Map<string, Cached>();
   /** id → file name, for the items that have a file. */
   private files = new Map<number, string>();
-  /** url → file name. Dedup asks by url, and only files need the lookup. */
-  private urls = new Map<string, string>();
+  /**
+   * normalize(url) → item, bodied or not, under its given url and its resolved
+   * one. Dedup asks here; anything it does not find is new.
+   */
+  private keys = new Map<string, Meta>();
   private dirty = false;
 
   constructor() {
@@ -220,7 +251,7 @@ export class Library {
     const names = readdirSync(LIBRARY_DIR).filter((n) => n.endsWith(".md"));
     const seen = new Set(names);
     this.files.clear();
-    this.urls.clear();
+    this.keys.clear();
     for (const name of names) {
       const path = join(LIBRARY_DIR, name);
       let key: string;
@@ -233,16 +264,22 @@ export class Library {
       const hit = this.cache.get(name);
       if (hit?.key === key) {
         this.files.set(hit.meta.id, name);
-        this.urls.set(hit.meta.url, name);
+        this.key(hit.meta);
         continue;
       }
       const parsed = parse(readFileSync(path, "utf8"));
       if (!parsed) continue;
       this.cache.set(name, { key, meta: parsed.meta, gist: parsed.gist });
       this.files.set(parsed.meta.id, name);
-      this.urls.set(parsed.meta.url, name);
+      this.key(parsed.meta);
     }
     for (const name of this.cache.keys()) if (!seen.has(name)) this.cache.delete(name);
+    for (const meta of Object.values(this.index.items)) this.key(meta);
+  }
+
+  private key(meta: Meta) {
+    this.keys.set(normalize(meta.url), meta);
+    if (meta.resolved_url) this.keys.set(normalize(meta.resolved_url), meta);
   }
 
   private metaOf(id: number): Meta | null {
@@ -252,9 +289,23 @@ export class Library {
 
   /** Every item, bodied or not, keyed by url — what dedup needs. */
   private byUrl(url: string): Meta | null {
-    const name = this.urls.get(url);
-    if (name) return this.cache.get(name)?.meta ?? null;
-    return this.index.items[url] ?? null;
+    return this.keys.get(normalize(url)) ?? null;
+  }
+
+  private rowOf(meta: Meta): Row {
+    const name = this.files.get(meta.id);
+    return toRow(meta, name ? (this.cache.get(name)?.gist ?? null) : null, !!name);
+  }
+
+  /**
+   * The item a url already is, or null. Unlike `see`, this changes nothing: a
+   * feed refreshing a score is one thing, someone asking "do I have this?"
+   * is another.
+   */
+  find(url: string): Row | null {
+    this.scan();
+    const meta = this.byUrl(url);
+    return meta ? this.rowOf(meta) : null;
   }
 
   /**
@@ -272,12 +323,15 @@ export class Library {
         comments: it.comments ?? existing.comments,
         comment_ids: it.comment_ids ?? existing.comment_ids,
       };
+      if (!next.resolved_url && it.resolved_url && it.resolved_url !== next.url)
+        next.resolved_url = it.resolved_url;
       // 아무것도 안 바뀌었으면 안 쓴다. 안 그러면 한 번 돌 때마다
       // 서재의 모든 파일이 다시 쓰이고, 파일 시각이 전부 오늘이 된다.
       const changed = next.title !== existing.title
         || next.score !== existing.score
         || next.comments !== existing.comments
-        || next.comment_ids !== existing.comment_ids;
+        || next.comment_ids !== existing.comment_ids
+        || next.resolved_url !== existing.resolved_url;
       if (changed) this.put(next);
       return { id: existing.id, isNew: false, status: existing.status };
     }
@@ -287,6 +341,7 @@ export class Library {
       url: it.url,
       title: it.title,
       source: it.source,
+      ...(it.resolved_url && it.resolved_url !== it.url ? { resolved_url: it.resolved_url } : {}),
       published_at: it.published_at ? new Date(it.published_at).toISOString() : null,
       score: it.score ?? null,
       comments: it.comments ?? null,
@@ -306,10 +361,16 @@ export class Library {
    * html은 화면에 보여줄 것(소제목·코드·표가 살아있다),
    * text는 모델에 넣을 것(토큰이 싸고 구조 노이즈가 없다).
    */
-  save(id: number, status: Status, html: string | null, text: string | null, kind: string | null) {
+  save(
+    id: number, status: Status, html: string | null, text: string | null, kind: string | null,
+    resolved: string | null = null,
+  ) {
     const meta = this.metaOf(id) ?? Object.values(this.index.items).find((m) => m.id === id);
     if (!meta) throw new Error(`No item ${id}`);
-    this.put({ ...meta, status, kind, fetched_at: new Date().toISOString() }, text);
+    const next: Meta = { ...meta, status, kind, fetched_at: new Date().toISOString() };
+    // 받는 동안 알게 된 최종 주소. 같은 글의 두 번째 주소는 여기서부터 잡힌다.
+    if (resolved && resolved !== meta.url && !meta.resolved_url) next.resolved_url = resolved;
+    this.put(next, text);
     const htmlPath = join(HTML_DIR, `${id}.html`);
     if (html) writeAtomic(htmlPath, html);
     else rmSync(htmlPath, { force: true });
@@ -330,9 +391,9 @@ export class Library {
         rmSync(join(LIBRARY_DIR, oldName), { force: true });
         this.cache.delete(oldName);
         this.files.delete(meta.id);
-        this.urls.delete(meta.url);
       }
       this.index.items[meta.url] = meta;
+      this.key(meta);
       this.dirty = true;
       return;
     }
@@ -348,7 +409,7 @@ export class Library {
     const s = statSync(path);
     this.cache.set(name, { key: `${s.mtimeMs}:${s.size}`, meta, gist: line });
     this.files.set(meta.id, name);
-    this.urls.set(meta.url, name);
+    this.key(meta);
     if (this.index.items[meta.url]) {
       delete this.index.items[meta.url];
       this.dirty = true;

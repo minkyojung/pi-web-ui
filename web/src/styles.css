@@ -149,3 +149,54 @@
 .reading { word-break: keep-all; overflow-wrap: anywhere; }
 .reading :is(iframe, video, form, button, input) { display: none; }
 .reading img { border-radius: var(--radius); }
+
+/*
+ * Two widths, not one. Prose wants a short line to stay readable; a chart wants
+ * every pixel it was drawn at. Giving both the same column is what cuts the
+ * chart in half, so prose keeps the measure and figures step outside it.
+ *
+ * They step out with a negative margin rather than a grid track, for two
+ * reasons. Readability's output is nested to a depth that varies per site
+ * (.page > article > div > p), so a child combinator would silently match
+ * nothing; and a grid stops adjacent margins from collapsing, which is what
+ * the typography plugin builds its vertical rhythm out of.
+ *
+ * The width they step out to is measured in cqw, not vw. This article lives in
+ * a panel the reader drags, so the viewport knows nothing about it.
+ */
+.reading-canvas { container-type: inline-size; }
+
+.reading {
+  --measure: 68ch;
+  --wide: 60rem;
+  max-width: min(var(--measure), 100%);
+  margin-inline: auto;
+}
+
+.reading :is(img, svg) { max-width: 100%; height: auto; }
+
+/* 50% is half the measure, so this lands the figure on the column's own axis. */
+.reading [data-span="wide"] {
+  --span: min(var(--wide), 100cqw);
+  width: var(--span);
+  max-width: none;
+  margin-inline: calc(50% - var(--span) / 2);
+}
+
+/* Wider than even that — a chart at its own scale, a table of twenty columns.
+   It scrolls itself; the article never slides sideways under the reader. */
+.reading :is([data-span="wide"], pre) {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+/* macOS hides scrollbars until something scrolls, which leaves cut off and
+   scrollable looking identical. These stay. */
+.reading :is([data-span="wide"], pre)::-webkit-scrollbar { height: 8px; }
+.reading :is([data-span="wide"], pre)::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: var(--border);
+}
+
+/* A caption is prose. It reads at the measure even under a figure twice as wide. */
+.reading figcaption { max-width: var(--measure); margin-inline: auto; }

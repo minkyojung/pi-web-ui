@@ -77,7 +77,7 @@ log(`\n새로 들어온 것 ${added}개 · 본문 받을 것 ${needText.length}�
 const tally: Record<string, number> = {};
 await pool(needText, 8, async ({ id, url }) => {
   const r = await extract(url);
-  lib.save(id, r.status, r.html, r.text, r.kind);
+  lib.save(id, r.status, r.html, r.text, r.kind, r.resolved);
   tally[r.status] = (tally[r.status] ?? 0) + 1;
 });
 

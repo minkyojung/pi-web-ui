@@ -1,7 +1,9 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "cn";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { dayLabel, host, when, type ListItem } from "@/reader";
 import { RowActions, type Flags } from "./RowActions";
 
@@ -10,6 +12,7 @@ type Props = {
   selectedId: number | null;
   onSelect: (id: number) => void;
   onFlags: (id: number, patch: Flags) => void;
+  onSave: (url: string) => Promise<{ created: boolean; row: ListItem }>;
 };
 
 /**
@@ -27,7 +30,7 @@ const VIEWS = {
 
 type View = keyof typeof VIEWS;
 
-export function List({ items, selectedId, onSelect, onFlags }: Props) {
+export function List({ items, selectedId, onSelect, onFlags, onSave }: Props) {
   const [view, setView] = useState<View>("inbox");
   const shown = useMemo(() => items.filter(VIEWS[view].keep), [items, view]);
   const queued = useMemo(() => items.filter(VIEWS.queue.keep).length, [items]);
@@ -62,6 +65,7 @@ export function List({ items, selectedId, onSelect, onFlags }: Props) {
           </Button>
         ))}
       </div>
+      <SaveBox onSave={onSave} />
       <div className="flex-1 overflow-y-auto overscroll-contain">
       {days.map((day) => (
         <section key={day.label}>
@@ -95,6 +99,69 @@ export function List({ items, selectedId, onSelect, onFlags }: Props) {
       )}
       </div>
     </nav>
+  );
+}
+
+/**
+ * A url in. This is one hand on the door in server.ts; a shortcut that asks
+ * the browser for its tab will be another, and both leave this here for the
+ * links that arrive from somewhere else.
+ *
+ * The box is not locked while a save is in flight: the usual case is emptying
+ * a row of tabs, and each one is its own request. What is said afterwards is
+ * said, not swallowed — this is the one thing here the reader just did.
+ */
+function SaveBox({ onSave }: { onSave: Props["onSave"] }) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(0);
+  const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!note) return;
+    const t = setTimeout(() => setNote(null), 4000);
+    return () => clearTimeout(t);
+  }, [note]);
+
+  const submit = async () => {
+    const value = url.trim();
+    if (!value) return;
+    setUrl("");
+    setBusy((n) => n + 1);
+    try {
+      const { created, row } = await onSave(value);
+      setNote({
+        text: !created ? "이미 있음" : row.has_text ? "담김" : "담김 · 본문은 못 받음",
+      });
+    } catch (e) {
+      setNote({ text: (e as Error).message || "실패", error: true });
+    } finally {
+      setBusy((n) => n - 1);
+    }
+  };
+
+  return (
+    <div className="relative shrink-0 border-b px-2 py-1.5">
+      <Input
+        type="url"
+        value={url}
+        placeholder="링크 붙여넣기"
+        aria-label="Save a link"
+        onChange={(e) => setUrl(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submit(); } }}
+        className="h-7 pr-7 text-xs"
+      />
+      {busy > 0 && (
+        <Spinner className="absolute top-1/2 right-4 size-3.5 -translate-y-1/2 text-muted-foreground" />
+      )}
+      {note && (
+        <p
+          role="status"
+          className={cn("px-1 pt-1 text-xs text-muted-foreground", note.error && "text-destructive")}
+        >
+          {note.text}
+        </p>
+      )}
+    </div>
   );
 }
 

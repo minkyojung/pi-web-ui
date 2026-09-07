@@ -25,6 +25,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { itemsFromMessages } from "./conversation.js";
 import { open as openLibrary } from "./reader/store.ts";
+import { extract } from "./reader/extract.ts";
 import { readerExtension } from "./reader/tools.ts";
 import { icon, safeHost } from "./reader/icons.ts";
 import { DEFAULT_MODE, modeToolNames } from "./toolModes.ts";
@@ -487,6 +488,37 @@ const server = createServer(async (req, res) => {
 			} catch {
 				return json(404, { error: "not found" });
 			}
+		}
+		// The door a url comes in by. Feeds take the same road in fetch.ts, two
+		// hundred at a time; this is one, and the order is turned around: fetch
+		// first, then take an id. Where a link ends up is only known once it has
+		// been followed, and finding out after the id is handed out would leave
+		// a stub to take back. Found already → 200 with what is there; new → 201.
+		if (pathname === "/api/items" && req.method === "POST") {
+			let url: string;
+			try {
+				const body = JSON.parse(await text(req)) as { url?: unknown };
+				url = typeof body.url === "string" ? body.url.trim() : "";
+				const u = new URL(url);
+				if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error();
+			} catch {
+				return json(400, { error: "잘못된 주소" });
+			}
+			const have = library.find(url);
+			if (have) return json(200, have);
+			const r = await extract(url, { force: true });
+			const there = r.resolved && library.find(r.resolved);
+			if (there) return json(200, there);
+			const { id } = library.see({
+				url,
+				title: r.title ?? url,
+				source: "saved",
+				resolved_url: r.resolved,
+				status: "pending",
+			});
+			library.save(id, r.status, r.html, r.text, r.kind, r.resolved);
+			library.flush();
+			return json(201, library.get(id));
 		}
 		if (req.method !== "GET") return json(405, { error: "read only" });
 		if (pathname === "/api/items") {

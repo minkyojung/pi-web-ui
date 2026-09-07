@@ -20,9 +20,11 @@ export function Article({ item }: { item: FullItem | null }) {
     return <div className="grid h-full place-items-center text-sm text-muted-foreground">왼쪽에서 고르세요</div>;
 
   return (
-    <div ref={box} className="h-full overflow-y-auto overscroll-contain">
-      <article className="mx-auto max-w-[68ch] px-8 py-10">
-        <header className="mb-8">
+    // overflow-x is clip, not left alone: with only overflow-y set, CSS computes
+    // the other axis to auto, and a single wide figure slides the whole article.
+    <div ref={box} className="h-full overflow-y-auto overflow-x-clip overscroll-contain">
+      <article className="reading-canvas mx-auto max-w-[80rem] px-8 py-10">
+        <header className="reading mb-8">
           <h1 className="reading font-serif text-3xl leading-tight font-semibold">{item.title}</h1>
           <a
             href={item.url}
@@ -66,11 +68,33 @@ function Body({ item }: { item: FullItem }) {
   );
 }
 
+/** 읽기 폭에 해당하는 대략의 픽셀. 서버의 spans.ts가 쓰는 기준과 같다. */
+const MEASURE_PX = 640;
+
 function Html({ html }: { html: string }) {
+  const box = useRef<HTMLDivElement>(null);
   // Readability가 이미 씻지만 서버가 준 것을 그대로 넣지는 않는다.
   const clean = useMemo(() => DOMPurify.sanitize(html, { FORBID_TAGS: ["style"] }), [html]);
+
+  // 넓은 것에는 서버가 미리 표시를 붙여두지만, 서버는 그리지 않으므로 HTML에
+  // 폭이 적혀 있지 않은 이미지의 크기는 모른다. 그건 여기서, 그것도 그림이
+  // 도착한 뒤에만 알 수 있다.
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const widen = (img: HTMLImageElement) => {
+      if (img.naturalWidth > MEASURE_PX)
+        (img.closest("figure") ?? img).setAttribute("data-span", "wide");
+    };
+    for (const img of el.querySelectorAll("img")) {
+      if (img.complete) widen(img);
+      else img.addEventListener("load", () => widen(img), { once: true });
+    }
+  }, [clean]);
+
   return (
     <div
+      ref={box}
       className="reading prose prose-neutral dark:prose-invert max-w-none prose-headings:font-semibold prose-pre:text-[13px]"
       dangerouslySetInnerHTML={{ __html: clean }}
     />

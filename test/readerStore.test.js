@@ -242,3 +242,56 @@ test("flags survive the next fetch pass and do not disturb the gist", () => {
 	assert.equal(row.gist, "a line");
 	assert.equal(row.score, 777);
 });
+
+// ---------------------------------------------------------------------------
+// A url handed over on its own, rather than by a feed
+// ---------------------------------------------------------------------------
+
+test("the same piece under www, a slash, a fragment or tracking is one key", () => {
+	const key = store.normalize("https://example.com/post");
+	for (const url of [
+		"https://www.example.com/post/",
+		"https://EXAMPLE.com/post#section-2",
+		"https://example.com/post?utm_source=newsletter&utm_medium=email",
+		"https://example.com/post/?fbclid=abc",
+		"http://example.com/post",
+	]) assert.equal(store.normalize(url), key, url);
+});
+
+test("normalize keeps the parameters that pick the page", () => {
+	assert.notEqual(store.normalize("https://example.com/?p=1"), store.normalize("https://example.com/?p=2"));
+	assert.equal(store.normalize("https://example.com/?b=2&a=1"), store.normalize("https://example.com/?a=1&b=2"));
+	assert.equal(store.normalize("not a url"), "not a url");
+});
+
+test("find answers by the given url and by where it resolved to, and touches nothing", () => {
+	const lib = store.open();
+	const { id } = lib.see(item({ url: "https://t.co/short", title: "Short", score: 10 }));
+	lib.save(id, "ok", "<p>x</p>", "x", "html", "https://example.com/long?utm_source=x");
+	lib.flush();
+
+	const byGiven = lib.find("https://T.CO/short/");
+	const byLanding = lib.find("https://www.example.com/long");
+	assert.equal(byGiven?.id, id);
+	assert.equal(byLanding?.id, id);
+	assert.equal(byGiven?.score, 10, "find does not refresh a score");
+	assert.equal(byGiven?.resolved_url, "https://example.com/long?utm_source=x", "kept as it arrived");
+	assert.equal(lib.find("https://example.com/other"), null);
+});
+
+test("a resolved url that is the given url is not written down", () => {
+	const lib = store.open();
+	const { id } = lib.see(item({ url: "https://example.com/same", title: "Same" }));
+	lib.save(id, "ok", "<p>x</p>", "x", "html", "https://example.com/same");
+	const file = libraryFiles().find((n) => n.includes(`-${id}-`));
+	assert.ok(file);
+	assert.ok(!readFileSync(join(DIR, "library", file), "utf8").includes("resolved_url"));
+});
+
+test("a bodyless item is found too, so a blocked page is not saved twice", () => {
+	const lib = store.open();
+	const { id } = lib.see(item({ url: "https://paywall.example/a", title: "Behind" }));
+	lib.save(id, "blocked", null, null, "html");
+	lib.flush();
+	assert.equal(store.open().find("https://paywall.example/a?utm_campaign=c")?.id, id);
+});

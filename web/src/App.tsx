@@ -56,6 +56,7 @@ export function App() {
 			<ResizablePanelGroup orientation="horizontal" className="h-screen">
 				<ResizablePanel id="list" defaultSize="22%" minSize="16%" className="min-w-0">
 					<List
+						onSave={lib.save}
 						items={lib.items}
 						selectedId={lib.selectedId}
 						onSelect={lib.select}
@@ -117,6 +118,25 @@ function useLibrary() {
 			.catch(() => {});
 	}, []);
 
+	// A url in. The row comes back from the server like a flag does, and goes to
+	// the top rather than being opened: opening marks it read, and the point of
+	// saving something is to read it later. One that was already here is opened
+	// instead — the answer to "do I have this?" is to show it.
+	const save = useCallback(async (url: string): Promise<{ created: boolean; row: ListItem }> => {
+		const r = await fetch("/api/items", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ url }),
+		});
+		const body = (await r.json().catch(() => ({}))) as { error?: string } & Partial<ListItem>;
+		if (!r.ok) throw new Error(body.error ?? `${r.status}`);
+		const row = body as ListItem;
+		const created = r.status === 201;
+		setItems((prev) => (created ? [row, ...prev] : prev.map((it) => (it.id === row.id ? row : it))));
+		if (!created) setSelectedId(row.id);
+		return { created, row };
+	}, []);
+
 	// The list is fetched once the socket is up, not on mount: the server takes a
 	// few seconds to bring the pi session up, and a request before that gets a
 	// proxy error. Reconnecting refetches too, which is also how a fetch pass
@@ -156,5 +176,6 @@ function useLibrary() {
 		detach: () => setDetached(true),
 		select: setSelectedId,
 		setFlags,
+		save,
 	};
 }
