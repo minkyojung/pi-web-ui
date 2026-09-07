@@ -7,6 +7,7 @@
  */
 import {
 	addPrompt,
+	branchesStore,
 	configStore,
 	contextSourcesStore,
 	promptsStore,
@@ -19,6 +20,7 @@ import {
 import { clearedText } from "./queue";
 import { applyServerEvent, replaceConversation, setConnection } from "./store";
 import type {
+	BranchesMsg,
 	ConfigMsg,
 	ContextSourcesMsg,
 	Item,
@@ -67,6 +69,11 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "context_sources":
 			contextSourcesStore.set(msg as ContextSourcesMsg);
+			return;
+		// The shape of the session tree, not something that happened in the
+		// conversation: it must not reach the reducer.
+		case "branches":
+			branchesStore.set((msg as BranchesMsg).nodes);
 			return;
 		case "sessions":
 			sessionsStore.set((msg as { sessions: SessionInfo[] }).sessions);

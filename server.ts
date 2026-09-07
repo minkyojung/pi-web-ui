@@ -30,6 +30,7 @@ import { readerExtension } from "./reader/tools.ts";
 import { icon, safeHost } from "./reader/icons.ts";
 import { DEFAULT_MODE, modeToolNames } from "./toolModes.ts";
 import { createPromptBridge } from "./prompts.ts";
+import { branchPoints } from "./branches.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 /**
@@ -272,6 +273,14 @@ function contextSources() {
 	};
 }
 
+/**
+ * Where the conversation on screen has alternatives. See branches.ts, which
+ * holds the tree reading so it can be tested against a session built on purpose.
+ */
+function branches() {
+	return { type: "branches", nodes: branchPoints(session().sessionManager) };
+}
+
 /** Saved sessions for this working directory, newest first. */
 async function sessions() {
 	const current = session().sessionFile;
@@ -354,6 +363,9 @@ function onEvent(event: AgentSessionEvent): void {
 	}
 	// Cost only moves when a message completes.
 	if (event.type === "message_end" || event.type === "agent_settled") broadcast(usage());
+	// A finished run is a new branch under whatever it was asked from, so the
+	// message it answered may have just gained a sibling.
+	if (event.type === "agent_settled") broadcast(branches());
 }
 
 let unsubscribe: (() => void) | undefined;
@@ -398,6 +410,7 @@ async function broadcastAll(): Promise<void> {
 	broadcast(usage());
 	broadcast(contextSources());
 	broadcast(snapshot());
+	broadcast(branches());
 	broadcast(await sessions());
 }
 
@@ -592,6 +605,7 @@ wss.on("connection", async (ws) => {
 	ws.send(safeStringify(usage()));
 	ws.send(safeStringify(contextSources()));
 	ws.send(safeStringify(snapshot()));
+	ws.send(safeStringify(branches()));
 	// A tab opened while a question is waiting should see it too.
 	for (const prompt of prompts.open()) ws.send(safeStringify({ type: "prompt_request", prompt }));
 
@@ -606,6 +620,7 @@ wss.on("connection", async (ws) => {
 			path?: string;
 			name?: string;
 			id?: string;
+			entryId?: string;
 			answer?: string;
 			cancelled?: boolean;
 		};
@@ -726,6 +741,32 @@ wss.on("connection", async (ws) => {
 					if (typeof msg.id !== "string") return;
 					prompts.answer(msg.id, typeof msg.answer === "string" ? msg.answer : undefined, msg.cancelled === true);
 					break;
+
+				// Show a different branch of the session tree. Nothing is deleted:
+				// the leaf moves and the conversation is rebuilt from the new path.
+				case "navigate": {
+					if (typeof msg.entryId !== "string") return;
+					// navigateTree throws on this, and a rejection the browser can act
+					// on is better than an error it has to read.
+					if (session().isStreaming) {
+						ws.send(safeStringify({ type: "error", message: "Wait for the reply to finish before moving." }));
+						return;
+					}
+					const result = await session().navigateTree(msg.entryId);
+					if (result.cancelled) return;
+					// navigateTree emits nothing a session subscriber can hear — pi's
+					// own UI clears its screen and redraws from messages afterwards —
+					// so the new path has to be published from here.
+					await broadcastAll();
+					// A user message navigated to comes back as text rather than as
+					// history, so it can be asked again differently. It goes to the tab
+					// that asked, like a cleared queue does, to land in the box it was
+					// typed in.
+					if (result.editorText) {
+						ws.send(safeStringify({ type: "queue_cleared", steering: [result.editorText], followUp: [] }));
+					}
+					break;
+				}
 
 				case "set_session_name":
 					if (typeof msg.name !== "string") return;

@@ -1,3 +1,16 @@
+import type { BranchPoint } from "../../branches";
+
+export type { BranchPoint };
+
+/**
+ * Where the conversation being shown has alternatives. Computed by the server
+ * from the session tree; see branches.ts.
+ */
+export interface BranchesMsg {
+	type: "branches";
+	nodes: BranchPoint[];
+}
+
 /** Mirrors the Item typedef in conversation.js, which is plain JS with JSDoc. */
 export interface Item {
 	kind: "user" | "assistant" | "thinking" | "tool" | "error" | "done" | "notice";
@@ -107,6 +120,7 @@ export type ServerMsg =
 	| ConfigMsg
 	| UsageMsg
 	| ContextSourcesMsg
+	| BranchesMsg
 	| PromptRequestMsg
 	| PromptDismissMsg
 	| QueueClearedMsg
