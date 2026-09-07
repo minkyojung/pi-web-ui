@@ -1,5 +1,6 @@
 import Parser from "rss-parser";
 import type { Item } from "./store.ts";
+import { readSettings } from "../settings.ts";
 
 export type Subscription =
   | { kind: "hn" }
@@ -42,15 +43,27 @@ export async function fromHn(): Promise<Item[]> {
 
 const rss = new Parser({ timeout: 20000 });
 
+/**
+ * 며칠까지 거슬러 받을 것인가. 몇몇 피드는 최근 것이 아니라 과거 전체를 준다
+ * (OpenAI 1172개, HuggingFace 859개). 처음 한 번만 쏟아지고 마는 게 아니라,
+ * 그만큼이 장부에 그대로 남아 오늘 들어온 것을 덮는다. 그래서 이 숫자는
+ * 취향이 아니라 손잡이다 — 설정에서 정하고, 피드마다 다시 읽는다.
+ */
 export async function fromRss(sub: Extract<Subscription, { kind: "rss" }>): Promise<Item[]> {
   const feed = await rss.parseURL(sub.url);
+  const since = Date.now() - readSettings().feedDays * 86400000;
   return (feed.items ?? [])
     .filter((e) => e.link && e.title)
+    // 날짜가 없는 피드도 있다. 모르는 것을 오래된 것으로 치지는 않는다.
+    .filter((e) => !e.isoDate || Date.parse(e.isoDate) >= since)
     .map((e) => ({
       url: e.link!,
       title: e.title!,
       source: sub.url,
       published_at: e.isoDate ? Date.parse(e.isoDate) : null,
+      // 피드가 링크와 함께 건네는 소개글. 본문을 받지 않기로 한 글에게는
+      // 이것이 읽을 수 있는 전부라, 버리면 그 글은 제목뿐이 된다.
+      summary: blurb(e),
       status: "pending" as const,
     }));
 }
@@ -70,4 +83,17 @@ export async function pool<T, R>(
     })
   );
   return out;
+}
+
+/**
+ * 피드마다 소개글을 두는 칸이 다르다. rss-parser가 태그를 벗겨 주는
+ * contentSnippet을 먼저 쓰고, 없으면 남은 칸에서 직접 벗긴다.
+ */
+function blurb(e: { contentSnippet?: string; summary?: string; content?: string }): string | null {
+  const raw = e.contentSnippet ?? e.summary ?? e.content ?? "";
+  const text = raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  // 전문을 통째로 싣는 피드가 있다. 소개글 자리에 기사 하나가 들어오면
+  // 장부가 부풀고, 어차피 그만큼은 안 읽는다.
+  return text.length > 1200 ? text.slice(0, 1200) + "…" : text;
 }

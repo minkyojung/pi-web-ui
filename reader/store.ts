@@ -32,6 +32,7 @@ export type Item = {
   score?: number | null;
   comments?: number | null;
   comment_ids?: string | null;
+  summary?: string | null;
   published_at?: number | null;
   html?: string | null;
   text?: string | null;
@@ -55,6 +56,13 @@ export type Meta = {
    * this is what lets a second copy of it be recognised as the first.
    */
   resolved_url?: string;
+  /**
+   * The blurb a feed hands over with the link. Not the body and not a summary
+   * anyone wrote for us — it is what the publisher chose to say about the piece
+   * in the feed itself, and for a piece whose body is never fetched it is the
+   * only thing there is to read.
+   */
+  summary?: string;
   published_at: string | null;
   score: number | null;
   comments: number | null;
@@ -322,6 +330,7 @@ export class Library {
         score: it.score ?? existing.score,
         comments: it.comments ?? existing.comments,
         comment_ids: it.comment_ids ?? existing.comment_ids,
+        ...(it.summary ? { summary: it.summary } : {}),
       };
       if (!next.resolved_url && it.resolved_url && it.resolved_url !== next.url)
         next.resolved_url = it.resolved_url;
@@ -331,7 +340,8 @@ export class Library {
         || next.score !== existing.score
         || next.comments !== existing.comments
         || next.comment_ids !== existing.comment_ids
-        || next.resolved_url !== existing.resolved_url;
+        || next.resolved_url !== existing.resolved_url
+        || next.summary !== existing.summary;
       if (changed) this.put(next);
       return { id: existing.id, isNew: false, status: existing.status };
     }
@@ -342,6 +352,7 @@ export class Library {
       title: it.title,
       source: it.source,
       ...(it.resolved_url && it.resolved_url !== it.url ? { resolved_url: it.resolved_url } : {}),
+      ...(it.summary ? { summary: it.summary } : {}),
       published_at: it.published_at ? new Date(it.published_at).toISOString() : null,
       score: it.score ?? null,
       comments: it.comments ?? null,
@@ -466,6 +477,19 @@ export class Library {
     ];
     rows.sort((a, b) => (b.published_at ?? b.first_seen) - (a.published_at ?? a.first_seen));
     return rows.slice(0, limit);
+  }
+
+  /**
+   * 전부. `list`가 빼는 pending까지 준다 — 목록에 제목만 있는 줄을 세우는 것과,
+   * 브리핑이 그 글도 재료로 세는 것은 다른 판단이다. 피드가 준 소개글이 붙어
+   * 있으면 본문을 안 받았어도 읽을 거리가 있다.
+   */
+  all(): Row[] {
+    this.scan();
+    return [
+      ...[...this.cache.values()].map(({ meta, gist }) => toRow(meta, gist, true)),
+      ...Object.values(this.index.items).map((m) => toRow(m, null, false)),
+    ];
   }
 
   /**
