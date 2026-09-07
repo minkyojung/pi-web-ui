@@ -727,6 +727,25 @@ wss.on("connection", async (ws) => {
 			switch (msg.type) {
 				case "prompt": {
 					if (typeof msg.text !== "string") return;
+					// Asking an earlier question again: move the leaf to just before
+					// it, so what is sent next becomes a sibling of it rather than a
+					// reply to it, and the branch it was on is left where it is.
+					//
+					// Both halves happen here rather than as two commands from the
+					// browser, because between them the conversation is one question
+					// short and nothing is being asked. Nothing should be able to
+					// arrive in that gap, and nobody should have to look at it.
+					if (typeof msg.entryId === "string") {
+						if (session().isStreaming) {
+							ws.send(safeStringify({ type: "error", message: "Wait for the reply to finish before asking again." }));
+							return;
+						}
+						const moved = await session().navigateTree(msg.entryId);
+						if (moved.cancelled) return;
+						// The screen still shows the question about to be replaced, so
+						// the shortened conversation goes out before the new one starts.
+						await broadcastAll();
+					}
 					// "steer" redirects the run in progress; "followUp" waits for it to finish.
 					const behavior = msg.behavior === "steer" ? "steer" : "followUp";
 					// prompt() throws if the session is streaming and no behavior is given.

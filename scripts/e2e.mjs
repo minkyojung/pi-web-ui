@@ -253,6 +253,36 @@ check("and forward again", async ({ app }) => {
 	await until("the second branch", async () => (await marks(app)).includes("ANSWER-BETA"));
 });
 
+check("asking a question again fills the box without moving anything", async ({ app }) => {
+	const before = await marks(app);
+	assert.equal(await app.evaluate(`(() => {
+		const b = [...document.querySelectorAll('#chat button[title="Ask this again, differently"]')].pop();
+		if (!b) return false;
+		b.click();
+		return true;
+	})()`), true);
+	await until("the question in the box", () =>
+		app.evaluate(`document.querySelector('textarea')?.value?.includes("rewrite the reducer")`),
+	);
+	// Nothing was sent, so the conversation is exactly where it was: this is
+	// the difference between copying a question and navigating to it.
+	assert.equal(await marks(app), before);
+	assert.ok((await app.evaluate("document.body.textContent")).includes("Asking again:"));
+});
+
+check("changing your mind about it costs nothing", async ({ app }) => {
+	assert.equal(await app.evaluate(`(() => {
+		const b = document.querySelector('button[aria-label="Send as a new question instead"]');
+		if (!b) return false;
+		b.click();
+		return true;
+	})()`), true);
+	await until("the note to go", async () => !(await app.evaluate("document.body.textContent")).includes("Asking again:"));
+	// The text stays in the box: it was copied in, and cancelling is about
+	// where it will be sent, not about what was typed.
+	assert.ok(await app.evaluate(`document.querySelector('textarea')?.value?.includes("rewrite the reducer")`));
+});
+
 check("the bench renders every scenario it knows", async ({ bench }) => {
 	const scenarios = await until("the gallery", () =>
 		bench.evaluate("[...document.querySelectorAll('select option')].map((o) => o.value).join(',')"),

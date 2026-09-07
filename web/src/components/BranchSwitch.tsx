@@ -46,7 +46,7 @@ export function BranchSwitch({ entryId }: { entryId: string }) {
 	const go = (to: number) => navigate(point.targets[to]);
 
 	return (
-		<div className="ml-auto flex items-center gap-0.5 text-xs text-muted-foreground">
+		<div className="flex items-center gap-0.5 text-xs text-muted-foreground">
 			<Button
 				size="icon-xs"
 				variant="ghost"

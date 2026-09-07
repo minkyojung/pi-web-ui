@@ -2,6 +2,7 @@ import { memo } from "react";
 import { CircleAlertIcon, InfoIcon } from "lucide-react";
 
 import type { Item } from "../types";
+import { AskAgain } from "./AskAgain";
 import { BranchSwitch } from "./BranchSwitch";
 import { Message, MessageContent, MessageResponse } from "./ai-elements/message";
 import { ThinkingRow } from "./ThinkingRow";
@@ -25,12 +26,17 @@ export const ItemView = memo(function ItemView({ item, index }: { item: Item; in
 		case "user":
 			// Deliberately not markdown: a * or a # the user typed is literal.
 			return (
-				<Message from="user">
+				// Only a message read back from the session file knows where it sits
+				// in the tree, which is the only kind that can be asked again or have
+				// been asked more than one way.
+				<Message from="user" className="group/user">
 					<MessageContent className="whitespace-pre-wrap">{item.text}</MessageContent>
-					{/* Only a message read back from the session file knows where it
-					    sits in the tree, which is the only kind that can have been
-					    asked more than one way. */}
-					{item.entryId && <BranchSwitch entryId={item.entryId} />}
+					{item.entryId && (
+						<div className="ml-auto flex items-center gap-0.5">
+							<AskAgain entryId={item.entryId} text={item.text ?? ""} />
+							<BranchSwitch entryId={item.entryId} />
+						</div>
+					)}
 				</Message>
 			);
 

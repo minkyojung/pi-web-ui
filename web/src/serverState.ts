@@ -49,6 +49,16 @@ export const branchesStore = createStore<BranchPoint[]>([]);
 export const restoredStore = createStore<string | null>(null);
 
 /**
+ * The question being asked again, if there is one.
+ *
+ * Held here and not sent anywhere until the new question is: pressing the
+ * pencil only copies text into the box, so changing your mind costs nothing.
+ * The session's leaf moves when something is actually sent, which is the point
+ * after which there is nothing to undo.
+ */
+export const askingAgainStore = createStore<{ entryId: string; text: string } | null>(null);
+
+/**
  * Questions waiting on an answer. An array rather than a Map so the snapshot
  * useSyncExternalStore reads is a stable value; replaced by id so the replay a
  * reconnecting tab receives cannot double a card up.

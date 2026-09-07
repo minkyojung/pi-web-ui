@@ -1,9 +1,9 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
-import { X } from "lucide-react";
+import { PencilIcon, X } from "lucide-react";
 
 import { appendRestored } from "../queue";
-import { configStore, promptsStore, restoredStore } from "../serverState";
+import { askingAgainStore, configStore, promptsStore, restoredStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import type { FullItem } from "../reader";
 import { send } from "../ws";
@@ -34,8 +34,44 @@ const MOD = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
 function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "steer", path?: string) {
 	const trimmed = text.trim();
 	if (!trimmed) return;
-	send({ type: "prompt", text: path ? `Open in the reader: ${path}\n\n${trimmed}` : trimmed, behavior });
+	// Where an earlier question is being asked again, its place in the session
+	// tree rides along: the server moves the leaf to just before it and sends
+	// this from there, so the two are alternatives rather than a sequence.
+	const asking = askingAgainStore.get();
+	send({
+		type: "prompt",
+		text: path ? `Open in the reader: ${path}\n\n${trimmed}` : trimmed,
+		behavior,
+		...(asking ? { entryId: asking.entryId } : {}),
+	});
+	askingAgainStore.set(null);
 	form.reset();
+}
+
+/**
+ * A note that what is in the box will replace an earlier question rather than
+ * follow it, and the way to change your mind. Dropping it leaves the text
+ * where it is: it was copied in, and taking it back out is not what cancelling
+ * means here.
+ */
+function AskingAgain() {
+	const asking = useSyncExternalStore(askingAgainStore.subscribe, askingAgainStore.get);
+	if (!asking) return null;
+
+	return (
+		<div className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+			<PencilIcon className="size-3 shrink-0" />
+			<span className="min-w-0 flex-1 truncate">Asking again: {asking.text}</span>
+			<button
+				type="button"
+				onClick={() => askingAgainStore.set(null)}
+				aria-label="Send as a new question instead"
+				className="rounded-sm p-0.5 hover:bg-accent hover:text-accent-foreground"
+			>
+				<X className="size-3" />
+			</button>
+		</div>
+	);
 }
 
 /**
@@ -68,6 +104,7 @@ export function Composer({ piece, onDetach }: { piece: FullItem | null; onDetach
 	return (
 		<div className="border-t p-3">
 			<QueuedMessages />
+			<AskingAgain />
 			<PromptInput
 				onSubmit={(message, event) => submit(event.currentTarget, message.text, "followUp", piece?.path ?? undefined)}
 			>
