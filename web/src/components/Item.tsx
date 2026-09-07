@@ -2,7 +2,7 @@ import { memo } from "react";
 
 import type { Item } from "../types";
 import { Message, MessageContent, MessageResponse } from "./ai-elements/message";
-import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "./ai-elements/tool";
+import { ToolRow } from "./ToolRow";
 
 /**
  * One conversation item.
@@ -38,35 +38,7 @@ export const ItemView = memo(function ItemView({ item }: { item: Item }) {
 			);
 
 		case "tool":
-			return (
-				// Open while it is running, so the partial output the reducer feeds in
-				// is actually visible — a long bash call going silent is the failure
-				// this whole line of work started from. It stays open afterwards,
-				// since the state is uncontrolled and the user can collapse it. A tool
-				// arriving from a snapshot is never pending, so revisited history
-				// stays tidy. An error opens too: a collapsed card would hide it.
-				<Tool defaultOpen={item.pending || item.isError}>
-					<ToolHeader
-						type={`tool-${item.name}`}
-						// input-streaming never happens: the reducer opens the item at
-						// tool_execution_start with the arguments already complete.
-						state={
-							item.pending || item.result == null
-								? "input-available"
-								: item.isError
-									? "output-error"
-									: "output-available"
-						}
-					/>
-					<ToolContent>
-						<ToolInput input={item.args} />
-						<ToolOutput
-							output={item.isError ? undefined : item.result}
-							errorText={item.isError ? (item.result ?? undefined) : undefined}
-						/>
-					</ToolContent>
-				</Tool>
-			);
+			return <ToolRow item={item} />;
 
 		case "error":
 			return (
