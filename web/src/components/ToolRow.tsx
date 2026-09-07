@@ -17,7 +17,6 @@ import { toolDetail } from "../toolSummary";
 import type { Item } from "../types";
 import { CodeBlock } from "./ai-elements/code-block";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
-import { Spinner } from "./ui/spinner";
 
 /**
  * Whether a tool row carries a summary of what it touched.
@@ -40,13 +39,6 @@ const ICONS: Record<string, typeof WrenchIcon> = {
 	powershell: TerminalIcon,
 	set_gist: QuoteIcon,
 };
-
-/** The tail of a tool's output so far — the sign that it is still alive. */
-function lastLine(text: string | null | undefined): string | null {
-	if (!text) return null;
-	const lines = text.trimEnd().split("\n");
-	return lines[lines.length - 1]?.trim() || null;
-}
 
 /**
  * What went in, and what came back.
@@ -77,20 +69,16 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
  * header from its body; a row has no body to separate itself from, and eight
  * rows of it read as eight headings.
  *
- * Closed by default, including on an error — a row that says which tool failed
- * is enough to decide whether to look. The exception is a tool still running:
- * its output is streaming in and there is nothing else on screen to say the
- * agent has not stalled, so the tail of that output rides along under the row
- * until it finishes. That was the whole reason cards used to spring open, and
- * it is the one part worth keeping.
+ * Closed, always — including while it runs and including on an error. A row
+ * that says which tool failed is enough to decide whether to look, and nothing
+ * is shown for a tool still working: a run is read after it happens far more
+ * often than while it happens, and anything that appears for the second a tool
+ * takes and then leaves turns the list into a column of flicker. The only mark
+ * a row carries is the one that outlives the run, which is a failure.
  */
 export function ToolRow({ item }: { item: Item }) {
 	const detail = useContext(ToolSummaries) ? toolDetail(item.name, item.args) : null;
 	const Icon = ICONS[item.name ?? ""] ?? WrenchIcon;
-	// The reducer leaves `result` null until something comes back, so a tool with
-	// neither a result nor an end is still on its way.
-	const running = item.pending || item.result == null;
-	const tail = running ? lastLine(item.result) : null;
 
 	return (
 		// Pulled in against the conversation's own spacing: a paragraph and a tool
@@ -109,14 +97,8 @@ export function ToolRow({ item }: { item: Item }) {
 				    shade off full contrast, the detail a shade further. */}
 				<span className="shrink-0 text-sm font-normal text-foreground/80">{item.name}</span>
 				{detail && <span className="min-w-0 flex-1 truncate font-mono text-sm text-muted-foreground">{detail}</span>}
-				{running ? (
-					<Spinner className="ml-auto size-3 shrink-0 text-muted-foreground" />
-				) : item.isError ? (
-					<CircleAlertIcon className="ml-auto size-3.5 shrink-0 text-destructive" />
-				) : null}
+				{item.isError && <CircleAlertIcon className="ml-auto size-3.5 shrink-0 text-destructive" />}
 			</CollapsibleTrigger>
-
-			{tail && <div className="truncate pl-6 font-mono text-xs text-muted-foreground">{tail}</div>}
 
 			<CollapsibleContent className="data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=open]:animate-in">
 				<div className="mt-1 mb-2 ml-[0.7rem] space-y-1 border-l pl-2 text-xs">
