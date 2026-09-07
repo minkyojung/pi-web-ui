@@ -502,7 +502,7 @@ const server = createServer(async (req, res) => {
 				const u = new URL(url);
 				if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error();
 			} catch {
-				return json(400, { error: "잘못된 주소" });
+				return json(400, { error: "invalid url" });
 			}
 			const have = library.find(url);
 			if (have) return json(200, have);

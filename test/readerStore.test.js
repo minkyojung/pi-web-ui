@@ -191,12 +191,12 @@ test("a gist is refused where there is nothing to have read", () => {
 	const lib = store.open();
 	const { id } = lib.see(item({ url: "https://example.com/nobody" }));
 	lib.save(id, "blocked", null, null, "html");
-	assert.throws(() => lib.setGist(id, "무언가"), /본문이 없어서/);
-	assert.throws(() => lib.setGist(999999, "무언가"), /본문이 없어서/);
+	assert.throws(() => lib.setGist(id, "무언가"), /has no text/);
+	assert.throws(() => lib.setGist(999999, "무언가"), /has no text/);
 
 	const ok = lib.see(item({ url: "https://example.com/empty-gist" }));
 	lib.save(ok.id, "ok", null, "body", "html");
-	assert.throws(() => lib.setGist(ok.id, "   "), /비어 있다/);
+	assert.throws(() => lib.setGist(ok.id, "   "), /the gist is empty/);
 });
 
 test("read, queued and archived are only written when true", () => {

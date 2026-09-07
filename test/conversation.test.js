@@ -207,7 +207,7 @@ test("an auto retry is announced and the same notice tracks every attempt", () =
 		{ type: "auto_retry_start", attempt: 2, maxAttempts: 3, delayMs: 4000, errorMessage: "overloaded" },
 		{ type: "auto_retry_end", success: true, attempt: 2 },
 	]);
-	assert.deepEqual(state.items, [{ kind: "notice", text: "재시도 성공 (2회)" }]);
+	assert.deepEqual(state.items, [{ kind: "notice", text: "Retry succeeded (attempt 2)" }]);
 	// One item the whole way through, so a renderer never has to re-lay-out.
 	assert.deepEqual(touched, [1, 1, 1]);
 });
@@ -217,7 +217,7 @@ test("a retry that runs out of attempts says so, with the reason", () => {
 		{ type: "auto_retry_start", attempt: 3, maxAttempts: 3, delayMs: 8000, errorMessage: "overloaded" },
 		{ type: "auto_retry_end", success: false, attempt: 3, finalError: '400 {"error":{"message":"overloaded"}}' },
 	]);
-	assert.deepEqual(state.items, [{ kind: "notice", text: "재시도 실패 (3회) — overloaded" }]);
+	assert.deepEqual(state.items, [{ kind: "notice", text: "Retry failed (attempt 3) — overloaded" }]);
 });
 
 test("a retry_end with nothing open is ignored", () => {
@@ -243,13 +243,13 @@ test("a compaction that fails or is cancelled says which", () => {
 	const start = { type: "compaction_start", reason: "overflow" };
 	const end = (extra) => ({ type: "compaction_end", reason: "overflow", result: undefined, ...extra });
 
-	assert.equal(replay([start, end({ aborted: true, willRetry: false })]).state.items[0].text, "압축이 중단되었습니다");
+	assert.equal(replay([start, end({ aborted: true, willRetry: false })]).state.items[0].text, "Compaction was aborted");
 	assert.equal(
 		replay([start, end({ aborted: false, willRetry: true, errorMessage: "rate limited" })]).state.items[0].text,
-		"압축 실패 — rate limited, 다시 시도합니다",
+		"Compaction failed — rate limited, retrying",
 	);
 	// A result is optional even on success, so the count has to be droppable.
-	assert.equal(replay([start, end({ aborted: false, willRetry: false })]).state.items[0].text, "대화를 압축했습니다");
+	assert.equal(replay([start, end({ aborted: false, willRetry: false })]).state.items[0].text, "Compacted the conversation");
 });
 
 test("partial tool output fills the result pane before the tool finishes", () => {

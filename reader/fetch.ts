@@ -38,10 +38,10 @@ for (const sub of subs) {
     const items = sub.kind === "hn" ? await fromHn(sub) : await fromRss(sub);
     collected.push({ sub, items });
     report.sources.push({ label: label(sub), count: items.length });
-    log(`  ${label(sub)} → ${items.length}개`);
+    log(`  ${label(sub)} → ${items.length}`);
   } catch (e) {
     report.sources.push({ label: label(sub), count: null, error: (e as Error).message });
-    log(`  ${label(sub)} → 실패: ${(e as Error).message}`);
+    log(`  ${label(sub)} → failed: ${(e as Error).message}`);
   }
 }
 
@@ -71,7 +71,7 @@ for (const { sub, items } of collected) {
 lib.flush();
 
 report.added = added;
-log(`\n새로 들어온 것 ${added}개 · 본문 받을 것 ${needText.length}개\n`);
+log(`\nnew ${added} · to fetch ${needText.length}\n`);
 
 // 3. 본문을 받는다
 const tally: Record<string, number> = {};
@@ -89,10 +89,10 @@ lib.flush();
 const { total, withText } = lib.counts();
 report.total = total;
 report.withText = withText;
-log(`\n서재 전체 ${total}개 · 본문 있는 것 ${withText}개`);
+log(`\nlibrary ${total} · with text ${withText}`);
 return report;
 }
 
 function label(s: Subscription) {
-  return s.kind === "hn" ? `hn(best, ${s.minScore}점+)` : s.url;
+  return s.kind === "hn" ? `hn(best, ${s.minScore}+)` : s.url;
 }

@@ -17,7 +17,7 @@ export function Article({ item }: { item: FullItem | null }) {
   }, [item?.id]);
 
   if (!item)
-    return <div className="grid h-full place-items-center text-sm text-muted-foreground">왼쪽에서 고르세요</div>;
+    return <div className="grid h-full place-items-center text-sm text-muted-foreground">Pick something on the left</div>;
 
   return (
     // overflow-x is clip, not left alone: with only overflow-y set, CSS computes
@@ -63,7 +63,7 @@ function Body({ item }: { item: FullItem }) {
 
   return (
     <p className="rounded-md bg-muted p-4 text-sm text-muted-foreground">
-      본문을 가져오지 못했습니다({STATUS_LABEL[item.status] ?? item.status}). 원문에서 읽어야 합니다.
+      Couldn't get the text ({STATUS_LABEL[item.status] ?? item.status}). Read it at the source.
     </p>
   );
 }

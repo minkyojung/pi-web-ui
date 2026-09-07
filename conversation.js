@@ -54,14 +54,14 @@ export function errorText(message) {
  * Both call this so the two paths word it the same.
  */
 export function compactionText(tokensBefore) {
-	if (typeof tokensBefore !== "number") return "대화를 압축했습니다";
-	return `대화를 압축했습니다 (이전 ${tokensBefore} 토큰)`;
+	if (typeof tokensBefore !== "number") return "Compacted the conversation";
+	return `Compacted the conversation (${tokensBefore} tokens before)`;
 }
 
 const COMPACTION_REASON = {
-	manual: "수동",
-	threshold: "컨텍스트 한도 도달",
-	overflow: "컨텍스트 초과",
+	manual: "manual",
+	threshold: "context limit reached",
+	overflow: "context overflow",
 };
 
 export function createConversation() {
@@ -198,7 +198,7 @@ export function applyEvent(state, event) {
 		case "auto_retry_start":
 			state.openRetry = notice(
 				state.openRetry,
-				`재시도 ${event.attempt}/${event.maxAttempts} — ${Math.round(event.delayMs / 100) / 10}초 후`,
+				`Retry ${event.attempt}/${event.maxAttempts} — in ${Math.round(event.delayMs / 100) / 10}s`,
 			);
 			break;
 
@@ -207,8 +207,8 @@ export function applyEvent(state, event) {
 				notice(
 					state.openRetry,
 					event.success
-						? `재시도 성공 (${event.attempt}회)`
-						: `재시도 실패 (${event.attempt}회)${event.finalError ? ` — ${errorText(event.finalError)}` : ""}`,
+						? `Retry succeeded (attempt ${event.attempt})`
+						: `Retry failed (attempt ${event.attempt})${event.finalError ? ` — ${errorText(event.finalError)}` : ""}`,
 				);
 				state.openRetry = null;
 			}
@@ -220,16 +220,16 @@ export function applyEvent(state, event) {
 		case "compaction_start":
 			state.openCompaction = notice(
 				state.openCompaction,
-				`대화를 압축하는 중 (${COMPACTION_REASON[event.reason] ?? event.reason})`,
+				`Compacting the conversation (${COMPACTION_REASON[event.reason] ?? event.reason})`,
 			);
 			break;
 
 		case "compaction_end":
 			if (state.openCompaction) {
 				let text;
-				if (event.aborted) text = "압축이 중단되었습니다";
+				if (event.aborted) text = "Compaction was aborted";
 				else if (event.errorMessage)
-					text = `압축 실패 — ${errorText(event.errorMessage)}${event.willRetry ? ", 다시 시도합니다" : ""}`;
+					text = `Compaction failed — ${errorText(event.errorMessage)}${event.willRetry ? ", retrying" : ""}`;
 				else text = compactionText(event.result?.tokensBefore);
 				notice(state.openCompaction, text);
 				state.openCompaction = null;

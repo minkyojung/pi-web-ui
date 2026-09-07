@@ -447,10 +447,10 @@ export class Library {
   setGist(id: number, gist: string): { id: number; title: string; gist: string } {
     this.scan();
     const name = this.files.get(id);
-    if (!name) throw new Error(`${id}번 글은 본문이 없어서 한 줄을 붙일 수 없다`);
+    if (!name) throw new Error(`item ${id} has no text, so a gist cannot be attached`);
     const meta = this.cache.get(name)!.meta;
     const line = gist.replace(/\s+/g, " ").trim();
-    if (!line) throw new Error("한 줄이 비어 있다");
+    if (!line) throw new Error("the gist is empty");
     this.put(meta, undefined, line);
     return { id, title: meta.title, gist: line };
   }

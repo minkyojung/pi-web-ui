@@ -45,8 +45,8 @@ export function dayLabel(ms: number) {
 }
 
 export const STATUS_LABEL: Partial<Record<Status, string>> = {
-  blocked: "막힘",   // 페이월인지 봇 차단인지 구분이 안 되므로 단정하지 않는다
-  failed: "본문 없음",
-  no_transcript: "자막 없음",
-  excluded: "본문 안 받음",
+  blocked: "blocked",   // 페이월인지 봇 차단인지 구분이 안 되므로 단정하지 않는다
+  failed: "no text",
+  no_transcript: "no transcript",
+  excluded: "not fetched",
 };

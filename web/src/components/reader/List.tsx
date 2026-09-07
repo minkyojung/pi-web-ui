@@ -130,10 +130,10 @@ function SaveBox({ onSave }: { onSave: Props["onSave"] }) {
     try {
       const { created, row } = await onSave(value);
       setNote({
-        text: !created ? "이미 있음" : row.has_text ? "담김" : "담김 · 본문은 못 받음",
+        text: !created ? "already saved" : row.has_text ? "saved" : "saved · no text",
       });
     } catch (e) {
-      setNote({ text: (e as Error).message || "실패", error: true });
+      setNote({ text: (e as Error).message || "failed", error: true });
     } finally {
       setBusy((n) => n - 1);
     }
@@ -144,7 +144,7 @@ function SaveBox({ onSave }: { onSave: Props["onSave"] }) {
       <Input
         type="url"
         value={url}
-        placeholder="링크 붙여넣기"
+        placeholder="Paste a link"
         aria-label="Save a link"
         onChange={(e) => setUrl(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submit(); } }}
