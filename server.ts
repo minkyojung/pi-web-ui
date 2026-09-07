@@ -27,8 +27,11 @@ import { itemsFromMessages } from "./conversation.js";
 import { open as openLibrary } from "./reader/store.ts";
 import { extract } from "./reader/extract.ts";
 import { readerExtension } from "./reader/tools.ts";
+import { fetchFeed, label as sourceLabel, readSubscriptions, subKey, writeSubscriptions } from "./reader/fetch.ts";
+import type { Subscription } from "./reader/sources.ts";
 import { icon, safeHost } from "./reader/icons.ts";
-import { DEFAULT_MODE, modeToolNames } from "./toolModes.ts";
+import { modeToolNames } from "./toolModes.ts";
+import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
 
@@ -409,7 +412,7 @@ function openOnDefaultMode(): void {
 	const available = session()
 		.getAllTools()
 		.map((tool) => tool.name);
-	session().setActiveToolsByName(modeToolNames(DEFAULT_MODE, available));
+	session().setActiveToolsByName(modeToolNames(readSettings().toolMode, available));
 }
 
 /** Push the full server state to every client. Used after a session is replaced. */
@@ -477,6 +480,26 @@ function text(req: IncomingMessage): Promise<string> {
 		req.on("end", () => resolve(out));
 		req.on("error", reject);
 	});
+}
+
+/**
+ * A subscription as the browser draws it. The library count comes along because
+ * being on the list and actually bringing anything in are two different things:
+ * a feed whose address is subtly wrong sits there quietly at zero.
+ */
+function describeSubscriptions(subs: Subscription[]) {
+	// A library of its own, not the long-lived one. Library.scan() re-reads the
+	// pieces on disk but not index.json, so the copy this process has held open
+	// since startup does not know about anything a feed pass left pending — and
+	// a piece with only a title is exactly what a new feed brings in most of.
+	const counts = new Map<string, number>();
+	for (const row of openLibrary().all()) counts.set(row.source, (counts.get(row.source) ?? 0) + 1);
+	return subs.map((s) => ({
+		key: subKey(s),
+		kind: s.kind,
+		label: sourceLabel(s),
+		items: counts.get(subKey(s)) ?? 0,
+	}));
 }
 
 const server = createServer(async (req, res) => {
@@ -554,7 +577,69 @@ const server = createServer(async (req, res) => {
 			library.flush();
 			return json(201, library.get(id));
 		}
+		// A feed in. It is read before it is written down: a subscription that
+		// cannot be parsed would otherwise sit in the file adding one failed line
+		// to every pass, and the reader would have nothing to go on but an empty
+		// list. Same order as /api/items — follow the link, then keep it.
+		//
+		// Which also means the first pass happens here rather than at the next
+		// `npm run fetch`. Adding a source and seeing nothing arrive reads as a
+		// failure, so this waits for the pieces even though it makes the request
+		// a slow one.
+		if (pathname === "/api/subscriptions" && req.method === "POST") {
+			let want: Subscription;
+			try {
+				const body = JSON.parse(await text(req)) as { url?: unknown };
+				// No url at all is Hacker News, which has no address to give.
+				if (body.url === undefined) want = { kind: "hn" };
+				else {
+					const u = new URL(String(body.url).trim());
+					if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error();
+					want = { kind: "rss", url: u.toString() };
+				}
+			} catch {
+				return json(400, { error: "invalid url" });
+			}
+			const subs = readSubscriptions();
+			if (subs.some((s) => subKey(s) === subKey(want)))
+				return json(409, { error: "already subscribed" });
+			const report = await fetchFeed(() => {}, [want]);
+			// fetchFeed collects a source's failure rather than throwing it, so that
+			// one bad feed cannot stop the other nine. Here there is only the one.
+			const source = report.sources[0];
+			// The parser's own words, on one line and said to be about the feed. On
+			// its own "Unexpected close tag Line: 0" is about nothing the reader did.
+			if (source?.error)
+				return json(400, { error: `could not read that feed — ${source.error.replace(/\s+/g, " ").trim()}` });
+			writeSubscriptions([...subs, want]);
+			return json(201, { subscriptions: describeSubscriptions([...subs, want]), added: report.added });
+		}
+		// Out again. The pieces it already brought in stay in the library — they
+		// were read, or are still worth reading — but they stop reaching the
+		// briefing, which asks this same list who is still subscribed.
+		if (pathname === "/api/subscriptions" && req.method === "DELETE") {
+			const key = url.searchParams.get("key");
+			const subs = readSubscriptions();
+			const rest = subs.filter((s) => subKey(s) !== key);
+			if (rest.length === subs.length) return json(404, { error: "not subscribed" });
+			writeSubscriptions(rest);
+			return json(200, { subscriptions: describeSubscriptions(rest) });
+		}
+		// The numbers, all of them at once. Sent whole rather than a field at a
+		// time because that is what settings.ts writes; a field it did not hear
+		// about would come back as its default and quietly undo an edit.
+		if (pathname === "/api/settings" && req.method === "POST") {
+			try {
+				return json(200, writeSettings(JSON.parse(await text(req))));
+			} catch {
+				return json(400, { error: "invalid JSON" });
+			}
+		}
 		if (req.method !== "GET") return json(405, { error: "read only" });
+		if (pathname === "/api/settings") return json(200, readSettings());
+		if (pathname === "/api/subscriptions") {
+			return json(200, { subscriptions: describeSubscriptions(readSubscriptions()) });
+		}
 		if (pathname === "/api/items") {
 			const limit = Math.min(Number(url.searchParams.get("limit") ?? 200) || 200, 1000);
 			return json(200, library.list(limit));

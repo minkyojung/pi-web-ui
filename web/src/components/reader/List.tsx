@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { dayLabel, host, when, type ListItem } from "@/reader";
 import { RowActions, type Flags } from "./RowActions";
+import { Settings } from "./Settings";
 
 type Props = {
   items: ListItem[];
@@ -67,7 +68,12 @@ export function List({ items, selectedId, onSelect, onFlags, onSave }: Props) {
           </Button>
         ))}
       </div>
-      <SaveBox onSave={onSave} />
+      {/* Two ways in, on one line: a link by hand, and the feeds that bring the
+          rest. The box gives up the width, since the button cannot. */}
+      <div className="flex shrink-0 items-start gap-1 border-b px-2 py-1.5">
+        <SaveBox onSave={onSave} />
+        <Settings />
+      </div>
       <div className="flex-1 overflow-y-auto overscroll-contain">
       {days.map((day) => (
         <section key={day.label}>
@@ -142,7 +148,7 @@ function SaveBox({ onSave }: { onSave: Props["onSave"] }) {
   };
 
   return (
-    <div className="relative shrink-0 border-b px-2 py-1.5">
+    <div className="relative min-w-0 flex-1">
       <Input
         type="url"
         value={url}
@@ -153,12 +159,12 @@ function SaveBox({ onSave }: { onSave: Props["onSave"] }) {
         className="h-7 pr-7 text-xs"
       />
       {busy > 0 && (
-        <Spinner className="absolute top-1/2 right-4 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Spinner className="absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
       )}
       {note && (
         <p
           role="status"
-          className={cn("px-1 pt-1 text-xs text-muted-foreground", note.error && "text-destructive")}
+          className={cn("pt-1 text-xs text-muted-foreground", note.error && "text-destructive")}
         >
           {note.text}
         </p>

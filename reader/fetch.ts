@@ -9,10 +9,26 @@ const DEFAULT_SUBSCRIPTIONS: Subscription[] = [{ kind: "hn" }];
 export function readSubscriptions(): Subscription[] {
   if (!existsSync(SUBSCRIPTIONS_PATH)) {
     mkdirSync(READER_DIR, { recursive: true });
-    writeFileSync(SUBSCRIPTIONS_PATH, JSON.stringify(DEFAULT_SUBSCRIPTIONS, null, 2) + "\n");
+    writeSubscriptions(DEFAULT_SUBSCRIPTIONS);
   }
   return JSON.parse(readFileSync(SUBSCRIPTIONS_PATH, "utf8"));
 }
+
+/**
+ * 구독 목록을 통째로 갈아 끼운다. 손으로 고치던 파일이 그대로 남는 것이
+ * 중요해서, 들여쓰기까지 첫 실행이 써 두는 모양과 맞춘다 — UI로 한 줄
+ * 더했다고 파일 전체가 한 줄로 뭉개지면 다음에 열어볼 수가 없다.
+ */
+export function writeSubscriptions(subs: Subscription[]): void {
+  mkdirSync(READER_DIR, { recursive: true });
+  writeFileSync(SUBSCRIPTIONS_PATH, JSON.stringify(subs, null, 2) + "\n");
+}
+
+/**
+ * 한 구독을 가리키는 열쇠. 장부의 `source` 칸에 적히는 것과 같은 값이라,
+ * 브리핑이 "아직 구독 중인가"를 이것으로 물어본다 (brief.ts의 subscribed).
+ */
+export const subKey = (s: Subscription): string => (s.kind === "hn" ? "hn" : s.url);
 
 export type FetchReport = {
   sources: { label: string; count: number | null; error?: string }[];
@@ -25,9 +41,15 @@ export type FetchReport = {
 /**
  * One pass over every subscription. Safe to run again: a url is seen once, and
  * a story already in the library only has its score refreshed.
+ *
+ * `subs` is what to walk, and defaults to all of them. A caller passes one when
+ * it has just been handed a single feed and wants that feed's pieces now rather
+ * than at the next full pass.
  */
-export async function fetchFeed(log: (line: string) => void = () => {}): Promise<FetchReport> {
-const subs = readSubscriptions();
+export async function fetchFeed(
+  log: (line: string) => void = () => {},
+  subs: Subscription[] = readSubscriptions(),
+): Promise<FetchReport> {
 const lib = open();
 const report: FetchReport = { sources: [], added: 0, fetched: {}, total: 0, withText: 0 };
 
@@ -88,6 +110,6 @@ log(`\nlibrary ${total} · with text ${withText}`);
 return report;
 }
 
-function label(s: Subscription) {
+export function label(s: Subscription) {
   return s.kind === "hn" ? "hn(best)" : s.url;
 }
