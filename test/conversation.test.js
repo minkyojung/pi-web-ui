@@ -198,7 +198,7 @@ test("a reply that calls a tool before speaking keeps one order", () => {
 	];
 	assert.deepEqual(
 		itemsFromMessages(messages).map((i) => i.kind),
-		["assistant", "tool"],
+		["assistant", "tool", "done"],
 	);
 });
 

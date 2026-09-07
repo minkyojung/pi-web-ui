@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { applyEvent, createConversation } from "../conversation.js";
+import { applyEvent, createConversation, itemsFromMessages } from "../conversation.js";
 import { formatCost, formatDuration, formatTokens, stopNote, turnParts } from "../web/src/turn.ts";
 
 const at = (timestamp) => ({ role: "assistant", content: [], timestamp });
@@ -151,4 +152,82 @@ test("the answer travels with the run that produced it, for copying", () => {
 	// The second run copies its own answer, not everything said so far, and
 	// nothing a tool printed.
 	assert.equal(second.answer, "second answer");
+});
+
+// ---------------------------------------------------------------------------
+// The same footer, off a session file.
+
+const stored = (messages) => itemsFromMessages(messages).filter((item) => item.kind === "done");
+
+test("a resumed run is dated, billed and ended the same as a live one", () => {
+	const messages = [
+		{ role: "user", content: [{ type: "text", text: "go" }], timestamp: 1000 },
+		{
+			role: "assistant",
+			content: [{ type: "toolCall", id: "t1", name: "ls", arguments: {} }],
+			stopReason: "toolUse",
+			timestamp: 2000,
+			usage: { totalTokens: 900, cost: { total: 0.004 } },
+		},
+		{ role: "toolResult", toolCallId: "t1", content: [{ type: "text", text: "a" }], isError: false, timestamp: 2500 },
+		{
+			role: "assistant",
+			content: [{ type: "text", text: "here" }],
+			stopReason: "length",
+			timestamp: 4500,
+			usage: { totalTokens: 540, cost: { total: 0.0035 } },
+		},
+	];
+	const [done] = stored(messages);
+	assert.equal(done.startedAt, 1000);
+	// A tool result is not a message live, so its time does not end the run.
+	assert.equal(done.endedAt, 4500);
+	assert.equal(done.tokens, 1440);
+	assert.equal(Math.round(done.cost * 10_000), 75);
+	assert.equal(done.stopReason, "length");
+	assert.equal(done.answer, "here");
+});
+
+test("a session file is cut into runs by its user messages", () => {
+	const say = (text, timestamp) => ({ role: "assistant", content: [{ type: "text", text }], timestamp, stopReason: "stop" });
+	const items = itemsFromMessages([
+		{ role: "user", content: [{ type: "text", text: "one" }], timestamp: 1000 },
+		say("first", 2000),
+		{ role: "user", content: [{ type: "text", text: "two" }], timestamp: 3000 },
+		say("second", 4000),
+	]);
+	assert.deepEqual(
+		items.map((item) => item.kind),
+		["user", "assistant", "done", "user", "assistant", "done"],
+	);
+	const [first, second] = items.filter((item) => item.kind === "done");
+	// Each run is dated and copied on its own, not from the first message on.
+	assert.deepEqual([first.startedAt, first.endedAt], [1000, 2000]);
+	assert.deepEqual([second.startedAt, second.endedAt], [3000, 4000]);
+	assert.equal(second.answer, "second");
+});
+
+test("a user message with nothing after it closes no run", () => {
+	// A session saved with the question still in flight has nothing to settle.
+	const items = itemsFromMessages([{ role: "user", content: [{ type: "text", text: "go" }], timestamp: 1000 }]);
+	assert.deepEqual(
+		items.map((item) => item.kind),
+		["user"],
+	);
+});
+
+test("live and resumed close a real recorded run identically", () => {
+	const events = JSON.parse(readFileSync(new URL("fixtures/turn-with-tools.json", import.meta.url), "utf8"));
+	const state = createConversation();
+	for (const event of events) applyEvent(state, event);
+
+	const live = state.items.filter((item) => item.kind === "done");
+	const resumed = stored(events.findLast((event) => event.type === "agent_end").messages);
+
+	// The whole point of the two paths: a conversation must not change when it
+	// is reloaded. Before this, a resumed session had no `done` at all, so an
+	// answer cut off at the token limit came back looking finished.
+	assert.deepEqual(resumed, live);
+	assert.equal(live.length, 1);
+	assert.ok(live[0].tokens > 0 && live[0].cost > 0);
 });

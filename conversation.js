@@ -70,6 +70,40 @@ const COMPACTION_REASON = {
 	overflow: "context overflow",
 };
 
+/**
+ * The running total a `done` is made of.
+ *
+ * Both paths keep one — the live stream while a run is in flight, and the
+ * resumed reader between one user message and the next — so it is defined once
+ * here, along with what it turns into, or the two would drift.
+ */
+function newRun() {
+	return {
+		runStartedAt: null,
+		runEndedAt: null,
+		runTokens: 0,
+		runCost: 0,
+		runStopReason: null,
+	};
+}
+
+function doneItem(run, answer) {
+	return {
+		kind: "done",
+		startedAt: run.runStartedAt,
+		endedAt: run.runEndedAt,
+		stopReason: run.runStopReason,
+		// Zero is nothing to say rather than a fact about the run: a provider
+		// that reports no usage should read the same as silence.
+		tokens: run.runTokens || null,
+		cost: run.runCost || null,
+		// Its own field rather than `text`, which everywhere else in this type
+		// means the thing on screen. A `done` shows figures; the answer rides
+		// along only so it can be copied.
+		answer,
+	};
+}
+
 /** Widen the run's span to include a message, if it came with a time. */
 function stamp(state, message) {
 	const at = message?.timestamp;
@@ -129,18 +163,13 @@ export function createConversation() {
 		 * a reducer that calls Date.now() cannot be replayed, and a recording
 		 * would then produce a different conversation every time it was run.
 		 */
-		runStartedAt: null,
-		runEndedAt: null,
 		/**
-		 * What the run in flight has spent, and how its last message ended.
-		 *
-		 * Summed across messages rather than taken from the last one: a turn that
-		 * calls tools is several assistant messages, each billed, and the last of
-		 * them is usually the cheapest.
+		 * What the run in flight has spent, how long it has been going, and how
+		 * its last message ended. Summed across messages rather than taken from
+		 * the last one: a turn that calls tools is several assistant messages,
+		 * each billed, and the last of them is usually the cheapest.
 		 */
-		runTokens: 0,
-		runCost: 0,
-		runStopReason: null,
+		...newRun(),
 	};
 }
 
@@ -177,11 +206,7 @@ export function applyEvent(state, event) {
 	switch (event.type) {
 		case "agent_start":
 			state.status = "working";
-			state.runStartedAt = null;
-			state.runEndedAt = null;
-			state.runTokens = 0;
-			state.runCost = 0;
-			state.runStopReason = null;
+			Object.assign(state, newRun());
 			break;
 
 		case "message_start":
@@ -347,20 +372,7 @@ export function applyEvent(state, event) {
 		// item that marks the end of one.
 		case "agent_settled":
 			state.status = "idle";
-			add({
-				kind: "done",
-				startedAt: state.runStartedAt,
-				endedAt: state.runEndedAt,
-				stopReason: state.runStopReason,
-				// Zero is nothing to say rather than a fact about the run: a
-				// provider that reports no usage should read the same as silence.
-				tokens: state.runTokens || null,
-				cost: state.runCost || null,
-				// Its own field rather than `text`, which everywhere else in this
-				// type means the thing on screen. A `done` shows figures; the
-				// answer rides along only so it can be copied.
-				answer: answerOf(state.items),
-			});
+			add(doneItem(state, answerOf(state.items)));
 			break;
 
 		case "error":
@@ -385,11 +397,39 @@ export function itemsFromMessages(messages) {
 	const items = [];
 	const toolItems = new Map();
 
+	let run = newRun();
+	/** Whether the run being read has anything in it to finish. */
+	let running = false;
+
+	/**
+	 * Close the run being read, if there is one.
+	 *
+	 * A session file has no `agent_settled` in it, so a run is bounded by the
+	 * user messages around it. That is one boundary too many for a run that was
+	 * steered — pi injects a steering message into a run in flight, and this
+	 * reads it as the start of the next one — but the alternative is a session
+	 * with no times, no cost, and no sign of an answer that stopped early, which
+	 * is the half of it that matters. An extra rule in a steered conversation is
+	 * a smaller lie than a truncated answer that looks finished.
+	 */
+	const settle = () => {
+		if (running) items.push(doneItem(run, answerOf(items)));
+		run = newRun();
+		running = false;
+	};
+
 	for (const message of messages) {
 		if (message.role === "user") {
+			settle();
+			stamp(run, message);
 			const text = textOf(message.content);
 			if (text) items.push({ kind: "user", text });
 		} else if (message.role === "assistant") {
+			// Live, the same two numbers come off message_start and message_end,
+			// and a tool result is not a message there — so it is not one here.
+			stamp(run, message);
+			bill(run, message);
+			running = true;
 			// Live, a message thinks before it speaks and speaks before its tool
 			// calls start, so replay in that order rather than in content order.
 			for (const part of message.content) {
@@ -425,5 +465,6 @@ export function itemsFromMessages(messages) {
 			}
 		}
 	}
+	settle();
 	return items;
 }

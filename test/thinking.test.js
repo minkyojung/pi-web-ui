@@ -12,7 +12,8 @@ function replay(events) {
 	return state;
 }
 
-const shape = (items) => items.map((item) => [item.kind, item.text ?? item.name]);
+const shape = (items) =>
+	items.filter((item) => item.kind !== "done").map((item) => [item.kind, item.text ?? item.name]);
 
 test("a streamed thought becomes one item, separate from the answer", () => {
 	const state = replay([
