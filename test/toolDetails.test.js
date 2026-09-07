@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { applyEvent, createConversation, itemsFromMessages } from "../conversation.js";
+import { detailNotes, diffStat } from "../web/src/toolDetails.ts";
 
 /**
  * A recording of a run that edits a file and truncates a command's output.
@@ -78,4 +79,29 @@ test("the three tools that stop at a limit all say so the same way", () => {
 	assert.equal(live(end("grep", { matchLimitReached: 100 }))[0].details.limit, 100);
 	assert.equal(live(end("ls", { entryLimitReached: 500 }))[0].details.limit, 500);
 	assert.equal(live(end("find", { resultLimitReached: 1000 }))[0].details.limit, 1000);
+});
+
+// ---------------------------------------------------------------------------
+// What the row makes of them.
+
+test("an edit is counted off the diff pi wrote", () => {
+	const edit = tools(live(EVENTS)).find((item) => item.name === "edit");
+	// The recorded edit rewrites one line: one out, one in.
+	assert.deepEqual(diffStat(edit.details.diff), { added: 1, removed: 1 });
+});
+
+test("counting a diff counts its marks, not its context", () => {
+	const diff = [" 1 kept", "-2 gone", "-3 gone too", "+2 new", " 4 kept"].join("\n");
+	assert.deepEqual(diffStat(diff), { added: 1, removed: 2 });
+	assert.deepEqual(diffStat(""), { added: 0, removed: 0 });
+});
+
+test("a row says what it is not showing", () => {
+	const bash = tools(live(EVENTS)).find((item) => item.name === "bash");
+	assert.deepEqual(detailNotes(bash.details), ["3,000 more lines"]);
+	assert.deepEqual(detailNotes({ limit: 100 }), ["limit 100"]);
+	// A search can both stop at its limit and be cut short; it says both.
+	assert.deepEqual(detailNotes({ omittedLines: 12, limit: 100 }), ["12 more lines", "limit 100"]);
+	assert.deepEqual(detailNotes(undefined), []);
+	assert.deepEqual(detailNotes({ diff: "x" }), []);
 });

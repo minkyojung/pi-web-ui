@@ -117,7 +117,7 @@ function run(
 	name: string,
 	args: unknown,
 	output: string[],
-	{ isError = false } = {},
+	{ isError = false, details }: { isError?: boolean; details?: Record<string, unknown> } = {},
 ): Record<string, unknown>[] {
 	let far = "";
 	return [
@@ -127,7 +127,7 @@ function run(
 			// Partial output is a cumulative snapshot, not an append.
 			return { type: "tool_execution_update", toolCallId: id, toolName: name, args, partialResult: text(far) };
 		}),
-		{ type: "tool_execution_end", toolCallId: id, toolName: name, result: text(far), isError },
+		{ type: "tool_execution_end", toolCallId: id, toolName: name, result: { ...text(far), details }, isError },
 	];
 }
 
@@ -199,7 +199,7 @@ const written: Scenario[] = [
 	{
 		id: "long-output",
 		name: "Long output · failed tool",
-		note: "A result longer than the screen, a tool that died, and a run cut off at the token limit — the footer should say `truncated`, because a cut answer reads exactly like a finished one.",
+		note: "A result longer than the screen, a tool that died, an edit shown as its diff, a search that stopped at its limit, a command whose output did not fit, and a run cut off at the token limit.",
 		load: async () =>
 			script([
 				{ type: "agent_start" },
@@ -213,7 +213,30 @@ const written: Scenario[] = [
 				...run("t2", "read", { path: "web/src/nope.ts" }, ["ENOENT: no such file or directory, open 'web/src/nope.ts'"], {
 					isError: true,
 				}),
-				...run("t3", "edit", { path: "web/src/store.ts", edits: [{ oldText: "…", newText: "…" }] }, [""]),
+				...run("t3", "edit", { path: "web/src/store.ts", edits: [{ oldText: "…", newText: "…" }] }, [""], {
+					details: {
+						// pi's display diff: every line numbered, the changed ones marked.
+						diff: [
+							" 55	function notify(): void {",
+							"-56		if (frame !== null) return;",
+							"+56		if (frame !== null || listeners.size === 0) return;",
+							"+57		// Nothing is watching, so nothing has to be told.",
+							" 58		frame = requestAnimationFrame(() => {",
+						].join("\n"),
+						firstChangedLine: 56,
+					},
+				}),
+				// A search that stopped where it was told to, and a command whose
+				// output did not fit. Both say so on the row rather than inside it.
+				...run("t4", "grep", { pattern: "import", path: "." }, ["web/src/App.tsx:1\nweb/src/store.ts:12\n"], {
+					details: { matchLimitReached: 100 },
+				}),
+				...run("t5", "bash", { command: "seq 1 5000" }, ["1\n2\n3\n…\n2000\n"], {
+					details: {
+						truncation: { truncated: true, totalLines: 5000, outputLines: 2000 },
+						fullOutputPath: "/var/folders/fm/T/pi-bash-179155c7033a1185.log",
+					},
+				}),
 				...say("`web/src/nope.ts` did not exist, and this answer was cut off at the token limit before it could say what to do about", "length"),
 				{ type: "agent_settled" },
 			]),

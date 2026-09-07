@@ -13,6 +13,7 @@ import {
 	WrenchIcon,
 } from "lucide-react";
 
+import { detailNotes, diffStat } from "../toolDetails";
 import { toolDetail } from "../toolSummary";
 import type { Item } from "../types";
 import { CodeBlock } from "./ai-elements/code-block";
@@ -58,6 +59,33 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
+ * The change an edit made, as pi wrote it.
+ *
+ * Its own renderer rather than the code block's `diff` grammar: pi numbers
+ * every line and puts the mark before the number, which is not the format that
+ * grammar is looking for, and colouring by first character is the whole of what
+ * a diff needs anyway.
+ */
+function Diff({ diff }: { diff: string }) {
+	return (
+		<div className="max-h-72 overflow-auto rounded-md bg-muted/50 py-1 font-mono text-xs">
+			{diff.split("\n").map((line, i) => (
+				<div
+					key={i}
+					className={cn(
+						"px-2 whitespace-pre",
+						line.startsWith("+") && "bg-green-500/10 text-green-700 dark:text-green-400",
+						line.startsWith("-") && "bg-red-500/10 text-red-700 dark:text-red-400",
+					)}
+				>
+					{line || " "}
+				</div>
+			))}
+		</div>
+	);
+}
+
+/**
  * One tool call, as a line rather than a card.
  *
  * A run is mostly tool calls, and a bordered card each turns eight of them into
@@ -79,6 +107,9 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 export function ToolRow({ item }: { item: Item }) {
 	const detail = useContext(ToolSummaries) ? toolDetail(item.name, item.args) : null;
 	const Icon = ICONS[item.name ?? ""] ?? WrenchIcon;
+	const diff = item.details?.diff;
+	const stat = diff ? diffStat(diff) : null;
+	const notes = detailNotes(item.details);
 
 	return (
 		// Pulled in against the conversation's own spacing: a paragraph and a tool
@@ -97,19 +128,42 @@ export function ToolRow({ item }: { item: Item }) {
 				    shade off full contrast, the detail a shade further. */}
 				<span className="shrink-0 text-sm font-normal text-foreground/80">{item.name}</span>
 				{detail && <span className="min-w-0 flex-1 truncate font-mono text-sm text-muted-foreground">{detail}</span>}
+				{/* What the row is not showing, next to what it is: a result that
+				    was cut short, or a search that stopped where it was told to. */}
+				{notes.map((note) => (
+					<span key={note} className="ml-auto shrink-0 text-xs text-muted-foreground">
+						{note}
+					</span>
+				))}
+				{stat && (
+					<span className="ml-auto shrink-0 text-xs tabular-nums">
+						<span className="text-green-600 dark:text-green-500">+{stat.added}</span>{" "}
+						<span className="text-red-600 dark:text-red-500">−{stat.removed}</span>
+					</span>
+				)}
 				{item.isError && <CircleAlertIcon className="ml-auto size-3.5 shrink-0 text-destructive" />}
 			</CollapsibleTrigger>
 
 			<CollapsibleContent className="data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=open]:animate-in">
 				<div className="mt-1 mb-2 ml-[0.7rem] space-y-1 border-l pl-2 text-xs">
 					<Field label="IN">
-						{/* Unframed: the gutter already says where this starts, and a
-						    border inside a row that has none of its own is a box back. */}
-						<CodeBlock
-							className="border-0 bg-muted/50"
-							code={JSON.stringify(item.args ?? {}, null, 2)}
-							language="json"
-						/>
+						{/* An edit's arguments are the change, written as the text on
+						    either side of it; pi has already worked out what that comes
+						    to. Showing the JSON instead would be showing the worse of
+						    two accounts of the same thing.
+
+						    Unframed either way: the gutter already says where this
+						    starts, and a border inside a row that has none of its own
+						    is a box back. */}
+						{diff ? (
+							<Diff diff={diff} />
+						) : (
+							<CodeBlock
+								className="border-0 bg-muted/50"
+								code={JSON.stringify(item.args ?? {}, null, 2)}
+								language="json"
+							/>
+						)}
 					</Field>
 
 					{item.result != null && (
@@ -126,6 +180,14 @@ export function ToolRow({ item }: { item: Item }) {
 							>
 								{item.result}
 							</pre>
+							{/* Where the rest of it went. Long, and of no use until the
+							    output is opened, so it waits down here rather than
+							    crowding the row. */}
+							{item.details?.fullOutputPath && (
+								<p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+									full output: {item.details.fullOutputPath}
+								</p>
+							)}
 						</Field>
 					)}
 				</div>
