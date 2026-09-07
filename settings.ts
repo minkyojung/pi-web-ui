@@ -52,12 +52,22 @@ export const LIMITS = {
 
 type NumericKey = keyof typeof LIMITS;
 
-/** Clamped, not refused. A number outside the range comes back as the nearest one it may be, which the dialog then shows — an edit that quietly did nothing would be worse. */
+/**
+ * Clamped, not refused. A number outside the range comes back as the nearest
+ * one it may be, which the dialog then shows — an edit that quietly did nothing
+ * would be worse.
+ *
+ * Only a number, or a string that is one. `Number(null)` and `Number("")` are
+ * both 0, which is inside no range but clamps into every one of them: a field
+ * that arrived empty would come back as the smallest legal value rather than
+ * as the one it had.
+ */
 function num(value: unknown, key: NumericKey): number {
-	const n = Math.round(Number(value));
-	if (!Number.isFinite(n)) return DEFAULTS[key];
+	const raw =
+		typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+	if (!Number.isFinite(raw)) return DEFAULTS[key];
 	const [lo, hi] = LIMITS[key];
-	return Math.min(hi, Math.max(lo, n));
+	return Math.min(hi, Math.max(lo, Math.round(raw)));
 }
 
 /**
