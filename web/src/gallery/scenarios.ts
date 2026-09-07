@@ -288,6 +288,31 @@ const written: Scenario[] = [
 			]),
 	},
 	{
+		id: "branches",
+		name: "Branches",
+		note: "A resumed session, which is the only kind that knows where its messages sit in the tree. The second question was asked three ways; the arrows are inert here, since a bench has no session to move.",
+		load: async () => {
+			// A snapshot rather than events: only a conversation read back from a
+			// session file carries entry ids, and only those can have alternatives.
+			const items = [
+				{ kind: "user", text: "What does this project do?", entryId: "e1" },
+				{ kind: "assistant", text: "It is a web UI over the pi coding agent." },
+				{ kind: "done", startedAt: 1, endedAt: 4200, tokens: 1200, cost: 0.004 },
+				{ kind: "user", text: "Rewrite the reducer, but keep it readable", entryId: "e7" },
+				{ kind: "tool", name: "read", args: { path: "conversation.js" }, result: "export function applyEvent…" },
+				{ kind: "assistant", text: "Here is a smaller `applyEvent`, with the notice handling pulled out." },
+				{ kind: "done", startedAt: 5000, endedAt: 23_000, tokens: 8400, cost: 0.031 },
+			];
+			return [
+				{ type: "snapshot", items },
+				{
+					type: "branches",
+					nodes: [{ entryId: "e7", index: 1, total: 3, targets: ["t0", "t1", "t2"] }],
+				},
+			] as ServerMsg[];
+		},
+	},
+	{
 		id: "thinking",
 		name: "Thinking stream",
 		note: "A thought before the answer, and another between two tools. The preview is the thought's own first words, so a row that has appeared does not move as the rest streams in behind the truncation. Open one to read it as markdown.",

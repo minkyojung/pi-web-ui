@@ -2,6 +2,7 @@ import { memo } from "react";
 import { CircleAlertIcon, InfoIcon } from "lucide-react";
 
 import type { Item } from "../types";
+import { BranchSwitch } from "./BranchSwitch";
 import { Message, MessageContent, MessageResponse } from "./ai-elements/message";
 import { ThinkingRow } from "./ThinkingRow";
 import { ToolRow } from "./ToolRow";
@@ -26,6 +27,10 @@ export const ItemView = memo(function ItemView({ item, index }: { item: Item; in
 			return (
 				<Message from="user">
 					<MessageContent className="whitespace-pre-wrap">{item.text}</MessageContent>
+					{/* Only a message read back from the session file knows where it
+					    sits in the tree, which is the only kind that can have been
+					    asked more than one way. */}
+					{item.entryId && <BranchSwitch entryId={item.entryId} />}
 				</Message>
 			);
 

@@ -20,6 +20,12 @@ export interface Item {
 	result?: string | null;
 	isError?: boolean;
 	/**
+	 * On a user message: where it sits in the session tree, which is how the
+	 * alternatives the server found are matched to the message they belong to.
+	 * Absent on a message folded from live events, which has none yet.
+	 */
+	entryId?: string;
+	/**
 	 * On a tool: what its result carried besides text. A projection of pi's
 	 * `details`, not the thing itself — see detailsOf in conversation.js.
 	 */
@@ -31,8 +37,6 @@ export interface Item {
 	stopReason?: string;
 	tokens?: number;
 	cost?: number;
-	/** On `done`: what the run said, carried so the footer can offer to copy it. */
-	answer?: string;
 }
 
 export interface SessionInfo {

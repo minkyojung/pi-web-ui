@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
+import { branchesStore } from "../serverState";
 import { createConversationStore } from "../store";
-import type { Item, ServerMsg } from "../types";
+import type { BranchPoint, Item, ServerMsg } from "../types";
 import type { Scenario } from "./scenarios";
 
 /**
@@ -17,6 +18,20 @@ function delayFor(event: ServerMsg): number {
 	if (sub === "text_delta" || sub === "thinking_delta") return 10;
 	if (event.type === "tool_execution_update") return 60;
 	return 140;
+}
+
+/**
+ * One message, the way the socket would hand it over.
+ *
+ * Most of what arrives is a conversation event and goes to the reducer, but not
+ * all of it: a resumed session arrives whole as a snapshot, and where it has
+ * branches arrives beside it. The bench takes both, or half of what the app
+ * does could not be looked at here.
+ */
+function feed(store: ReturnType<typeof createConversationStore>, event: ServerMsg): void {
+	if (event.type === "snapshot") store.replaceConversation((event as { items: Item[] }).items);
+	else if (event.type === "branches") branchesStore.set((event as { nodes: BranchPoint[] }).nodes);
+	else store.applyServerEvent(event);
 }
 
 export interface Replay {
@@ -57,6 +72,7 @@ export function useReplay(scenario: Scenario): Replay {
 		let current = true;
 		setEvents([]);
 		setStore(createConversationStore());
+		branchesStore.set([]);
 		setCursor(0);
 		scenario.load().then((loaded) => {
 			if (!current) return;
@@ -76,7 +92,8 @@ export function useReplay(scenario: Scenario): Replay {
 	const seek = useCallback(
 		(to: number) => {
 			const next = createConversationStore();
-			for (let i = 0; i < to; i++) next.applyServerEvent(events[i]);
+			branchesStore.set([]);
+			for (let i = 0; i < to; i++) feed(next, events[i]);
 			setStore(next);
 			setCursor(to);
 		},
@@ -85,7 +102,7 @@ export function useReplay(scenario: Scenario): Replay {
 
 	const step = useCallback(() => {
 		if (cursor >= events.length) return;
-		store.applyServerEvent(events[cursor]);
+		feed(store, events[cursor]);
 		setCursor(cursor + 1);
 	}, [cursor, events, store]);
 
