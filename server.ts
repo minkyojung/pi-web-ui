@@ -489,6 +489,19 @@ const server = createServer(async (req, res) => {
 				return json(404, { error: "not found" });
 			}
 		}
+		// Asking for one piece's body again. The feed pass reaches a piece once and
+		// never returns to it, so a site that was down that minute stays empty for
+		// good; this is the way back. `force` because a piece opened by hand and
+		// asked for is a request, not one of two hundred links worth skipping.
+		const again = pathname.match(/^\/api\/items\/(\d+)\/refetch$/);
+		if (again && req.method === "POST") {
+			const have = library.get(Number(again[1]));
+			if (!have) return json(404, { error: "not found" });
+			const r = await extract(have.url, { force: true });
+			library.save(have.id, r.status, r.html, r.text, r.kind, r.resolved);
+			library.flush();
+			return json(200, library.get(have.id));
+		}
 		// The door a url comes in by. Feeds take the same road in fetch.ts, two
 		// hundred at a time; this is one, and the order is turned around: fetch
 		// first, then take an id. Where a link ends up is only known once it has

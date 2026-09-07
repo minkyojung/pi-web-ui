@@ -1,8 +1,16 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import DOMPurify from "dompurify";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { host, STATUS_LABEL, type FullItem } from "@/reader";
 
-export function Article({ item }: { item: FullItem | null }) {
+export function Article({
+  item,
+  onRefetch,
+}: {
+  item: FullItem | null;
+  onRefetch: (id: number) => Promise<void>;
+}) {
   const box = useRef<HTMLDivElement>(null);
   // 읽던 자리를 기억한다. 목록을 오가며 읽으므로 매번 위로 튀면 못 읽는다.
   const offsets = useRef(new Map<number, number>());
@@ -36,7 +44,7 @@ export function Article({ item }: { item: FullItem | null }) {
           </a>
           {item.gist && <Gist text={item.gist} />}
         </header>
-        <Body item={item} />
+        <Body item={item} onRefetch={onRefetch} />
       </article>
     </div>
   );
@@ -57,14 +65,67 @@ function Gist({ text }: { text: string }) {
   );
 }
 
-function Body({ item }: { item: FullItem }) {
-  if (item.kind === "youtube") return <Transcript text={item.text ?? ""} url={item.url} />;
+function Body({ item, onRefetch }: { item: FullItem; onRefetch: (id: number) => Promise<void> }) {
+  // Only when there are captions. Without that check a video with none renders
+  // an empty article instead of saying so.
+  if (item.kind === "youtube" && item.text) return <Transcript text={item.text} url={item.url} />;
   if (item.html) return <Html html={item.html} />;
 
+  // Not having the text and not having tried are different facts, and they were
+  // reading as the same sentence. What can be done about each differs too, so
+  // the two say so separately and each carries its own button.
+  const untried = item.status === "pending" || item.status === "excluded";
   return (
-    <p className="rounded-md bg-muted p-4 text-sm text-muted-foreground">
-      Couldn't get the text ({STATUS_LABEL[item.status] ?? item.status}). Read it at the source.
-    </p>
+    <Missing
+      item={item}
+      onRefetch={onRefetch}
+      text={untried ? "Not fetched yet." : `Couldn't get the text (${STATUS_LABEL[item.status] ?? item.status}).`}
+      action={untried ? "Fetch now" : "Try again"}
+    />
+  );
+}
+
+/** A piece with no body, and the one thing that can be done about it. */
+function Missing({
+  item,
+  onRefetch,
+  text,
+  action,
+}: {
+  item: FullItem;
+  onRefetch: (id: number) => Promise<void>;
+  text: string;
+  action: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // A transcript is settled: asking again fetches the same missing captions.
+  const retryable = item.status !== "no_transcript";
+
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onRefetch(item.id);
+    } catch (e) {
+      setError((e as Error).message || "failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-md bg-muted p-4 text-sm text-muted-foreground">
+      <p>{text}</p>
+      {retryable && (
+        <Button size="sm" variant="outline" className="mt-3" disabled={busy} onClick={run}>
+          {busy && <Spinner />}
+          {action}
+        </Button>
+      )}
+      {error && <p className="mt-2 text-destructive">{error}</p>}
+    </div>
   );
 }
 

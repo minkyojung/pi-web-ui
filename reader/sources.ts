@@ -2,7 +2,7 @@ import Parser from "rss-parser";
 import type { Item } from "./store.ts";
 
 export type Subscription =
-  | { kind: "hn"; minScore: number }
+  | { kind: "hn" }
   | { kind: "rss"; url: string; title?: string };
 
 const HN = "https://hacker-news.firebaseio.com/v0";
@@ -18,11 +18,8 @@ type HnStory = {
   score?: number; descendants?: number; kids?: number[]; time?: number;
 };
 
-/**
- * beststories 200개를 전부 가져온다.
- * 점수 미달도 제목은 저장한다("pending") — 점수는 나중에 오를 수 있으므로.
- */
-export async function fromHn(_sub: Extract<Subscription, { kind: "hn" }>): Promise<Item[]> {
+/** beststories 200개를 전부 가져온다. */
+export async function fromHn(): Promise<Item[]> {
   const ids = await json<number[]>(`${HN}/beststories.json`);
   const stories = await pool(ids, 20, (id) => json<HnStory>(`${HN}/item/${id}.json`));
 

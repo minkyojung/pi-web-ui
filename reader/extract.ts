@@ -101,6 +101,9 @@ async function html(url: string): Promise<Extracted> {
   if (res.status === 401 || res.status === 402 || res.status === 403)
     return at(empty("blocked", "html"));
   if (!res.ok) return at(empty("failed", "html"));
+  // 202 등 200이 아닌 2xx. 페이지가 아니라 "지금은 못 준다"는 대답이라, 파싱해
+  // 봐야 본문이 없다. failed로 적으면 원인이 사라지므로 blocked로 둔다.
+  if (res.status !== 200) return at(empty("blocked", "html"));
 
   const type = res.headers.get("content-type") ?? "";
   if (!type.includes("html")) return at(empty("failed", type.split(";")[0]));

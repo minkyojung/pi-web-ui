@@ -65,7 +65,7 @@ export function App() {
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel id="article" minSize="30%" className="min-w-0">
-					<Article item={lib.current} />
+					<Article item={lib.current} onRefetch={lib.refetch} />
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel
@@ -137,6 +137,18 @@ function useLibrary() {
 		return { created, row };
 	}, []);
 
+	// Asking for a body again. Unlike every other request here this one does not
+	// swallow its failure: it is an answer to a click, and a button that does
+	// nothing at all is worse than one that says why.
+	const refetch = useCallback(async (id: number) => {
+		const r = await fetch(`/api/items/${id}/refetch`, { method: "POST" });
+		const body = (await r.json().catch(() => ({}))) as { error?: string } & Partial<FullItem>;
+		if (!r.ok) throw new Error(body.error ?? `${r.status}`);
+		const full = body as FullItem;
+		setCurrent((cur) => (cur?.id === full.id ? full : cur));
+		setItems((prev) => prev.map((it) => (it.id === full.id ? { ...it, ...full } : it)));
+	}, []);
+
 	// The list is fetched once the socket is up, not on mount: the server takes a
 	// few seconds to bring the pi session up, and a request before that gets a
 	// proxy error. Reconnecting refetches too, which is also how a fetch pass
@@ -177,5 +189,6 @@ function useLibrary() {
 		select: setSelectedId,
 		setFlags,
 		save,
+		refetch,
 	};
 }

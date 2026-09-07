@@ -4,7 +4,7 @@ import { fromHn, fromRss, pool, type Subscription } from "./sources.ts";
 import { extract, toText } from "./extract.ts";
 
 /** A first run has nothing to read from; start it on HN so the screen is not empty. */
-const DEFAULT_SUBSCRIPTIONS: Subscription[] = [{ kind: "hn", minScore: 50 }];
+const DEFAULT_SUBSCRIPTIONS: Subscription[] = [{ kind: "hn" }];
 
 export function readSubscriptions(): Subscription[] {
   if (!existsSync(SUBSCRIPTIONS_PATH)) {
@@ -35,7 +35,7 @@ const report: FetchReport = { sources: [], added: 0, fetched: {}, total: 0, with
 const collected = [];
 for (const sub of subs) {
   try {
-    const items = sub.kind === "hn" ? await fromHn(sub) : await fromRss(sub);
+    const items = sub.kind === "hn" ? await fromHn() : await fromRss(sub);
     collected.push({ sub, items });
     report.sources.push({ label: label(sub), count: items.length });
     log(`  ${label(sub)} → ${items.length}`);
@@ -48,8 +48,7 @@ for (const sub of subs) {
 // 2. 서재에 넣는다. 이미 있으면 점수만 갱신 (HN 점수는 계속 오른다)
 let added = 0;
 const needText: { id: number; url: string }[] = [];
-for (const { sub, items } of collected) {
-  const minScore = sub.kind === "hn" ? sub.minScore : 0;
+for (const { items } of collected) {
   for (const it of items) {
     const { id, isNew, status } = lib.see(it);
     if (isNew) added++;
@@ -57,10 +56,6 @@ for (const { sub, items } of collected) {
     // HN API가 본문을 직접 준 것(Ask HN 등)은 바로 확정
     // HN API가 준 본문은 이미 HTML 조각이다.
     if (isNew && it.text) { lib.save(id, "ok", it.text, toText(it.text), "hn_text"); continue; }
-
-    // 점수가 기준에 못 미치면 본문을 안 받는다. 제목만 남겨두고,
-    // 나중에 점수가 오르면 그때 받는다. 제목만 두는 건 거의 공짜다.
-    if ((it.score ?? Infinity) < minScore) continue;
 
     if (status === "pending") needText.push({ id, url: it.url });
   }
@@ -94,5 +89,5 @@ return report;
 }
 
 function label(s: Subscription) {
-  return s.kind === "hn" ? `hn(best, ${s.minScore}+)` : s.url;
+  return s.kind === "hn" ? "hn(best)" : s.url;
 }
