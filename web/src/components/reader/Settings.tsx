@@ -3,6 +3,7 @@ import { SlidersHorizontalIcon } from "lucide-react";
 import { cn } from "cn";
 import { MODE_IDS, describeMode, type ToolModeId } from "../../../../toolModes";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +14,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { readTheme, setTheme, type Theme } from "@/theme";
 import { Sources } from "./Sources";
 
 /** settings.ts, as it arrives. Declared again rather than imported: that module reads files. */
@@ -25,7 +28,7 @@ type Settings = {
 
 type NumericKey = "feedDays" | "briefHours" | "briefChars";
 
-const SECTIONS = ["Sources", "Brief", "Agent"] as const;
+const SECTIONS = ["Sources", "Appearance", "Brief", "Agent"] as const;
 type Section = (typeof SECTIONS)[number];
 
 /**
@@ -44,18 +47,38 @@ export function Settings() {
   const [open, setOpen] = useState(false);
   const [section, setSection] = useState<Section>("Sources");
 
+  // ⌘, is where every mac app keeps this. The button is a small grey icon in a
+  // corner, which is the right size for how often it is needed and the wrong
+  // size for finding it the first time; the shortcut and the tooltip are how it
+  // is found.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "," && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label="Settings"
-          className="h-7 w-7 shrink-0 p-0 text-muted-foreground"
-        >
-          <SlidersHorizontalIcon className="size-3.5" />
-        </Button>
-      </DialogTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DialogTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Settings"
+              className="h-7 w-7 shrink-0 p-0 text-muted-foreground"
+            >
+              <SlidersHorizontalIcon className="size-3.5" />
+            </Button>
+          </DialogTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Settings ⌘,</TooltipContent>
+      </Tooltip>
       <DialogContent className="grid-cols-[10rem_1fr] gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <DialogDescription className="sr-only">
           Settings for what is collected, what the briefing reads, and what the agent may do.
@@ -138,9 +161,13 @@ function Panel({ section }: { section: Section }) {
         </>
       )}
 
+      {section === "Appearance" && <Appearance />}
+
       {section === "Brief" && (
         <>
-          <Heading title="Brief">What `npm run brief` reads before it writes.</Heading>
+          <Heading title="Brief">
+            What a briefing reads before it writes. <code className="text-[11px]">npm run brief</code>
+          </Heading>
           <NumberField
             id="briefHours"
             label="Window"
@@ -170,19 +197,24 @@ function Panel({ section }: { section: Section }) {
             <Label htmlFor="toolMode" className="text-xs text-muted-foreground">
               New sessions open on
             </Label>
-            <NativeSelect
-              id="toolMode"
-              className="h-8 max-w-48 text-sm"
-              disabled={!settings}
-              value={settings?.toolMode ?? ""}
-              onChange={(e) => void save({ toolMode: e.target.value as ToolModeId })}
-            >
-              {MODE_IDS.map((id) => (
-                <option key={id} value={id}>
-                  {describeMode(id).name}
-                </option>
-              ))}
-            </NativeSelect>
+            {/* NativeSelect's chevron is placed against its own wrapper, and the
+                wrapper stretches to the column. Narrowing has to happen outside
+                it, or the arrow ends up a panel's width from the box. */}
+            <div className="w-48">
+              <NativeSelect
+                id="toolMode"
+                className="text-sm"
+                disabled={!settings}
+                value={settings?.toolMode ?? ""}
+                onChange={(e) => void save({ toolMode: e.target.value as ToolModeId })}
+              >
+                {MODE_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {describeMode(id).name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
             <p className="text-xs text-muted-foreground">
               {settings ? describeMode(settings.toolMode).can.join(" · ") : " "}
             </p>
@@ -202,6 +234,53 @@ function Panel({ section }: { section: Section }) {
         </p>
       )}
     </section>
+  );
+}
+
+const THEMES: { id: Theme; label: string }[] = [
+  { id: "system", label: "System" },
+  { id: "light", label: "Light" },
+  { id: "dark", label: "Dark" },
+];
+
+/**
+ * The one setting that is about this window rather than about the library, and
+ * the only one that does not go to the server — see theme.ts. Which is also why
+ * it applies as it is clicked: there is nothing to wait for, and the answer to
+ * "what does dark look like" is the screen.
+ */
+function Appearance() {
+  const [theme, setCurrent] = useState<Theme>(readTheme);
+
+  return (
+    <>
+      <Heading title="Appearance">How this window is drawn.</Heading>
+      <div className="flex flex-col gap-1.5">
+        <Label className="text-xs text-muted-foreground">Theme</Label>
+        <ButtonGroup>
+          {THEMES.map(({ id, label }) => (
+            <Button
+              key={id}
+              variant="outline"
+              size="sm"
+              data-active={theme === id}
+              aria-pressed={theme === id}
+              onClick={() => {
+                setTheme(id);
+                setCurrent(id);
+              }}
+              className="h-8 px-3 text-xs data-[active=true]:bg-accent data-[active=true]:text-accent-foreground"
+            >
+              {label}
+            </Button>
+          ))}
+        </ButtonGroup>
+        <p className="text-xs text-muted-foreground">
+          Kept in this browser, not with the rest — the same library read at a desk and in bed
+          wants two answers.
+        </p>
+      </div>
+    </>
   );
 }
 
@@ -258,7 +337,9 @@ function NumberField({
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              e.currentTarget.blur();
+              // Written down, but the cursor stays: Enter here means "yes, that
+              // number", not "I am done with this field".
+              commit();
             }
           }}
           className={cn("h-8 w-24 text-sm")}
