@@ -1,6 +1,7 @@
 import { Readability } from "@mozilla/readability";
 import { JSDOM, VirtualConsole } from "jsdom";
 import { YoutubeTranscript } from "youtube-transcript";
+import { toMarkdown } from "./markdown.ts";
 import type { Status } from "./store.ts";
 
 const UA =
@@ -17,18 +18,15 @@ export const EXCLUDED = [
 export type Extracted = {
   status: Status;
   html: string | null;   // 화면용. 소제목·코드·표가 살아있다
-  text: string | null;   // 2단계 모델 입력용
+  text: string | null;   // 모델 입력용. 마크다운이라 뼈대가 남는다
   kind: string | null;
 };
 
 const empty = (status: Status, kind: string | null = null): Extracted =>
   ({ status, html: null, text: null, kind });
 
-/** HTML 조각에서 순수 텍스트만 뽑는다 (HN 본문처럼 이미 HTML인 것들용). */
-export function toText(html: string): string {
-  return new JSDOM(`<body>${html}</body>`, { virtualConsole: new VirtualConsole() })
-    .window.document.body.textContent?.trim() ?? "";
-}
+/** HTML 조각을 읽을 수 있는 글로 바꾼다 (HN 본문처럼 이미 HTML인 것들용). */
+export const toText = toMarkdown;
 
 export async function extract(url: string): Promise<Extracted> {
   let host: string;
@@ -91,7 +89,8 @@ async function html(url: string): Promise<Extracted> {
     const dom = new JSDOM(body, { url, virtualConsole: new VirtualConsole() });
     const article = new Readability(dom.window.document).parse();
     const html = article?.content?.trim() ?? "";
-    const text = article?.textContent?.trim() ?? "";
+    // textContent는 글자만 이어붙여 문단을 잃는다. 구조를 걸어서 만든다.
+    const text = html ? toMarkdown(html) : "";
     // 길이로 성공/실패를 가르지 않는다. 짧은 글도 있고, 자바스크립트로 그리는
     // 페이지도 있다. 구분이 안 되므로 판단은 나중으로 미루고 있는 그대로 저장한다.
     if (!text) return empty("failed", "html");
