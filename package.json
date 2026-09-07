@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
     "record": "node scripts/record.mjs",
     "fetch": "tsx reader/cli.ts",
+    "e2e": "node scripts/e2e.mjs",
     "brief": "tsx reader/briefCli.ts"
   },
   "keywords": [],

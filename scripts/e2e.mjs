@@ -29,6 +29,7 @@ import { fileURLToPath } from "node:url";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+const bin = (name) => join(root, "node_modules", ".bin", name);
 
 const CHROMES = [
 	process.env.CHROME,
@@ -145,7 +146,34 @@ async function openPage(devtoolsPort, url) {
 	};
 
 	await call("Runtime.enable");
+	// Two tabs cannot both be the front one, and a tab that is not gets no
+	// animation frames — which is how this store tells React that anything
+	// arrived, so the conversation would be held and never drawn. The flag
+	// exists for exactly this: it makes a page behave as though it is being
+	// looked at. Worth knowing that it is needed, and not a bug being papered
+	// over: a real background tab really does stop drawing, on purpose.
+	await call("Emulation.setFocusEmulationEnabled", { enabled: true });
 	return { evaluate, errors, close: () => socket.close() };
+}
+
+/**
+ * Shut the browser down through the protocol, not with a signal.
+ *
+ * A headless Chrome does not stop when the process that started it is asked
+ * to: it leaves helpers running and a profile directory open, which then
+ * cannot be removed. Browser.close is how it is meant to be told.
+ */
+async function closeBrowser(devtoolsPort) {
+	try {
+		const version = await (await fetch(`http://localhost:${devtoolsPort}/json/version`)).json();
+		const socket = new WebSocket(version.webSocketDebuggerUrl);
+		await new Promise((resolve) => socket.addEventListener("open", resolve, { once: true }));
+		socket.send(JSON.stringify({ id: 1, method: "Browser.close" }));
+		await new Promise((resolve) => setTimeout(resolve, 500));
+		socket.close();
+	} catch {
+		// Already gone, which is the outcome this wanted.
+	}
 }
 
 /** Ask a child to stop, insist if it will not, and wait either way. */
@@ -164,9 +192,27 @@ function stop(child) {
 const checks = [];
 const check = (name, run) => checks.push({ name, run });
 
-/** The conversation as text, which is what the arrows are read against. */
-const chat = (page) => page.evaluate("document.getElementById('chat')?.innerText ?? ''");
-const marks = async (page) => ((await chat(page)).match(/ANSWER-\w+|\d\/\d/g) ?? []).join(" ");
+/**
+ * The conversation as text, which is what the arrows are read against.
+ *
+ * textContent rather than innerText: innerText is what is laid out, and pi's
+ * column is a resizable panel that a narrow window collapses to nothing. The
+ * window is sized for this below, but a check that reads the same either way
+ * is one less thing that can pass or fail for the wrong reason.
+ */
+const chat = (page) => page.evaluate("document.getElementById('chat')?.textContent ?? ''");
+/**
+ * The two things a branch check is about: which answer is on screen, and what
+ * the arrows say. Matched exactly rather than loosely, because textContent runs
+ * neighbouring elements together — the answer and the duration under it come
+ * out as one word.
+ */
+const marks = async (page) => {
+	const text = await chat(page);
+	const answers = text.match(/ANSWER-(?:ALPHA|BETA|GAMMA)/g) ?? [];
+	const counts = text.match(/[1-9]\/[1-9]/g) ?? [];
+	return [...answers, ...counts].join(" ");
+};
 const press = (page, title) =>
 	page.evaluate(
 		`(() => { const b = [...document.querySelectorAll('#chat button[title=${JSON.stringify(title)}]')].find((x) => !x.disabled); if (!b) return false; b.click(); return true; })()`,
@@ -256,11 +302,22 @@ async function main() {
 	try {
 		// The client's dev server reads PORT to know where to proxy the socket,
 		// which is the same variable the server reads to listen on.
-		start("server", "npx", ["tsx", "server.ts"], { WORKDIR: cwd, PORT: String(api) });
-		start("vite", "npx", ["vite", "--port", String(web), "--strictPort"], { PORT: String(api) });
+		// The binaries, not npx: npx is a wrapper that outlives nothing and takes
+		// nothing with it, so a signal sent to it leaves the server running.
+		start("server", bin("tsx"), ["server.ts"], { WORKDIR: cwd, PORT: String(api) });
+		start("vite", bin("vite"), ["--port", String(web), "--strictPort"], { PORT: String(api) });
 		start("chrome", chrome, [
 			"--headless=new",
 			"--disable-gpu",
+			// pi's column is a share of the window, and a narrow one leaves it
+			// too small to hold the controls this is here to press.
+			"--window-size=1600,1000",
+			// The store tells React about new items on an animation frame, and a
+			// page the browser thinks nobody is looking at does not get any. It
+			// would sit there holding a conversation it never drew.
+			"--disable-renderer-backgrounding",
+			"--disable-backgrounding-occluded-windows",
+			"--disable-features=CalculateNativeWinOcclusion",
 			"--no-first-run",
 			"--no-default-browser-check",
 			`--user-data-dir=${profile}`,
@@ -281,17 +338,14 @@ async function main() {
 		const opened = await page.evaluate(`new Promise((done) => {
 			const seen = [];
 			const socket = new WebSocket("ws://" + location.host + "/ws");
-			socket.onmessage = (e) => { const m = JSON.parse(e.data); seen.push(m.type === "error" ? "error: " + m.message : m.type); };
+			socket.onmessage = (e) => { const m = JSON.parse(e.data); seen.push(m.type === "error" ? "error: " + m.message : m.type === "snapshot" ? "snapshot(" + m.items.length + ")" : m.type); };
 			socket.onopen = () => socket.send(JSON.stringify({ type: "resume_session", path: ${JSON.stringify(sessionFile)} }));
 			setTimeout(() => { socket.close(); done(seen.join(",")); }, 2500);
 		})`);
-		if (process.env.E2E_DEBUG) {
-			console.log("resume →", opened);
-			console.log("chat  →", JSON.stringify((await chat(page)).slice(0, 200)));
-			await new Promise((r) => setTimeout(r, 4000));
-			console.log("4초 뒤 chat →", JSON.stringify((await chat(page)).slice(0, 200)));
-			console.log("chat 자식 수 →", await page.evaluate("document.querySelectorAll('#chat > *').length"));
-			console.log("세션 이름 →", await page.evaluate("[...document.querySelectorAll('select')].map(s=>s.value).join(' | ')"));
+		// What the server said back, so a failure here is about the session and
+		// not about the browser. Everything after this is about the browser.
+		if (!/snapshot\([1-9]/.test(opened)) {
+			throw new Error(`the branched session did not open — the server answered: ${opened}`);
 		}
 
 		let failed = 0;
@@ -318,6 +372,7 @@ async function main() {
 	} finally {
 		page?.close();
 		bench?.close();
+		await closeBrowser(devtools);
 		// Waited for, not just asked: a browser still writing to its profile
 		// makes removing that profile fail, and a cleanup that throws replaces
 		// whatever went wrong with something that did not.

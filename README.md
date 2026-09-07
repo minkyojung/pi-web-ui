@@ -52,6 +52,7 @@ all the server says so and exits rather than failing on the first prompt.
 ```bash
 npm test          # replays recorded pi sessions, offline
 npm run typecheck
+npm run e2e       # drives the real app in a headless Chrome
 ```
 
 ## Status: step 7 — Tailwind, shadcn, AI Elements
@@ -288,9 +289,23 @@ session. It spends real tokens, so it is manual and never part of `npm test`.
 Re-record only when a pi upgrade actually breaks a test — a stale fixture that
 still passes is evidence the contract held.
 
-The rendering layer is deliberately untested. Every rule about what a session
-means lives in `conversation.js` and is covered here; the renderer's one
-contract with it — an event touches at most one item — is asserted by the same
-suite. What is left is JSX, and it was checked the one way that is worth the
-trouble: by running both clients against the same live session until the DOM
-they produced was identical.
+Every rule about what a session means lives in `conversation.js` and is covered
+here; the renderer's one contract with it — an event touches at most one item —
+is asserted by the same suite. What is left is JSX, and none of the above would
+notice a component that renders nothing or a control that is never reachable.
+
+`npm run e2e` is for that. It starts its own server and dev server on free
+ports, writes a session that was asked the same thing three ways, and drives
+the Chrome already on the machine over the DevTools protocol — no browser
+library, since `npx playwright install` would download a second browser to do
+the same thing. It resumes that session, reads what is on screen, presses the
+branch arrows, and checks nothing reached the console. Its working folder, its
+session, its ports and its browser profile are its own, and it removes them,
+so it will not disturb a server or a session you have open.
+
+Two things it needed are worth knowing about the app rather than about the
+test. A background tab gets no animation frames, and the store tells React
+about new items on one, so a page nobody is looking at holds a conversation it
+never draws — the test emulates focus to get around it, and the behaviour is
+deliberate. And pi's column is a share of the window, so a narrow window
+collapses it to nothing: the browser is given a wide one.
