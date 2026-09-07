@@ -6,6 +6,11 @@ export interface Item {
 	args?: unknown;
 	result?: string | null;
 	isError?: boolean;
+	/**
+	 * On a tool: what its result carried besides text. A projection of pi's
+	 * `details`, not the thing itself — see detailsOf in conversation.js.
+	 */
+	details?: { diff?: string; omittedLines?: number; fullOutputPath?: string; limit?: number };
 	/** ms, on `done`: when the run's first message was written, and its last. */
 	startedAt?: number;
 	endedAt?: number;

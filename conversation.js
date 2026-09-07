@@ -14,6 +14,8 @@
  * @property {unknown} [args]    tool arguments
  * @property {string|null} [result]
  * @property {boolean} [isError]
+ * @property {{diff?: string, omittedLines?: number, fullOutputPath?: string, limit?: number}} [details]
+ *   on `tool`: what the result carried besides its text
  * @property {number} [startedAt]  ms, on `done`: when the run's first message was written
  * @property {number} [endedAt]    ms, on `done`: when its last one was
  * @property {string} [stopReason] on `done`: why the run's last message stopped
@@ -41,6 +43,51 @@ export function resultText(result) {
 	if (typeof result === "string") return result;
 	if (Array.isArray(result?.content)) return textOf(result.content);
 	return JSON.stringify(result);
+}
+
+/**
+ * What a tool result carries besides the text the model reads.
+ *
+ * pi hands a tool's structured `details` alongside its content, for a UI to
+ * draw rather than a model to read: `edit` puts its diff there, `bash` says how
+ * much of the output it kept and where it wrote the rest, and the searching
+ * tools say when they stopped at a limit.
+ *
+ * Taken apart here rather than carried whole, because whole is enormous. A
+ * truncated bash result repeats its own output inside `details.truncation`
+ * — ten kilobytes of it in the recording this was written against, next to the
+ * twelve the result already had — and that copy would cross the socket again
+ * in every snapshot, for a session's every truncated command, to be drawn by
+ * nobody. So what comes out is the few facts a row can show, and a result with
+ * none of them carries nothing at all.
+ *
+ * Not keyed by tool name: `diff` belongs to edits and `truncation` to the tools
+ * that produce output, and no tool has ever meant something else by them. A
+ * name-keyed table would be a second list of tools to keep in step with pi's.
+ */
+function detailsOf(details) {
+	if (!details || typeof details !== "object") return undefined;
+	const out = {};
+
+	if (typeof details.diff === "string" && details.diff) out.diff = details.diff;
+
+	// How much was left out, rather than how much was kept: what a reader wants
+	// to know is what they are not looking at.
+	const cut = details.truncation;
+	if (cut?.truncated && typeof cut.totalLines === "number" && typeof cut.outputLines === "number") {
+		const omitted = cut.totalLines - cut.outputLines;
+		if (omitted > 0) out.omittedLines = omitted;
+	}
+	if (typeof details.fullOutputPath === "string" && details.fullOutputPath) {
+		out.fullOutputPath = details.fullOutputPath;
+	}
+
+	// Three tools, three names for the same fact: it stopped early because it
+	// was told to, and this is the number it stopped at.
+	const limit = details.matchLimitReached ?? details.entryLimitReached ?? details.resultLimitReached;
+	if (typeof limit === "number") out.limit = limit;
+
+	return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /** Provider errors arrive as `400 {json}`. Show the sentence, not the envelope. */
@@ -310,6 +357,11 @@ export function applyEvent(state, event) {
 			const item = state.openTools.get(event.toolCallId);
 			if (item) {
 				item.result = resultText(event.result);
+				// Only at the end, not from the partial updates on the way: a
+				// half-finished command's account of what it left out is about to
+				// be replaced by the real one, and the stored message a resumed
+				// session reads only ever has the real one.
+				item.details = detailsOf(event.result?.details);
 				item.isError = event.isError;
 				changed.push(item);
 				state.openTools.delete(event.toolCallId);
@@ -461,6 +513,7 @@ export function itemsFromMessages(messages) {
 			const item = toolItems.get(message.toolCallId);
 			if (item) {
 				item.result = resultText(message);
+				item.details = detailsOf(message.details);
 				item.isError = message.isError;
 			}
 		}
