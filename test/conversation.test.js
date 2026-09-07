@@ -51,16 +51,18 @@ test("live events and stored messages produce the same conversation", async (t) 
 	}
 });
 
-test("a turn with tool calls renders as user, tools, reply, done", () => {
+test("a turn with tool calls renders as user, tools, thought, reply, done", () => {
 	const { state } = replay(TURN);
 
 	assert.deepEqual(
 		state.items.map((item) => item.kind),
-		["user", "tool", "tool", "assistant", "done"],
+		["user", "tool", "thinking", "tool", "assistant", "done"],
 	);
 
-	const [user, bash, read, reply] = state.items;
+	const [user, bash, thought, read, reply] = state.items;
 	assert.match(user.text, /^Run `ls -1`/);
+
+	assert.match(thought.text, /Inspecting project details/);
 
 	assert.equal(bash.name, "bash");
 	assert.deepEqual(bash.args, { command: "ls -1" });

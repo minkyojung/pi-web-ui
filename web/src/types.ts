@@ -1,6 +1,6 @@
 /** Mirrors the Item typedef in conversation.js, which is plain JS with JSDoc. */
 export interface Item {
-	kind: "user" | "assistant" | "tool" | "error" | "done" | "notice";
+	kind: "user" | "assistant" | "thinking" | "tool" | "error" | "done" | "notice";
 	text?: string;
 	name?: string;
 	args?: unknown;

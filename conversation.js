@@ -8,7 +8,7 @@
  * agreement can be tested.
  *
  * @typedef {object} Item
- * @property {"user"|"assistant"|"tool"|"error"|"done"|"notice"} kind
+ * @property {"user"|"assistant"|"thinking"|"tool"|"error"|"done"|"notice"} kind
  * @property {string} [text]
  * @property {string} [name]     tool name
  * @property {unknown} [args]    tool arguments
@@ -112,6 +112,8 @@ export function createConversation() {
 		status: "idle",
 		/** The assistant item currently receiving text_delta, if any. */
 		openText: null,
+		/** The thinking item currently receiving thinking_delta, if any. */
+		openThinking: null,
 		/** tool_execution_start items awaiting their _end, keyed by toolCallId. */
 		openTools: new Map(),
 		/** Whether the assistant message in flight has streamed any text. */
@@ -204,6 +206,41 @@ export function applyEvent(state, event) {
 				changed.push(state.openText);
 			} else if (sub.type === "text_end") {
 				state.openText = null;
+			} else if (sub.type === "thinking_start") {
+				// No item yet, unlike text_start. A provider that reasons without
+				// publishing a summary — which is what an encrypted reasoning block
+				// is — still opens and closes a thinking block, and one recorded
+				// turn has two of them with not a single delta between. Opening on
+				// the first delta instead means an empty thought is no thought,
+				// which is also what the stored message says: its thinking part is
+				// there with nothing in it, and itemsFromMessages skips it.
+				state.openThinking = null;
+			} else if (sub.type === "thinking_delta") {
+				// The first delta carries the item in with it, rather than adding an
+				// empty one and immediately changing it: one event has to touch at
+				// most one item, which is what lets a renderer stay incremental.
+				if (state.openThinking) {
+					state.openThinking.text += sub.delta;
+					changed.push(state.openThinking);
+				} else {
+					state.openThinking = add({ kind: "thinking", text: sub.delta });
+				}
+			} else if (sub.type === "thinking_end") {
+				// The finished thought, not the deltas added up. The two are not
+				// always the same string — one recorded turn ends its thinking two
+				// newlines longer than the pieces it sent — and the finished one is
+				// what the session file keeps, so taking it here is what makes a
+				// resumed conversation read like the live one. It also covers a
+				// provider that sends the whole thought only at the end.
+				if (typeof sub.content === "string" && sub.content) {
+					if (state.openThinking) {
+						state.openThinking.text = sub.content;
+						changed.push(state.openThinking);
+					} else {
+						add({ kind: "thinking", text: sub.content });
+					}
+				}
+				state.openThinking = null;
 			}
 			break;
 		}
@@ -220,6 +257,7 @@ export function applyEvent(state, event) {
 				if (text) add({ kind: "assistant", text });
 			}
 			state.openText = null;
+			state.openThinking = null;
 			break;
 
 		case "tool_execution_start":
@@ -352,8 +390,15 @@ export function itemsFromMessages(messages) {
 			const text = textOf(message.content);
 			if (text) items.push({ kind: "user", text });
 		} else if (message.role === "assistant") {
-			// Live, an assistant message's text streams before any of its tool
+			// Live, a message thinks before it speaks and speaks before its tool
 			// calls start, so replay in that order rather than in content order.
+			for (const part of message.content) {
+				// Redacted thinking is an opaque payload the provider keeps for its
+				// own continuity, with nothing in it to read.
+				if (part.type === "thinking" && part.thinking && !part.redacted) {
+					items.push({ kind: "thinking", text: part.thinking });
+				}
+			}
 			for (const part of message.content) {
 				if (part.type === "text" && part.text) items.push({ kind: "assistant", text: part.text });
 			}

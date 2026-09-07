@@ -3,6 +3,7 @@ import { InfoIcon } from "lucide-react";
 
 import type { Item } from "../types";
 import { Message, MessageContent, MessageResponse } from "./ai-elements/message";
+import { ThinkingRow } from "./ThinkingRow";
 import { ToolRow } from "./ToolRow";
 import { TurnFooter } from "./TurnFooter";
 
@@ -38,6 +39,9 @@ export const ItemView = memo(function ItemView({ item }: { item: Item }) {
 					</MessageContent>
 				</Message>
 			);
+
+		case "thinking":
+			return <ThinkingRow text={item.text ?? ""} />;
 
 		case "tool":
 			return <ToolRow item={item} />;

@@ -92,6 +92,18 @@ function say(text: string, stopReason = "stop"): Record<string, unknown>[] {
 	];
 }
 
+/** A thought, streamed the way a provider streams one. */
+function think(thought: string): Record<string, unknown>[] {
+	return [
+		{ type: "message_update", assistantMessageEvent: { type: "thinking_start", contentIndex: 0 } },
+		...(thought.match(/.{1,10}/gs) ?? []).map((delta) => ({
+			type: "message_update",
+			assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta },
+		})),
+		{ type: "message_update", assistantMessageEvent: { type: "thinking_end", contentIndex: 0, content: thought } },
+	];
+}
+
 const ask = (text: string) => ({
 	type: "message_start",
 	message: { role: "user", content: [{ type: "text", text }] },
@@ -254,24 +266,21 @@ const written: Scenario[] = [
 	},
 	{
 		id: "thinking",
-		name: "Thinking stream (not rendered yet)",
-		note: "pi sends it, but conversation.js has no case for it, so not one character reaches the screen. Seeing only the answer text is expected — this gap is the next job.",
-		load: async () => {
-			const thought =
-				"The user asked how a conversation is built. applyEvent in conversation.js is the core, and store.ts projects it into something React can see. Both need to be mentioned.";
-			return script([
+		name: "Thinking stream",
+		note: "A thought before the answer, and another between two tools. The preview is the thought's own first words, so a row that has appeared does not move as the rest streams in behind the truncation. Open one to read it as markdown.",
+		load: async () =>
+			script([
 				{ type: "agent_start" },
 				ask("How is a conversation built?"),
-				{ type: "message_update", assistantMessageEvent: { type: "thinking_start", contentIndex: 0 } },
-				...(thought.match(/.{1,10}/gs) ?? []).map((delta) => ({
-					type: "message_update",
-					assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta },
-				})),
-				{ type: "message_update", assistantMessageEvent: { type: "thinking_end", contentIndex: 0, content: thought } },
-				...say("`applyEvent` in `conversation.js` folds, and `store.ts` projects."),
+				...think(
+					"The user asked how a conversation is built. `applyEvent` in conversation.js is the core, and store.ts projects it into something React can see. Both need to be mentioned, and I should read the file first rather than answer from memory.",
+				),
+				...run("k1", "read", { path: "conversation.js", offset: 80, limit: 40 }, ["export function applyEvent(state, event) {\n"]),
+				...think("That confirms it. The second half — the projection — is in store.ts, so check that too before answering."),
+				...run("k2", "read", { path: "web/src/store.ts" }, ["export function createConversationStore() {\n"]),
+				...say("`applyEvent` in `conversation.js` folds session events into items, and `store.ts` copies the ones it touched into a fresh array so React can see the change."),
 				{ type: "agent_settled" },
-			]);
-		},
+			]),
 	},
 ];
 
