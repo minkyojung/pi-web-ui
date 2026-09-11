@@ -34,6 +34,8 @@ import { recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
 import { guard, VAULT_PROMPT } from "./guard.ts";
 import { renameTarget } from "./naming.ts";
+import { LinkStore } from "./linkIndex.ts";
+import { backlinksOf, retarget } from "./links.ts";
 import type {
 	BranchesMsg,
 	ClientMsg,
@@ -325,7 +327,16 @@ function note(path: string): NoteMsg | null {
 	if (!found) return null;
 	const { spans } = reconcile(CWD, path, found.text, Date.now());
 	known.set(path, found.modified);
-	return { type: "note", path, text: found.text, modified: found.modified, spans };
+	return { type: "note", path, text: found.text, modified: found.modified, spans, backlinks: links.backlinks(path) };
+}
+
+/** Every note's links, for "who links here" — see linkIndex.ts. */
+const links = new LinkStore(CWD);
+links.load();
+
+/** After a change to what links where: the notes whose backlinks may differ hear theirs again. */
+function backlinksFor(paths: string[]): void {
+	for (const path of paths) broadcast({ type: "backlinks", path, notes: links.backlinks(path) });
 }
 
 /**
@@ -349,6 +360,7 @@ function noticed(path: string): void {
 		// moved it — a rename, a delete — is already told, and known forgets
 		// it first.
 		if (known.delete(path)) broadcast({ type: "note_gone", path });
+		backlinksFor(links.remove(path));
 		broadcast(files());
 		return;
 	}
@@ -367,6 +379,7 @@ function noticed(path: string): void {
  */
 function wrote(path: string, base: number | null, changes: Change[]): void {
 	const found = readNote(CWD, path);
+	if (found) backlinksFor(links.update(path, found.text));
 	if (found && base !== null && replay(readHistory(CWD, path)).text === found.text) {
 		const { spans } = replay(readHistory(CWD, path));
 		known.set(path, found.modified);
@@ -920,6 +933,25 @@ wss.on("connection", async (ws) => {
 					}
 					broadcast({ type: "note_renamed", from: msg.path, to: msg.to });
 					broadcast(files());
+					if (msg.path !== msg.to) {
+						// The notes that linked to the old name now link to the new one,
+						// as Obsidian does: each is rewritten as a write of the person's,
+						// since the person asked for the rename, and goes out like one.
+						const before = links.paths();
+						const linking = backlinksOf(Object.fromEntries(before.map((p) => [p, links.linksOf(p)])), msg.path, before);
+						links.rename(msg.path, msg.to);
+						for (const { path: other } of linking) {
+							const had = readNote(CWD, other);
+							if (!had) continue;
+							const text = retarget(had.text, msg.path, msg.to, before, other);
+							if (text === null) continue;
+							const written = writeNote(CWD, other, text, had.modified);
+							if (!written.ok) continue;
+							const changes = record(CWD, other, had.text, text, { author: "me", at: Date.now() });
+							wrote(other, had.modified, changes);
+						}
+						backlinksFor([msg.to]);
+					}
 					break;
 				}
 
@@ -935,6 +967,7 @@ wss.on("connection", async (ws) => {
 					moveLog(historyPath(CWD, msg.path), trashHistoryPath(CWD, gone.trashed));
 					broadcast({ type: "note_deleted", path: msg.path, trashed: gone.trashed });
 					broadcast(files());
+					backlinksFor(links.remove(msg.path));
 					break;
 				}
 

@@ -14,8 +14,9 @@
 import type { BranchPoint } from "./branches";
 import type { Author, Change, Span } from "./history";
 import type { NoteFile } from "./vault";
+import type { Backlink } from "./linkIndex";
 
-export type { Author, BranchPoint, Change, NoteFile, Span };
+export type { Author, Backlink, BranchPoint, Change, NoteFile, Span };
 
 // ---------------------------------------------------------------------------
 // Browser → server
@@ -181,6 +182,19 @@ export interface NoteMsg {
 	text: string;
 	modified: number;
 	spans: Span[];
+	/** The notes that link to this one, from the index. */
+	backlinks: Backlink[];
+}
+
+/**
+ * The notes that link to `path`, again: sent for every note whose backlinks
+ * may have changed after a write, a rename or a delete anywhere. A tab with
+ * the note open shows the list; the rest let it pass.
+ */
+export interface BacklinksMsg {
+	type: "backlinks";
+	path: string;
+	notes: Backlink[];
 }
 
 /**
@@ -316,6 +330,7 @@ export type StateMsg =
 	| SnapshotMsg
 	| FilesMsg
 	| NoteMsg
+	| BacklinksMsg
 	| NoteChangedMsg
 	| NoteCreatedMsg
 	| NoteRenamedMsg

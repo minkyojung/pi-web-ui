@@ -6,6 +6,7 @@
  * listening and the settings bar would stay empty until something changed.
  */
 import type {
+	Backlink,
 	BranchPoint,
 	ConfigMsg,
 	ContextSourcesMsg,
@@ -61,6 +62,13 @@ export const branchesStore = createStore<BranchPoint[]>([]);
 
 /** The notes in the working folder, as the server last listed them. */
 export const filesStore = createStore<NoteFile[]>([]);
+
+/** The notes that link to each note, as last told, by path. */
+export const backlinksStore = createStore<Record<string, Backlink[]>>({});
+
+export function setBacklinks(path: string, notes: Backlink[]): void {
+	backlinksStore.set({ ...backlinksStore.get(), [path]: notes });
+}
 
 /**
  * The last note the server sent, whichever tab or writer caused it. The editor

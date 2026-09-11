@@ -277,6 +277,34 @@ it("이름을 주고 새 노트를 청하면 그 이름이 되고, 있는 이름
   assert.equal((await want("note_rename_failed")).reason, "exists");
 });
 
+it("노트를 열면 백링크가 오고, 다른 노트가 링크를 쓰면 다시 오며, 이름을 바꾸면 링크가 따라온다", async () => {
+  writeFileSync(join(cwd, "target.md"), "# target\n");
+  writeFileSync(join(cwd, "source.md"), "see [[target]] and [[target|it]]\n");
+  await new Promise((r) => setTimeout(r, 400)); // the watcher's reports
+  clear();
+  send({ type: "open_note", path: "target.md" });
+  const note = await want("note", (m) => m.path === "target.md");
+  assert.deepEqual(note.backlinks, [{ path: "source.md", count: 2 }]);
+  // Another note starts linking: the target hears its backlinks again.
+  clear();
+  send({ type: "open_note", path: "a.md" });
+  const a = await want("note", (m) => m.path === "a.md");
+  clear();
+  send({ type: "save_note", path: "a.md", text: a.text + "\nalso [[target]]\n", base: a.modified });
+  const again = await want("backlinks", (m) => m.path === "target.md");
+  assert.deepEqual(again.notes.map((b) => b.path).sort(), ["a.md", "source.md"]);
+  // Renamed: the links in the other notes point at the new name.
+  clear();
+  send({ type: "rename_note", path: "target.md", to: "goal.md" });
+  await want("note_renamed");
+  await want("note_changed", (m) => m.path === "source.md");
+  assert.equal(readFileSync(join(cwd, "source.md"), "utf8"), "see [[goal]] and [[goal|it]]\n");
+  assert.ok(readFileSync(join(cwd, "a.md"), "utf8").includes("[[goal]]"));
+  const after = await want("backlinks", (m) => m.path === "goal.md" && m.notes.length === 2);
+  assert.deepEqual(after.notes.map((b) => b.path).sort(), ["a.md", "source.md"]);
+  assert.equal(history("source.md").at(-1).author, "me", "링크 고침은 내 편집으로 기록된다");
+});
+
 it("폴더 밖과 노트 아닌 것은 열리지도 쓰이지도 않는다", async () => {
   clear();
   send({ type: "open_note", path: "../etc/passwd.md" });
