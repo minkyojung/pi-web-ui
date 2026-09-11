@@ -393,6 +393,85 @@ const chordOnMark = async (page, n, key) => {
 };
 const piMarks = (page) => page.evaluate("[...document.querySelectorAll('#editor .cm-pi')].map((m) => m.textContent)");
 
+/**
+ * Another tab, without a browser: a socket to the same server that opens a
+ * note and saves it, the way the editor does. What it writes reaches the
+ * editor as a change, which is the thing under test.
+ */
+async function otherTab(api) {
+	const socket = new WebSocket(`ws://127.0.0.1:${api}/ws`);
+	const inbox = [];
+	socket.onmessage = (e) => inbox.push(JSON.parse(e.data));
+	await new Promise((resolve) => socket.addEventListener("open", resolve, { once: true }));
+	const open = async (path) => {
+		inbox.length = 0;
+		socket.send(JSON.stringify({ type: "open_note", path }));
+		return until("the other tab's note", () => inbox.find((m) => m.type === "note" && m.path === path));
+	};
+	const save = async (path, text) => {
+		const { modified } = await open(path);
+		inbox.length = 0;
+		socket.send(JSON.stringify({ type: "save_note", path, text, base: modified }));
+		await until("the other tab's save", () => inbox.find((m) => m.type === "note_changed" && m.path === path));
+	};
+	return { open, save, close: () => socket.close() };
+}
+
+check("a change from elsewhere lands in the editor as a change, not a reload", async ({ app, api, cwd }) => {
+	const other = await otherTab(api);
+	try {
+		await app.evaluate(`document.querySelector('#notes button[title="first.md"]').click()`);
+		await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("from outside"));
+		const before = readFileSync(join(cwd, "first.md"), "utf8");
+		// Put the cursor at the end of the first line, so it can be seen not to move.
+		await app.click("#editor .cm-line", 0);
+		await new Promise((r) => setTimeout(r, 100));
+		await other.save("first.md", before + "SECOND TAB\n");
+		await until("the other tab's line", async () => (await editorText(app)).includes("SECOND TAB"));
+		assert.equal(await editorStatus(app), "saved");
+		assert.equal(await app.evaluate("!!document.querySelector('#editor [role=alert]')"), false, "no conflict: nothing was typed");
+	} finally {
+		other.close();
+	}
+});
+
+check("a change that does not touch unsaved typing is fitted around it", async ({ app, api, cwd }) => {
+	const other = await otherTab(api);
+	try {
+		const before = readFileSync(join(cwd, "first.md"), "utf8");
+		// Type at the start, then have the other tab append at the end inside the autosave pause.
+		await app.click("#editor .cm-line", 0);
+		await new Promise((r) => setTimeout(r, 100));
+		assert.equal(await type(app, "MINE "), true);
+		await other.save("first.md", before + "THIRD\n");
+		await until("both", async () => { const t = await editorText(app); return t.includes("MINE") && t.includes("THIRD"); });
+		assert.equal(await app.evaluate("!!document.querySelector('#editor [role=alert]')"), false, "no conflict: the two did not touch");
+		await until("the save to land", async () => (await editorStatus(app)) === "saved");
+		const disk = readFileSync(join(cwd, "first.md"), "utf8");
+		assert.ok(disk.includes("MINE") && disk.includes("THIRD"), "both reached the disk");
+	} finally {
+		other.close();
+	}
+});
+
+check("a change to the same words as unsaved typing is put to the person", async ({ app, api, cwd }) => {
+	const other = await otherTab(api);
+	try {
+		const before = readFileSync(join(cwd, "first.md"), "utf8");
+		await app.click("#editor .cm-line", 0);
+		await new Promise((r) => setTimeout(r, 100));
+		assert.equal(await type(app, "OVER "), true);
+		// The other tab rewrites the first line, which is where the typing is.
+		await other.save("first.md", before.replace(/^[^\n]*/, "# rewritten"));
+		await until("the refusal", async () => (await editorStatus(app)) === "conflict");
+		assert.ok((await app.evaluate("document.querySelector('#editor [role=alert]')?.textContent ?? ''")).includes("changed on disk"));
+		await app.evaluate(`[...document.querySelectorAll('#editor [role=alert] button')].find((b) => b.textContent === "Reload").click()`);
+		await until("their line", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("# rewritten"));
+	} finally {
+		other.close();
+	}
+});
+
 check("what pi wrote is marked, until it is accepted or put back", async ({ app, cwd }) => {
 	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
 	await until("pi's marks", async () => (await piMarks(app)).length === 2);
@@ -526,7 +605,7 @@ async function main() {
 		let failed = 0;
 		for (const { name, run } of checks) {
 			try {
-				await run({ app: page, bench, cwd });
+				await run({ app: page, bench, cwd, api });
 				console.log(`  ok  ${name}`);
 			} catch (error) {
 				failed++;

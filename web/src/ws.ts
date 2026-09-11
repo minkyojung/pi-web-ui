@@ -11,6 +11,7 @@ import {
 	configStore,
 	contextSourcesStore,
 	filesStore,
+	noteChangedStore,
 	noteConflictStore,
 	noteStore,
 	promptsStore,
@@ -60,6 +61,7 @@ const STATE: Record<StateMsg["type"], true> = {
 	snapshot: true,
 	files: true,
 	note: true,
+	note_changed: true,
 	note_conflict: true,
 	prompt_request: true,
 	prompt_dismiss: true,
@@ -99,6 +101,9 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "note":
 			noteStore.set(msg);
+			return;
+		case "note_changed":
+			noteChangedStore.set(msg);
 			return;
 		case "note_conflict":
 			noteConflictStore.set(msg);

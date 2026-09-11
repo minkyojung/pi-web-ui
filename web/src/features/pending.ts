@@ -15,14 +15,18 @@
  * typing around them; they are replaced whole whenever the server sends the
  * note, which it does after every write.
  */
-import { type Extension, Prec, StateEffect, StateField } from "@codemirror/state";
+import { type ChangeSet, type Extension, Prec, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
 
 import type { Span } from "../types";
 import { send } from "../ws";
 
-/** The spans that came with the note. Sent by the editor when the doc is the server's text. */
-export const setSpans = StateEffect.define<Span[]>();
+/**
+ * The spans that came with the note, over the server's text. When the doc has
+ * typing the server has not seen, `through` is that typing, and the marks are
+ * moved through it to where the words now sit.
+ */
+export const setSpans = StateEffect.define<{ spans: Span[]; through?: ChangeSet }>();
 
 const mark = (span: Span) => Decoration.mark({ class: "cm-pi", attributes: { "data-pi": "" }, span });
 
@@ -33,9 +37,10 @@ const marks = StateField.define<DecorationSet>({
 		for (const effect of tr.effects) {
 			if (effect.is(setSpans)) {
 				deco = Decoration.set(
-					effect.value.filter((s) => s.author === "pi" && !s.accepted).map((s) => mark(s).range(s.from, s.to)),
+					effect.value.spans.filter((s) => s.author === "pi" && !s.accepted).map((s) => mark(s).range(s.from, s.to)),
 					true,
 				);
+				if (effect.value.through) deco = deco.map(effect.value.through);
 			}
 		}
 		return deco;

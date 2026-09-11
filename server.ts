@@ -29,7 +29,7 @@ import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
 import { listNotes, readNote, writeNote } from "./vault.ts";
-import { accept, reconcile, record } from "./history.ts";
+import { accept, type Change, reconcile, record, replay, readHistory } from "./history.ts";
 import { recorder } from "./recorder.ts";
 import type {
 	BranchesMsg,
@@ -37,6 +37,7 @@ import type {
 	ConfigMsg,
 	ContextSourcesMsg,
 	FilesMsg,
+	NoteChangedMsg,
 	NoteMsg,
 	PiEventMsg,
 	ServerMsg,
@@ -171,7 +172,7 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 			eventBus,
 			// pi's writes to notes go into their history as they happen, and the
 			// tabs looking at a note hear about it.
-			extensionFactories: [{ name: "recorder", factory: recorder(CWD, (path) => broadcastNote(path)) }],
+			extensionFactories: [{ name: "recorder", factory: recorder(CWD, (path, base, changes) => wrote(path, base, changes)) }],
 		},
 	});
 	return {
@@ -310,10 +311,22 @@ function note(path: string): NoteMsg | null {
 	return { type: "note", path, text: found.text, modified: found.modified, spans };
 }
 
-/** After a write from anywhere: every tab gets the note, and the list its new order. */
-function broadcastNote(path: string): void {
-	const msg = note(path);
-	if (msg) broadcast(msg);
+/**
+ * After a write through the app: every tab gets the change, and the list its
+ * new order. A note that did not exist has no version to have been written
+ * over, and goes out whole instead; so does one whose history says something
+ * other than the disk, which is not a state a change can be measured from.
+ */
+function wrote(path: string, base: number | null, changes: Change[]): void {
+	const found = readNote(CWD, path);
+	if (found && base !== null && replay(readHistory(CWD, path)).text === found.text) {
+		const { spans } = replay(readHistory(CWD, path));
+		const msg: NoteChangedMsg = { type: "note_changed", path, base, modified: found.modified, changes, spans };
+		broadcast(msg);
+	} else {
+		const msg = note(path);
+		if (msg) broadcast(msg);
+	}
 	broadcast(files());
 }
 
@@ -802,8 +815,8 @@ wss.on("connection", async (ws) => {
 						else reply({ type: "error", message: `cannot save ${msg.path}` });
 						return;
 					}
-					record(CWD, msg.path, had?.text ?? "", msg.text, { author: "me", at: Date.now() });
-					broadcastNote(msg.path);
+					const changes = record(CWD, msg.path, had?.text ?? "", msg.text, { author: "me", at: Date.now() });
+					wrote(msg.path, had?.modified ?? null, changes);
 					break;
 				}
 
@@ -812,7 +825,9 @@ wss.on("connection", async (ws) => {
 					if (typeof msg.path !== "string" || typeof msg.from !== "number" || typeof msg.to !== "number") return;
 					if (!readNote(CWD, msg.path)) return;
 					accept(CWD, msg.path, msg.from, msg.to, Date.now());
-					broadcastNote(msg.path);
+					// Nothing in the text moved: the spans are the whole of the news.
+					const found = readNote(CWD, msg.path)!;
+					wrote(msg.path, found.modified, []);
 					break;
 				}
 			}

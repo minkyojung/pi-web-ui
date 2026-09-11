@@ -3,13 +3,13 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { Annotation, EditorState, type Extension } from "@codemirror/state";
+import { Annotation, ChangeSet, EditorState, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
 import { pending, setSpans } from "../features/pending";
-import { noteConflictStore, noteStore } from "../serverState";
-import { decide } from "../noteSync";
+import { noteChangedStore, noteConflictStore, noteStore } from "../serverState";
+import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { registerSave } from "../saves";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
@@ -62,10 +62,13 @@ const markup = HighlightStyle.define([
  * few words of status under it.
  *
  * The disk is the truth and this is a short-lived copy of it. Typing is written
- * down when it pauses and on ⌘S, on top of the version it was read at; the
- * server sends the note back after every write from anyone, and noteSync.ts
- * says what to do with each — most often nothing, sometimes show it, and when
- * someone else wrote under unsaved typing, ask.
+ * down when it pauses and on ⌘S, on top of the version it was read at. After
+ * every write from anyone the server sends the change that was made, over the
+ * version it was made to: on that version it is applied where it falls, and
+ * the cursor stays put; under typing the server has not seen it is fitted
+ * around the typing when the two do not touch, and put to the person when
+ * they do; on any other version the note is asked for whole. noteSync.ts holds
+ * the decisions, so they can be pinned without a browser.
  *
  * Features are CodeMirror extensions, listed in `features` below; the editor
  * itself is markdown, history and the keymap. A caller can add more.
@@ -76,7 +79,15 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 	// The version on disk the doc was read from, the save in flight, and whether
 	// the doc has moved past what is saved. Refs: they change on every keystroke.
 	const base = useRef<number | null>(null);
+	/** The server's text at `base`: what the doc was before typing, and what a change from the server is over. */
+	const saved = useRef("");
+	/** Typing since `base`, as one change set — what a change from the server has to fit around. */
+	const local = useRef(ChangeSet.empty(0));
+	/** Typing since the save in flight went out, which is what is left once its echo lands. */
+	const sinceSent = useRef(ChangeSet.empty(0));
 	const sent = useRef<string | null>(null);
+	/** A refusal is expected for a save already overtaken here; it is not a conflict. */
+	const stale = useRef(false);
 	const dirty = useRef(false);
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [status, setStatus] = useState<"loading" | "saved" | "unsaved" | "conflict">("loading");
@@ -89,16 +100,33 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 		const text = v.state.doc.toString();
 		// Only a save that went out is one to expect an echo of. One sent to a
 		// closed socket is dropped, and the doc stays dirty for the next chance.
-		if (send({ type: "save_note", path, text, base: base.current })) sent.current = text;
+		if (send({ type: "save_note", path, text, base: base.current })) {
+			sent.current = text;
+			sinceSent.current = ChangeSet.empty(text.length);
+		}
 		return true;
 	};
 
-	// Typing: mark dirty and (re)start the clock.
-	const onChange = () => {
+	// Typing: remember it, mark dirty and (re)start the clock.
+	const onChange = (changes: ChangeSet) => {
+		local.current = local.current.compose(changes);
+		sinceSent.current = sinceSent.current.compose(changes);
 		dirty.current = true;
 		setStatus("unsaved");
 		if (timer.current) clearTimeout(timer.current);
 		timer.current = setTimeout(save, AUTOSAVE_MS);
+	};
+
+	/** The doc is the server's text `text` at version `modified`: nothing typed, nothing owed. */
+	const settle = (text: string, modified: number) => {
+		saved.current = text;
+		base.current = modified;
+		local.current = ChangeSet.empty(text.length);
+		sinceSent.current = local.current;
+		sent.current = null;
+		stale.current = false;
+		dirty.current = false;
+		setStatus("saved");
 	};
 
 	useEffect(() => {
@@ -114,7 +142,7 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 				EditorView.lineWrapping,
 				theme,
 				EditorView.updateListener.of((u) => {
-					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) onChange();
+					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) onChange(u.changes);
 				}),
 				...features,
 				...extensions,
@@ -156,7 +184,8 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [online, path]);
 
-	// The note, from whoever wrote it.
+	// The note whole: the answer to open_note, and the fallback for a change
+	// on a version this editor does not have.
 	const note = useSyncExternalStore(noteStore.subscribe, noteStore.get);
 	useEffect(() => {
 		const v = view.current;
@@ -165,20 +194,23 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 		const decision = base.current === null && sent.current === null
 			? { kind: "replace" as const } // The first answer to open_note.
 			: decide({ doc, sent: sent.current, dirty: dirty.current }, note);
-		// Who wrote what is about the server's text; it is only put on the doc
-		// when the doc is that text. Typing since then gets it with the next echo.
-		const spans = () => v.dispatch({ effects: setSpans.of(note.spans) });
 		switch (decision.kind) {
 			case "saved":
-				sent.current = null;
-				base.current = note.modified;
-				dirty.current = decision.dirty;
-				setStatus(decision.dirty ? "unsaved" : "saved");
-				if (!decision.dirty) spans();
+				if (!decision.dirty) {
+					settle(note.text, note.modified);
+					v.dispatch({ effects: setSpans.of({ spans: note.spans }) });
+				} else {
+					// The echo of the save; what was typed since is still owed.
+					saved.current = note.text;
+					base.current = note.modified;
+					local.current = sinceSent.current;
+					sent.current = null;
+					v.dispatch({ effects: setSpans.of({ spans: note.spans, through: local.current }) });
+				}
 				return;
 			case "same":
-				base.current = note.modified;
-				spans();
+				settle(note.text, note.modified);
+				v.dispatch({ effects: setSpans.of({ spans: note.spans }) });
 				return;
 			case "replace":
 				v.dispatch({
@@ -186,11 +218,9 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 					annotations: fromServer.of(true),
 					// Keep the cursor where it was if the text still reaches there.
 					selection: { anchor: Math.min(v.state.selection.main.head, note.text.length) },
-					effects: setSpans.of(note.spans),
+					effects: setSpans.of({ spans: note.spans }),
 				});
-				base.current = note.modified;
-				dirty.current = false;
-				setStatus("saved");
+				settle(note.text, note.modified);
 				return;
 			case "conflict":
 				setStatus("conflict");
@@ -198,13 +228,69 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 		}
 	}, [note, path]);
 
+	// A change to the note, from whoever made it, over the version it was made to.
+	const changed = useSyncExternalStore(noteChangedStore.subscribe, noteChangedStore.get);
+	useEffect(() => {
+		const v = view.current;
+		if (!v || !changed || changed.path !== path || base.current === null) return;
+		if (changed.base !== base.current) {
+			// Not a version this editor has — a change missed while offline, or
+			// one already past. The language-server answer: ask for the whole.
+			send({ type: "open_note", path });
+			return;
+		}
+		const text = applyChanges(saved.current, changed.changes);
+		const theirs = changeSetOf(changed.changes, saved.current.length);
+		if (sent.current !== null && text === sent.current) {
+			// The echo of this editor's save, as the change it made.
+			saved.current = text;
+			base.current = changed.modified;
+			local.current = sinceSent.current;
+			sent.current = null;
+			dirty.current = !local.current.empty;
+			setStatus(dirty.current ? "unsaved" : "saved");
+			v.dispatch({ effects: setSpans.of({ spans: changed.spans, through: local.current }) });
+			return;
+		}
+		if (!dirty.current) {
+			v.dispatch({ changes: theirs, annotations: fromServer.of(true), effects: setSpans.of({ spans: changed.spans }) });
+			settle(text, changed.modified);
+			return;
+		}
+		const fit = rebase(theirs, local.current);
+		if (!fit) {
+			setStatus("conflict");
+			return;
+		}
+		// Their change, around the typing; the typing, over their text.
+		v.dispatch({ changes: fit.theirs, annotations: fromServer.of(true), effects: setSpans.of({ spans: changed.spans, through: fit.ours }) });
+		saved.current = text;
+		base.current = changed.modified;
+		local.current = fit.ours;
+		sinceSent.current = fit.ours;
+		if (sent.current !== null) {
+			// A save is on its way over the old version, and the server will
+			// refuse it: it wrote theirs first, or this change would not have
+			// come on this version. Everything typed is over their text now, so
+			// it is sent again on that, and the refusal on its way is not news.
+			sent.current = null;
+			stale.current = true;
+			save();
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [changed, path]);
+
 	// A save of ours the server refused: the same situation as above.
 	const conflict = useSyncExternalStore(noteConflictStore.subscribe, noteConflictStore.get);
 	useEffect(() => {
-		if (conflict && conflict.path === path) {
-			sent.current = null;
-			setStatus("conflict");
+		if (!conflict || conflict.path !== path) return;
+		if (stale.current) {
+			stale.current = false;
+			noteConflictStore.set(null);
+			return;
 		}
+		sent.current = null;
+		setStatus("conflict");
 	}, [conflict, path]);
 
 	const reload = () => {

@@ -12,18 +12,22 @@
  * bound per session and retired with it. Only paths that are notes are kept:
  * pi editing a source file is not the vault's business.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 import { type ExtensionAPI, isToolCallEventType } from "@earendil-works/pi-coding-agent";
-import { record } from "./history.ts";
+import { type Change, record } from "./history.ts";
 import { resolveNote } from "./vault.ts";
 
-/** Tell the server a note was written, so tabs looking at it can be brought up to date. */
-export type OnNoteWritten = (path: string) => void;
+/**
+ * Tell the server a note was written: the version it was written over (its
+ * mtime before, or null if it did not exist) and the changes, so tabs on that
+ * version can apply them where they fall.
+ */
+export type OnNoteWritten = (path: string, base: number | null, changes: Change[]) => void;
 
 export const recorder = (root: string, onWritten: OnNoteWritten) => (pi: ExtensionAPI) => {
 	/** What each in-flight call is about to change, by call id. */
-	const before = new Map<string, { path: string; text: string }>();
+	const before = new Map<string, { path: string; text: string; modified: number | null }>();
 
 	// pi's tools take a path as given, relative or absolute; the vault knows
 	// notes by their path from the root.
@@ -39,11 +43,18 @@ export const recorder = (root: string, onWritten: OnNoteWritten) => (pi: Extensi
 			return ""; // Not there yet: `write` creating it.
 		}
 	};
+	const modifiedOrNull = (path: string): number | null => {
+		try {
+			return statSync(resolveNote(root, path)!).mtimeMs;
+		} catch {
+			return null;
+		}
+	};
 
 	pi.on("tool_call", async (event) => {
 		if (!isToolCallEventType("edit", event) && !isToolCallEventType("write", event)) return;
 		const path = notePath(event.input.path);
-		if (path) before.set(event.toolCallId, { path, text: readOrEmpty(path) });
+		if (path) before.set(event.toolCallId, { path, text: readOrEmpty(path), modified: modifiedOrNull(path) });
 	});
 
 	pi.on("tool_result", async (event, ctx) => {
@@ -52,7 +63,7 @@ export const recorder = (root: string, onWritten: OnNoteWritten) => (pi: Extensi
 		before.delete(event.toolCallId);
 		if (event.isError) return;
 		const after = readOrEmpty(had.path);
-		record(root, had.path, had.text, after, {
+		const changes = record(root, had.path, had.text, after, {
 			author: "pi",
 			at: Date.now(),
 			sessionId: ctx.sessionManager.getSessionId(),
@@ -60,6 +71,6 @@ export const recorder = (root: string, onWritten: OnNoteWritten) => (pi: Extensi
 			// to catch up to it before tool_call runs.
 			entryId: ctx.sessionManager.getLeafId() ?? undefined,
 		});
-		onWritten(had.path);
+		onWritten(had.path, had.modified, changes);
 	});
 };

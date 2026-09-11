@@ -9,6 +9,7 @@ import type {
 	BranchPoint,
 	ConfigMsg,
 	ContextSourcesMsg,
+	NoteChangedMsg,
 	NoteConflictMsg,
 	NoteFile,
 	NoteMsg,
@@ -61,6 +62,9 @@ export const filesStore = createStore<NoteFile[]>([]);
  * reads it and decides what to do: its own, or one it is not showing.
  */
 export const noteStore = createStore<NoteMsg | null>(null);
+
+/** The last change to a note the server sent, from whichever writer. */
+export const noteChangedStore = createStore<NoteChangedMsg | null>(null);
 
 /** A save this tab made that was refused. Cleared by whoever deals with it. */
 export const noteConflictStore = createStore<NoteConflictMsg | null>(null);

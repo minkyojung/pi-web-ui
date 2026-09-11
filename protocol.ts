@@ -12,10 +12,10 @@
  * this, so nothing here may run.
  */
 import type { BranchPoint } from "./branches";
-import type { Author, Span } from "./history";
+import type { Author, Change, Span } from "./history";
 import type { NoteFile } from "./vault";
 
-export type { Author, BranchPoint, NoteFile, Span };
+export type { Author, BranchPoint, Change, NoteFile, Span };
 
 // ---------------------------------------------------------------------------
 // Browser → server
@@ -156,15 +156,31 @@ export interface FilesMsg {
 }
 
 /**
- * A note as it is on disk, with who wrote which of its words. Sent to a tab
- * that asked to open it, and to every tab whenever anyone — the editor, pi —
- * writes it: a tab that has it open decides what to do with the new text.
+ * A note as it is on disk, whole, with who wrote which of its words. The
+ * answer to open_note, and what a tab falls back to when a change arrives on
+ * a version it does not have.
  */
 export interface NoteMsg {
 	type: "note";
 	path: string;
 	text: string;
 	modified: number;
+	spans: Span[];
+}
+
+/**
+ * A write to a note, as the change it made. Sent to every tab after every
+ * write through the app — the editor's, pi's — the way a language server
+ * sends incremental edits: `changes` turn the version `base` into the version
+ * `modified`, each in the text as it is when applied. A tab on `base` applies
+ * them where they fall; one that is not asks for the note whole.
+ */
+export interface NoteChangedMsg {
+	type: "note_changed";
+	path: string;
+	base: number;
+	modified: number;
+	changes: Change[];
 	spans: Span[];
 }
 
@@ -244,6 +260,7 @@ export type StateMsg =
 	| SnapshotMsg
 	| FilesMsg
 	| NoteMsg
+	| NoteChangedMsg
 	| NoteConflictMsg
 	| PromptRequestMsg
 	| PromptDismissMsg

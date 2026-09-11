@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { decide, hashForNote, noteFromHash } from "../web/src/noteSync.ts";
+import { ChangeSet, Text } from "@codemirror/state";
+
+import { changeSetOf, decide, hashForNote, noteFromHash, rebase } from "../web/src/noteSync.ts";
 
 const at = (text) => ({ text, modified: 1 });
 
@@ -36,4 +38,45 @@ test("주소에서 노트를 읽고, 노트로 주소를 만든다", () => {
   assert.equal(noteFromHash("#%E0%A4%A"), null, "깨진 인코딩은 아무것도 아니다");
   assert.equal(hashForNote("ideas/my note.md"), "#ideas/my%20note.md");
   assert.equal(noteFromHash(hashForNote("한글 노트/a b.md")), "한글 노트/a b.md");
+});
+
+const applyTo = (text, set) => set.apply(Text.of(text.split("\n"))).toString();
+const edit = (base, from, to, insert) => ChangeSet.of({ from, to, insert }, base.length);
+
+test("서버의 변경들은 순서대로 접혀 한 변경이 되고, 적용하면 그 글이 된다", () => {
+  const base = "one two three";
+  const changes = [
+    { from: 4, to: 7, inserted: "2", removed: "two" },
+    { from: 6, to: 11, inserted: "3", removed: "three" },
+  ];
+  assert.equal(applyTo(base, changeSetOf(changes, base.length)), "one 2 3");
+  assert.equal(applyTo(base, changeSetOf([], base.length)), base);
+});
+
+test("겹치지 않는 두 편집은 서로 자리를 옮겨 둘 다 남는다", () => {
+  const base = "alpha beta gamma";
+  const theirs = edit(base, 0, 5, "ALPHA");      // pi changes the first word
+  const ours = edit(base, 11, 16, "GAMMA");      // I change the last, unsaved
+  const fit = rebase(theirs, ours);
+  assert.ok(fit);
+  const screen = applyTo(base, ours);
+  assert.equal(applyTo(screen, fit.theirs), "ALPHA beta GAMMA", "그들의 변경을 내 화면에");
+  const server = applyTo(base, theirs);
+  assert.equal(applyTo(server, fit.ours), "ALPHA beta GAMMA", "내 변경을 그들의 글에 — 다음 저장의 기준");
+});
+
+test("앞쪽에 넣은 글 때문에 뒤가 밀려도 맞게 옮겨진다", () => {
+  const base = "ab";
+  const theirs = edit(base, 0, 0, "XX");
+  const ours = edit(base, 2, 2, "YY");
+  const fit = rebase(theirs, ours);
+  assert.equal(applyTo(applyTo(base, ours), fit.theirs), "XXabYY");
+  assert.equal(applyTo(applyTo(base, theirs), fit.ours), "XXabYY");
+});
+
+test("같은 글을 건드리면 맞출 수 없다", () => {
+  const base = "alpha beta gamma";
+  assert.equal(rebase(edit(base, 0, 5, "A"), edit(base, 2, 8, "X")), null);
+  assert.equal(rebase(edit(base, 6, 10, "B"), edit(base, 6, 10, "b")), null, "같은 단어");
+  assert.ok(rebase(edit(base, 6, 10, "B"), edit(base, 16, 16, "!")), "끝에 덧붙이는 것은 겹치지 않는다");
 });
