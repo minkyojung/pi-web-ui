@@ -96,11 +96,10 @@ test("임시 파일을 남기지 않는다", () => {
   assert.equal(existsSync(join(DIR, `tmp.md.${process.pid}.tmp`)), false);
 });
 
-test("새 노트는 오늘 날짜이고, 있으면 번호가 붙는다", () => {
-  const day = new Date(2026, 8, 11, 15, 0);
-  assert.equal(newNoteName([], day), "2026-09-11.md");
-  assert.equal(newNoteName(["2026-09-11.md"], day), "2026-09-11 2.md");
-  assert.equal(newNoteName(["2026-09-11.md", "2026-09-11 2.md"], day), "2026-09-11 3.md");
-  assert.equal(newNoteName(["deep/2026-09-11.md"], day), "2026-09-11.md", "다른 폴더의 같은 이름은 다른 노트");
-  assert.equal(newNoteName([], new Date(2026, 0, 5)), "2026-01-05.md");
+test("새 노트는 Untitled이고, 있으면 번호가 붙는다", () => {
+  assert.equal(newNoteName([]), "Untitled.md");
+  assert.equal(newNoteName(["Untitled.md"]), "Untitled 2.md");
+  assert.equal(newNoteName(["Untitled.md", "Untitled 2.md"]), "Untitled 3.md");
+  assert.equal(newNoteName(["Untitled.md", "Untitled 3.md"]), "Untitled 2.md", "빈 번호가 먼저");
+  assert.equal(newNoteName(["deep/Untitled.md"]), "Untitled.md", "다른 폴더의 같은 이름은 다른 노트");
 });

@@ -853,6 +853,7 @@ wss.on("connection", async (ws) => {
 
 				// An empty note, made now rather than on first save: the file is
 				// the truth, so a note exists once it is on disk and not before.
+				// Named Untitled; the title field is where it gets a name.
 				case "new_note": {
 					const path = newNoteName(listNotes(CWD).map((f) => f.path));
 					const written = writeNote(CWD, path, "", null);

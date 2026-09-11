@@ -119,13 +119,15 @@ export function writeNote(root: string, path: string, text: string, base: number
 }
 
 /**
- * The name of a new note: today's date, and a number when today already has
- * one. Time is the one structure the vault keeps, so a note starts with the
- * day it began; a person renames what deserves a name.
+ * The name of a new note: "Untitled", and a number when there already is one.
+ *
+ * Not a date and not a guess at a title. The name is the title, which the
+ * person gives it in the title field; until then the file says only that it
+ * has none. A note that was never given a name keeps saying so, which is
+ * more honest than a date that means nothing about it.
  */
-export function newNoteName(existing: Iterable<string>, now = new Date()): string {
-	const day = [now.getFullYear(), now.getMonth() + 1, now.getDate()].map((n) => String(n).padStart(2, "0")).join("-");
+export function newNoteName(existing: Iterable<string>): string {
 	const taken = new Set(existing);
-	if (!taken.has(`${day}.md`)) return `${day}.md`;
-	for (let n = 2; ; n++) if (!taken.has(`${day} ${n}.md`)) return `${day} ${n}.md`;
+	if (!taken.has("Untitled.md")) return "Untitled.md";
+	for (let n = 2; ; n++) if (!taken.has(`Untitled ${n}.md`)) return `Untitled ${n}.md`;
 }

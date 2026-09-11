@@ -508,10 +508,10 @@ check("what pi wrote is marked, until it is accepted or put back", async ({ app,
 	assert.deepEqual(await piMarks(app), []);
 });
 
-check("⌘N makes today's note and opens it", async ({ app, cwd }) => {
+check("⌘N makes an untitled note and opens it", async ({ app, cwd }) => {
 	await app.evaluate("document.body.focus()");
 	await app.press("n", { meta: true });
-	await until("the new note", async () => (await editorStatus(app)) === "saved" && /^#\d{4}-\d{2}-\d{2}\.md$/.test(await app.evaluate("location.hash")));
+	await until("the new note", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("location.hash")) === "#Untitled.md");
 	const path = decodeURIComponent((await app.evaluate("location.hash")).slice(1));
 	assert.equal(readFileSync(join(cwd, path), "utf8"), "");
 	assert.equal(await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.title`), path);
