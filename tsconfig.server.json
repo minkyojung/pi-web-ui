@@ -10,5 +10,5 @@
 		"noEmit": true,
 		"types": ["node"]
 	},
-	"include": ["server.ts", "protocol.ts", "history.ts", "recorder.ts", "watcher.ts", "guard.ts", "naming.ts", "conversation.js", "prompts.ts", "toolModes.ts"]
+	"include": ["server.ts", "protocol.ts", "history.ts", "recorder.ts", "watcher.ts", "guard.ts", "naming.ts", "links.ts", "wikilink.ts", "conversation.js", "prompts.ts", "toolModes.ts"]
 }
