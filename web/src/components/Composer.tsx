@@ -26,10 +26,11 @@ const MOD = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
 /**
  * Send the text and empty the box, whichever way it was sent.
  *
- * The open note rides along as its path, not its body: pi has `read`, so a
- * line naming the file does the same work for one line of tokens. Whatever is
- * typed there and not yet written goes out on the same socket ahead of this,
- * so pi reads what is on screen — see saves.ts.
+ * The open note rides along as its path, beside the message and not in it:
+ * the server tells pi for the turn, so the path is never part of what was
+ * said, kept, compacted, or asked again later when it may be another note.
+ * Whatever is typed there and not yet written goes out on the same socket
+ * ahead of this, so pi reads what is on screen — see saves.ts.
  */
 function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "steer", note: string | null) {
 	const trimmed = text.trim();
@@ -41,7 +42,8 @@ function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "ste
 	const asking = askingAgainStore.get();
 	send({
 		type: "prompt",
-		text: note ? `Open in the editor: ${note}\n\n${trimmed}` : trimmed,
+		text: trimmed,
+		...(note ? { note } : {}),
 		behavior,
 		...(asking ? { entryId: asking.entryId } : {}),
 	});

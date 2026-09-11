@@ -32,6 +32,7 @@ import { listNotes, newNoteName, readNote, renameNote, writeNote } from "./vault
 import { accept, type Change, moveHistory, reconcile, record, replay, readHistory } from "./history.ts";
 import { recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
+import { guard, VAULT_PROMPT } from "./guard.ts";
 import type {
 	BranchesMsg,
 	ClientMsg,
@@ -162,6 +163,13 @@ interface DashboardBridgeState {
 	timers?: ReturnType<typeof setInterval>[];
 }
 
+/**
+ * The note open in the editor of the tab that last sent a prompt, given to
+ * pi for the turn as a line of the system prompt — see guard.ts. One value,
+ * not one per tab: pi has one conversation.
+ */
+let openNote: string | null = null;
+
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
 	retireDashboardBridge();
 	const services = await createAgentSessionServices({
@@ -171,9 +179,15 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 		// project trusted, and the desktop shell's cwd is wherever it was opened.
 		resourceLoaderOptions: {
 			eventBus,
-			// pi's writes to notes go into their history as they happen, and the
-			// tabs looking at a note hear about it.
-			extensionFactories: [{ name: "recorder", factory: recorder(CWD, (path, base, changes) => wrote(path, base, changes)) }],
+			// pi is told this is a folder of notes — see guard.ts.
+			appendSystemPrompt: [VAULT_PROMPT],
+			extensionFactories: [
+				// The guard first: a blocked call never reaches the recorder.
+				{ name: "guard", factory: guard(CWD, () => openNote) },
+				// pi's writes to notes go into their history as they happen, and the
+				// tabs looking at a note hear about it.
+				{ name: "recorder", factory: recorder(CWD, (path, base, changes) => wrote(path, base, changes)) },
+			],
 		},
 	});
 	return {
@@ -655,6 +669,7 @@ wss.on("connection", async (ws) => {
 			switch (msg.type) {
 				case "prompt": {
 					if (typeof msg.text !== "string") return;
+					openNote = typeof msg.note === "string" ? msg.note : null;
 					// Asking an earlier question again: move the leaf to just before
 					// it, so what is sent next becomes a sibling of it rather than a
 					// reply to it, and the branch it was on is left where it is.

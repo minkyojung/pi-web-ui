@@ -28,6 +28,8 @@ export type ClientMsg =
 			behavior?: "steer" | "followUp";
 			/** Asking again: the user message this one is an alternative to. */
 			entryId?: string;
+			/** The note open in the editor, for pi to be told about this turn. Not part of the message. */
+			note?: string;
 	  }
 	| { type: "abort" }
 	| { type: "clear_queue" }
