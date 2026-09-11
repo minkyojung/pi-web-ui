@@ -11,7 +11,8 @@ import { Title } from "./components/Title";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { hashForNote, noteFromHash } from "./noteSync";
-import { noteCreatedStore, noteRenamedStore } from "./serverState";
+import { noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
+import { Button } from "./components/ui/button";
 import { getConnection, getItems, subscribe } from "./store";
 import { send } from "./ws";
 
@@ -87,8 +88,16 @@ export function App() {
 	useEffect(() => {
 		if (!created) return;
 		noteCreatedStore.set(null);
+		noteDeletedStore.set(null); // Whatever came back, or a new one: nothing left to restore.
 		setOpen(created.path);
 	}, [created, setOpen]);
+
+	// A note in the trash is closed wherever it was open. The middle column
+	// then offers to bring it back, until something else is opened.
+	const deleted = useSyncExternalStore(noteDeletedStore.subscribe, noteDeletedStore.get);
+	useEffect(() => {
+		if (deleted && deleted.path === open) setOpen(null);
+	}, [deleted, open, setOpen]);
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -128,7 +137,25 @@ export function App() {
 							<Editor key={noteIdentity(open)} path={open} />
 						</div>
 					) : (
-						<div id="main" className="h-full" />
+						<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+							{deleted ? (
+								<>
+									<span>
+										Deleted <span className="text-foreground">{deleted.path.replace(/\.md$/, "")}</span>
+									</span>
+									<Button
+										variant="outline"
+										size="sm"
+										className="h-7 text-xs"
+										onClick={() => send({ type: "restore_note", trashed: deleted.trashed, path: deleted.path })}
+									>
+										Restore
+									</Button>
+								</>
+							) : (
+								<span>No note open · ⌘N for a new one</span>
+							)}
+						</div>
 					)}
 				</ResizablePanel>
 				<ResizableHandle />

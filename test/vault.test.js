@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, w
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { listNotes, newNoteName, readNote, renameNote, resolveNote, writeNote } from "../vault.ts";
+import { listNotes, newNoteName, readNote, renameNote, resolveNote, restoreNote, trashNote, writeNote } from "../vault.ts";
 
 const DIR = mkdtempSync(join(tmpdir(), "notes-"));
 test.after(() => rmSync(DIR, { recursive: true, force: true }));
@@ -124,4 +124,29 @@ test("없는 노트, 이미 있는 이름, 노트가 아닌 이름으로는 바�
   assert.deepEqual(renameNote(DIR, "ren/a.md", "ren/a.txt"), { ok: false, reason: "invalid" });
   assert.deepEqual(renameNote(DIR, "ren/a.md", "ren/a.md"), { ok: true }, "같은 이름은 아무 일도 아니다");
   assert.ok(readNote(DIR, "ren/a.md") && readNote(DIR, "ren/b.md"), "거절은 아무것도 옮기지 않는다");
+});
+
+test("지우면 휴지통으로 가고 목록에서 사라지며, 되살리면 돌아온다", () => {
+  put("gone/x.md", 1);
+  const r = trashNote(DIR, "gone/x.md");
+  assert.deepEqual(r, { ok: true, trashed: "gone/x.md" });
+  assert.equal(readNote(DIR, "gone/x.md"), null);
+  assert.equal(readFileSync(join(DIR, ".pi/trash/notes/gone/x.md"), "utf8"), "# note\n");
+  assert.ok(!listNotes(DIR).some((f) => f.path.includes("trash")), "휴지통은 노트가 아니다");
+  assert.deepEqual(restoreNote(DIR, "gone/x.md", "gone/x.md"), { ok: true });
+  assert.equal(readNote(DIR, "gone/x.md").text, "# note\n");
+});
+
+test("같은 이름을 두 번 지우면 둘 다 남고, 되살릴 자리가 차 있으면 거절된다", () => {
+  put("twice.md", 1);
+  trashNote(DIR, "twice.md");
+  put("twice.md", 2);
+  const second = trashNote(DIR, "twice.md", new Date(Date.UTC(2026, 8, 11, 1, 2, 3)));
+  assert.equal(second.ok, true);
+  assert.equal(second.trashed, "twice 2026-09-11T01-02-03-000Z.md");
+  assert.deepEqual(restoreNote(DIR, "twice.md", "twice.md"), { ok: true });
+  assert.deepEqual(restoreNote(DIR, second.trashed, "twice.md"), { ok: false, reason: "exists" }, "자리가 차 있다");
+  assert.deepEqual(trashNote(DIR, "nope.md"), { ok: false, reason: "missing" });
+  assert.deepEqual(trashNote(DIR, "../x.md"), { ok: false, reason: "invalid" });
+  assert.deepEqual(restoreNote(DIR, "never.md", "never.md"), { ok: false, reason: "missing" });
 });

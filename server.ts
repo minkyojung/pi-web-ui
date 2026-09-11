@@ -28,8 +28,8 @@ import { modeToolNames } from "./toolModes.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { listNotes, newNoteName, readNote, renameNote, writeNote } from "./vault.ts";
-import { accept, type Change, moveHistory, reconcile, record, replay, readHistory } from "./history.ts";
+import { listNotes, newNoteName, readNote, renameNote, restoreNote, trashNote, writeNote } from "./vault.ts";
+import { accept, type Change, historyPath, moveHistory, moveLog, reconcile, record, replay, readHistory, trashHistoryPath } from "./history.ts";
 import { recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
 import { guard, VAULT_PROMPT } from "./guard.ts";
@@ -344,8 +344,10 @@ const known = new Map<string, number>();
 function noticed(path: string): void {
 	const found = readNote(CWD, path);
 	if (!found) {
-		known.delete(path);
-		broadcast({ type: "note_gone", path });
+		// Gone from under a tab that had it: news. Gone after the app itself
+		// moved it — a rename, a delete — is already told, and known forgets
+		// it first.
+		if (known.delete(path)) broadcast({ type: "note_gone", path });
 		broadcast(files());
 		return;
 	}
@@ -902,6 +904,34 @@ wss.on("connection", async (ws) => {
 					}
 					broadcast({ type: "note_renamed", from: msg.path, to: msg.to });
 					broadcast(files());
+					break;
+				}
+
+				// To the trash, with its history, where restore_note can find it.
+				case "delete_note": {
+					if (typeof msg.path !== "string") return;
+					known.delete(msg.path);
+					const gone = trashNote(CWD, msg.path);
+					if (!gone.ok) {
+						if (gone.reason === "missing") reply({ type: "note_gone", path: msg.path });
+						return;
+					}
+					moveLog(historyPath(CWD, msg.path), trashHistoryPath(CWD, gone.trashed));
+					broadcast({ type: "note_deleted", path: msg.path, trashed: gone.trashed });
+					broadcast(files());
+					break;
+				}
+
+				case "restore_note": {
+					if (typeof msg.trashed !== "string" || typeof msg.path !== "string") return;
+					const back = restoreNote(CWD, msg.trashed, msg.path);
+					if (!back.ok) {
+						reply({ type: "error", message: `cannot restore ${msg.path}: ${back.reason}` });
+						return;
+					}
+					moveLog(trashHistoryPath(CWD, msg.trashed), historyPath(CWD, msg.path));
+					reply({ type: "note_created", path: msg.path });
+					wrote(msg.path, null, []);
 					break;
 				}
 

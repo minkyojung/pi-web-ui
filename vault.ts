@@ -11,7 +11,7 @@
  * the two writers are one person and one agent that works in turns, so this
  * is rare, and rare things are better seen than smoothed over.
  */
-import { mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
 
 export type NoteFile = {
@@ -159,6 +159,48 @@ export function renameNote(root: string, from: string, to: string): RenameResult
 	} catch {
 		// Free, which is the point.
 	}
+	mkdirSync(dirname(dst), { recursive: true });
+	renameSync(src, dst);
+	return { ok: true };
+}
+
+/** Where a deleted note goes, beside its history, until it is restored or forgotten. */
+export const TRASH_DIR = ".pi/trash";
+
+export type TrashResult = { ok: true; trashed: string } | { ok: false; reason: "invalid" | "missing" };
+
+/**
+ * Put a note in the trash: moved, not removed, so it can come back. Its place
+ * in the trash is its path, with a time added when that place is taken — a
+ * note deleted twice under one name is two notes.
+ */
+export function trashNote(root: string, path: string, now = new Date()): TrashResult {
+	const src = resolveNote(root, path);
+	if (!src) return { ok: false, reason: "invalid" };
+	try {
+		statSync(src);
+	} catch {
+		return { ok: false, reason: "missing" };
+	}
+	let trashed = path;
+	if (existsSync(join(root, TRASH_DIR, "notes", trashed))) {
+		trashed = path.replace(/\.md$/, ` ${now.toISOString().replace(/[:.]/g, "-")}.md`);
+	}
+	const dst = join(root, TRASH_DIR, "notes", trashed);
+	mkdirSync(dirname(dst), { recursive: true });
+	renameSync(src, dst);
+	return { ok: true, trashed };
+}
+
+export type RestoreResult = { ok: true } | { ok: false; reason: "invalid" | "missing" | "exists" };
+
+/** Bring a note back from the trash to its old path, if that path is free. */
+export function restoreNote(root: string, trashed: string, path: string): RestoreResult {
+	const dst = resolveNote(root, path);
+	if (!dst) return { ok: false, reason: "invalid" };
+	const src = join(root, TRASH_DIR, "notes", trashed);
+	if (!existsSync(src)) return { ok: false, reason: "missing" };
+	if (existsSync(dst)) return { ok: false, reason: "exists" };
 	mkdirSync(dirname(dst), { recursive: true });
 	renameSync(src, dst);
 	return { ok: true };

@@ -190,9 +190,16 @@ export function readHistory(root: string, path: string): Change[] {
 
 /** The log follows its note to a new path. A note with no log yet has nothing to move. */
 export function moveHistory(root: string, from: string, to: string): void {
-	const src = historyPath(root, from);
+	moveLog(historyPath(root, from), historyPath(root, to));
+}
+
+/** A trashed note's log waits in the trash beside it, under the same name it was trashed as. */
+export function trashHistoryPath(root: string, trashed: string): string {
+	return join(root, ".pi", "trash", "history", `${trashed}.jsonl`);
+}
+
+export function moveLog(src: string, dst: string): void {
 	if (!existsSync(src)) return;
-	const dst = historyPath(root, to);
 	mkdirSync(dirname(dst), { recursive: true });
 	renameSync(src, dst);
 }

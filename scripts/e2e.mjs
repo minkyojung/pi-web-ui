@@ -620,6 +620,20 @@ check("an empty note says so, and a code block is drawn in a monospace", async (
 	assert.equal(await app.evaluate("[...document.querySelectorAll('#editor .cm-line')].filter((l) => !l.classList.contains('cm-code-line')).length"), 3, "the prose lines are not");
 });
 
+check("deleting a note closes it and offers it back, and Restore brings it back open", async ({ app, cwd }) => {
+	await app.evaluate(`document.querySelector('#notes button[title="code.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved");
+	await app.evaluate(`document.querySelector('button[aria-label="Delete note"]').click()`);
+	await until("the column to empty", () => app.evaluate("!document.getElementById('editor') && document.body.textContent.includes('Deleted code')"));
+	assert.equal(existsSync(join(cwd, "code.md")), false);
+	assert.equal(existsSync(join(cwd, ".pi/trash/notes/code.md")), true);
+	assert.equal(await app.evaluate(`!!document.querySelector('#notes button[title="code.md"]')`), false, "off the list");
+	await app.evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent === "Restore").click()`);
+	await until("the note back", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("location.hash")) === "#code.md");
+	assert.equal(existsSync(join(cwd, "code.md")), true);
+	assert.ok((await editorText(app)).includes("const a = 1;"));
+});
+
 check("the bench renders every scenario it knows", async ({ bench }) => {
 	const scenarios = await until("the gallery", () =>
 		bench.evaluate("[...document.querySelectorAll('select option')].map((o) => o.value).join(',')"),

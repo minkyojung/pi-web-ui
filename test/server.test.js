@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -238,6 +238,30 @@ it("없는 노트를 열면 note_gone이고, 지워진 노트 위의 저장도 n
   send({ type: "save_note", path: "doomed.md", text: "back\n", base: null });
   await want("note", (m) => m.path === "doomed.md");
   assert.equal(readFileSync(join(cwd, "doomed.md"), "utf8"), "back\n", "base 없이 쓰면 되살아난다");
+});
+
+it("지우면 휴지통으로 가고 로그도 따라가며, 되살리면 둘 다 돌아온다", async () => {
+  writeFileSync(join(cwd, "bin.md"), "keep me\n");
+  clear();
+  send({ type: "open_note", path: "bin.md" });
+  await want("note", (m) => m.path === "bin.md");
+  clear();
+  send({ type: "delete_note", path: "bin.md" });
+  const deleted = await want("note_deleted");
+  assert.deepEqual([deleted.path, deleted.trashed], ["bin.md", "bin.md"]);
+  await want("files", (m) => !m.files.some((f) => f.path === "bin.md"));
+  assert.equal(existsSync(join(cwd, ".pi/trash/notes/bin.md")), true);
+  assert.equal(existsSync(join(cwd, ".pi/trash/history/bin.md.jsonl")), true, "로그가 따라갔다");
+  assert.equal(inbox.some((m) => m.type === "note_gone"), false, "앱이 옮긴 것은 감시기가 다시 알리지 않는다");
+  clear();
+  send({ type: "restore_note", trashed: "bin.md", path: "bin.md" });
+  assert.equal((await want("note_created")).path, "bin.md");
+  await want("note", (m) => m.path === "bin.md");
+  assert.equal(readFileSync(join(cwd, "bin.md"), "utf8"), "keep me\n");
+  assert.equal(existsSync(join(cwd, ".pi/history/bin.md.jsonl")), true, "로그가 돌아왔다");
+  clear();
+  send({ type: "delete_note", path: "never.md" });
+  assert.equal((await want("note_gone")).path, "never.md");
 });
 
 it("폴더 밖과 노트 아닌 것은 열리지도 쓰이지도 않는다", async () => {

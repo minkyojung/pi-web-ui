@@ -55,7 +55,11 @@ export type ClientMsg =
 	/** A new, empty note, named by the server. Answered with `note_created` to this tab and `note` to every tab. */
 	| { type: "new_note" }
 	/** Give a note another path. Answered with `note_renamed` to every tab, or `note_rename_failed` to this one. */
-	| { type: "rename_note"; path: string; to: string };
+	| { type: "rename_note"; path: string; to: string }
+	/** Put a note in the trash. Answered with `note_deleted` to every tab. */
+	| { type: "delete_note"; path: string }
+	/** Bring a trashed note back to its path. Answered with `note_created` to this tab and `note` to every tab. */
+	| { type: "restore_note"; trashed: string; path: string };
 
 export type ClientMsgType = ClientMsg["type"];
 
@@ -211,6 +215,17 @@ export interface NoteRenameFailedMsg {
 }
 
 /**
+ * A note went to the trash, by someone's choice. `trashed` is its name there,
+ * which restore_note needs; a tab with the note open closes it and may offer
+ * to bring it back.
+ */
+export interface NoteDeletedMsg {
+	type: "note_deleted";
+	path: string;
+	trashed: string;
+}
+
+/**
  * The note is not on disk. Sent to every tab when the watcher sees it go, and
  * to a tab that asks to open or save one that is gone. A tab with it open
  * decides: put it back from what it shows, or close it.
@@ -301,6 +316,7 @@ export type StateMsg =
 	| NoteRenamedMsg
 	| NoteRenameFailedMsg
 	| NoteGoneMsg
+	| NoteDeletedMsg
 	| NoteConflictMsg
 	| PromptRequestMsg
 	| PromptDismissMsg
