@@ -3,6 +3,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { PencilIcon, X } from "lucide-react";
 
 import { appendRestored } from "../queue";
+import { flushSaves } from "../saves";
 import { askingAgainStore, configStore, promptsStore, restoredStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
@@ -26,13 +27,14 @@ const MOD = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
  * Send the text and empty the box, whichever way it was sent.
  *
  * The open note rides along as its path, not its body: pi has `read`, so a
- * line naming the file does the same work for one line of tokens. The editor
- * has written any pause in typing down already, and its last keystrokes go
- * out on the same socket ahead of this, so pi reads what is on screen.
+ * line naming the file does the same work for one line of tokens. Whatever is
+ * typed there and not yet written goes out on the same socket ahead of this,
+ * so pi reads what is on screen — see saves.ts.
  */
 function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "steer", note: string | null) {
 	const trimmed = text.trim();
 	if (!trimmed) return;
+	flushSaves();
 	// Where an earlier question is being asked again, its place in the session
 	// tree rides along: the server moves the leaf to just before it and sends
 	// this from there, so the two are alternatives rather than a sequence.

@@ -362,6 +362,15 @@ check("typing is written down on its own, and a reload finds it", async ({ app, 
 	await until("the same note after a reload", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("TYPED"));
 });
 
+check("typing just before the page goes is not lost", async ({ app, cwd }) => {
+	// No pause for the autosave: the reload comes inside it.
+	assert.equal(await type(app, "LATE "), true);
+	await app.evaluate("location.reload()");
+	await until("the note after the reload", async () => (await editorStatus(app)) === "saved");
+	assert.ok(readFileSync(join(cwd, "first.md"), "utf8").includes("LATE"), "the last keystrokes reached the disk");
+	assert.ok((await editorText(app)).includes("LATE"));
+});
+
 check("a write from elsewhere under unsaved typing is put to the person", async ({ app, cwd }) => {
 	// Someone — pi, another editor — writes the file while a keystroke is pending.
 	writeFileSync(join(cwd, "first.md"), "# first\n\nfrom outside\n");

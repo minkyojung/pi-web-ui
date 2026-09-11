@@ -10,6 +10,7 @@ import { tags } from "@lezer/highlight";
 import { pending, setSpans } from "../features/pending";
 import { noteConflictStore, noteStore } from "../serverState";
 import { decide } from "../noteSync";
+import { registerSave } from "../saves";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Button } from "./ui/button";
@@ -86,8 +87,9 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 		if (timer.current) clearTimeout(timer.current);
 		timer.current = null;
 		const text = v.state.doc.toString();
-		sent.current = text;
-		send({ type: "save_note", path, text, base: base.current });
+		// Only a save that went out is one to expect an echo of. One sent to a
+		// closed socket is dropped, and the doc stays dirty for the next chance.
+		if (send({ type: "save_note", path, text, base: base.current })) sent.current = text;
 		return true;
 	};
 
@@ -124,9 +126,15 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 		sent.current = null;
 		dirty.current = false;
 		setStatus("loading");
+		// The write barrier, in its three forms: before a prompt (whoever sends
+		// one calls flushSaves), before the page goes, and before this box does.
+		const unregister = registerSave(save);
+		const onHide = () => save();
+		addEventListener("pagehide", onHide);
 		return () => {
-			// Whatever was typed and not yet written goes down before the box does.
 			save();
+			removeEventListener("pagehide", onHide);
+			unregister();
 			v.destroy();
 			view.current = null;
 		};
@@ -137,9 +145,15 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 	// Asked for whenever there is a socket to ask on: at mount the socket may
 	// not be up yet — a reload lands here before it reconnects — and after an
 	// outage the note may have moved, which the answer settles the usual way.
+	//
+	// Typing done while the socket was down is sent first: it lands if the note
+	// did not move meanwhile, and is refused into the conflict banner if it did.
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	useEffect(() => {
-		if (online) send({ type: "open_note", path });
+		if (!online) return;
+		save();
+		send({ type: "open_note", path });
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [online, path]);
 
 	// The note, from whoever wrote it.
