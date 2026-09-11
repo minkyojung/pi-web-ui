@@ -472,6 +472,23 @@ check("a change to the same words as unsaved typing is put to the person", async
 	}
 });
 
+check("a write that did not pass through the app arrives as outside's change", async ({ app, cwd }) => {
+	// pi's bash, or another editor: straight to the disk, with the note open and clean.
+	await until("a clean editor", async () => (await editorStatus(app)) === "saved");
+	const before = readFileSync(join(cwd, "first.md"), "utf8");
+	writeFileSync(join(cwd, "first.md"), before + "FROM BASH\n");
+	await until("the line from outside", async () => (await editorText(app)).includes("FROM BASH"));
+	assert.equal(await editorStatus(app), "saved");
+	assert.equal(await app.evaluate("!!document.querySelector('#editor [role=alert]')"), false);
+	const log = readFileSync(join(cwd, ".pi/history/first.md.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+	assert.equal(log.at(-1).author, "outside");
+	assert.ok(log.at(-1).inserted.includes("FROM BASH"));
+	// And the version moved with it: typing now saves without a refusal.
+	assert.equal(await type(app, "AFTER "), true);
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.ok(readFileSync(join(cwd, "first.md"), "utf8").includes("AFTER"));
+});
+
 check("what pi wrote is marked, until it is accepted or put back", async ({ app, cwd }) => {
 	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
 	await until("pi's marks", async () => (await piMarks(app)).length === 2);

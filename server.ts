@@ -31,6 +31,7 @@ import { branchPoints } from "./branches.ts";
 import { listNotes, readNote, writeNote } from "./vault.ts";
 import { accept, type Change, reconcile, record, replay, readHistory } from "./history.ts";
 import { recorder } from "./recorder.ts";
+import { watchNotes } from "./watcher.ts";
 import type {
 	BranchesMsg,
 	ClientMsg,
@@ -308,7 +309,36 @@ function note(path: string): NoteMsg | null {
 	const found = readNote(CWD, path);
 	if (!found) return null;
 	const { spans } = reconcile(CWD, path, found.text, Date.now());
+	known.set(path, found.modified);
 	return { type: "note", path, text: found.text, modified: found.modified, spans };
+}
+
+/**
+ * The version of each note the tabs were last told about — its mtime the
+ * last time this process read or wrote it. What a change noticed on disk is
+ * measured against, and how the watcher's report of the app's own write is
+ * told from someone else's: the version it reports is the one already here.
+ */
+const known = new Map<string, number>();
+
+/**
+ * The disk changed under a note, and not by this process: pi's bash, another
+ * editor. Logged to "outside" and sent on as a change over the version the
+ * tabs have, the same as any other write — or whole, if no tab could have a
+ * version of it yet. A note that is gone is only news to the list.
+ */
+function noticed(path: string): void {
+	const found = readNote(CWD, path);
+	if (!found) {
+		known.delete(path);
+		broadcast(files());
+		return;
+	}
+	const base = known.get(path) ?? null;
+	if (base === found.modified) return; // This process's own write, already sent.
+	const { outside } = reconcile(CWD, path, found.text, Date.now());
+	// Touched but not changed still moves the version the next save is measured against.
+	wrote(path, base, outside);
 }
 
 /**
@@ -321,6 +351,7 @@ function wrote(path: string, base: number | null, changes: Change[]): void {
 	const found = readNote(CWD, path);
 	if (found && base !== null && replay(readHistory(CWD, path)).text === found.text) {
 		const { spans } = replay(readHistory(CWD, path));
+		known.set(path, found.modified);
 		const msg: NoteChangedMsg = { type: "note_changed", path, base, modified: found.modified, changes, spans };
 		broadcast(msg);
 	} else {
@@ -843,6 +874,9 @@ wss.on("connection", async (ws) => {
 	reply(await sessions());
 });
 
+// Writes that do not pass through here — see watcher.ts.
+const stopWatching = watchNotes(CWD, noticed);
+
 server.listen(PORT, HOST, () => {
 	console.log(`open http://localhost:${PORT}  (ctrl+c to stop)`);
 	if (HOST !== "127.0.0.1") console.log(`listening on ${HOST} — anyone who can reach it controls this machine`);
@@ -854,6 +888,7 @@ let shuttingDown = false;
 process.on("SIGINT", async () => {
 	if (shuttingDown) return;
 	shuttingDown = true;
+	stopWatching();
 	prompts.cancelAll();
 	await runtime.dispose();
 	// server.close() waits for open connections, and an upgraded WebSocket is

@@ -204,15 +204,21 @@ export function appendHistory(root: string, path: string, changes: Change[]): vo
  * about to be recorded is measured from what is really there. A note with no
  * log yet is seeded whole the same way.
  */
-export function reconcile(root: string, path: string, onDisk: string, at: number): { changes: Change[]; spans: Span[] } {
+export function reconcile(
+	root: string,
+	path: string,
+	onDisk: string,
+	at: number,
+): { changes: Change[]; outside: Change[]; spans: Span[] } {
 	const changes = readHistory(root, path);
 	const { text } = replay(changes);
+	let outside: Change[] = [];
 	if (text !== onDisk) {
-		const outside = changesBetween(text, onDisk, { author: "outside", at });
+		outside = changesBetween(text, onDisk, { author: "outside", at });
 		appendHistory(root, path, outside);
 		changes.push(...outside);
 	}
-	return { changes, spans: replay(changes).spans };
+	return { changes, outside, spans: replay(changes).spans };
 }
 
 /** Log that the person accepted the words at [from, to) as they are. */
