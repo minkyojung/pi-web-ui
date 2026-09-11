@@ -76,6 +76,10 @@ const markup = HighlightStyle.define([
 export function Editor({ path, extensions = [] }: { path: string; extensions?: Extension[] }) {
 	const host = useRef<HTMLDivElement>(null);
 	const view = useRef<EditorView | null>(null);
+	// The path can change under a live editor — a rename — so what the closures
+	// below send is read from here, not captured at mount.
+	const at = useRef(path);
+	at.current = path;
 	// The version on disk the doc was read from, the save in flight, and whether
 	// the doc has moved past what is saved. Refs: they change on every keystroke.
 	const base = useRef<number | null>(null);
@@ -100,7 +104,7 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 		const text = v.state.doc.toString();
 		// Only a save that went out is one to expect an echo of. One sent to a
 		// closed socket is dropped, and the doc stays dirty for the next chance.
-		if (send({ type: "save_note", path, text, base: base.current })) {
+		if (send({ type: "save_note", path: at.current, text, base: base.current })) {
 			sent.current = text;
 			sinceSent.current = ChangeSet.empty(text.length);
 		}
@@ -131,7 +135,7 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 
 	useEffect(() => {
 		if (!host.current) return;
-		const features = [pending(path)];
+		const features = [pending(() => at.current)];
 		const state = EditorState.create({
 			doc: "",
 			extensions: [
@@ -166,9 +170,10 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 			v.destroy();
 			view.current = null;
 		};
-		// `extensions` is a stable array from the caller; `save` closes over `path`.
+		// Once: a rename changes `path` without changing which note this is.
+		// `extensions` is a stable array from the caller.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [path]);
+	}, []);
 
 	// Asked for whenever there is a socket to ask on: at mount the socket may
 	// not be up yet — a reload lands here before it reconnects — and after an

@@ -131,3 +131,33 @@ export function newNoteName(existing: Iterable<string>): string {
 	if (!taken.has("Untitled.md")) return "Untitled.md";
 	for (let n = 2; ; n++) if (!taken.has(`Untitled ${n}.md`)) return `Untitled ${n}.md`;
 }
+
+export type RenameResult =
+	| { ok: true }
+	| { ok: false; reason: "invalid" | "missing" | "exists" };
+
+/**
+ * Give a note another path. The file moves; nothing about it is read or
+ * rewritten, so its version does not change. The caller moves what sits
+ * beside it — its history — and tells the tabs.
+ */
+export function renameNote(root: string, from: string, to: string): RenameResult {
+	const src = resolveNote(root, from);
+	const dst = resolveNote(root, to);
+	if (!src || !dst) return { ok: false, reason: "invalid" };
+	if (src === dst) return { ok: true };
+	try {
+		statSync(src);
+	} catch {
+		return { ok: false, reason: "missing" };
+	}
+	try {
+		statSync(dst);
+		return { ok: false, reason: "exists" };
+	} catch {
+		// Free, which is the point.
+	}
+	mkdirSync(dirname(dst), { recursive: true });
+	renameSync(src, dst);
+	return { ok: true };
+}

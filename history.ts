@@ -16,7 +16,7 @@
  * Offsets are UTF-16 code units, which is what both JavaScript strings and
  * CodeMirror count in.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { diffWordsWithSpace } from "diff";
 
@@ -186,6 +186,15 @@ export function readHistory(root: string, path: string): Change[] {
 		}
 	}
 	return out;
+}
+
+/** The log follows its note to a new path. A note with no log yet has nothing to move. */
+export function moveHistory(root: string, from: string, to: string): void {
+	const src = historyPath(root, from);
+	if (!existsSync(src)) return;
+	const dst = historyPath(root, to);
+	mkdirSync(dirname(dst), { recursive: true });
+	renameSync(src, dst);
 }
 
 export function appendHistory(root: string, path: string, changes: Change[]): void {

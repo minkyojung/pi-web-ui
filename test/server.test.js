@@ -183,6 +183,43 @@ it("새 노트를 청하면 Untitled로 만들어져 이 탭에 이름이 오고
   assert.equal((await want("note_created")).path, "Untitled 2.md");
 });
 
+it("이름을 바꾸면 파일과 로그가 함께 옮겨지고 모든 탭이 듣는다", async () => {
+  clear();
+  send({ type: "open_note", path: "a.md" });
+  const { modified } = await want("note");
+  clear();
+  send({ type: "rename_note", path: "a.md", to: "renamed/a2.md" });
+  const renamed = await want("note_renamed");
+  assert.deepEqual([renamed.from, renamed.to], ["a.md", "renamed/a2.md"]);
+  const files = await want("files", (m) => m.files.some((f) => f.path === "renamed/a2.md"));
+  assert.equal(files.files.some((f) => f.path === "a.md"), false);
+  assert.ok(history("renamed/a2.md").length > 0, "로그가 따라왔다");
+  // The version travelled too: a save on it lands, and is not taken for a conflict.
+  await new Promise((r) => setTimeout(r, 300)); // the watcher's report of the move, if any
+  clear();
+  send({ type: "save_note", path: "renamed/a2.md", text: "# a\n\nafter rename\n", base: modified });
+  const changed = await want("note_changed", (m) => m.path === "renamed/a2.md");
+  assert.equal(changed.base, modified);
+  // Back, so later tests find a.md.
+  clear();
+  send({ type: "rename_note", path: "renamed/a2.md", to: "a.md" });
+  await want("note_renamed");
+});
+
+it("있는 이름, 없는 노트, 노트 아닌 이름으로는 바꿀 수 없고 이 탭만 듣는다", async () => {
+  writeFileSync(join(cwd, "taken.md"), "x\n");
+  clear();
+  send({ type: "rename_note", path: "a.md", to: "taken.md" });
+  assert.equal((await want("note_rename_failed")).reason, "exists");
+  clear();
+  send({ type: "rename_note", path: "nope.md", to: "x.md" });
+  assert.equal((await want("note_rename_failed")).reason, "missing");
+  clear();
+  send({ type: "rename_note", path: "a.md", to: "../out.md" });
+  assert.equal((await want("note_rename_failed")).reason, "invalid");
+  assert.equal(readFileSync(join(cwd, "a.md"), "utf8").length > 0, true);
+});
+
 it("폴더 밖과 노트 아닌 것은 열리지도 쓰이지도 않는다", async () => {
   clear();
   send({ type: "open_note", path: "../etc/passwd.md" });

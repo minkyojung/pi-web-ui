@@ -66,7 +66,7 @@ const style = EditorView.baseTheme({
 	},
 });
 
-export function pending(path: string): Extension {
+export function pending(path: () => string): Extension {
 	return [
 		marks,
 		style,
@@ -78,7 +78,7 @@ export function pending(path: string): Extension {
 				run: (view) => {
 					const hit = under(view);
 					if (!hit) return false;
-					send({ type: "accept_note", path, from: hit.from, to: hit.to });
+					send({ type: "accept_note", path: path(), from: hit.from, to: hit.to });
 					return true;
 				},
 			},

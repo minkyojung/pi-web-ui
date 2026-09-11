@@ -10,7 +10,7 @@ import { Sidebar } from "./components/Sidebar";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { hashForNote, noteFromHash } from "./noteSync";
-import { noteCreatedStore } from "./serverState";
+import { noteCreatedStore, noteRenamedStore } from "./serverState";
 import { getConnection, getItems, subscribe } from "./store";
 import { send } from "./ws";
 
@@ -28,8 +28,42 @@ function useOpenNote(): [string | null, (path: string | null) => void] {
 	const open = useCallback((next: string | null) => {
 		location.hash = next ? hashForNote(next) : "";
 	}, []);
+	// A rename moves the address under the open note. The editor is the same
+	// one — same undo history, same cursor — so it is told rather than replaced.
+	const renamed = useSyncExternalStore(noteRenamedStore.subscribe, noteRenamedStore.get);
+	useEffect(() => {
+		if (renamed && renamed.from === noteFromHash(location.hash)) {
+			history.replaceState(null, "", hashForNote(renamed.to));
+			setPath(renamed.to);
+		}
+	}, [renamed]);
 	return [path, open];
 }
+
+/**
+ * A key that changes when a different note is opened and not when the open
+ * one is renamed. Renames arrive with both names, so the old key is kept
+ * under the new path.
+ */
+const identities = new Map<string, number>();
+let nextIdentity = 1;
+function noteIdentity(path: string): number {
+	let id = identities.get(path);
+	if (id === undefined) {
+		id = nextIdentity++;
+		identities.set(path, id);
+	}
+	return id;
+}
+noteRenamedStore.subscribe(() => {
+	const renamed = noteRenamedStore.get();
+	if (!renamed) return;
+	const id = identities.get(renamed.from);
+	if (id !== undefined) {
+		identities.delete(renamed.from);
+		identities.set(renamed.to, id);
+	}
+});
 
 /**
  * Three columns: the notes, the open one, and pi. pi is not an assistant off
@@ -84,9 +118,10 @@ export function App() {
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel id="main" minSize="30%" className="min-w-0">
-					{/* Keyed by path so a different note is a different editor, with its
-					    own history, rather than one editor with its text swapped. */}
-					{open ? <Editor key={open} path={open} /> : <div id="main" className="h-full" />}
+					{/* A different note is a different editor, with its own history,
+					    rather than one editor with its text swapped — but a renamed note
+					    is the same one, so the key is the note's identity, not its path. */}
+					{open ? <Editor key={noteIdentity(open)} path={open} /> : <div id="main" className="h-full" />}
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel

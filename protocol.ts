@@ -51,7 +51,9 @@ export type ClientMsg =
 	/** The words at [from, to) are fine as they are. Answered with `note` to every tab. */
 	| { type: "accept_note"; path: string; from: number; to: number }
 	/** A new, empty note, named by the server. Answered with `note_created` to this tab and `note` to every tab. */
-	| { type: "new_note" };
+	| { type: "new_note" }
+	/** Give a note another path. Answered with `note_renamed` to every tab, or `note_rename_failed` to this one. */
+	| { type: "rename_note"; path: string; to: string };
 
 export type ClientMsgType = ClientMsg["type"];
 
@@ -192,6 +194,20 @@ export interface NoteCreatedMsg {
 	path: string;
 }
 
+/** A note moved. A tab with `from` open is now looking at `to`; nothing in the text changed. */
+export interface NoteRenamedMsg {
+	type: "note_renamed";
+	from: string;
+	to: string;
+}
+
+export interface NoteRenameFailedMsg {
+	type: "note_rename_failed";
+	path: string;
+	to: string;
+	reason: "invalid" | "missing" | "exists";
+}
+
 /** The save was refused: the note changed since `base`. `modified` is what is there now. */
 export interface NoteConflictMsg {
 	type: "note_conflict";
@@ -270,6 +286,8 @@ export type StateMsg =
 	| NoteMsg
 	| NoteChangedMsg
 	| NoteCreatedMsg
+	| NoteRenamedMsg
+	| NoteRenameFailedMsg
 	| NoteConflictMsg
 	| PromptRequestMsg
 	| PromptDismissMsg

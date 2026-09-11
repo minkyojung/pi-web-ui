@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, w
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { listNotes, newNoteName, readNote, resolveNote, writeNote } from "../vault.ts";
+import { listNotes, newNoteName, readNote, renameNote, resolveNote, writeNote } from "../vault.ts";
 
 const DIR = mkdtempSync(join(tmpdir(), "notes-"));
 test.after(() => rmSync(DIR, { recursive: true, force: true }));
@@ -102,4 +102,25 @@ test("새 노트는 Untitled이고, 있으면 번호가 붙는다", () => {
   assert.equal(newNoteName(["Untitled.md", "Untitled 2.md"]), "Untitled 3.md");
   assert.equal(newNoteName(["Untitled.md", "Untitled 3.md"]), "Untitled 2.md", "빈 번호가 먼저");
   assert.equal(newNoteName(["deep/Untitled.md"]), "Untitled.md", "다른 폴더의 같은 이름은 다른 노트");
+});
+
+test("이름을 바꾸면 파일이 옮겨지고 내용과 시각은 그대로다", () => {
+  put("ren/old.md", 950);
+  const before = readNote(DIR, "ren/old.md");
+  assert.deepEqual(renameNote(DIR, "ren/old.md", "ren/sub/new.md"), { ok: true });
+  assert.equal(readNote(DIR, "ren/old.md"), null);
+  const after = readNote(DIR, "ren/sub/new.md");
+  assert.equal(after.text, before.text);
+  assert.equal(after.modified, before.modified, "옮기는 것은 쓰는 것이 아니다");
+});
+
+test("없는 노트, 이미 있는 이름, 노트가 아닌 이름으로는 바꿀 수 없다", () => {
+  put("ren/a.md", 1);
+  put("ren/b.md", 1);
+  assert.deepEqual(renameNote(DIR, "ren/nope.md", "ren/x.md"), { ok: false, reason: "missing" });
+  assert.deepEqual(renameNote(DIR, "ren/a.md", "ren/b.md"), { ok: false, reason: "exists" });
+  assert.deepEqual(renameNote(DIR, "ren/a.md", "../a.md"), { ok: false, reason: "invalid" });
+  assert.deepEqual(renameNote(DIR, "ren/a.md", "ren/a.txt"), { ok: false, reason: "invalid" });
+  assert.deepEqual(renameNote(DIR, "ren/a.md", "ren/a.md"), { ok: true }, "같은 이름은 아무 일도 아니다");
+  assert.ok(readNote(DIR, "ren/a.md") && readNote(DIR, "ren/b.md"), "거절은 아무것도 옮기지 않는다");
 });

@@ -28,8 +28,8 @@ import { modeToolNames } from "./toolModes.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { listNotes, newNoteName, readNote, writeNote } from "./vault.ts";
-import { accept, type Change, reconcile, record, replay, readHistory } from "./history.ts";
+import { listNotes, newNoteName, readNote, renameNote, writeNote } from "./vault.ts";
+import { accept, type Change, moveHistory, reconcile, record, replay, readHistory } from "./history.ts";
 import { recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
 import type {
@@ -864,6 +864,27 @@ wss.on("connection", async (ws) => {
 					record(CWD, path, "", "", { author: "me", at: Date.now() });
 					reply({ type: "note_created", path });
 					wrote(path, null, []);
+					break;
+				}
+
+				// A note's path is its name. The file and its history move together,
+				// and the version the tabs hold moves with them, so the watcher's
+				// report of the move is not taken for someone writing.
+				case "rename_note": {
+					if (typeof msg.path !== "string" || typeof msg.to !== "string") return;
+					const moved = renameNote(CWD, msg.path, msg.to);
+					if (!moved.ok) {
+						reply({ type: "note_rename_failed", path: msg.path, to: msg.to, reason: moved.reason });
+						return;
+					}
+					if (msg.path !== msg.to) {
+						moveHistory(CWD, msg.path, msg.to);
+						const version = known.get(msg.path);
+						known.delete(msg.path);
+						if (version !== undefined) known.set(msg.to, version);
+					}
+					broadcast({ type: "note_renamed", from: msg.path, to: msg.to });
+					broadcast(files());
 					break;
 				}
 

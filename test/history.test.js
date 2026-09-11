@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { accept, apply, appendHistory, changesBetween, historyPath, readHistory, reconcile, record, replay } from "../history.ts";
+import { accept, apply, appendHistory, changesBetween, historyPath, moveHistory, readHistory, reconcile, record, replay } from "../history.ts";
 
 const me = { author: "me", at: 1 };
 const pi = { author: "pi", at: 2, sessionId: "s1", entryId: "e1" };
@@ -201,4 +201,14 @@ test("같은 노트에 같은 것을 다시 기록해도 로그는 늘지 않는
   const before = readHistory(DIR, "idem.md").length;
   assert.deepEqual(record(DIR, "idem.md", "x\n", "x\n", pi), []);
   assert.equal(readHistory(DIR, "idem.md").length, before);
+});
+
+test("로그는 노트를 따라 옮겨지고, 없는 로그는 옮길 것이 없다", () => {
+  record(DIR, "mv/a.md", "", "text\n", me);
+  moveHistory(DIR, "mv/a.md", "mv/deep/b.md");
+  assert.deepEqual(readHistory(DIR, "mv/a.md"), []);
+  assert.equal(replay(readHistory(DIR, "mv/deep/b.md")).text, "text\n");
+  assert.equal(existsSync(historyPath(DIR, "mv/a.md")), false);
+  moveHistory(DIR, "mv/never.md", "mv/x.md");
+  assert.equal(existsSync(historyPath(DIR, "mv/x.md")), false);
 });
