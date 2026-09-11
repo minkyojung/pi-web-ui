@@ -9,7 +9,9 @@ import type {
 	BranchPoint,
 	ConfigMsg,
 	ContextSourcesMsg,
+	NoteConflictMsg,
 	NoteFile,
+	NoteMsg,
 	PromptRequest,
 	ServerMsg,
 	SessionInfo,
@@ -53,6 +55,15 @@ export const branchesStore = createStore<BranchPoint[]>([]);
 
 /** The notes in the working folder, as the server last listed them. */
 export const filesStore = createStore<NoteFile[]>([]);
+
+/**
+ * The last note the server sent, whichever tab or writer caused it. The editor
+ * reads it and decides what to do: its own, or one it is not showing.
+ */
+export const noteStore = createStore<NoteMsg | null>(null);
+
+/** A save this tab made that was refused. Cleared by whoever deals with it. */
+export const noteConflictStore = createStore<NoteConflictMsg | null>(null);
 
 /**
  * Text a cleared queue handed back, waiting to be put in the composer. Emptied

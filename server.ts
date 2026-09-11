@@ -28,13 +28,16 @@ import { modeToolNames } from "./toolModes.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { listNotes } from "./vault.ts";
+import { listNotes, readNote, writeNote } from "./vault.ts";
+import { reconcile, record } from "./history.ts";
+import { recorder } from "./recorder.ts";
 import type {
 	BranchesMsg,
 	ClientMsg,
 	ConfigMsg,
 	ContextSourcesMsg,
 	FilesMsg,
+	NoteMsg,
 	PiEventMsg,
 	ServerMsg,
 	SessionsMsg,
@@ -164,7 +167,12 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 		modelRuntime,
 		// Inline rather than a file under .pi/extensions/: that path needs the
 		// project trusted, and the desktop shell's cwd is wherever it was opened.
-		resourceLoaderOptions: { eventBus },
+		resourceLoaderOptions: {
+			eventBus,
+			// pi's writes to notes go into their history as they happen, and the
+			// tabs looking at a note hear about it.
+			extensionFactories: [{ name: "recorder", factory: recorder(CWD, (path) => broadcastNote(path)) }],
+		},
 	});
 	return {
 		// No `model`: pi picks it the way the CLI does — the one the session was
@@ -288,6 +296,25 @@ function branches(): BranchesMsg {
 /** The notes in the working folder. See vault.ts. */
 function files(): FilesMsg {
 	return { type: "files", files: listNotes(CWD) };
+}
+
+/**
+ * One note, with who wrote what. Opening it also brings its history up to the
+ * disk: an edit made outside the app is logged as such here, before anything
+ * is drawn or measured against it.
+ */
+function note(path: string): NoteMsg | null {
+	const found = readNote(CWD, path);
+	if (!found) return null;
+	const { spans } = reconcile(CWD, path, found.text, Date.now());
+	return { type: "note", path, text: found.text, modified: found.modified, spans };
+}
+
+/** After a write from anywhere: every tab gets the note, and the list its new order. */
+function broadcastNote(path: string): void {
+	const msg = note(path);
+	if (msg) broadcast(msg);
+	broadcast(files());
 }
 
 /** Saved sessions for this working directory, newest first. */
@@ -750,6 +777,35 @@ wss.on("connection", async (ws) => {
 					broadcast(config());
 					broadcast(await sessions());
 					break;
+
+				case "open_note": {
+					if (typeof msg.path !== "string") return;
+					const found = note(msg.path);
+					if (!found) {
+						reply({ type: "error", message: `no such note: ${msg.path}` });
+						return;
+					}
+					reply(found);
+					break;
+				}
+
+				// The editor's save. Refused rather than merged when the note has
+				// moved on since it was read — see vault.ts — and recorded to the
+				// note's history as mine when it lands.
+				case "save_note": {
+					if (typeof msg.path !== "string" || typeof msg.text !== "string") return;
+					const base = typeof msg.base === "number" ? msg.base : null;
+					const had = readNote(CWD, msg.path);
+					const written = writeNote(CWD, msg.path, msg.text, base);
+					if (!written.ok) {
+						if (written.reason === "conflict") reply({ type: "note_conflict", path: msg.path, modified: written.modified });
+						else reply({ type: "error", message: `cannot save ${msg.path}` });
+						return;
+					}
+					record(CWD, msg.path, had?.text ?? "", msg.text, { author: "me", at: Date.now() });
+					broadcastNote(msg.path);
+					break;
+				}
 			}
 		} catch (err) {
 			broadcast({ type: "error", message: err instanceof Error ? err.message : String(err) });

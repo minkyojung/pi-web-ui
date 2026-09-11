@@ -11,6 +11,8 @@ import {
 	configStore,
 	contextSourcesStore,
 	filesStore,
+	noteConflictStore,
+	noteStore,
 	promptsStore,
 	pushRaw,
 	removePrompt,
@@ -57,6 +59,8 @@ const STATE: Record<StateMsg["type"], true> = {
 	sessions: true,
 	snapshot: true,
 	files: true,
+	note: true,
+	note_conflict: true,
 	prompt_request: true,
 	prompt_dismiss: true,
 	queue_cleared: true,
@@ -92,6 +96,12 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "files":
 			filesStore.set(msg.files);
+			return;
+		case "note":
+			noteStore.set(msg);
+			return;
+		case "note_conflict":
+			noteConflictStore.set(msg);
 			return;
 		case "snapshot":
 			// A snapshot means the server's session may not be the one these

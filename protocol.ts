@@ -12,9 +12,10 @@
  * this, so nothing here may run.
  */
 import type { BranchPoint } from "./branches";
+import type { Author, Span } from "./history";
 import type { NoteFile } from "./vault";
 
-export type { BranchPoint, NoteFile };
+export type { Author, BranchPoint, NoteFile, Span };
 
 // ---------------------------------------------------------------------------
 // Browser → server
@@ -38,7 +39,15 @@ export type ClientMsg =
 	| { type: "resume_session"; path: string }
 	| { type: "prompt_response"; id: string; answer?: string; cancelled?: boolean }
 	| { type: "navigate"; entryId: string }
-	| { type: "set_session_name"; name: string };
+	| { type: "set_session_name"; name: string }
+	/** A note to look at. Answered with `note`, or `error` if there is no such note. */
+	| { type: "open_note"; path: string }
+	/**
+	 * A note's whole text, on top of the version it was read at — `base` is
+	 * that version's `modified`, or null for a note that did not exist yet.
+	 * Answered with `note` to every tab, or `note_conflict` to this one.
+	 */
+	| { type: "save_note"; path: string; text: string; base: number | null };
 
 export type ClientMsgType = ClientMsg["type"];
 
@@ -144,6 +153,26 @@ export interface FilesMsg {
 	files: NoteFile[];
 }
 
+/**
+ * A note as it is on disk, with who wrote which of its words. Sent to a tab
+ * that asked to open it, and to every tab whenever anyone — the editor, pi —
+ * writes it: a tab that has it open decides what to do with the new text.
+ */
+export interface NoteMsg {
+	type: "note";
+	path: string;
+	text: string;
+	modified: number;
+	spans: Span[];
+}
+
+/** The save was refused: the note changed since `base`. `modified` is what is there now. */
+export interface NoteConflictMsg {
+	type: "note_conflict";
+	path: string;
+	modified: number;
+}
+
 export type PromptType = "select" | "input" | "confirm" | "editor" | "multiselect" | "batch";
 
 /**
@@ -212,6 +241,8 @@ export type StateMsg =
 	| SessionsMsg
 	| SnapshotMsg
 	| FilesMsg
+	| NoteMsg
+	| NoteConflictMsg
 	| PromptRequestMsg
 	| PromptDismissMsg
 	| QueueClearedMsg
