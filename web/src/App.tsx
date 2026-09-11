@@ -13,7 +13,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./componen
 import { TooltipProvider } from "./components/ui/tooltip";
 import { hashForNote, noteFromHash } from "./noteSync";
 import { bump, forget, readRecent, writeRecent } from "./recent";
-import { noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
+import { filesStore, noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
 import { Button } from "./components/ui/button";
 import { getConnection, getItems, subscribe } from "./store";
 import { send } from "./ws";
@@ -97,6 +97,8 @@ export function App() {
 		writeRecent(recent);
 	}, [recent]);
 	const [picking, setPicking] = useState(false);
+	// An empty vault is a first run, or as good as one: the column says how to start.
+	const files = useSyncExternalStore(filesStore.subscribe, filesStore.get);
 
 	// ⌘N asks the server for a new note; it comes back named, and is opened by
 	// address like any other. The server names it, since it owns the folder.
@@ -176,6 +178,11 @@ export function App() {
 										Restore
 									</Button>
 								</>
+							) : files.length === 0 ? (
+								<div className="max-w-sm text-center leading-relaxed">
+									<p className="text-foreground">This folder has no notes yet.</p>
+									<p className="mt-2">⌘N makes one. pi reads and writes the same files; who wrote which words is kept beside them, in .pi/.</p>
+								</div>
 							) : (
 								<span>No note open · ⌘P to find one · ⌘N for a new one</span>
 							)}

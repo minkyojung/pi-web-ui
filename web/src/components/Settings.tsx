@@ -20,7 +20,7 @@ type Settings = {
   toolMode: ToolModeId;
 };
 
-const SECTIONS = ["Appearance", "Agent"] as const;
+const SECTIONS = ["Appearance", "Agent", "Keys"] as const;
 type Section = (typeof SECTIONS)[number];
 
 /**
@@ -132,6 +132,8 @@ function Panel({ section }: { section: Section }) {
     <section className="flex flex-col gap-4">
       {section === "Appearance" && <Appearance />}
 
+      {section === "Keys" && <Keys />}
+
       {section === "Agent" && (
         <>
           <Heading title="Agent">What pi may do.</Heading>
@@ -222,6 +224,38 @@ function Appearance() {
           two answers.
         </p>
       </div>
+    </>
+  );
+}
+
+const MOD = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
+
+/** Every key the app answers to, in one place — the shortcuts are how the app is found, and this is how they are. */
+const KEYS: [string, string][] = [
+  [`${MOD}N`, "New note"],
+  [`${MOD}P`, "Open a note by name, or make one"],
+  [`${MOD}S`, "Save now (typing is saved on its own when it pauses)"],
+  [`${MOD}F`, "Find and replace in the note"],
+  [`${MOD}↵`, "Accept pi's words under the cursor"],
+  [`${MOD}⌫`, "Put back what pi replaced under the cursor"],
+  [`${MOD}↵ in the message box`, "Steer the run in progress"],
+  [`${MOD}\\`, "Show or hide pi's column"],
+  [`${MOD},`, "Settings"],
+  [`${MOD}⇧D`, "Raw events, for debugging"],
+];
+
+function Keys() {
+  return (
+    <>
+      <Heading title="Keys">What the app answers to.</Heading>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+        {KEYS.map(([key, what]) => (
+          <div key={key} className="contents">
+            <dt className="whitespace-nowrap font-medium tabular-nums">{key}</dt>
+            <dd className="text-muted-foreground">{what}</dd>
+          </div>
+        ))}
+      </dl>
     </>
   );
 }
