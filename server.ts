@@ -961,6 +961,13 @@ wss.on("connection", async (ws) => {
 					wrote(msg.path, found.modified, []);
 					break;
 				}
+
+				// A message this server does not know — a newer client on an older
+				// server, which a desktop app restarted only half of will produce.
+				// Said, rather than dropped: a button that does nothing is the
+				// worst way to find out.
+				default:
+					reply({ type: "error", message: `this server does not understand "${(msg as { type: string }).type}" — restart the app` });
 			}
 		} catch (err) {
 			broadcast({ type: "error", message: err instanceof Error ? err.message : String(err) });

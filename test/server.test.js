@@ -289,6 +289,12 @@ it("폴더 밖과 노트 아닌 것은 열리지도 쓰이지도 않는다", asy
   assert.equal((await want("note_gone")).path, "a.txt");
 });
 
+it("모르는 메시지는 버려지지 않고 이 탭에 에러로 답한다", async () => {
+  clear();
+  send({ type: "frobnicate" });
+  assert.match((await want("error")).message, /does not understand "frobnicate"/);
+});
+
 it("잘못된 JSON은 이 탭에만 에러이고 서버는 산다", async () => {
   clear();
   ws.send("{not json");
