@@ -5,7 +5,7 @@ import { markdown, markdownKeymap, markdownLanguage } from "@codemirror/lang-mar
 import { languages } from "@codemirror/language-data";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { Annotation, ChangeSet, EditorState, type Extension, Transaction } from "@codemirror/state";
-import { highlightSelectionMatches } from "@codemirror/search";
+import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { drawSelection, dropCursor, EditorView, keymap, placeholder, scrollPastEnd } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
@@ -52,6 +52,27 @@ const theme = EditorView.theme({
 		backgroundColor: "color-mix(in oklab, var(--foreground) 18%, transparent)",
 	},
 	".cm-placeholder": { color: "var(--muted-foreground)" },
+	// The search panel, in the app's own chrome rather than CodeMirror's grey.
+	".cm-panels": { backgroundColor: "var(--background)", color: "var(--foreground)", borderColor: "var(--border)" },
+	".cm-panels-top": { borderBottom: "1px solid var(--border)" },
+	".cm-panel.cm-search": { padding: "0.4rem 1.5rem", fontSize: "12px" },
+	".cm-panel.cm-search input, .cm-panel.cm-search button, .cm-panel.cm-search .cm-button": {
+		backgroundImage: "none",
+		fontFamily: "inherit",
+		fontSize: "12px",
+		color: "var(--foreground)",
+		backgroundColor: "transparent",
+		border: "1px solid var(--border)",
+		borderRadius: "0.375rem",
+		padding: "0.15rem 0.4rem",
+		margin: "0 0.25rem 0.25rem 0",
+	},
+	".cm-panel.cm-search button:hover, .cm-panel.cm-search .cm-button:hover": { backgroundColor: "var(--accent)" },
+	".cm-panel.cm-search .cm-button:active": { backgroundImage: "none", backgroundColor: "var(--accent)" },
+	".cm-panel.cm-search label": { fontSize: "12px", color: "var(--muted-foreground)", marginRight: "0.5rem" },
+	".cm-panel.cm-search [name=close]": { color: "var(--muted-foreground)", border: "none", fontSize: "16px", top: "0.3rem", right: "1rem" },
+	".cm-searchMatch": { backgroundColor: "color-mix(in oklab, var(--foreground) 14%, transparent)" },
+	".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: "color-mix(in oklab, var(--foreground) 28%, transparent)" },
 	// Drawn by the editor now, so ::selection is left to the browser's default.
 	".cm-selectionMatch": { backgroundColor: "color-mix(in oklab, var(--foreground) 10%, transparent)" },
 });
@@ -186,6 +207,7 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 					indentWithTab,
 					...markdownKeymap,
 					...closeBracketsKeymap,
+					...searchKeymap,
 					...defaultKeymap,
 					...historyKeymap,
 				]),
@@ -204,6 +226,9 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 				EditorState.allowMultipleSelections.of(true),
 				dropCursor(),
 				highlightSelectionMatches(),
+				// ⌘F, find next and previous, replace: the editor's own panel, at
+				// the top so the text does not jump, drawn in the app's tokens below.
+				search({ top: true }),
 				scrollPastEnd(),
 				placeholder("Write here"),
 				EditorView.contentAttributes.of({ spellcheck: "true", "aria-label": "Note" }),

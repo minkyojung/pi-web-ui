@@ -182,7 +182,7 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
 		return true;
 	};
-	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, n: 78, p: 80, z: 90 };
+	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, f: 70, n: 78, p: 80, z: 90 };
 	const press = async (key, { meta = false } = {}) => {
 		const modifiers = meta ? 4 : 0;
 		const code = key.length === 1 ? `Key${key.toUpperCase()}` : key;
@@ -651,6 +651,21 @@ check("⌘P finds a note by a few letters, and makes one that is not there", asy
 	await app.press("Enter");
 	await until("the new note", async () => (await app.evaluate("location.hash")) === "#brand%20new.md" && (await editorStatus(app)) === "saved");
 	assert.equal(existsSync(join(cwd, "brand new.md")), true);
+});
+
+check("⌘F finds in the note, and Escape puts the panel away", async ({ app }) => {
+	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.press("f", { meta: true });
+	await until("the panel", () => app.evaluate("document.activeElement?.name === 'search'"));
+	await app.keys("two");
+	await app.press("Enter");
+	await until("the match", () => app.evaluate("document.querySelectorAll('#editor .cm-searchMatch').length > 0"));
+	assert.equal(await app.evaluate("getSelection().toString()"), "two");
+	await app.shot("search");
+	await app.press("Escape");
+	await until("the panel gone", () => app.evaluate("!document.querySelector('#editor .cm-panel.cm-search')"));
+	assert.equal(await app.evaluate("document.activeElement?.classList.contains('cm-content')"), true, "focus goes back to the note");
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {
