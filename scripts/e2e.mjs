@@ -184,8 +184,8 @@ async function openPage(devtoolsPort, url) {
 		return true;
 	};
 	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, f: 70, n: 78, p: 80, z: 90 };
-	const press = async (key, { meta = false } = {}) => {
-		const modifiers = meta ? 4 : 0;
+	const press = async (key, { meta = false, shift = false } = {}) => {
+		const modifiers = (meta ? 4 : 0) | (shift ? 8 : 0);
 		const code = key.length === 1 ? `Key${key.toUpperCase()}` : key;
 		const base = { key, code, windowsVirtualKeyCode: CODES[key], nativeVirtualKeyCode: CODES[key], modifiers };
 		await call("Input.dispatchKeyEvent", { type: "keyDown", ...base });
@@ -704,6 +704,19 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	await until("the link", async () => (await editorText(app)).endsWith("[[My note]]"));
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
+});
+
+check("⌘⇧F finds words in any note, and Enter opens the note they are in", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "far.md"), "# far\n\nsomewhere a Haystack-Needle sits\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="far.md"]')`));
+	await app.press("f", { meta: true, shift: true });
+	await until("the palette", () => app.evaluate("document.activeElement?.dataset.slot === 'command-input'"));
+	await app.keys("haystack-needle");
+	await until("the hit", () => app.evaluate(`[...document.querySelectorAll('[data-slot=command-list] [cmdk-item][data-selected="true"]')].map((i) => i.textContent).join(',')`).then((t) => t === "far·somewhere a Haystack-Needle sits"));
+	await app.shot("search-notes");
+	await app.press("Enter");
+	await until("the note", async () => (await app.evaluate("location.hash")) === "#far.md" && (await editorStatus(app)) === "saved");
+	assert.equal(await app.evaluate("!!document.querySelector('[data-slot=command-input]')"), false, "the palette closed");
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {

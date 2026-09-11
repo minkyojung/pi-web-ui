@@ -234,6 +234,7 @@ const MOD = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
 const KEYS: [string, string][] = [
   [`${MOD}N`, "New note"],
   [`${MOD}P`, "Open a note by name, or make one"],
+  [`${MOD}⇧F`, "Search the text of every note"],
   [`${MOD}S`, "Save now (typing is saved on its own when it pauses)"],
   [`${MOD}F`, "Find and replace in the note"],
   [`${MOD}↵`, "Accept pi's words under the cursor"],

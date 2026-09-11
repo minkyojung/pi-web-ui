@@ -24,6 +24,7 @@ import {
 	pushRaw,
 	removePrompt,
 	restoredStore,
+	searchResultsStore,
 	sessionsStore,
 	usageStore,
 } from "./serverState";
@@ -75,6 +76,7 @@ const STATE: Record<StateMsg["type"], true> = {
 	note_gone: true,
 	note_deleted: true,
 	note_conflict: true,
+	search_results: true,
 	prompt_request: true,
 	prompt_dismiss: true,
 	queue_cleared: true,
@@ -138,6 +140,9 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "note_deleted":
 			noteDeletedStore.set(msg);
+			return;
+		case "search_results":
+			searchResultsStore.set(msg);
 			return;
 		case "snapshot":
 			// A snapshot means the server's session may not be the one these

@@ -8,6 +8,7 @@ import { RawView } from "./components/RawView";
 import { SettingsBar } from "./components/SettingsBar";
 import { Sidebar } from "./components/Sidebar";
 import { QuickOpen } from "./components/QuickOpen";
+import { Search } from "./components/Search";
 import { Title } from "./components/Title";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -97,6 +98,7 @@ export function App() {
 		writeRecent(recent);
 	}, [recent]);
 	const [picking, setPicking] = useState(false);
+	const [searching, setSearching] = useState(false);
 	// An empty vault is a first run, or as good as one: the column says how to start.
 	const files = useSyncExternalStore(filesStore.subscribe, filesStore.get);
 
@@ -131,6 +133,11 @@ export function App() {
 				e.preventDefault();
 				setPicking((on) => !on);
 			}
+			// With Shift: ⌘F alone is the editor's, for the note in front.
+			if ((e.key === "f" || e.key === "F") && e.shiftKey && mod) {
+				e.preventDefault();
+				setSearching((on) => !on);
+			}
 			if ((e.key === "d" || e.key === "D") && e.shiftKey && mod) {
 				e.preventDefault();
 				setRaw((on) => !on);
@@ -148,6 +155,7 @@ export function App() {
 	return (
 		<TooltipProvider delayDuration={300}>
 			<QuickOpen open={picking} onOpenChange={setPicking} recent={recent} onPick={setOpen} />
+			<Search open={searching} onOpenChange={setSearching} onPick={setOpen} />
 			<ResizablePanelGroup orientation="horizontal" className="h-screen">
 				<ResizablePanel id="sidebar" defaultSize="22%" minSize="16%" className="min-w-0">
 					<Sidebar open={open} onOpen={setOpen} />

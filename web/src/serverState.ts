@@ -20,6 +20,7 @@ import type {
 	NoteRenameFailedMsg,
 	NoteMsg,
 	PromptRequest,
+	SearchResultsMsg,
 	ServerMsg,
 	SessionInfo,
 	UsageMsg,
@@ -99,6 +100,9 @@ export const noteGoneStore = createStore<NoteGoneMsg | null>(null);
 
 /** A save this tab made that was refused. Cleared by whoever deals with it. */
 export const noteConflictStore = createStore<NoteConflictMsg | null>(null);
+
+/** The last search answer this tab got. The palette shows it only if it answers the latest ask. */
+export const searchResultsStore = createStore<SearchResultsMsg | null>(null);
 
 /**
  * Text a cleared queue handed back, waiting to be put in the composer. Emptied

@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -315,6 +315,30 @@ it("폴더 밖과 노트 아닌 것은 열리지도 쓰이지도 않는다", asy
   clear();
   send({ type: "open_note", path: "a.txt" });
   assert.equal((await want("note_gone")).path, "a.txt");
+});
+
+it("본문을 찾으면 일치한 줄이 이 탭에 오고, 답마다 요청 번호가 붙어 늦은 답을 버릴 수 있다", async () => {
+  writeFileSync(join(cwd, "haystack.md"), "# hay\n\nsome straw and a NeedleWord here\n");
+  mkdirSync(join(cwd, ".pi"), { recursive: true });
+  writeFileSync(join(cwd, ".pi/hidden.md"), "needleword\n");
+  clear();
+  // Two asks in a row, as typing makes them; the tab keeps the answer to the latest.
+  send({ type: "search_notes", query: "needle", id: 1 });
+  send({ type: "search_notes", query: "NEEDLEWORD", id: 2 });
+  await want("search_results", (m) => m.id === 1);
+  await want("search_results", (m) => m.id === 2);
+  const answers = inbox.filter((m) => m.type === "search_results");
+  assert.deepEqual(answers.map((m) => [m.id, m.query]), [[1, "needle"], [2, "NEEDLEWORD"]], "each answer says which ask it answers");
+  const latest = answers.filter((m) => m.id === 2);
+  assert.equal(latest.length, 1, "what a tab keeps once the late one is dropped");
+  assert.deepEqual(
+    latest[0].hits.map((h) => [h.path, h.line, h.text.slice(h.from, h.to)]),
+    [["haystack.md", 3, "NeedleWord"]],
+    "대소문자를 가리지 않고, .pi/ 아래는 노트가 아니다",
+  );
+  clear();
+  send({ type: "search_notes", query: "   ", id: 3 });
+  assert.deepEqual((await want("search_results", (m) => m.id === 3)).hits, []);
 });
 
 it("모르는 메시지는 버려지지 않고 이 탭에 에러로 답한다", async () => {

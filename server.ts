@@ -36,6 +36,7 @@ import { guard, VAULT_PROMPT } from "./guard.ts";
 import { renameTarget } from "./naming.ts";
 import { LinkStore } from "./linkIndex.ts";
 import { backlinksOf, retarget } from "./links.ts";
+import { search } from "./search.ts";
 import type {
 	BranchesMsg,
 	ClientMsg,
@@ -992,6 +993,21 @@ wss.on("connection", async (ws) => {
 					// Nothing in the text moved: the spans are the whole of the news.
 					const found = readNote(CWD, msg.path)!;
 					wrote(msg.path, found.modified, []);
+					break;
+				}
+
+				// Every note read from disk on each ask — see search.ts — and read
+				// lazily, so a query that fills its results early stops reading.
+				// To this tab only: it is an answer to what it typed.
+				case "search_notes": {
+					if (typeof msg.query !== "string" || typeof msg.id !== "number") return;
+					const notes = function* () {
+						for (const { path } of listNotes(CWD)) {
+							const found = readNote(CWD, path);
+							if (found) yield found;
+						}
+					};
+					reply({ type: "search_results", id: msg.id, query: msg.query, hits: search(notes(), msg.query) });
 					break;
 				}
 

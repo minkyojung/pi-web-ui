@@ -15,8 +15,9 @@ import type { BranchPoint } from "./branches";
 import type { Author, Change, Span } from "./history";
 import type { NoteFile } from "./vault";
 import type { Backlink } from "./linkIndex";
+import type { SearchHit } from "./search";
 
-export type { Author, Backlink, BranchPoint, Change, NoteFile, Span };
+export type { Author, Backlink, BranchPoint, Change, NoteFile, SearchHit, Span };
 
 // ---------------------------------------------------------------------------
 // Browser → server
@@ -65,7 +66,13 @@ export type ClientMsg =
 	/** Put a note in the trash. Answered with `note_deleted` to every tab. */
 	| { type: "delete_note"; path: string }
 	/** Bring a trashed note back to its path. Answered with `note_created` to this tab and `note` to every tab. */
-	| { type: "restore_note"; trashed: string; path: string };
+	| { type: "restore_note"; trashed: string; path: string }
+	/**
+	 * Every note's text, for `query`. Answered with `search_results` to this
+	 * tab; `id` is the tab's own count of asks, sent back so an answer that
+	 * arrives after a newer ask can be told apart and dropped.
+	 */
+	| { type: "search_notes"; query: string; id: number };
 
 export type ClientMsgType = ClientMsg["type"];
 
@@ -261,6 +268,14 @@ export interface NoteConflictMsg {
 	modified: number;
 }
 
+/** The lines that say what search_notes asked for, in the notes' list order. See search.ts. */
+export interface SearchResultsMsg {
+	type: "search_results";
+	id: number;
+	query: string;
+	hits: SearchHit[];
+}
+
 export type PromptType = "select" | "input" | "confirm" | "editor" | "multiselect" | "batch";
 
 /**
@@ -338,6 +353,7 @@ export type StateMsg =
 	| NoteGoneMsg
 	| NoteDeletedMsg
 	| NoteConflictMsg
+	| SearchResultsMsg
 	| PromptRequestMsg
 	| PromptDismissMsg
 	| QueueClearedMsg
