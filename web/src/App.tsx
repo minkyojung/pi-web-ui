@@ -7,6 +7,7 @@ import { Editor } from "./components/Editor";
 import { RawView } from "./components/RawView";
 import { SettingsBar } from "./components/SettingsBar";
 import { Sidebar } from "./components/Sidebar";
+import { Title } from "./components/Title";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { hashForNote, noteFromHash } from "./noteSync";
@@ -121,7 +122,14 @@ export function App() {
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
-					{open ? <Editor key={noteIdentity(open)} path={open} /> : <div id="main" className="h-full" />}
+					{open ? (
+						<div className="flex h-full flex-col">
+							<Title path={open} />
+							<Editor key={noteIdentity(open)} path={open} />
+						</div>
+					) : (
+						<div id="main" className="h-full" />
+					)}
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel

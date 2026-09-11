@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { ChangeSet, Text } from "@codemirror/state";
 
-import { changeSetOf, decide, hashForNote, noteFromHash, rebase } from "../web/src/noteSync.ts";
+import { changeSetOf, decide, hashForNote, noteFromHash, rebase, renameTarget, titleOf } from "../web/src/noteSync.ts";
 
 const at = (text) => ({ text, modified: 1 });
 
@@ -79,4 +79,21 @@ test("같은 글을 건드리면 맞출 수 없다", () => {
   assert.equal(rebase(edit(base, 0, 5, "A"), edit(base, 2, 8, "X")), null);
   assert.equal(rebase(edit(base, 6, 10, "B"), edit(base, 6, 10, "b")), null, "같은 단어");
   assert.ok(rebase(edit(base, 6, 10, "B"), edit(base, 16, 16, "!")), "끝에 덧붙이는 것은 겹치지 않는다");
+});
+
+test("제목은 폴더와 확장자를 뺀 파일명이다", () => {
+  assert.equal(titleOf("Untitled.md"), "Untitled");
+  assert.equal(titleOf("ideas/my note.md"), "my note");
+  assert.equal(titleOf("a/b/c.md"), "c");
+});
+
+test("제목을 바꾸면 같은 폴더에 그 이름의 .md가 되고, 안 되는 이름은 요청 전에 거절된다", () => {
+  assert.deepEqual(renameTarget("ideas/old.md", "new name"), { to: "ideas/new name.md" });
+  assert.deepEqual(renameTarget("old.md", "  spaced  "), { to: "spaced.md" });
+  assert.deepEqual(renameTarget("old.md", "한글 제목"), { to: "한글 제목.md" });
+  assert.ok("error" in renameTarget("old.md", ""));
+  assert.ok("error" in renameTarget("old.md", "   "));
+  assert.ok("error" in renameTarget("old.md", "a/b"));
+  assert.ok("error" in renameTarget("old.md", ".hidden"));
+  assert.ok("error" in renameTarget("old.md", "name.md"));
 });

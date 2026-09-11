@@ -182,7 +182,7 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
 		return true;
 	};
-	const CODES = { Enter: 13, Backspace: 8, n: 78 };
+	const CODES = { Enter: 13, Backspace: 8, Escape: 27, n: 78 };
 	const press = async (key, { meta = false } = {}) => {
 		const modifiers = meta ? 4 : 0;
 		const code = key.length === 1 ? `Key${key.toUpperCase()}` : key;
@@ -518,6 +518,39 @@ check("⌘N makes an untitled note and opens it", async ({ app, cwd }) => {
 	assert.equal(await type(app, "# today"), true);
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 	assert.equal(readFileSync(join(cwd, path), "utf8"), "# today");
+});
+
+/** Type a name into the title field, the way a person would, and press a key. */
+const retitle = async (page, name, key = "Enter") => {
+	await page.click("#title");
+	await page.evaluate(`(() => { const t = document.getElementById('title'); t.select(); document.execCommand("insertText", false, ${JSON.stringify(name)}); })()`);
+	await page.press(key);
+};
+
+check("the title is the file's name, and changing it moves the note with its text", async ({ app, cwd }) => {
+	assert.equal(await app.evaluate("document.getElementById('title').value"), "Untitled");
+	await retitle(app, "My note");
+	await until("the new address", async () => (await app.evaluate("location.hash")) === "#My%20note.md");
+	assert.equal(await app.evaluate("document.getElementById('title').value"), "My note");
+	assert.equal(existsSync(join(cwd, "Untitled.md")), false);
+	assert.equal(readFileSync(join(cwd, "My note.md"), "utf8"), "# today", "the text went with it");
+	assert.ok((await editorText(app)).includes("# today"), "and stayed on screen");
+	assert.equal(await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.title`), "My note.md");
+	// Typing after the move saves to the new path.
+	await until("a clean editor", async () => (await editorStatus(app)) === "saved");
+	assert.equal(await type(app, "MOVED "), true);
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.ok(readFileSync(join(cwd, "My note.md"), "utf8").includes("MOVED"));
+});
+
+check("a name already taken is refused, and the old one comes back with Escape", async ({ app, cwd }) => {
+	await retitle(app, "first");
+	await until("the refusal", () => app.evaluate("document.querySelector('#title ~ [role=alert]')?.textContent ?? ''"));
+	assert.equal(await app.evaluate("location.hash"), "#My%20note.md", "nothing moved");
+	assert.ok(existsSync(join(cwd, "first.md")) && existsSync(join(cwd, "My note.md")));
+	await app.press("Escape");
+	assert.equal(await app.evaluate("document.getElementById('title').value"), "My note");
+	assert.equal(await app.evaluate("!!document.querySelector('#title ~ [role=alert]')"), false);
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {
