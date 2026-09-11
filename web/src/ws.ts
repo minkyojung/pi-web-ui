@@ -20,24 +20,7 @@ import {
 } from "./serverState";
 import { clearedText } from "./queue";
 import { applyServerEvent, replaceConversation, setConnection } from "./store";
-import type {
-	BranchesMsg,
-	ConfigMsg,
-	ContextSourcesMsg,
-	FilesMsg,
-	Item,
-	PromptDismissMsg,
-	PromptRequestMsg,
-	QueueClearedMsg,
-	ServerMsg,
-	SessionInfo,
-	UsageMsg,
-} from "./types";
-
-export interface ClientMsg {
-	type: string;
-	[key: string]: unknown;
-}
+import type { ClientMsg, ServerMsg, StateMsg } from "./types";
 
 let socket: WebSocket | null = null;
 /**
@@ -61,53 +44,82 @@ let disposed = false;
  */
 const backoff = () => Math.random() * Math.min(250 * 2 ** attempt, 5000);
 
+/**
+ * Every message the server makes up, by type. A record rather than a list so
+ * that adding one to StateMsg without adding it here does not compile: a type
+ * missing from this table would be taken for a pi event and fed to the reducer.
+ */
+const STATE: Record<StateMsg["type"], true> = {
+	config: true,
+	usage: true,
+	context_sources: true,
+	branches: true,
+	sessions: true,
+	snapshot: true,
+	files: true,
+	prompt_request: true,
+	prompt_dismiss: true,
+	queue_cleared: true,
+	error: true,
+};
+// hasOwn, not `in`: "constructor" is in every object.
+const isStateMsg = (msg: ServerMsg): msg is StateMsg => Object.hasOwn(STATE, msg.type);
+
 function receive(msg: ServerMsg): void {
+	// A pi event: what happened in the conversation, for the reducer.
+	if (!isStateMsg(msg)) {
+		pushRaw(msg);
+		applyServerEvent(msg);
+		return;
+	}
 	switch (msg.type) {
 		case "config":
-			configStore.set(msg as ConfigMsg);
+			configStore.set(msg);
 			return;
 		case "usage":
-			usageStore.set(msg as UsageMsg);
+			usageStore.set(msg);
 			return;
 		case "context_sources":
-			contextSourcesStore.set(msg as ContextSourcesMsg);
+			contextSourcesStore.set(msg);
 			return;
 		// The shape of the session tree, not something that happened in the
 		// conversation: it must not reach the reducer.
 		case "branches":
-			branchesStore.set((msg as BranchesMsg).nodes);
+			branchesStore.set(msg.nodes);
 			return;
 		case "sessions":
-			sessionsStore.set((msg as { sessions: SessionInfo[] }).sessions);
+			sessionsStore.set(msg.sessions);
 			return;
 		case "files":
-			filesStore.set((msg as FilesMsg).files);
+			filesStore.set(msg.files);
 			return;
 		case "snapshot":
 			// A snapshot means the server's session may not be the one these
 			// questions belonged to (a swap while this tab was offline). Drop
 			// them; the replay that follows a snapshot re-adds any still open.
 			promptsStore.set([]);
-			replaceConversation((msg as { items: Item[] }).items);
+			replaceConversation(msg.items);
 			return;
 		// The messages a clear took out of the queue, on their way back to the box.
 		case "queue_cleared": {
-			const text = clearedText(msg as QueueClearedMsg);
+			const text = clearedText(msg);
 			if (text) restoredStore.set(text);
 			return;
 		}
 		// Questions are not conversation events and must not reach the reducer.
 		case "prompt_request":
 			pushRaw(msg);
-			addPrompt((msg as PromptRequestMsg).prompt);
+			addPrompt(msg.prompt);
 			return;
 		case "prompt_dismiss":
 			pushRaw(msg);
-			removePrompt((msg as PromptDismissMsg).id);
+			removePrompt(msg.id);
 			return;
-		default:
+		// The server's own error, which the reducer draws like pi's.
+		case "error":
 			pushRaw(msg);
 			applyServerEvent(msg);
+			return;
 	}
 }
 

@@ -198,7 +198,13 @@ export interface PiEventMsg {
 	[key: string]: unknown;
 }
 
-export type ServerMsg =
+/**
+ * The messages this server makes up, as opposed to passes through. Named apart
+ * from the union below because PiEventMsg's open `type` would otherwise match
+ * every one of these and a `switch` could narrow none of them: a receiver
+ * first tells a state message from an event, then switches over this.
+ */
+export type StateMsg =
 	| ConfigMsg
 	| UsageMsg
 	| ContextSourcesMsg
@@ -209,5 +215,6 @@ export type ServerMsg =
 	| PromptRequestMsg
 	| PromptDismissMsg
 	| QueueClearedMsg
-	| ErrorMsg
-	| PiEventMsg;
+	| ErrorMsg;
+
+export type ServerMsg = StateMsg | PiEventMsg;
