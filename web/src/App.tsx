@@ -160,7 +160,7 @@ export function App() {
 					{open ? (
 						<div className="flex h-full flex-col">
 							<Title path={open} />
-							<Editor key={noteIdentity(open)} path={open} />
+							<Editor key={noteIdentity(open)} path={open} onOpen={setOpen} />
 						</div>
 					) : (
 						<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">

@@ -10,8 +10,11 @@ import { drawSelection, dropCursor, EditorView, keymap, placeholder, scrollPastE
 import { tags } from "@lezer/highlight";
 
 import { codeBlocks } from "../features/codeBlocks";
+import { links, notesChanged } from "../features/links";
 import { pending, setSpans } from "../features/pending";
-import { noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
+import { wikiLink } from "../../../wikilink.ts";
+import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
+import { titleOf } from "../noteSync";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { registerSave } from "../saves";
 import { getConnection, subscribe } from "../store";
@@ -111,7 +114,16 @@ const markup = HighlightStyle.define([
  * Features are CodeMirror extensions, listed in `features` below; the editor
  * itself is markdown, history and the keymap. A caller can add more.
  */
-export function Editor({ path, extensions = [] }: { path: string; extensions?: Extension[] }) {
+export function Editor({
+	path,
+	extensions = [],
+	onOpen,
+}: {
+	path: string;
+	extensions?: Extension[];
+	/** Follow a link: open another note. */
+	onOpen?: (path: string) => void;
+}) {
 	const host = useRef<HTMLDivElement>(null);
 	const view = useRef<EditorView | null>(null);
 	// The path can change under a live editor — a rename — so what the closures
@@ -193,7 +205,14 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 
 	useEffect(() => {
 		if (!host.current) return;
-		const features = [pending(() => at.current)];
+		const features = [
+			pending(() => at.current),
+			links({
+				notes: () => filesStore.get().map((f) => f.path),
+				here: () => at.current,
+				open: (p) => onOpen?.(p),
+			}),
+		];
 		const state = EditorState.create({
 			doc: "",
 			extensions: [
@@ -211,7 +230,7 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 					...defaultKeymap,
 					...historyKeymap,
 				]),
-				markdown({ base: markdownLanguage, codeLanguages: languages }),
+				markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [wikiLink] }),
 				// Pairs close as they open. Backticks too, for inline code; not
 				// `*`, which opens a list item as often as it opens emphasis, and
 				// `[[` needs nothing — the second `[` lands inside the first pair.
@@ -280,6 +299,12 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 		send({ type: "open_note", path });
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [online, path]);
+
+	// A note made or renamed elsewhere may be the one a link here names.
+	const notes = useSyncExternalStore(filesStore.subscribe, filesStore.get);
+	useEffect(() => {
+		view.current?.dispatch({ effects: notesChanged.of(null) });
+	}, [notes]);
 
 	// The note whole: the answer to open_note, and the fallback for a change
 	// on a version this editor does not have.
@@ -466,6 +491,35 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 				</div>
 			)}
 			<div ref={host} className="min-h-0 flex-1 overflow-hidden" />
+			<Backlinks path={path} onOpen={onOpen} />
+		</div>
+	);
+}
+
+/**
+ * The notes that link here, under the note. From the index, sent with the
+ * note and again whenever a write anywhere may have changed it. Nothing when
+ * there are none: an empty "Linked from" is a question nobody asked.
+ */
+function Backlinks({ path, onOpen }: { path: string; onOpen?: (path: string) => void }) {
+	const all = useSyncExternalStore(backlinksStore.subscribe, backlinksStore.get);
+	const notes = all[path] ?? [];
+	if (notes.length === 0) return null;
+	return (
+		<div id="backlinks" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t px-6 py-2 text-xs text-muted-foreground">
+			<span>Linked from</span>
+			{notes.map((b) => (
+				<button
+					key={b.path}
+					type="button"
+					title={b.path}
+					onClick={() => onOpen?.(b.path)}
+					className="cursor-default rounded-sm px-1 text-foreground hover:bg-accent"
+				>
+					{titleOf(b.path)}
+					{b.count > 1 && <span className="ml-1 text-muted-foreground">{b.count}</span>}
+				</button>
+			))}
 		</div>
 	);
 }

@@ -173,13 +173,14 @@ async function openPage(devtoolsPort, url) {
 	 * the editor reads the caret from the DOM only after the browser says the
 	 * selection changed, and an untrusted key event does not get there first.
 	 */
-	const click = async (selector, nth = 0) => {
+	const click = async (selector, nth = 0, { meta = false } = {}) => {
 		const box = await evaluate(`(() => { const el = document.querySelectorAll(${JSON.stringify(selector)})[${nth}]; if (!el) return null; const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
 		if (!box) return false;
 		const [x, y] = box;
-		await call("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
-		await call("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
-		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+		const modifiers = meta ? 4 : 0;
+		await call("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, modifiers });
+		await call("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1, modifiers });
+		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1, modifiers });
 		return true;
 	};
 	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, f: 70, n: 78, p: 80, z: 90 };
@@ -666,6 +667,30 @@ check("⌘F finds in the note, and Escape puts the panel away", async ({ app }) 
 	await app.press("Escape");
 	await until("the panel gone", () => app.evaluate("!document.querySelector('#editor .cm-panel.cm-search')"));
 	assert.equal(await app.evaluate("document.activeElement?.classList.contains('cm-content')"), true, "focus goes back to the note");
+});
+
+check("links are drawn, a missing one differently; ⌘+click follows one and makes the other", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "hub.md"), "go to [[My note]] or [[nowhere yet]]\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="hub.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="hub.md"]').click()`);
+	await until("the links", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink').length")) === 2);
+	assert.deepEqual(
+		await app.evaluate("[...document.querySelectorAll('#editor .cm-wikilink')].map((l) => l.classList.contains('cm-wikilink-missing'))"),
+		[false, true],
+	);
+	// Follow the one that exists.
+	await app.click("#editor .cm-wikilink", 0, { meta: true });
+	await until("My note", async () => (await app.evaluate("location.hash")) === "#My%20note.md");
+	await until("its backlinks", () => app.evaluate("document.querySelector('#backlinks')?.textContent ?? ''").then((t) => t.includes("hub")));
+	// Back by the backlink, then make the missing one.
+	await app.evaluate(`[...document.querySelectorAll('#backlinks button')].find((b) => b.title === "hub.md").click()`);
+	await until("hub again", async () => (await app.evaluate("location.hash")) === "#hub.md" && (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink').length")) === 2);
+	await app.click("#editor .cm-wikilink", 1, { meta: true });
+	await until("the new note", async () => (await app.evaluate("location.hash")) === "#nowhere%20yet.md" && (await editorStatus(app)) === "saved");
+	assert.equal(existsSync(join(cwd, "nowhere yet.md")), true);
+	// And back in hub the link is no longer missing.
+	await app.evaluate(`document.querySelector('#notes button[title="hub.md"]').click()`);
+	await until("no missing link", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink-missing').length")) === 0);
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {
