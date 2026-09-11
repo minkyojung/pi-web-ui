@@ -693,6 +693,19 @@ check("links are drawn, a missing one differently; ⌘+click follows one and mak
 	await until("no missing link", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink-missing').length")) === 0);
 });
 
+check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) => {
+	await app.evaluate(`document.querySelector('#notes button[title="hub.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.press("End", { meta: true });
+	await app.press("Enter");
+	await app.keys("[[my");
+	await until("the offer", () => app.evaluate("[...document.querySelectorAll('.cm-tooltip-autocomplete li')].map((l) => l.textContent).join(',')").then((t) => t.includes("My note")));
+	await app.press("Enter");
+	await until("the link", async () => (await editorText(app)).endsWith("[[My note]]"));
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
+});
+
 check("the bench renders every scenario it knows", async ({ bench }) => {
 	const scenarios = await until("the gallery", () =>
 		bench.evaluate("[...document.querySelectorAll('select option')].map((o) => o.value).join(',')"),

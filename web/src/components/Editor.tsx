@@ -10,6 +10,7 @@ import { drawSelection, dropCursor, EditorView, keymap, placeholder, scrollPastE
 import { tags } from "@lezer/highlight";
 
 import { codeBlocks } from "../features/codeBlocks";
+import { linkCompletion } from "../features/linkCompletion";
 import { links, notesChanged } from "../features/links";
 import { pending, setSpans } from "../features/pending";
 import { wikiLink } from "../../../wikilink.ts";
@@ -212,6 +213,7 @@ export function Editor({
 				here: () => at.current,
 				open: (p) => onOpen?.(p),
 			}),
+			linkCompletion(() => filesStore.get().map((f) => f.path)),
 		];
 		const state = EditorState.create({
 			doc: "",
