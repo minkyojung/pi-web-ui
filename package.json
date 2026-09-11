@@ -16,9 +16,7 @@
     "test": "node --test",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
     "record": "node scripts/record.mjs",
-    "fetch": "tsx reader/cli.ts",
-    "e2e": "node scripts/e2e.mjs",
-    "brief": "tsx reader/briefCli.ts"
+    "e2e": "node scripts/e2e.mjs"
   },
   "keywords": [],
   "author": "",
@@ -26,21 +24,14 @@
   "type": "module",
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.4",
-    "@mozilla/readability": "^0.6.0",
-    "jsdom": "^30.0.1",
     "react-resizable-panels": "^4.12.3",
-    "recharts": "^3.8.0",
-    "rss-parser": "^3.13.0",
-    "typebox": "1.3.7",
-    "ws": "^8.21.3",
-    "youtube-transcript": "^1.3.1"
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
-    "@types/jsdom": "^30.0.0",
     "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",

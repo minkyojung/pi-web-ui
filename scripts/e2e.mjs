@@ -296,48 +296,6 @@ check("changing your mind about it costs nothing", async ({ app }) => {
 	assert.ok(await app.evaluate(`document.querySelector('textarea')?.value?.includes("rewrite the reducer")`));
 });
 
-/**
- * The day's page, in the column the article usually has.
- *
- * Its sections are named and in a fixed order, and that order is the whole
- * design — so the check is the order, not that something rendered.
- */
-check("the list opens the day's page, with its sections in order", async ({ app }) => {
-	assert.equal(
-		await app.evaluate(`(() => { const b = document.querySelector('[data-slot="today-row"]'); if (!b) return false; b.click(); return true; })()`),
-		true,
-	);
-	await until("the day's page", () => app.evaluate("!!document.getElementById('today')"));
-	assert.equal(
-		await app.evaluate(`[...document.querySelectorAll('#today [data-slot="today-section"]')].map((s) => s.dataset.title).join(",")`),
-		"Time,To do,Brief,Read today,Wrap up",
-	);
-	assert.equal(await app.evaluate("location.hash"), "#today");
-	// Waited for rather than asserted on: the hours come from a record this
-	// machine may not have handed over, and the section says which of the two
-	// happened. That it stopped waiting is the part that is always true.
-	await until("the day to answer", () =>
-		app.evaluate(`!document.querySelector('#today [data-title="Time"] [data-slot="skeleton"]')`),
-	);
-	// A bar with width, not a bar element: the chart draws its rectangles at
-	// nothing and grows them, so an element is on the page a second before
-	// there is anything to look at.
-	await until("a bar with something in it", () =>
-		app.evaluate(
-			`[...document.querySelectorAll('#today .recharts-bar-rectangle path')].some((p) => p.getBBox().width > 2)`,
-		),
-	);
-	await app.shot("today");
-});
-
-// The address, not a row: what the library holds here is whatever the machine
-// happens to have read, and a check that needs a piece to exist would pass or
-// fail on that rather than on the routing this is about.
-check("and leaves the day's page again when the address does", async ({ app }) => {
-	await app.evaluate(`location.hash = ""`);
-	await until("the piece column", () => app.evaluate("!document.getElementById('today')"));
-});
-
 check("the bench renders every scenario it knows", async ({ bench }) => {
 	const scenarios = await until("the gallery", () =>
 		bench.evaluate("[...document.querySelectorAll('select option')].map((o) => o.value).join(',')"),

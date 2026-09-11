@@ -21,8 +21,8 @@ export default defineConfig({
 		// conversation.js sits at the repo root, outside `root`, and the dev
 		// server refuses to read outside it without this.
 		fs: { allow: [dir(".")] },
-		// The API server owns the pi session and the reading library; the socket
-		// and the library's /api routes go to it.
+		// The API server owns the pi session and the settings; the socket and
+		// the /api routes go to it.
 		proxy: {
 			"/ws": { target: `ws://${apiHost}:${apiPort}`, ws: true },
 			"/api": { target: `http://${apiHost}:${apiPort}` },

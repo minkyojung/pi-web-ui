@@ -24,17 +24,10 @@ import {
 	type CreateAgentSessionRuntimeFactory,
 } from "@earendil-works/pi-coding-agent";
 import { itemsFromMessages } from "./conversation.js";
-import { open as openLibrary } from "./reader/store.ts";
-import { extract } from "./reader/extract.ts";
-import { readerExtension } from "./reader/tools.ts";
-import { fetchFeed, label as sourceLabel, readSubscriptions, subKey, writeSubscriptions } from "./reader/fetch.ts";
-import type { Subscription } from "./reader/sources.ts";
-import { icon, safeHost } from "./reader/icons.ts";
 import { modeToolNames } from "./toolModes.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { readUsage } from "./today/usage.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 /**
@@ -151,17 +144,6 @@ interface DashboardBridgeState {
 	timers?: ReturnType<typeof setInterval>[];
 }
 
-/**
- * The reading library. The list route leaves the bodies out: carrying html for
- * every row would make the sidebar's first request several megabytes, and the
- * sidebar has no use for it. Stories still waiting below the score bar stay out
- * too — they have titles and nothing else.
- *
- * Opened here rather than beside the routes that read it, because the first
- * session is created a few lines below and its set_gist tool closes over this.
- */
-const library = openLibrary();
-
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
 	retireDashboardBridge();
 	const services = await createAgentSessionServices({
@@ -169,10 +151,7 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 		modelRuntime,
 		// Inline rather than a file under .pi/extensions/: that path needs the
 		// project trusted, and the desktop shell's cwd is wherever it was opened.
-		resourceLoaderOptions: {
-			eventBus,
-			extensionFactories: [{ name: "reader", factory: readerExtension(library) }],
-		},
+		resourceLoaderOptions: { eventBus },
 	});
 	return {
 		// No `model`: pi picks it the way the CLI does — the one the session was
@@ -487,7 +466,7 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 
-/** A small request body, whole. Capped: this endpoint takes three booleans. */
+/** A small request body, whole. Capped: the one endpoint that takes one takes a few fields. */
 function text(req: IncomingMessage): Promise<string> {
 	return new Promise((resolve, reject) => {
 		let out = "";
@@ -500,26 +479,6 @@ function text(req: IncomingMessage): Promise<string> {
 	});
 }
 
-/**
- * A subscription as the browser draws it. The library count comes along because
- * being on the list and actually bringing anything in are two different things:
- * a feed whose address is subtly wrong sits there quietly at zero.
- */
-function describeSubscriptions(subs: Subscription[]) {
-	// A library of its own, not the long-lived one. Library.scan() re-reads the
-	// pieces on disk but not index.json, so the copy this process has held open
-	// since startup does not know about anything a feed pass left pending — and
-	// a piece with only a title is exactly what a new feed brings in most of.
-	const counts = new Map<string, number>();
-	for (const row of openLibrary().all()) counts.set(row.source, (counts.get(row.source) ?? 0) + 1);
-	return subs.map((s) => ({
-		key: subKey(s),
-		kind: s.kind,
-		label: sourceLabel(s),
-		items: counts.get(subKey(s)) ?? 0,
-	}));
-}
-
 const server = createServer(async (req, res) => {
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const { pathname } = url;
@@ -529,121 +488,7 @@ const server = createServer(async (req, res) => {
 			res.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
 			res.end(JSON.stringify(body));
 		};
-		// The one thing the browser writes. `fetch` owns a piece's body, `set_gist`
-		// owns its line, and this owns read/queued/archived — one writer per field,
-		// which is what keeps three of them out of each other's way.
-		const flags = pathname.match(/^\/api\/items\/(\d+)\/flags$/);
-		if (flags && req.method === "POST") {
-			let patch: Record<string, unknown>;
-			try {
-				patch = JSON.parse(await text(req));
-			} catch {
-				return json(400, { error: "invalid JSON" });
-			}
-			const pick = (k: string) => (typeof patch[k] === "boolean" ? (patch[k] as boolean) : undefined);
-			try {
-				return json(200, library.setFlags(Number(flags[1]), {
-					read: pick("read"),
-					queued: pick("queued"),
-					archived: pick("archived"),
-				}));
-			} catch {
-				return json(404, { error: "not found" });
-			}
-		}
-		// Asking for one piece's body again. The feed pass reaches a piece once and
-		// never returns to it, so a site that was down that minute stays empty for
-		// good; this is the way back. `force` because a piece opened by hand and
-		// asked for is a request, not one of two hundred links worth skipping.
-		const again = pathname.match(/^\/api\/items\/(\d+)\/refetch$/);
-		if (again && req.method === "POST") {
-			const have = library.get(Number(again[1]));
-			if (!have) return json(404, { error: "not found" });
-			const r = await extract(have.url, { force: true });
-			library.save(have.id, r.status, r.html, r.text, r.kind, r.resolved);
-			library.flush();
-			return json(200, library.get(have.id));
-		}
-		// The door a url comes in by. Feeds take the same road in fetch.ts, two
-		// hundred at a time; this is one, and the order is turned around: fetch
-		// first, then take an id. Where a link ends up is only known once it has
-		// been followed, and finding out after the id is handed out would leave
-		// a stub to take back. Found already → 200 with what is there; new → 201.
-		if (pathname === "/api/items" && req.method === "POST") {
-			let url: string;
-			try {
-				const body = JSON.parse(await text(req)) as { url?: unknown };
-				url = typeof body.url === "string" ? body.url.trim() : "";
-				const u = new URL(url);
-				if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error();
-			} catch {
-				return json(400, { error: "invalid url" });
-			}
-			const have = library.find(url);
-			if (have) return json(200, have);
-			const r = await extract(url, { force: true });
-			const there = r.resolved && library.find(r.resolved);
-			if (there) return json(200, there);
-			const { id } = library.see({
-				url,
-				title: r.title ?? url,
-				source: "saved",
-				resolved_url: r.resolved,
-				status: "pending",
-			});
-			library.save(id, r.status, r.html, r.text, r.kind, r.resolved);
-			library.flush();
-			return json(201, library.get(id));
-		}
-		// A feed in. It is read before it is written down: a subscription that
-		// cannot be parsed would otherwise sit in the file adding one failed line
-		// to every pass, and the reader would have nothing to go on but an empty
-		// list. Same order as /api/items — follow the link, then keep it.
-		//
-		// Which also means the first pass happens here rather than at the next
-		// `npm run fetch`. Adding a source and seeing nothing arrive reads as a
-		// failure, so this waits for the pieces even though it makes the request
-		// a slow one.
-		if (pathname === "/api/subscriptions" && req.method === "POST") {
-			let want: Subscription;
-			try {
-				const body = JSON.parse(await text(req)) as { url?: unknown };
-				// No url at all is Hacker News, which has no address to give.
-				if (body.url === undefined) want = { kind: "hn" };
-				else {
-					const u = new URL(String(body.url).trim());
-					if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error();
-					want = { kind: "rss", url: u.toString() };
-				}
-			} catch {
-				return json(400, { error: "invalid url" });
-			}
-			const subs = readSubscriptions();
-			if (subs.some((s) => subKey(s) === subKey(want)))
-				return json(409, { error: "already subscribed" });
-			const report = await fetchFeed(() => {}, [want]);
-			// fetchFeed collects a source's failure rather than throwing it, so that
-			// one bad feed cannot stop the other nine. Here there is only the one.
-			const source = report.sources[0];
-			// The parser's own words, on one line and said to be about the feed. On
-			// its own "Unexpected close tag Line: 0" is about nothing the reader did.
-			if (source?.error)
-				return json(400, { error: `could not read that feed — ${source.error.replace(/\s+/g, " ").trim()}` });
-			writeSubscriptions([...subs, want]);
-			return json(201, { subscriptions: describeSubscriptions([...subs, want]), added: report.added });
-		}
-		// Out again. The pieces it already brought in stay in the library — they
-		// were read, or are still worth reading — but they stop reaching the
-		// briefing, which asks this same list who is still subscribed.
-		if (pathname === "/api/subscriptions" && req.method === "DELETE") {
-			const key = url.searchParams.get("key");
-			const subs = readSubscriptions();
-			const rest = subs.filter((s) => subKey(s) !== key);
-			if (rest.length === subs.length) return json(404, { error: "not subscribed" });
-			writeSubscriptions(rest);
-			return json(200, { subscriptions: describeSubscriptions(rest) });
-		}
-		// The numbers, all of them at once. Sent whole rather than a field at a
+		// The settings, all of them at once. Sent whole rather than a field at a
 		// time because that is what settings.ts writes; a field it did not hear
 		// about would come back as its default and quietly undo an edit.
 		if (pathname === "/api/settings" && req.method === "POST") {
@@ -654,32 +499,7 @@ const server = createServer(async (req, res) => {
 			}
 		}
 		if (req.method !== "GET") return json(405, { error: "read only" });
-		// The day, section by section, in one answer. They are all about the same
-		// date, and a page that fills in five times is a page that moves under
-		// whoever is reading it.
-		if (pathname === "/api/today") return json(200, { usage: readUsage() });
 		if (pathname === "/api/settings") return json(200, readSettings());
-		if (pathname === "/api/subscriptions") {
-			return json(200, { subscriptions: describeSubscriptions(readSubscriptions()) });
-		}
-		if (pathname === "/api/items") {
-			const limit = Math.min(Number(url.searchParams.get("limit") ?? 200) || 200, 1000);
-			return json(200, library.list(limit));
-		}
-		const m = pathname.match(/^\/api\/items\/(\d+)$/);
-		if (m) {
-			const row = library.get(Number(m[1]));
-			return row ? json(200, row) : json(404, { error: "not found" });
-		}
-		const ico = pathname.match(/^\/api\/icon\/(.+)$/);
-		if (ico) {
-			const host = safeHost(decodeURIComponent(ico[1]));
-			const bytes = host && (await icon(host));
-			if (!bytes) return json(404, { error: "no icon" });
-			// Kept on disk anyway; the header is so a scroll back up costs nothing.
-			res.writeHead(200, { "content-type": "image/x-icon", "cache-control": "max-age=86400" });
-			return res.end(bytes);
-		}
 		return json(404, { error: "not found" });
 	}
 
