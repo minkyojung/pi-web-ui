@@ -12,6 +12,7 @@ import { Search } from "./components/Search";
 import { Title } from "./components/Title";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 import { TooltipProvider } from "./components/ui/tooltip";
+import type { Place } from "../../links.ts";
 import { hashForNote, noteFromHash } from "./noteSync";
 import { bump, forget, readRecent, writeRecent } from "./recent";
 import { filesStore, noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
@@ -22,15 +23,26 @@ import { send } from "./ws";
 /**
  * The address carries which note is open, so a reload lands where you left
  * off and a row in the sidebar is a link rather than a call.
+ *
+ * A followed link can also say where in the note to land. That is not in the
+ * address — a reload should not jump the cursor back — so it is held until the
+ * address it changed arrives, and goes out with that path and no other.
  */
-function useOpenNote(): [string | null, (path: string | null) => void] {
-	const [path, setPath] = useState(() => noteFromHash(location.hash));
+function useOpenNote(): [string | null, Place | null, (path: string | null, place?: Place) => void] {
+	const [at, setAt] = useState<{ path: string | null; place: Place | null }>(() => ({ path: noteFromHash(location.hash), place: null }));
+	const landing = useRef<{ path: string; place: Place } | null>(null);
 	useEffect(() => {
-		const onHash = () => setPath(noteFromHash(location.hash));
+		const onHash = () => {
+			const path = noteFromHash(location.hash);
+			const place = landing.current?.path === path ? landing.current.place : null;
+			landing.current = null;
+			setAt({ path, place });
+		};
 		addEventListener("hashchange", onHash);
 		return () => removeEventListener("hashchange", onHash);
 	}, []);
-	const open = useCallback((next: string | null) => {
+	const open = useCallback((next: string | null, place?: Place) => {
+		landing.current = next && place ? { path: next, place } : null;
 		location.hash = next ? hashForNote(next) : "";
 	}, []);
 	// A rename moves the address under the open note. The editor is the same
@@ -39,10 +51,10 @@ function useOpenNote(): [string | null, (path: string | null) => void] {
 	useEffect(() => {
 		if (renamed && renamed.from === noteFromHash(location.hash)) {
 			history.replaceState(null, "", hashForNote(renamed.to));
-			setPath(renamed.to);
+			setAt({ path: renamed.to, place: null });
 		}
 	}, [renamed]);
-	return [path, open];
+	return [at.path, at.place, open];
 }
 
 /**
@@ -77,7 +89,7 @@ noteRenamedStore.subscribe(() => {
  */
 export function App() {
 	const items = useSyncExternalStore(subscribe, getItems);
-	const [open, setOpen] = useOpenNote();
+	const [open, place, setOpen] = useOpenNote();
 	// A debug view, so it is behind a shortcut rather than a permanent control in
 	// the best seat on screen. RawView says how to leave, since nothing says it
 	// is there in the first place.
@@ -168,7 +180,7 @@ export function App() {
 					{open ? (
 						<div className="flex h-full flex-col">
 							<Title path={open} />
-							<Editor key={noteIdentity(open)} path={open} onOpen={setOpen} />
+							<Editor key={noteIdentity(open)} path={open} place={place} onOpen={setOpen} />
 						</div>
 					) : (
 						<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">

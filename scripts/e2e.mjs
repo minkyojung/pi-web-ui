@@ -719,6 +719,32 @@ check("⌘⇧F finds words in any note, and Enter opens the note they are in", a
 	assert.equal(await app.evaluate("!!document.querySelector('[data-slot=command-input]')"), false, "the palette closed");
 });
 
+/** The line the caret is on, and whether it is inside the editor's view — where a jump should leave both. */
+const caretLine = (page) =>
+	page.evaluate(`(() => {
+		const n = getSelection().anchorNode;
+		const line = (n?.nodeType === 1 ? n : n?.parentElement)?.closest('#editor .cm-line');
+		if (!line) return null;
+		const box = line.getBoundingClientRect();
+		const view = document.querySelector('#editor .cm-scroller').getBoundingClientRect();
+		return { text: line.textContent, seen: box.top >= view.top && box.bottom <= view.bottom };
+	})()`);
+
+check("⌘+click on a link to a heading or a block opens its note at that line", async ({ app, cwd }) => {
+	// Far enough down that landing there has to scroll.
+	const filler = Array.from({ length: 80 }, (_, i) => `filler ${i}`).join("\n\n");
+	writeFileSync(join(cwd, "long.md"), `# long\n\n${filler}\n\nthe block ^far-block\n\n${filler}\n\n## Far down\n\nend\n`);
+	writeFileSync(join(cwd, "jump.md"), "[[long#Far down]] and [[long#^far-block]]\n");
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="jump.md"]') && !!document.querySelector('#notes button[title="long.md"]')`));
+	for (const [n, line] of [[0, "## Far down"], [1, "the block ^far-block"]]) {
+		await app.evaluate(`document.querySelector('#notes button[title="jump.md"]').click()`);
+		await until("the links", async () => (await app.evaluate("location.hash")) === "#jump.md" && (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink').length")) === 2);
+		await app.click("#editor .cm-wikilink", n, { meta: true });
+		await until(`the cursor on "${line}"`, async () => (await app.evaluate("location.hash")) === "#long.md" && (await caretLine(app))?.text === line);
+		assert.equal((await caretLine(app)).seen, true, "and the line is in view");
+	}
+});
+
 check("the bench renders every scenario it knows", async ({ bench }) => {
 	const scenarios = await until("the gallery", () =>
 		bench.evaluate("[...document.querySelectorAll('select option')].map((o) => o.value).join(',')"),

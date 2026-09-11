@@ -9,10 +9,17 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { backlinksOf, type Link, type LinkIndex, linksIn, resolve } from "./links.ts";
+import { backlinksOf, type Link, type LinkIndex, LINKS_VERSION, linksIn, resolve } from "./links.ts";
 import { listNotes, readNote } from "./vault.ts";
 
 export const LINKS_PATH = ".pi/links.json";
+
+/**
+ * The index with the version of linksIn that built it. A sidecar that agrees
+ * with the folder can still be wrong, if the parser has learned since what a
+ * link is — a heading after `#` was once part of the name — so both must agree.
+ */
+type Sidecar = { version: number; notes: LinkIndex };
 
 export type Backlink = { path: string; count: number };
 
@@ -25,15 +32,15 @@ export class LinkStore {
 		this.root = root;
 	}
 
-	/** From the sidecar if it agrees with the folder, else from the notes. */
+	/** From the sidecar if it agrees with the folder and the parser, else from the notes. */
 	load(): void {
 		const file = join(this.root, LINKS_PATH);
 		const paths = listNotes(this.root).map((f) => f.path);
 		try {
-			const saved = JSON.parse(readFileSync(file, "utf8")) as LinkIndex;
-			const same = Object.keys(saved).length === paths.length && paths.every((p) => p in saved);
-			if (same) {
-				this.index = saved;
+			const saved = JSON.parse(readFileSync(file, "utf8")) as Partial<Sidecar>;
+			const notes = saved.version === LINKS_VERSION ? saved.notes : undefined;
+			if (notes && Object.keys(notes).length === paths.length && paths.every((p) => p in notes)) {
+				this.index = notes;
 				return;
 			}
 		} catch {
@@ -50,7 +57,7 @@ export class LinkStore {
 	private save(): void {
 		const file = join(this.root, LINKS_PATH);
 		mkdirSync(dirname(file), { recursive: true });
-		writeFileSync(file, JSON.stringify(this.index));
+		writeFileSync(file, JSON.stringify({ version: LINKS_VERSION, notes: this.index } satisfies Sidecar));
 	}
 
 	paths(): string[] {

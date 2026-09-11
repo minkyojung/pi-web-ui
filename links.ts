@@ -11,31 +11,75 @@
  * editor uses — and lives in a sidecar that can be thrown away and rebuilt
  * from the notes. Nothing here touches the disk; the server does.
  */
+import type { SyntaxNode } from "@lezer/common";
 import { parser as markdown } from "@lezer/markdown";
 import { titleOf } from "./naming.ts";
 import { wikiLink } from "./wikilink.ts";
 
 const parser = markdown.configure([wikiLink]);
 
-export type Link = { target: string; alias: string | null; from: number; to: number };
+export type Link = {
+	target: string;
+	/** The heading after `#`, which says where in the note, not which note. */
+	heading: string | null;
+	/** The block id after `#^` or `^`, likewise. */
+	block: string | null;
+	alias: string | null;
+	from: number;
+	to: number;
+};
 
-/** Every wikilink in a note, in order, with where it sits. */
-export function linksIn(text: string): Link[] {
-	const out: Link[] = [];
+/** Where inside its note a link points: a heading, a block, or neither. */
+export type Place = Pick<Link, "heading" | "block">;
+
+/**
+ * Which links linksIn finds, as a number. The sidecar is written with it, so
+ * a sidecar built when the parser found links differently is rebuilt rather
+ * than trusted. Bump it with any change to what linksIn returns for a note.
+ */
+export const LINKS_VERSION = 2;
+
+/**
+ * A WikiLink node read as a link, and where the note's name sits in it —
+ * which is all a rename rewrites. Shared with the editor, which has the tree
+ * already and reads it the same way.
+ */
+export function readWikiLink(node: SyntaxNode, slice: (from: number, to: number) => string): { link: Link; name: { from: number; to: number } } {
+	const link: Link = { target: "", heading: null, block: null, alias: null, from: node.from, to: node.to };
+	let name = { from: node.from, to: node.from };
+	for (let c = node.firstChild; c; c = c.nextSibling) {
+		if (c.name === "WikiLinkTarget") {
+			const place = c.getChild("WikiLinkHeading") ?? c.getChild("WikiLinkBlock");
+			name = { from: c.from, to: place ? place.from : c.to };
+			link.target = slice(name.from, name.to).trim();
+			if (place) {
+				// After the mark — `#`, `#^` or `^`. An empty one names no place: `[[a#]]` is `[[a]]`.
+				const text = slice(place.firstChild!.to, place.to).trim() || null;
+				if (place.name === "WikiLinkHeading") link.heading = text;
+				else link.block = text;
+			}
+		}
+		if (c.name === "WikiLinkAlias") link.alias = slice(c.from, c.to).trim();
+	}
+	return { link, name };
+}
+
+function wikiLinksIn(text: string): ReturnType<typeof readWikiLink>[] {
+	const out: ReturnType<typeof readWikiLink>[] = [];
+	const slice = (from: number, to: number) => text.slice(from, to);
 	parser.parse(text).iterate({
 		enter: (node) => {
 			if (node.name !== "WikiLink") return;
-			let target = "";
-			let alias: string | null = null;
-			for (let c = node.node.firstChild; c; c = c.nextSibling) {
-				if (c.name === "WikiLinkTarget") target = text.slice(c.from, c.to).trim();
-				if (c.name === "WikiLinkAlias") alias = text.slice(c.from, c.to).trim();
-			}
-			out.push({ target, alias, from: node.from, to: node.to });
+			out.push(readWikiLink(node.node, slice));
 			return false;
 		},
 	});
 	return out;
+}
+
+/** Every wikilink in a note, in order, with where it sits. */
+export function linksIn(text: string): Link[] {
+	return wikiLinksIn(text).map((l) => l.link);
 }
 
 /** How many folders two paths do not share: the distance a nearest-wins rule measures. */
@@ -51,12 +95,13 @@ function distance(a: string, b: string): number {
  * The note `target` means from the note at `from`, or null if there is none.
  *
  * `target` is a title, matched to the file's name without regard to case,
- * or a path with folders (with or without `.md`), matched whole.
+ * or a path with folders (with or without `.md`), matched whole. No name at
+ * all — `[[#a heading]]` — is the note doing the linking, as in Obsidian.
  */
 export function resolve(target: string, paths: Iterable<string>, from = ""): string | null {
 	const want = target.trim().replace(/\.md$/i, "");
-	if (!want) return null;
 	const all = [...paths];
+	if (!want) return from && all.includes(from) ? from : null;
 	if (want.includes("/")) {
 		const whole = all.find((p) => p.replace(/\.md$/, "").toLowerCase() === want.toLowerCase());
 		return whole ?? null;
@@ -87,11 +132,12 @@ export function backlinksOf(index: LinkIndex, path: string, paths: Iterable<stri
  * nothing pointed there. What a rename writes into the notes that linked to
  * the renamed one. `paths` is the vault as it was before the rename — with
  * `from`, without `to` — since that is what the old links resolved against.
- * The alias, if any, is kept: it was chosen for the reader.
+ * Only the note's name is rewritten: the heading or block after it and the
+ * alias still say what they said, and the alias was chosen for the reader.
  */
 export function retarget(text: string, from: string, to: string, paths: Iterable<string>, at: string): string | null {
 	const before = [...paths];
-	const links = linksIn(text).filter((l) => resolve(l.target, before, at) === from);
+	const links = wikiLinksIn(text).filter((l) => resolve(l.link.target, before, at) === from);
 	if (links.length === 0) return null;
 	// Point at the new note the way the old link did: by title if that alone
 	// finds it in the vault as it is now, else by path.
@@ -101,8 +147,8 @@ export function retarget(text: string, from: string, to: string, paths: Iterable
 	let out = "";
 	let last = 0;
 	for (const l of links) {
-		out += text.slice(last, l.from) + `[[${name}${l.alias === null ? "" : `|${l.alias}`}]]`;
-		last = l.to;
+		out += text.slice(last, l.name.from) + name;
+		last = l.name.to;
 	}
 	return out + text.slice(last);
 }

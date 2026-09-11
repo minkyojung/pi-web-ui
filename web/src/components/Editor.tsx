@@ -11,9 +11,10 @@ import { tags } from "@lezer/highlight";
 
 import { codeBlocks } from "../features/codeBlocks";
 import { linkCompletion } from "../features/linkCompletion";
-import { links, notesChanged } from "../features/links";
+import { landOn, links, notesChanged } from "../features/links";
 import { pending, setSpans } from "../features/pending";
 import { wikiLink } from "../../../wikilink.ts";
+import type { Place } from "../../../links.ts";
 import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
 import { titleOf } from "../noteSync";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
@@ -117,16 +118,21 @@ const markup = HighlightStyle.define([
  */
 export function Editor({
 	path,
+	place = null,
 	extensions = [],
 	onOpen,
 }: {
 	path: string;
+	/** Where the link that opened this note pointed inside it, if anywhere. */
+	place?: Place | null;
 	extensions?: Extension[];
-	/** Follow a link: open another note. */
-	onOpen?: (path: string) => void;
+	/** Follow a link: open another note, at a place in it. */
+	onOpen?: (path: string, place?: Place) => void;
 }) {
 	const host = useRef<HTMLDivElement>(null);
 	const view = useRef<EditorView | null>(null);
+	/** Landed on once, when the text first arrives: after that the cursor is the person's. */
+	const landing = useRef(place);
 	// The path can change under a live editor — a rename — so what the closures
 	// below send is read from here, not captured at mount.
 	const at = useRef(path);
@@ -211,7 +217,7 @@ export function Editor({
 			links({
 				notes: () => filesStore.get().map((f) => f.path),
 				here: () => at.current,
-				open: (p) => onOpen?.(p),
+				open: (p, at) => onOpen?.(p, at),
 			}),
 			linkCompletion(() => filesStore.get().map((f) => f.path)),
 		];
@@ -348,6 +354,10 @@ export function Editor({
 					effects: setSpans.of({ spans: note.spans }),
 				});
 				settle(note.text, note.modified);
+				if (landing.current) {
+					landOn(v, landing.current);
+					landing.current = null;
+				}
 				return;
 			case "conflict":
 				setStatus("conflict");

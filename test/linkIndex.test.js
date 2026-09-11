@@ -59,5 +59,14 @@ test("이름이 바뀌면 키가 옮겨지고, 지우면 빠진다", () => {
   const touched = store.remove("z.md");
   assert.deepEqual(touched, ["c.md"]);
   assert.deepEqual(store.backlinks("c.md"), []);
-  assert.equal(JSON.parse(readFileSync(join(DIR, LINKS_PATH), "utf8"))["z.md"], undefined);
+  assert.equal(JSON.parse(readFileSync(join(DIR, LINKS_PATH), "utf8")).notes["z.md"], undefined);
+});
+
+test("폴더와 맞아도 다른 파서가 만든 사이드카는 믿지 않고 다시 만든다", () => {
+  // The flat shape the first parser wrote, with the folder's notes and none of their links.
+  writeFileSync(join(DIR, LINKS_PATH), JSON.stringify({ "a.md": [], "ideas/b.md": [], "c.md": [] }));
+  const store = new LinkStore(DIR);
+  store.load();
+  assert.deepEqual(store.backlinks("a.md"), [{ path: "c.md", count: 2 }, { path: "ideas/b.md", count: 1 }]);
+  assert.equal(typeof JSON.parse(readFileSync(join(DIR, LINKS_PATH), "utf8")).version, "number");
 });
