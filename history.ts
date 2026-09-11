@@ -28,8 +28,19 @@ export type Origin = { author: Author; at: number; sessionId?: string; entryId?:
 /** `removed` was at [from, to) and `inserted` is there now. Kept whole so it can be undone. */
 export type Change = Origin & { from: number; to: number; inserted: string; removed: string };
 
-/** A run of characters in the current text with one origin. */
-export type Span = Origin & { from: number; to: number };
+/**
+ * A run of characters in the current text with one origin.
+ *
+ * `removed` is what the change that wrote it replaced, carried while the span
+ * is still that whole insertion and dropped once later changes have cut it —
+ * it is what putting the words back means, and only means it whole.
+ * `accepted` is set when the person has touched the run without changing it,
+ * which is how pi's words stop being marked without becoming anyone else's.
+ */
+export type Span = Origin & { from: number; to: number; removed?: string; accepted?: true };
+
+/** A change that changes nothing: the person accepting the words at [from, to). */
+export const isTouch = (change: Change) => change.inserted === change.removed;
 
 /**
  * The replacements that turn `before` into `after`, in order.
@@ -83,20 +94,26 @@ export function replay(changes: Change[]): { text: string; spans: Span[] } {
 	let text = "";
 	let spans: Span[] = [];
 	for (const change of changes) {
+		if (isTouch(change)) {
+			spans = merge(touch(spans, change.from, change.to));
+			continue;
+		}
 		const delta = change.inserted.length - (change.to - change.from);
 		const next: Span[] = [];
 		for (const span of spans) {
 			if (span.to <= change.from) next.push(span);
 			else if (span.from >= change.to) next.push({ ...span, from: span.from + delta, to: span.to + delta });
 			else {
-				// Straddles the change: keep the parts outside it.
-				if (span.from < change.from) next.push({ ...span, to: change.from });
-				if (span.to > change.to) next.push({ ...span, from: change.from + change.inserted.length, to: span.to + delta });
+				// Straddles the change: keep the parts outside it. A part is no
+				// longer the whole of what its change wrote.
+				const { removed: _cut, ...rest } = span;
+				if (span.from < change.from) next.push({ ...rest, to: change.from });
+				if (span.to > change.to) next.push({ ...rest, from: change.from + change.inserted.length, to: span.to + delta });
 			}
 		}
 		if (change.inserted) {
-			const { from: _f, to: _t, inserted: _i, removed: _r, ...origin } = change;
-			next.push({ ...origin, from: change.from, to: change.from + change.inserted.length });
+			const { from: _f, to: _t, inserted: _i, removed, ...origin } = change;
+			next.push({ ...origin, from: change.from, to: change.from + change.inserted.length, removed });
 		}
 		next.sort((a, b) => a.from - b.from);
 		spans = merge(next);
@@ -105,8 +122,31 @@ export function replay(changes: Change[]): { text: string; spans: Span[] } {
 	return { text, spans };
 }
 
-function same(a: Origin, b: Origin): boolean {
-	return a.author === b.author && a.at === b.at && a.sessionId === b.sessionId && a.entryId === b.entryId;
+/** Mark what lies in [from, to) as accepted, cutting spans at the edges. */
+function touch(spans: Span[], from: number, to: number): Span[] {
+	const out: Span[] = [];
+	for (const span of spans) {
+		if (span.to <= from || span.from >= to) {
+			out.push(span);
+			continue;
+		}
+		const { removed: _cut, ...rest } = span;
+		const whole = span.from >= from && span.to <= to;
+		if (span.from < from) out.push({ ...rest, to: from });
+		out.push({ ...(whole ? span : rest), from: Math.max(span.from, from), to: Math.min(span.to, to), accepted: true });
+		if (span.to > to) out.push({ ...rest, from: to });
+	}
+	return out;
+}
+
+function same(a: Span, b: Span): boolean {
+	return (
+		a.author === b.author &&
+		a.at === b.at &&
+		a.sessionId === b.sessionId &&
+		a.entryId === b.entryId &&
+		a.accepted === b.accepted
+	);
 }
 
 function merge(spans: Span[]): Span[] {
@@ -114,8 +154,11 @@ function merge(spans: Span[]): Span[] {
 	for (const span of spans) {
 		if (span.from === span.to) continue;
 		const last = out[out.length - 1];
-		if (last && last.to === span.from && same(last, span)) last.to = span.to;
-		else out.push({ ...span });
+		if (last && last.to === span.from && same(last, span)) {
+			// Two pieces of one span, or two spans: either way not one whole insertion.
+			last.to = span.to;
+			delete last.removed;
+		} else out.push({ ...span });
 	}
 	return out;
 }
@@ -170,6 +213,14 @@ export function reconcile(root: string, path: string, onDisk: string, at: number
 		changes.push(...outside);
 	}
 	return { changes, spans: replay(changes).spans };
+}
+
+/** Log that the person accepted the words at [from, to) as they are. */
+export function accept(root: string, path: string, from: number, to: number, at: number): void {
+	const { text } = replay(readHistory(root, path));
+	const kept = text.slice(from, to);
+	if (!kept) return;
+	appendHistory(root, path, [{ author: "me", at, from, to, inserted: kept, removed: kept }]);
 }
 
 /** Log a write that passed through the app, from what it replaced. */

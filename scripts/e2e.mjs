@@ -166,7 +166,30 @@ async function openPage(devtoolsPort, url) {
 		mkdirSync(process.env.SHOTS, { recursive: true });
 		writeFileSync(join(process.env.SHOTS, `${name}.png`), Buffer.from(result.data, "base64"));
 	};
-	return { evaluate, shot, errors, close: () => socket.close() };
+	/**
+	 * Real input, through the protocol: a click lands where the browser lays
+	 * the element out, and a key comes with its modifiers the way the keyboard
+	 * sends them. A KeyboardEvent made in the page cannot stand in for either —
+	 * the editor reads the caret from the DOM only after the browser says the
+	 * selection changed, and an untrusted key event does not get there first.
+	 */
+	const click = async (selector, nth = 0) => {
+		const box = await evaluate(`(() => { const el = document.querySelectorAll(${JSON.stringify(selector)})[${nth}]; if (!el) return null; const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+		if (!box) return false;
+		const [x, y] = box;
+		await call("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+		await call("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+		return true;
+	};
+	const CODES = { Enter: 13, Backspace: 8 };
+	const press = async (key, { meta = false } = {}) => {
+		const modifiers = meta ? 4 : 0;
+		const base = { key, code: key, windowsVirtualKeyCode: CODES[key], nativeVirtualKeyCode: CODES[key], modifiers };
+		await call("Input.dispatchKeyEvent", { type: "keyDown", ...base });
+		await call("Input.dispatchKeyEvent", { type: "keyUp", ...base });
+	};
+	return { evaluate, shot, errors, click, press, close: () => socket.close() };
 }
 
 /**
@@ -352,6 +375,33 @@ check("a write from elsewhere under unsaved typing is put to the person", async 
 	assert.equal(await app.evaluate("!!document.querySelector('#editor [role=alert]')"), false);
 });
 
+/** Click into the nth of pi's marks, then press a chord on it. */
+const chordOnMark = async (page, n, key) => {
+	if (!(await page.click("#editor .cm-pi", n))) return "no mark";
+	await new Promise((r) => setTimeout(r, 100));
+	await page.press(key, { meta: true });
+	return "pressed";
+};
+const piMarks = (page) => page.evaluate("[...document.querySelectorAll('#editor .cm-pi')].map((m) => m.textContent)");
+
+check("what pi wrote is marked, until it is accepted or put back", async ({ app, cwd }) => {
+	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await until("pi's marks", async () => (await piMarks(app)).length === 2);
+	assert.deepEqual(await piMarks(app), ["SECOND", "pi wrote this"]);
+	await app.shot("pending");
+	// Accepting: the words stay, the mark goes, and it is in the record.
+	assert.equal(await chordOnMark(app, 1, "Enter"), "pressed");
+	await until("the mark to go", async () => (await piMarks(app)).length === 1);
+	assert.ok((await editorText(app)).includes("pi wrote this"));
+	assert.ok(readFileSync(join(cwd, ".pi/history/ideas/second.md.jsonl"), "utf8").split("\n").filter(Boolean).length === 4);
+	// Putting back: pi's word is replaced by the one it replaced, and that is saved as mine.
+	assert.equal(await chordOnMark(app, 0, "Backspace"), "pressed");
+	await until("the old word", async () => (await editorText(app)).includes("# second"));
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.ok(readFileSync(join(cwd, "ideas/second.md"), "utf8").startsWith("# second"));
+	assert.deepEqual(await piMarks(app), []);
+});
+
 check("the bench renders every scenario it knows", async ({ bench }) => {
 	const scenarios = await until("the gallery", () =>
 		bench.evaluate("[...document.querySelectorAll('select option')].map((o) => o.value).join(',')"),
@@ -380,6 +430,18 @@ async function main() {
 	writeFileSync(join(cwd, "ideas", "second.md"), "# second\n");
 	writeFileSync(join(cwd, "first.md"), "# first\n");
 	writeFileSync(join(cwd, "not-a-note.txt"), "no\n");
+	// A note pi has written in, with the history that says so: the heading's
+	// word replaced, and a line added. Replaying the log gives the file.
+	writeFileSync(join(cwd, "ideas", "second.md"), "# SECOND\n\npi wrote this\n");
+	mkdirSync(join(cwd, ".pi", "history", "ideas"), { recursive: true });
+	writeFileSync(
+		join(cwd, ".pi", "history", "ideas", "second.md.jsonl"),
+		[
+			{ author: "outside", at: 1, from: 0, to: 0, inserted: "# second\n\n", removed: "" },
+			{ author: "pi", at: 2, sessionId: "s", entryId: "e", from: 2, to: 8, inserted: "SECOND", removed: "second" },
+			{ author: "pi", at: 3, sessionId: "s", entryId: "e", from: 10, to: 10, inserted: "pi wrote this\n", removed: "" },
+		].map((c) => JSON.stringify(c)).join("\n") + "\n",
+	);
 	const [api, web, devtools] = await Promise.all([freePort(), freePort(), freePort()]);
 	const children = [];
 	const logs = new Map();

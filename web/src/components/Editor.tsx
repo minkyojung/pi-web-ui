@@ -7,6 +7,7 @@ import { Annotation, EditorState, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
+import { pending, setSpans } from "../features/pending";
 import { noteConflictStore, noteStore } from "../serverState";
 import { decide } from "../noteSync";
 import { getConnection, subscribe } from "../store";
@@ -65,8 +66,8 @@ const markup = HighlightStyle.define([
  * says what to do with each — most often nothing, sometimes show it, and when
  * someone else wrote under unsaved typing, ask.
  *
- * Extensions from features go in `extensions`; the editor itself is markdown,
- * history and the keymap.
+ * Features are CodeMirror extensions, listed in `features` below; the editor
+ * itself is markdown, history and the keymap. A caller can add more.
  */
 export function Editor({ path, extensions = [] }: { path: string; extensions?: Extension[] }) {
 	const host = useRef<HTMLDivElement>(null);
@@ -100,6 +101,7 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 
 	useEffect(() => {
 		if (!host.current) return;
+		const features = [pending(path)];
 		const state = EditorState.create({
 			doc: "",
 			extensions: [
@@ -112,6 +114,7 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 				EditorView.updateListener.of((u) => {
 					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) onChange();
 				}),
+				...features,
 				...extensions,
 			],
 		});
@@ -148,15 +151,20 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 		const decision = base.current === null && sent.current === null
 			? { kind: "replace" as const } // The first answer to open_note.
 			: decide({ doc, sent: sent.current, dirty: dirty.current }, note);
+		// Who wrote what is about the server's text; it is only put on the doc
+		// when the doc is that text. Typing since then gets it with the next echo.
+		const spans = () => v.dispatch({ effects: setSpans.of(note.spans) });
 		switch (decision.kind) {
 			case "saved":
 				sent.current = null;
 				base.current = note.modified;
 				dirty.current = decision.dirty;
 				setStatus(decision.dirty ? "unsaved" : "saved");
+				if (!decision.dirty) spans();
 				return;
 			case "same":
 				base.current = note.modified;
+				spans();
 				return;
 			case "replace":
 				v.dispatch({
@@ -164,6 +172,7 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 					annotations: fromServer.of(true),
 					// Keep the cursor where it was if the text still reaches there.
 					selection: { anchor: Math.min(v.state.selection.main.head, note.text.length) },
+					effects: setSpans.of(note.spans),
 				});
 				base.current = note.modified;
 				dirty.current = false;

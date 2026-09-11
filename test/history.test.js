@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { apply, appendHistory, changesBetween, historyPath, readHistory, reconcile, record, replay } from "../history.ts";
+import { accept, apply, appendHistory, changesBetween, historyPath, readHistory, reconcile, record, replay } from "../history.ts";
 
 const me = { author: "me", at: 1 };
 const pi = { author: "pi", at: 2, sessionId: "s1", entryId: "e1" };
@@ -70,12 +70,53 @@ test("지운 글자는 구간에서 사라지고 뒤가 당겨진다", () => {
   ];
   const { text, spans } = replay(log);
   assert.equal(text, "one three");
-  assert.deepEqual(spans, [{ ...me, from: 0, to: 9 }]);
+  assert.deepEqual(spans, [{ ...me, from: 0, to: 9 }], "잘린 구간은 뺀 글을 잃는다");
 });
 
-test("이웃한 같은 출처는 하나로 합쳐진다", () => {
-  const log = [...changesBetween("", "ab", me), ...changesBetween("ab", "aXb", me)];
-  assert.deepEqual(replay(log).spans, [{ ...me, from: 0, to: 3 }]);
+test("이웃한 같은 출처는 하나로 합쳐지고, 합쳐진 것은 통째가 아니다", () => {
+  const log = [...changesBetween("", "ab ", me), ...changesBetween("ab ", "ab cd", me)];
+  assert.deepEqual(replay(log).spans, [{ ...me, from: 0, to: 5 }]);
+});
+
+test("구간은 그 변경이 뺀 글을 통째일 때만 들고 있다", () => {
+  const log = [
+    ...changesBetween("", "hello world", me),
+    ...changesBetween("hello world", "goodbye world", pi),
+  ];
+  const [first] = replay(log).spans;
+  assert.equal(first.author, "pi");
+  assert.equal(first.removed, "hello", "되돌리면 hello가 된다");
+  // The person changes a word in the middle of what pi wrote: the pieces on
+  // either side are not the whole insertion any more.
+  log.push(...changesBetween("goodbye world", "goodbye big world", { ...pi, at: 3 }));
+  log.push(...changesBetween("goodbye big world", "goodbye BIG world", { ...me, at: 4 }));
+  const left = replay(log).spans.filter((s) => s.at === 3);
+  assert.ok(left.length >= 1);
+  assert.ok(left.every((s) => s.removed === undefined));
+});
+
+test("받아들이면 구간은 pi 것인 채로 accepted가 되고, 그 안팎이 갈린다", () => {
+  const log = [
+    ...changesBetween("", "one two three", pi),
+    { ...me, at: 5, from: 4, to: 7, inserted: "two", removed: "two" },
+  ];
+  const { text, spans } = replay(log);
+  assert.equal(text, "one two three");
+  assert.deepEqual(
+    spans.map((s) => [s.author, text.slice(s.from, s.to), s.accepted ?? false]),
+    [["pi", "one ", false], ["pi", "two", true], ["pi", " three", false]],
+  );
+});
+
+test("받아들인 구간은 뒤에 오는 편집을 따라 움직인다", () => {
+  const log = [
+    ...changesBetween("", "one two three", pi),
+    { ...me, at: 5, from: 4, to: 7, inserted: "two", removed: "two" },
+    ...changesBetween("one two three", "ONE one two three", { ...me, at: 6 }),
+  ];
+  const { text, spans } = replay(log);
+  const accepted = spans.find((s) => s.accepted);
+  assert.equal(text.slice(accepted.from, accepted.to), "two");
 });
 
 test("구간 하나는 언제나 글자 하나 이상이고 서로 겹치지 않는다", () => {
@@ -120,7 +161,7 @@ test("찢어진 마지막 줄은 버리고 그 앞은 살린다", () => {
 
 test("처음 보는 노트는 통째로 바깥 것으로 심어진다", () => {
   const { spans } = reconcile(DIR, "seed.md", "already here\n", 5);
-  assert.deepEqual(spans, [{ author: "outside", at: 5, from: 0, to: 13 }]);
+  assert.deepEqual(spans, [{ author: "outside", at: 5, from: 0, to: 13, removed: "" }]);
   assert.equal(existsSync(historyPath(DIR, "seed.md")), true);
 });
 
@@ -144,6 +185,15 @@ test("기록은 쓴 쪽이 본 것부터 재고, 그 결과가 디스크와 같�
   const { text, spans } = replay(readHistory(DIR, "rec.md"));
   assert.equal(text, "draft, revised\n");
   assert.deepEqual(spans.map((s) => s.author), ["me", "pi", "me"]);
+});
+
+test("accept는 지금 글 위의 범위를 빈 교체로 남긴다", () => {
+  record(DIR, "acc.md", "", "pi wrote this\n", pi);
+  accept(DIR, "acc.md", 3, 8, 7);
+  const { spans } = replay(readHistory(DIR, "acc.md"));
+  assert.deepEqual(spans.map((s) => [s.accepted ?? false, s.author]), [[false, "pi"], [true, "pi"], [false, "pi"]]);
+  accept(DIR, "acc.md", 5, 5, 8);
+  assert.equal(readHistory(DIR, "acc.md").length, 2, "빈 범위는 남기지 않는다");
 });
 
 test("같은 노트에 같은 것을 다시 기록해도 로그는 늘지 않는다", () => {

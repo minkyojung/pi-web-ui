@@ -47,7 +47,9 @@ export type ClientMsg =
 	 * that version's `modified`, or null for a note that did not exist yet.
 	 * Answered with `note` to every tab, or `note_conflict` to this one.
 	 */
-	| { type: "save_note"; path: string; text: string; base: number | null };
+	| { type: "save_note"; path: string; text: string; base: number | null }
+	/** The words at [from, to) are fine as they are. Answered with `note` to every tab. */
+	| { type: "accept_note"; path: string; from: number; to: number };
 
 export type ClientMsgType = ClientMsg["type"];
 

@@ -29,7 +29,7 @@ import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
 import { listNotes, readNote, writeNote } from "./vault.ts";
-import { reconcile, record } from "./history.ts";
+import { accept, reconcile, record } from "./history.ts";
 import { recorder } from "./recorder.ts";
 import type {
 	BranchesMsg,
@@ -803,6 +803,15 @@ wss.on("connection", async (ws) => {
 						return;
 					}
 					record(CWD, msg.path, had?.text ?? "", msg.text, { author: "me", at: Date.now() });
+					broadcastNote(msg.path);
+					break;
+				}
+
+				// Accepting pi's words: a change to the history, not to the note.
+				case "accept_note": {
+					if (typeof msg.path !== "string" || typeof msg.from !== "number" || typeof msg.to !== "number") return;
+					if (!readNote(CWD, msg.path)) return;
+					accept(CWD, msg.path, msg.from, msg.to, Date.now());
 					broadcastNote(msg.path);
 					break;
 				}
