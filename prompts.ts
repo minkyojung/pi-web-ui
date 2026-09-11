@@ -12,18 +12,7 @@
  * Nothing here touches conversation.js. A question is not a conversation item.
  */
 import type { EventBus } from "@earendil-works/pi-coding-agent";
-
-export type PromptType = "select" | "input" | "confirm" | "editor" | "multiselect" | "batch";
-
-export interface PromptRequest {
-	id: string;
-	pipeline: string;
-	type: PromptType;
-	question: string;
-	options?: string[];
-	defaultValue?: string;
-	metadata?: Record<string, unknown>;
-}
+import type { PromptRequest, ServerMsg } from "./protocol.ts";
 
 export interface PromptResponse {
 	id: string;
@@ -45,7 +34,7 @@ interface PromptAdapter {
 
 const SOURCE = "pi-web-ui";
 
-export function createPromptBridge(broadcast: (payload: unknown) => void) {
+export function createPromptBridge(broadcast: (payload: ServerMsg) => void) {
 	const pending = new Map<string, PromptRequest>();
 	let respond: ((response: PromptResponse) => void) | null = null;
 	let cancel: ((id: string) => void) | null = null;

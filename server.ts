@@ -24,17 +24,33 @@ import {
 	type CreateAgentSessionRuntimeFactory,
 } from "@earendil-works/pi-coding-agent";
 import { itemsFromMessages } from "./conversation.js";
-import { open as openLibrary } from "./reader/store.ts";
-import { extract } from "./reader/extract.ts";
-import { readerExtension } from "./reader/tools.ts";
-import { fetchFeed, label as sourceLabel, readSubscriptions, subKey, writeSubscriptions } from "./reader/fetch.ts";
-import type { Subscription } from "./reader/sources.ts";
-import { icon, safeHost } from "./reader/icons.ts";
 import { modeToolNames } from "./toolModes.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { readUsage } from "./today/usage.ts";
+import { listNotes, newNoteName, readNote, renameNote, restoreNote, trashNote, writeNote } from "./vault.ts";
+import { accept, type Change, historyPath, moveHistory, moveLog, reconcile, record, replay, readHistory, trashHistoryPath } from "./history.ts";
+import { recorder } from "./recorder.ts";
+import { watchNotes } from "./watcher.ts";
+import { guard, VAULT_PROMPT } from "./guard.ts";
+import { renameTarget } from "./naming.ts";
+import { LinkStore } from "./linkIndex.ts";
+import { backlinksOf, retarget } from "./links.ts";
+import { search } from "./search.ts";
+import type {
+	BranchesMsg,
+	ClientMsg,
+	ConfigMsg,
+	ContextSourcesMsg,
+	FilesMsg,
+	NoteChangedMsg,
+	NoteMsg,
+	PiEventMsg,
+	ServerMsg,
+	SessionsMsg,
+	SnapshotMsg,
+	UsageMsg,
+} from "./protocol.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 /**
@@ -152,15 +168,11 @@ interface DashboardBridgeState {
 }
 
 /**
- * The reading library. The list route leaves the bodies out: carrying html for
- * every row would make the sidebar's first request several megabytes, and the
- * sidebar has no use for it. Stories still waiting below the score bar stay out
- * too — they have titles and nothing else.
- *
- * Opened here rather than beside the routes that read it, because the first
- * session is created a few lines below and its set_gist tool closes over this.
+ * The note open in the editor of the tab that last sent a prompt, given to
+ * pi for the turn as a line of the system prompt — see guard.ts. One value,
+ * not one per tab: pi has one conversation.
  */
-const library = openLibrary();
+let openNote: string | null = null;
 
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
 	retireDashboardBridge();
@@ -171,7 +183,15 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 		// project trusted, and the desktop shell's cwd is wherever it was opened.
 		resourceLoaderOptions: {
 			eventBus,
-			extensionFactories: [{ name: "reader", factory: readerExtension(library) }],
+			// pi is told this is a folder of notes — see guard.ts.
+			appendSystemPrompt: [VAULT_PROMPT],
+			extensionFactories: [
+				// The guard first: a blocked call never reaches the recorder.
+				{ name: "guard", factory: guard(CWD, () => openNote) },
+				// pi's writes to notes go into their history as they happen, and the
+				// tabs looking at a note hear about it.
+				{ name: "recorder", factory: recorder(CWD, (path, base, changes) => wrote(path, base, changes)) },
+			],
 		},
 	});
 	return {
@@ -201,7 +221,7 @@ const session = () => runtime.session;
 type ThinkingLevel = ReturnType<typeof session>["thinkingLevel"];
 
 /** Everything the settings UI needs. Re-sent whenever any of it changes. */
-function config() {
+function config(): ConfigMsg {
 	const s = session();
 	const model = s.model;
 	return {
@@ -226,7 +246,7 @@ function config() {
  * Token spend and context pressure. pi tracks both; without surfacing them the
  * user has no idea what a turn costs or how close the session is to overflowing.
  */
-function usage() {
+function usage(): UsageMsg {
 	const stats = session().getSessionStats();
 	const context = session().getContextUsage();
 	return {
@@ -244,7 +264,7 @@ function usage() {
  * events. A resumed session has history but emits no events for it, so without
  * this the browser would show an empty conversation.
  */
-function snapshot() {
+function snapshot(): SnapshotMsg {
 	// The same objects, not copies: pi hands the message the agent holds to the
 	// session file — "keeps agent state ... and persistence in sync", as it puts
 	// it — so identity is what ties a message on screen to its place in the tree.
@@ -262,7 +282,7 @@ function snapshot() {
  * fixed parts the way pi itself estimates — four characters a token. Sent when
  * a session is built and when the tools or model change, not per message.
  */
-function contextSources() {
+function contextSources(): ContextSourcesMsg {
 	const s = session();
 	const active = new Set(s.getActiveToolNames());
 	const loader = runtime.services.resourceLoader;
@@ -289,12 +309,92 @@ function contextSources() {
  * Where the conversation on screen has alternatives. See branches.ts, which
  * holds the tree reading so it can be tested against a session built on purpose.
  */
-function branches() {
+function branches(): BranchesMsg {
 	return { type: "branches", nodes: branchPoints(session().sessionManager) };
 }
 
+/** The notes in the working folder. See vault.ts. */
+function files(): FilesMsg {
+	return { type: "files", files: listNotes(CWD) };
+}
+
+/**
+ * One note, with who wrote what. Opening it also brings its history up to the
+ * disk: an edit made outside the app is logged as such here, before anything
+ * is drawn or measured against it.
+ */
+function note(path: string): NoteMsg | null {
+	const found = readNote(CWD, path);
+	if (!found) return null;
+	const { spans } = reconcile(CWD, path, found.text, Date.now());
+	known.set(path, found.modified);
+	return { type: "note", path, text: found.text, modified: found.modified, spans, backlinks: links.backlinks(path) };
+}
+
+/** Every note's links, for "who links here" — see linkIndex.ts. */
+const links = new LinkStore(CWD);
+links.load();
+
+/** After a change to what links where: the notes whose backlinks may differ hear theirs again. */
+function backlinksFor(paths: string[]): void {
+	for (const path of paths) broadcast({ type: "backlinks", path, notes: links.backlinks(path) });
+}
+
+/**
+ * The version of each note the tabs were last told about — its mtime the
+ * last time this process read or wrote it. What a change noticed on disk is
+ * measured against, and how the watcher's report of the app's own write is
+ * told from someone else's: the version it reports is the one already here.
+ */
+const known = new Map<string, number>();
+
+/**
+ * The disk changed under a note, and not by this process: pi's bash, another
+ * editor. Logged to "outside" and sent on as a change over the version the
+ * tabs have, the same as any other write — or whole, if no tab could have a
+ * version of it yet. A note that is gone is only news to the list.
+ */
+function noticed(path: string): void {
+	const found = readNote(CWD, path);
+	if (!found) {
+		// Gone from under a tab that had it: news. Gone after the app itself
+		// moved it — a rename, a delete — is already told, and known forgets
+		// it first.
+		if (known.delete(path)) broadcast({ type: "note_gone", path });
+		backlinksFor(links.remove(path));
+		broadcast(files());
+		return;
+	}
+	const base = known.get(path) ?? null;
+	if (base === found.modified) return; // This process's own write, already sent.
+	const { outside } = reconcile(CWD, path, found.text, Date.now());
+	// Touched but not changed still moves the version the next save is measured against.
+	wrote(path, base, outside);
+}
+
+/**
+ * After a write through the app: every tab gets the change, and the list its
+ * new order. A note that did not exist has no version to have been written
+ * over, and goes out whole instead; so does one whose history says something
+ * other than the disk, which is not a state a change can be measured from.
+ */
+function wrote(path: string, base: number | null, changes: Change[]): void {
+	const found = readNote(CWD, path);
+	if (found) backlinksFor(links.update(path, found.text));
+	if (found && base !== null && replay(readHistory(CWD, path)).text === found.text) {
+		const { spans } = replay(readHistory(CWD, path));
+		known.set(path, found.modified);
+		const msg: NoteChangedMsg = { type: "note_changed", path, base, modified: found.modified, changes, spans };
+		broadcast(msg);
+	} else {
+		const msg = note(path);
+		if (msg) broadcast(msg);
+	}
+	broadcast(files());
+}
+
 /** Saved sessions for this working directory, newest first. */
-async function sessions() {
+async function sessions(): Promise<SessionsMsg> {
 	const current = session().sessionFile;
 	const list = (await SessionManager.list(CWD))
 		.sort((a, b) => b.modified.getTime() - a.modified.getTime())
@@ -342,7 +442,7 @@ async function abortWithin(ms: number): Promise<void> {
 
 const clients = new Set<WebSocket>();
 
-function broadcast(payload: unknown): void {
+function broadcast(payload: ServerMsg): void {
 	const text = safeStringify(payload);
 	for (const client of clients) {
 		if (client.readyState === client.OPEN) client.send(text);
@@ -358,8 +458,8 @@ const prompts = createPromptBridge(broadcast);
  * reconstructible from the deltas the client already folds in. Dropping them
  * keeps the raw view readable at 300 events.
  */
-function toWireEvent(event: AgentSessionEvent): unknown {
-	if (event.type !== "message_update") return event;
+function toWireEvent(event: AgentSessionEvent): PiEventMsg {
+	if (event.type !== "message_update") return event as unknown as PiEventMsg;
 	const usage = event.message.role === "assistant" ? event.message.usage : undefined;
 	const sub = event.assistantMessageEvent;
 	if (!("partial" in sub)) return { type: event.type, usage, assistantMessageEvent: sub };
@@ -395,6 +495,8 @@ function onEvent(event: AgentSessionEvent): void {
 	// A finished run is a new branch under whatever it was asked from, so the
 	// message it answered may have just gained a sibling.
 	if (event.type === "agent_settled") broadcast(branches());
+	// And it may have written a note, or renamed one.
+	if (event.type === "agent_settled") broadcast(files());
 }
 
 let unsubscribe: (() => void) | undefined;
@@ -440,6 +542,7 @@ async function broadcastAll(): Promise<void> {
 	broadcast(contextSources());
 	broadcast(snapshot());
 	broadcast(branches());
+	broadcast(files());
 	broadcast(await sessions());
 }
 
@@ -487,7 +590,7 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 
-/** A small request body, whole. Capped: this endpoint takes three booleans. */
+/** A small request body, whole. Capped: the one endpoint that takes one takes a few fields. */
 function text(req: IncomingMessage): Promise<string> {
 	return new Promise((resolve, reject) => {
 		let out = "";
@@ -500,26 +603,6 @@ function text(req: IncomingMessage): Promise<string> {
 	});
 }
 
-/**
- * A subscription as the browser draws it. The library count comes along because
- * being on the list and actually bringing anything in are two different things:
- * a feed whose address is subtly wrong sits there quietly at zero.
- */
-function describeSubscriptions(subs: Subscription[]) {
-	// A library of its own, not the long-lived one. Library.scan() re-reads the
-	// pieces on disk but not index.json, so the copy this process has held open
-	// since startup does not know about anything a feed pass left pending — and
-	// a piece with only a title is exactly what a new feed brings in most of.
-	const counts = new Map<string, number>();
-	for (const row of openLibrary().all()) counts.set(row.source, (counts.get(row.source) ?? 0) + 1);
-	return subs.map((s) => ({
-		key: subKey(s),
-		kind: s.kind,
-		label: sourceLabel(s),
-		items: counts.get(subKey(s)) ?? 0,
-	}));
-}
-
 const server = createServer(async (req, res) => {
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const { pathname } = url;
@@ -529,121 +612,7 @@ const server = createServer(async (req, res) => {
 			res.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
 			res.end(JSON.stringify(body));
 		};
-		// The one thing the browser writes. `fetch` owns a piece's body, `set_gist`
-		// owns its line, and this owns read/queued/archived — one writer per field,
-		// which is what keeps three of them out of each other's way.
-		const flags = pathname.match(/^\/api\/items\/(\d+)\/flags$/);
-		if (flags && req.method === "POST") {
-			let patch: Record<string, unknown>;
-			try {
-				patch = JSON.parse(await text(req));
-			} catch {
-				return json(400, { error: "invalid JSON" });
-			}
-			const pick = (k: string) => (typeof patch[k] === "boolean" ? (patch[k] as boolean) : undefined);
-			try {
-				return json(200, library.setFlags(Number(flags[1]), {
-					read: pick("read"),
-					queued: pick("queued"),
-					archived: pick("archived"),
-				}));
-			} catch {
-				return json(404, { error: "not found" });
-			}
-		}
-		// Asking for one piece's body again. The feed pass reaches a piece once and
-		// never returns to it, so a site that was down that minute stays empty for
-		// good; this is the way back. `force` because a piece opened by hand and
-		// asked for is a request, not one of two hundred links worth skipping.
-		const again = pathname.match(/^\/api\/items\/(\d+)\/refetch$/);
-		if (again && req.method === "POST") {
-			const have = library.get(Number(again[1]));
-			if (!have) return json(404, { error: "not found" });
-			const r = await extract(have.url, { force: true });
-			library.save(have.id, r.status, r.html, r.text, r.kind, r.resolved);
-			library.flush();
-			return json(200, library.get(have.id));
-		}
-		// The door a url comes in by. Feeds take the same road in fetch.ts, two
-		// hundred at a time; this is one, and the order is turned around: fetch
-		// first, then take an id. Where a link ends up is only known once it has
-		// been followed, and finding out after the id is handed out would leave
-		// a stub to take back. Found already → 200 with what is there; new → 201.
-		if (pathname === "/api/items" && req.method === "POST") {
-			let url: string;
-			try {
-				const body = JSON.parse(await text(req)) as { url?: unknown };
-				url = typeof body.url === "string" ? body.url.trim() : "";
-				const u = new URL(url);
-				if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error();
-			} catch {
-				return json(400, { error: "invalid url" });
-			}
-			const have = library.find(url);
-			if (have) return json(200, have);
-			const r = await extract(url, { force: true });
-			const there = r.resolved && library.find(r.resolved);
-			if (there) return json(200, there);
-			const { id } = library.see({
-				url,
-				title: r.title ?? url,
-				source: "saved",
-				resolved_url: r.resolved,
-				status: "pending",
-			});
-			library.save(id, r.status, r.html, r.text, r.kind, r.resolved);
-			library.flush();
-			return json(201, library.get(id));
-		}
-		// A feed in. It is read before it is written down: a subscription that
-		// cannot be parsed would otherwise sit in the file adding one failed line
-		// to every pass, and the reader would have nothing to go on but an empty
-		// list. Same order as /api/items — follow the link, then keep it.
-		//
-		// Which also means the first pass happens here rather than at the next
-		// `npm run fetch`. Adding a source and seeing nothing arrive reads as a
-		// failure, so this waits for the pieces even though it makes the request
-		// a slow one.
-		if (pathname === "/api/subscriptions" && req.method === "POST") {
-			let want: Subscription;
-			try {
-				const body = JSON.parse(await text(req)) as { url?: unknown };
-				// No url at all is Hacker News, which has no address to give.
-				if (body.url === undefined) want = { kind: "hn" };
-				else {
-					const u = new URL(String(body.url).trim());
-					if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error();
-					want = { kind: "rss", url: u.toString() };
-				}
-			} catch {
-				return json(400, { error: "invalid url" });
-			}
-			const subs = readSubscriptions();
-			if (subs.some((s) => subKey(s) === subKey(want)))
-				return json(409, { error: "already subscribed" });
-			const report = await fetchFeed(() => {}, [want]);
-			// fetchFeed collects a source's failure rather than throwing it, so that
-			// one bad feed cannot stop the other nine. Here there is only the one.
-			const source = report.sources[0];
-			// The parser's own words, on one line and said to be about the feed. On
-			// its own "Unexpected close tag Line: 0" is about nothing the reader did.
-			if (source?.error)
-				return json(400, { error: `could not read that feed — ${source.error.replace(/\s+/g, " ").trim()}` });
-			writeSubscriptions([...subs, want]);
-			return json(201, { subscriptions: describeSubscriptions([...subs, want]), added: report.added });
-		}
-		// Out again. The pieces it already brought in stay in the library — they
-		// were read, or are still worth reading — but they stop reaching the
-		// briefing, which asks this same list who is still subscribed.
-		if (pathname === "/api/subscriptions" && req.method === "DELETE") {
-			const key = url.searchParams.get("key");
-			const subs = readSubscriptions();
-			const rest = subs.filter((s) => subKey(s) !== key);
-			if (rest.length === subs.length) return json(404, { error: "not subscribed" });
-			writeSubscriptions(rest);
-			return json(200, { subscriptions: describeSubscriptions(rest) });
-		}
-		// The numbers, all of them at once. Sent whole rather than a field at a
+		// The settings, all of them at once. Sent whole rather than a field at a
 		// time because that is what settings.ts writes; a field it did not hear
 		// about would come back as its default and quietly undo an edit.
 		if (pathname === "/api/settings" && req.method === "POST") {
@@ -654,32 +623,7 @@ const server = createServer(async (req, res) => {
 			}
 		}
 		if (req.method !== "GET") return json(405, { error: "read only" });
-		// The day, section by section, in one answer. They are all about the same
-		// date, and a page that fills in five times is a page that moves under
-		// whoever is reading it.
-		if (pathname === "/api/today") return json(200, { usage: readUsage() });
 		if (pathname === "/api/settings") return json(200, readSettings());
-		if (pathname === "/api/subscriptions") {
-			return json(200, { subscriptions: describeSubscriptions(readSubscriptions()) });
-		}
-		if (pathname === "/api/items") {
-			const limit = Math.min(Number(url.searchParams.get("limit") ?? 200) || 200, 1000);
-			return json(200, library.list(limit));
-		}
-		const m = pathname.match(/^\/api\/items\/(\d+)$/);
-		if (m) {
-			const row = library.get(Number(m[1]));
-			return row ? json(200, row) : json(404, { error: "not found" });
-		}
-		const ico = pathname.match(/^\/api\/icon\/(.+)$/);
-		if (ico) {
-			const host = safeHost(decodeURIComponent(ico[1]));
-			const bytes = host && (await icon(host));
-			if (!bytes) return json(404, { error: "no icon" });
-			// Kept on disk anyway; the header is so a scroll back up costs nothing.
-			res.writeHead(200, { "content-type": "image/x-icon", "cache-control": "max-age=86400" });
-			return res.end(bytes);
-		}
 		return json(404, { error: "not found" });
 	}
 
@@ -716,39 +660,33 @@ wss.on("connection", async (ws) => {
 		console.error("websocket error:", err.message);
 		clients.delete(ws);
 	});
-	ws.send(safeStringify(config()));
-	ws.send(safeStringify(usage()));
-	ws.send(safeStringify(contextSources()));
-	ws.send(safeStringify(snapshot()));
-	ws.send(safeStringify(branches()));
+	/** To this tab only: answers to what it asked, and the state it needs to start. */
+	const reply = (msg: ServerMsg) => ws.send(safeStringify(msg));
+	reply(config());
+	reply(usage());
+	reply(contextSources());
+	reply(snapshot());
+	reply(branches());
+	reply(files());
 	// A tab opened while a question is waiting should see it too.
-	for (const prompt of prompts.open()) ws.send(safeStringify({ type: "prompt_request", prompt }));
+	for (const prompt of prompts.open()) reply({ type: "prompt_request", prompt });
 
 	ws.on("message", async (data) => {
-		let msg: {
-			type?: string;
-			text?: string;
-			names?: string[];
-			level?: string;
-			model?: string;
-			behavior?: string;
-			path?: string;
-			name?: string;
-			id?: string;
-			entryId?: string;
-			answer?: string;
-			cancelled?: boolean;
-		};
+		// Typed as what the browser sends, which is what lets each case below
+		// read its own fields. Not trusted as that: it came over a socket, so
+		// each case still checks the field it is about to hand to pi.
+		let msg: ClientMsg;
 		try {
 			msg = JSON.parse(data.toString());
 		} catch {
-			ws.send(safeStringify({ type: "error", message: "invalid JSON from client" }));
+			reply({ type: "error", message: "invalid JSON from client" });
 			return;
 		}
 		try {
 			switch (msg.type) {
 				case "prompt": {
 					if (typeof msg.text !== "string") return;
+					openNote = typeof msg.note === "string" ? msg.note : null;
 					// Asking an earlier question again: move the leaf to just before
 					// it, so what is sent next becomes a sibling of it rather than a
 					// reply to it, and the branch it was on is left where it is.
@@ -759,7 +697,7 @@ wss.on("connection", async (ws) => {
 					// arrive in that gap, and nobody should have to look at it.
 					if (typeof msg.entryId === "string") {
 						if (session().isStreaming) {
-							ws.send(safeStringify({ type: "error", message: "Wait for the reply to finish before asking again." }));
+							reply({ type: "error", message: "Wait for the reply to finish before asking again." });
 							return;
 						}
 						const moved = await session().navigateTree(msg.entryId);
@@ -802,7 +740,7 @@ wss.on("connection", async (ws) => {
 					// tab that asked so they land in the box it was typed in. Every tab
 					// learns the queue is empty from the queue_update this emits.
 					const cleared = session().clearQueue();
-					ws.send(safeStringify({ type: "queue_cleared", ...cleared }));
+					reply({ type: "queue_cleared", ...cleared });
 					break;
 				}
 
@@ -825,7 +763,7 @@ wss.on("connection", async (ws) => {
 						if (provider) next = (await modelRuntime.getAvailable(provider)).find((m) => modelKey(m) === msg.model);
 					}
 					if (!next) {
-						ws.send(safeStringify({ type: "error", message: `unknown model: ${msg.model}` }));
+						reply({ type: "error", message: `unknown model: ${msg.model}` });
 						return;
 					}
 					// Throws when the model has no configured auth. Thinking level is
@@ -843,7 +781,7 @@ wss.on("connection", async (ws) => {
 					// value would silently become "off". Validate first.
 					const levels = config().thinkingLevels;
 					if (typeof msg.level !== "string" || !levels.includes(msg.level as ThinkingLevel)) {
-						ws.send(safeStringify({ type: "error", message: `unsupported thinking level: ${msg.level}` }));
+						reply({ type: "error", message: `unsupported thinking level: ${msg.level}` });
 						return;
 					}
 					// As with the model: persist makes the choice outlive this session.
@@ -868,7 +806,7 @@ wss.on("connection", async (ws) => {
 					if (msg.path === session().sessionFile) return;
 					const known = (await sessions()).sessions.some((s) => s.path === msg.path);
 					if (!known) {
-						ws.send(safeStringify({ type: "error", message: `unknown session: ${msg.path}` }));
+						reply({ type: "error", message: `unknown session: ${msg.path}` });
 						return;
 					}
 					prompts.cancelAll();
@@ -891,7 +829,7 @@ wss.on("connection", async (ws) => {
 					// navigateTree throws on this, and a rejection the browser can act
 					// on is better than an error it has to read.
 					if (session().isStreaming) {
-						ws.send(safeStringify({ type: "error", message: "Wait for the reply to finish before moving." }));
+						reply({ type: "error", message: "Wait for the reply to finish before moving." });
 						return;
 					}
 					const result = await session().navigateTree(msg.entryId);
@@ -905,7 +843,7 @@ wss.on("connection", async (ws) => {
 					// that asked, like a cleared queue does, to land in the box it was
 					// typed in.
 					if (result.editorText) {
-						ws.send(safeStringify({ type: "queue_cleared", steering: [result.editorText], followUp: [] }));
+						reply({ type: "queue_cleared", steering: [result.editorText], followUp: [] });
 					}
 					break;
 				}
@@ -916,6 +854,169 @@ wss.on("connection", async (ws) => {
 					broadcast(config());
 					broadcast(await sessions());
 					break;
+
+				case "open_note": {
+					if (typeof msg.path !== "string") return;
+					const found = note(msg.path);
+					if (!found) {
+						reply({ type: "note_gone", path: msg.path });
+						return;
+					}
+					reply(found);
+					break;
+				}
+
+				// The editor's save. Refused rather than merged when the note has
+				// moved on since it was read — see vault.ts — and recorded to the
+				// note's history as mine when it lands.
+				case "save_note": {
+					if (typeof msg.path !== "string" || typeof msg.text !== "string") return;
+					const base = typeof msg.base === "number" ? msg.base : null;
+					const had = readNote(CWD, msg.path);
+					const written = writeNote(CWD, msg.path, msg.text, base);
+					if (!written.ok) {
+						if (written.reason === "conflict") reply({ type: "note_conflict", path: msg.path, modified: written.modified });
+						else if (written.reason === "missing") reply({ type: "note_gone", path: msg.path });
+						else reply({ type: "error", message: `cannot save ${msg.path}` });
+						return;
+					}
+					const changes = record(CWD, msg.path, had?.text ?? "", msg.text, { author: "me", at: Date.now() });
+					wrote(msg.path, had?.modified ?? null, changes);
+					break;
+				}
+
+				// An empty note, made now rather than on first save: the file is
+				// the truth, so a note exists once it is on disk and not before.
+				// Named Untitled; the title field is where it gets a name.
+				case "new_note": {
+					const existing = listNotes(CWD).map((f) => f.path);
+					let path: string;
+					if (typeof msg.name === "string") {
+						const target = renameTarget("Untitled.md", msg.name);
+						if ("error" in target) {
+							reply({ type: "note_rename_failed", path: "", to: msg.name, reason: "invalid" });
+							return;
+						}
+						path = target.to;
+						if (existing.includes(path)) {
+							reply({ type: "note_rename_failed", path: "", to: path, reason: "exists" });
+							return;
+						}
+					} else {
+						path = newNoteName(existing);
+					}
+					const written = writeNote(CWD, path, "", null);
+					if (!written.ok) {
+						reply({ type: "note_rename_failed", path: "", to: path, reason: "invalid" });
+						return;
+					}
+					record(CWD, path, "", "", { author: "me", at: Date.now() });
+					reply({ type: "note_created", path });
+					wrote(path, null, []);
+					break;
+				}
+
+				// A note's path is its name. The file and its history move together,
+				// and the version the tabs hold moves with them, so the watcher's
+				// report of the move is not taken for someone writing.
+				case "rename_note": {
+					if (typeof msg.path !== "string" || typeof msg.to !== "string") return;
+					const moved = renameNote(CWD, msg.path, msg.to);
+					if (!moved.ok) {
+						reply({ type: "note_rename_failed", path: msg.path, to: msg.to, reason: moved.reason });
+						return;
+					}
+					if (msg.path !== msg.to) {
+						moveHistory(CWD, msg.path, msg.to);
+						const version = known.get(msg.path);
+						known.delete(msg.path);
+						if (version !== undefined) known.set(msg.to, version);
+					}
+					broadcast({ type: "note_renamed", from: msg.path, to: msg.to });
+					broadcast(files());
+					if (msg.path !== msg.to) {
+						// The notes that linked to the old name now link to the new one,
+						// as Obsidian does: each is rewritten as a write of the person's,
+						// since the person asked for the rename, and goes out like one.
+						const before = links.paths();
+						const linking = backlinksOf(Object.fromEntries(before.map((p) => [p, links.linksOf(p)])), msg.path, before);
+						links.rename(msg.path, msg.to);
+						for (const { path: other } of linking) {
+							const had = readNote(CWD, other);
+							if (!had) continue;
+							const text = retarget(had.text, msg.path, msg.to, before, other);
+							if (text === null) continue;
+							const written = writeNote(CWD, other, text, had.modified);
+							if (!written.ok) continue;
+							const changes = record(CWD, other, had.text, text, { author: "me", at: Date.now() });
+							wrote(other, had.modified, changes);
+						}
+						backlinksFor([msg.to]);
+					}
+					break;
+				}
+
+				// To the trash, with its history, where restore_note can find it.
+				case "delete_note": {
+					if (typeof msg.path !== "string") return;
+					known.delete(msg.path);
+					const gone = trashNote(CWD, msg.path);
+					if (!gone.ok) {
+						if (gone.reason === "missing") reply({ type: "note_gone", path: msg.path });
+						return;
+					}
+					moveLog(historyPath(CWD, msg.path), trashHistoryPath(CWD, gone.trashed));
+					broadcast({ type: "note_deleted", path: msg.path, trashed: gone.trashed });
+					broadcast(files());
+					backlinksFor(links.remove(msg.path));
+					break;
+				}
+
+				case "restore_note": {
+					if (typeof msg.trashed !== "string" || typeof msg.path !== "string") return;
+					const back = restoreNote(CWD, msg.trashed, msg.path);
+					if (!back.ok) {
+						reply({ type: "error", message: `cannot restore ${msg.path}: ${back.reason}` });
+						return;
+					}
+					moveLog(trashHistoryPath(CWD, msg.trashed), historyPath(CWD, msg.path));
+					reply({ type: "note_created", path: msg.path });
+					wrote(msg.path, null, []);
+					break;
+				}
+
+				// Accepting pi's words: a change to the history, not to the note.
+				case "accept_note": {
+					if (typeof msg.path !== "string" || typeof msg.from !== "number" || typeof msg.to !== "number") return;
+					if (!readNote(CWD, msg.path)) return;
+					accept(CWD, msg.path, msg.from, msg.to, Date.now());
+					// Nothing in the text moved: the spans are the whole of the news.
+					const found = readNote(CWD, msg.path)!;
+					wrote(msg.path, found.modified, []);
+					break;
+				}
+
+				// Every note read from disk on each ask — see search.ts — and read
+				// lazily, so a query that fills its results early stops reading.
+				// To this tab only: it is an answer to what it typed.
+				case "search_notes": {
+					if (typeof msg.query !== "string" || typeof msg.id !== "number") return;
+					const notes = function* () {
+						for (const { path } of listNotes(CWD)) {
+							const found = readNote(CWD, path);
+							if (found) yield found;
+						}
+					};
+					reply({ type: "search_results", id: msg.id, query: msg.query, hits: search(notes(), msg.query) });
+					break;
+				}
+
+				// A message this server does not know — a newer client on an older
+				// server, which a desktop app restarted only half of will produce.
+				// Said, rather than dropped: a button that does nothing is the
+				// worst way to find out.
+				default:
+					reply({ type: "error", message: `this server does not understand "${(msg as { type: string }).type}" — restart the app` });
 			}
 		} catch (err) {
 			broadcast({ type: "error", message: err instanceof Error ? err.message : String(err) });
@@ -926,8 +1027,11 @@ wss.on("connection", async (ws) => {
 	// list touches the disk, and anything the client sent while that await was
 	// outstanding would arrive at a socket with no 'message' listener and be
 	// dropped without a trace.
-	ws.send(safeStringify(await sessions()));
+	reply(await sessions());
 });
+
+// Writes that do not pass through here — see watcher.ts.
+const stopWatching = watchNotes(CWD, noticed);
 
 server.listen(PORT, HOST, () => {
 	console.log(`open http://localhost:${PORT}  (ctrl+c to stop)`);
@@ -940,6 +1044,7 @@ let shuttingDown = false;
 process.on("SIGINT", async () => {
 	if (shuttingDown) return;
 	shuttingDown = true;
+	stopWatching();
 	prompts.cancelAll();
 	await runtime.dispose();
 	// server.close() waits for open connections, and an upgraded WebSocket is

@@ -5,7 +5,26 @@
  * opening config/usage/snapshot/sessions would otherwise land with nobody
  * listening and the settings bar would stay empty until something changed.
  */
-import type { BranchPoint, ConfigMsg, ContextSourcesMsg, PromptRequest, ServerMsg, SessionInfo, UsageMsg } from "./types";
+import type {
+	Backlink,
+	BranchPoint,
+	ConfigMsg,
+	ContextSourcesMsg,
+	NoteChangedMsg,
+	NoteConflictMsg,
+	NoteCreatedMsg,
+	NoteDeletedMsg,
+	NoteFile,
+	NoteGoneMsg,
+	NoteRenamedMsg,
+	NoteRenameFailedMsg,
+	NoteMsg,
+	PromptRequest,
+	SearchResultsMsg,
+	ServerMsg,
+	SessionInfo,
+	UsageMsg,
+} from "./types";
 
 export interface Store<T> {
 	get: () => T;
@@ -41,6 +60,49 @@ export const contextSourcesStore = createStore<ContextSourcesMsg | null>(null);
  * the session tree. Empty until a question has been asked more than one way.
  */
 export const branchesStore = createStore<BranchPoint[]>([]);
+
+/** The notes in the working folder, as the server last listed them. */
+export const filesStore = createStore<NoteFile[]>([]);
+
+/** The notes that link to each note, as last told, by path. */
+export const backlinksStore = createStore<Record<string, Backlink[]>>({});
+
+export function setBacklinks(path: string, notes: Backlink[]): void {
+	backlinksStore.set({ ...backlinksStore.get(), [path]: notes });
+}
+
+/**
+ * The last note the server sent, whichever tab or writer caused it. The editor
+ * reads it and decides what to do: its own, or one it is not showing.
+ */
+export const noteStore = createStore<NoteMsg | null>(null);
+
+/** The last change to a note the server sent, from whichever writer. */
+export const noteChangedStore = createStore<NoteChangedMsg | null>(null);
+
+/** A note this tab asked for and now exists, waiting to be opened. Cleared by whoever opens it. */
+export const noteCreatedStore = createStore<NoteCreatedMsg | null>(null);
+
+/** A note that moved. A tab with the old path open follows it. */
+export const noteRenamedStore = createStore<NoteRenamedMsg | null>(null);
+
+/** A rename this tab asked for that was refused. Cleared by the title field. */
+export const noteRenameFailedStore = createStore<NoteRenameFailedMsg | null>(null);
+
+/**
+ * The last note put in the trash from anywhere, kept so it can be brought
+ * back with one press. Replaced by the next; forgotten when restored.
+ */
+export const noteDeletedStore = createStore<NoteDeletedMsg | null>(null);
+
+/** A note that is not on disk any more. A tab with it open puts it to the person. */
+export const noteGoneStore = createStore<NoteGoneMsg | null>(null);
+
+/** A save this tab made that was refused. Cleared by whoever deals with it. */
+export const noteConflictStore = createStore<NoteConflictMsg | null>(null);
+
+/** The last search answer this tab got. The palette shows it only if it answers the latest ask. */
+export const searchResultsStore = createStore<SearchResultsMsg | null>(null);
 
 /**
  * Text a cleared queue handed back, waiting to be put in the composer. Emptied

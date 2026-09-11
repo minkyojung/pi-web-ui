@@ -1,5 +1,5 @@
 @import "tailwindcss";
-/* Article bodies from the reading library render through the prose classes. */
+/* Rendered markdown goes through the prose classes. */
 @plugin "@tailwindcss/typography";
 /* Vite's root is web/, so pin the scan rather than rely on detection: when it
    goes wrong it goes wrong silently, as a few classes that just do nothing. */

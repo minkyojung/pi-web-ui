@@ -3,50 +3,153 @@ import type { PanelImperativeHandle } from "react-resizable-panels";
 
 import { Composer } from "./components/Composer";
 import { Conversation } from "./components/Conversation";
+import { Editor } from "./components/Editor";
 import { RawView } from "./components/RawView";
-import { Article } from "./components/reader/Article";
-import { List } from "./components/reader/List";
 import { SettingsBar } from "./components/SettingsBar";
-import { Today } from "./components/today/Today";
+import { Sidebar } from "./components/Sidebar";
+import { QuickOpen } from "./components/QuickOpen";
+import { Search } from "./components/Search";
+import { Title } from "./components/Title";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 import { TooltipProvider } from "./components/ui/tooltip";
-import type { Flags } from "./components/reader/RowActions";
-import type { FullItem, ListItem } from "./reader";
+import type { Place } from "../../links.ts";
+import { hashForNote, noteFromHash } from "./noteSync";
+import { bump, forget, readRecent, writeRecent } from "./recent";
+import { filesStore, noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
+import { Button } from "./components/ui/button";
 import { getConnection, getItems, subscribe } from "./store";
+import { send } from "./ws";
 
 /**
- * The address carries what is open — a piece by id, or the day's page — so a
- * reload lands where you left off.
+ * The address carries which note is open, so a reload lands where you left
+ * off and a row in the sidebar is a link rather than a call.
+ *
+ * A followed link can also say where in the note to land. That is not in the
+ * address — a reload should not jump the cursor back — so it is held until the
+ * address it changed arrives, and goes out with that path and no other.
  */
-type Route = { kind: "today" } | { kind: "piece"; id: number } | { kind: "none" };
-
-const routeFromHash = (): Route => {
-	if (location.hash === "#today") return { kind: "today" };
-	const n = Number(location.hash.slice(1));
-	return Number.isInteger(n) && n > 0 ? { kind: "piece", id: n } : { kind: "none" };
-};
-
-const hashFor = (route: Route) =>
-	route.kind === "today" ? "#today" : route.kind === "piece" ? `#${route.id}` : "";
+function useOpenNote(): [string | null, Place | null, (path: string | null, place?: Place) => void] {
+	const [at, setAt] = useState<{ path: string | null; place: Place | null }>(() => ({ path: noteFromHash(location.hash), place: null }));
+	const landing = useRef<{ path: string; place: Place } | null>(null);
+	useEffect(() => {
+		const onHash = () => {
+			const path = noteFromHash(location.hash);
+			const place = landing.current?.path === path ? landing.current.place : null;
+			landing.current = null;
+			setAt({ path, place });
+		};
+		addEventListener("hashchange", onHash);
+		return () => removeEventListener("hashchange", onHash);
+	}, []);
+	const open = useCallback((next: string | null, place?: Place) => {
+		landing.current = next && place ? { path: next, place } : null;
+		location.hash = next ? hashForNote(next) : "";
+	}, []);
+	// A rename moves the address under the open note. The editor is the same
+	// one — same undo history, same cursor — so it is told rather than replaced.
+	const renamed = useSyncExternalStore(noteRenamedStore.subscribe, noteRenamedStore.get);
+	useEffect(() => {
+		if (renamed && renamed.from === noteFromHash(location.hash)) {
+			history.replaceState(null, "", hashForNote(renamed.to));
+			setAt({ path: renamed.to, place: null });
+		}
+	}, [renamed]);
+	return [at.path, at.place, open];
+}
 
 /**
- * Four columns: rail, list, the piece, and pi. pi is not an assistant off to
- * the side; it is the other reader at the table, and the column is its seat.
- * It collapses with ⌘\ so it can be ignored — what it has left in the library
- * stays on the list either way.
+ * A key that changes when a different note is opened and not when the open
+ * one is renamed. Renames arrive with both names, so the old key is kept
+ * under the new path.
+ */
+const identities = new Map<string, number>();
+let nextIdentity = 1;
+function noteIdentity(path: string): number {
+	let id = identities.get(path);
+	if (id === undefined) {
+		id = nextIdentity++;
+		identities.set(path, id);
+	}
+	return id;
+}
+noteRenamedStore.subscribe(() => {
+	const renamed = noteRenamedStore.get();
+	if (!renamed) return;
+	const id = identities.get(renamed.from);
+	if (id !== undefined) {
+		identities.delete(renamed.from);
+		identities.set(renamed.to, id);
+	}
+});
+
+/**
+ * Three columns: the notes, the open one, and pi. pi is not an assistant off
+ * to the side; it is the other person at the table, and the column is its
+ * seat. It collapses with ⌘\ so it can be ignored.
  */
 export function App() {
 	const items = useSyncExternalStore(subscribe, getItems);
-	const lib = useLibrary();
+	const [open, place, setOpen] = useOpenNote();
 	// A debug view, so it is behind a shortcut rather than a permanent control in
 	// the best seat on screen. RawView says how to leave, since nothing says it
 	// is there in the first place.
 	const [raw, setRaw] = useState(false);
 	const pi = useRef<PanelImperativeHandle>(null);
 
+	// Which notes were opened, newest first, for the quick-open list. Follows
+	// a rename and drops a delete, so it never names a note that is not there.
+	const [recent, setRecent] = useState(readRecent);
+	useEffect(() => {
+		if (open) setRecent((list) => bump(list, open));
+	}, [open]);
+	const renamedForRecent = useSyncExternalStore(noteRenamedStore.subscribe, noteRenamedStore.get);
+	useEffect(() => {
+		if (renamedForRecent) setRecent((list) => forget(list, renamedForRecent.from, renamedForRecent.to));
+	}, [renamedForRecent]);
+	useEffect(() => {
+		writeRecent(recent);
+	}, [recent]);
+	const [picking, setPicking] = useState(false);
+	const [searching, setSearching] = useState(false);
+	// An empty vault is a first run, or as good as one: the column says how to start.
+	const files = useSyncExternalStore(filesStore.subscribe, filesStore.get);
+
+	// ⌘N asks the server for a new note; it comes back named, and is opened by
+	// address like any other. The server names it, since it owns the folder.
+	const online = useSyncExternalStore(subscribe, getConnection) === "open";
+	const created = useSyncExternalStore(noteCreatedStore.subscribe, noteCreatedStore.get);
+	useEffect(() => {
+		if (!created) return;
+		noteCreatedStore.set(null);
+		noteDeletedStore.set(null); // Whatever came back, or a new one: nothing left to restore.
+		setOpen(created.path);
+	}, [created, setOpen]);
+
+	// A note in the trash is closed wherever it was open. The middle column
+	// then offers to bring it back, until something else is opened.
+	const deleted = useSyncExternalStore(noteDeletedStore.subscribe, noteDeletedStore.get);
+	useEffect(() => {
+		if (!deleted) return;
+		setRecent((list) => forget(list, deleted.path));
+		if (deleted.path === open) setOpen(null);
+	}, [deleted, open, setOpen]);
+
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			const mod = e.metaKey || e.ctrlKey;
+			if ((e.key === "n" || e.key === "N") && mod && !e.shiftKey) {
+				e.preventDefault();
+				if (online) send({ type: "new_note" });
+			}
+			if ((e.key === "p" || e.key === "P") && mod && !e.shiftKey) {
+				e.preventDefault();
+				setPicking((on) => !on);
+			}
+			// With Shift: ⌘F alone is the editor's, for the note in front.
+			if ((e.key === "f" || e.key === "F") && e.shiftKey && mod) {
+				e.preventDefault();
+				setSearching((on) => !on);
+			}
 			if ((e.key === "d" || e.key === "D") && e.shiftKey && mod) {
 				e.preventDefault();
 				setRaw((on) => !on);
@@ -59,27 +162,52 @@ export function App() {
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, []);
+	}, [online]);
 
 	return (
 		<TooltipProvider delayDuration={300}>
+			<QuickOpen open={picking} onOpenChange={setPicking} recent={recent} onPick={setOpen} />
+			<Search open={searching} onOpenChange={setSearching} onPick={setOpen} />
 			<ResizablePanelGroup orientation="horizontal" className="h-screen">
-				<ResizablePanel id="list" defaultSize="22%" minSize="16%" className="min-w-0">
-					<List
-						onSave={lib.save}
-						items={lib.items}
-						selectedId={lib.selectedId}
-						onSelect={lib.select}
-						onFlags={lib.setFlags}
-						today={lib.today}
-						onToday={lib.openToday}
-					/>
+				<ResizablePanel id="sidebar" defaultSize="22%" minSize="16%" className="min-w-0">
+					<Sidebar open={open} onOpen={setOpen} />
 				</ResizablePanel>
 				<ResizableHandle />
-				<ResizablePanel id="article" minSize="30%" className="min-w-0">
-					{/* The middle column draws a piece or the day; the list and pi do not
-					    know which, and neither does the column's size. */}
-					{lib.today ? <Today /> : <Article item={lib.current} onRefetch={lib.refetch} />}
+				<ResizablePanel id="main" minSize="30%" className="min-w-0">
+					{/* A different note is a different editor, with its own history,
+					    rather than one editor with its text swapped — but a renamed note
+					    is the same one, so the key is the note's identity, not its path. */}
+					{open ? (
+						<div className="flex h-full flex-col">
+							<Title path={open} />
+							<Editor key={noteIdentity(open)} path={open} place={place} onOpen={setOpen} />
+						</div>
+					) : (
+						<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+							{deleted ? (
+								<>
+									<span>
+										Deleted <span className="text-foreground">{deleted.path.replace(/\.md$/, "")}</span>
+									</span>
+									<Button
+										variant="outline"
+										size="sm"
+										className="h-7 text-xs"
+										onClick={() => send({ type: "restore_note", trashed: deleted.trashed, path: deleted.path })}
+									>
+										Restore
+									</Button>
+								</>
+							) : files.length === 0 ? (
+								<div className="max-w-sm text-center leading-relaxed">
+									<p className="text-foreground">This folder has no notes yet.</p>
+									<p className="mt-2">⌘N makes one. pi reads and writes the same files; who wrote which words is kept beside them, in .pi/.</p>
+								</div>
+							) : (
+								<span>No note open · ⌘P to find one · ⌘N for a new one</span>
+							)}
+						</div>
+					)}
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel
@@ -95,128 +223,9 @@ export function App() {
 					{/* The two views used to be swapped by a body.raw class, which has no
 					    home in a utility stylesheet — and only one was ever read. */}
 					{raw ? <RawView /> : <Conversation items={items} />}
-					<Composer piece={lib.attached} onDetach={lib.detach} />
+					<Composer note={open} />
 				</ResizablePanel>
 			</ResizablePanelGroup>
 		</TooltipProvider>
 	);
-}
-
-/**
- * The library's list and the open piece share one selection, kept in the hash.
- *
- * Read, queued and archived go to the library rather than to this browser. pi
- * reads the same files; a mark it cannot see would make it the one participant
- * who does not know what has already been dealt with.
- */
-function useLibrary() {
-	const [items, setItems] = useState<ListItem[]>([]);
-	const [route, setRoute] = useState<Route>(routeFromHash);
-	const selectedId = route.kind === "piece" ? route.id : null;
-	const [current, setCurrent] = useState<FullItem | null>(null);
-	// Attached again whenever another piece is opened: the common case is asking
-	// about what is on screen, and detaching is about this question, not for good.
-	const [detached, setDetached] = useState(false);
-
-	// The row is updated from the server's answer, not from a guess made here, so
-	// the list cannot drift from the file if a write is refused.
-	const setFlags = useCallback((id: number, patch: Flags) => {
-		fetch(`/api/items/${id}/flags`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(patch),
-		})
-			.then((r) => (r.ok ? r.json() : null))
-			.then((row: ListItem | null) => {
-				if (row) setItems((prev) => prev.map((it) => (it.id === row.id ? row : it)));
-			})
-			.catch(() => {});
-	}, []);
-
-	// A url in. The row comes back from the server like a flag does, and goes to
-	// the top rather than being opened: opening marks it read, and the point of
-	// saving something is to read it later. One that was already here is opened
-	// instead — the answer to "do I have this?" is to show it.
-	const save = useCallback(async (url: string): Promise<{ created: boolean; row: ListItem }> => {
-		const r = await fetch("/api/items", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ url }),
-		});
-		const body = (await r.json().catch(() => ({}))) as { error?: string } & Partial<ListItem>;
-		if (!r.ok) throw new Error(body.error ?? `${r.status}`);
-		const row = body as ListItem;
-		const created = r.status === 201;
-		setItems((prev) => (created ? [row, ...prev] : prev.map((it) => (it.id === row.id ? row : it))));
-		if (!created) setRoute({ kind: "piece", id: row.id });
-		return { created, row };
-	}, []);
-
-	// Asking for a body again. Unlike every other request here this one does not
-	// swallow its failure: it is an answer to a click, and a button that does
-	// nothing at all is worse than one that says why.
-	const refetch = useCallback(async (id: number) => {
-		const r = await fetch(`/api/items/${id}/refetch`, { method: "POST" });
-		const body = (await r.json().catch(() => ({}))) as { error?: string } & Partial<FullItem>;
-		if (!r.ok) throw new Error(body.error ?? `${r.status}`);
-		const full = body as FullItem;
-		setCurrent((cur) => (cur?.id === full.id ? full : cur));
-		setItems((prev) => prev.map((it) => (it.id === full.id ? { ...it, ...full } : it)));
-	}, []);
-
-	// The list is fetched once the socket is up, not on mount: the server takes a
-	// few seconds to bring the pi session up, and a request before that gets a
-	// proxy error. Reconnecting refetches too, which is also how a fetch pass
-	// made while the tab was open reaches the list.
-	const online = useSyncExternalStore(subscribe, getConnection) === "open";
-	useEffect(() => {
-		if (!online) return;
-		fetch("/api/items?limit=500")
-			.then((r) => (r.ok ? r.json() : []))
-			.then(setItems)
-			.catch(() => {});
-	}, [online]);
-
-	useEffect(() => {
-		const onHash = () => setRoute(routeFromHash());
-		addEventListener("hashchange", onHash);
-		return () => removeEventListener("hashchange", onHash);
-	}, []);
-
-	// The hash follows the route rather than each place that changes it, so the
-	// day's page and a piece are written the same way.
-	useEffect(() => {
-		const want = hashFor(route);
-		if (want && location.hash !== want) location.hash = want;
-	}, [route]);
-
-	useEffect(() => {
-		// Nothing open also means nothing attached: the composer offers what is on
-		// screen, and on the day's page that is not a piece.
-		if (selectedId == null) {
-			setCurrent(null);
-			return;
-		}
-		setCurrent(null);
-		setDetached(false);
-		fetch(`/api/items/${selectedId}`)
-			.then((r) => (r.ok ? r.json() : null))
-			.then(setCurrent)
-			.catch(() => {});
-		setFlags(selectedId, { read: true });
-	}, [selectedId, setFlags]);
-
-	return {
-		items,
-		selectedId,
-		today: route.kind === "today",
-		current,
-		attached: detached ? null : current,
-		detach: () => setDetached(true),
-		select: (id: number) => setRoute({ kind: "piece", id }),
-		openToday: () => setRoute({ kind: "today" }),
-		setFlags,
-		save,
-		refetch,
-	};
 }

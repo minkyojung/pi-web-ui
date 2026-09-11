@@ -2,7 +2,7 @@
  * Light, dark, or whatever the system says.
  *
  * Kept in this browser rather than in settings.json with the rest. A theme is
- * about the screen it is being read on, not about the library — the same
+ * about the screen it is being read on, not about the work — the same
  * reader on a laptop at night and a desk in daylight wants two answers, and a
  * setting on the server can only hold one.
  *

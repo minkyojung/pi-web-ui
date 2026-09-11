@@ -3,9 +3,9 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { PencilIcon, X } from "lucide-react";
 
 import { appendRestored } from "../queue";
+import { flushSaves } from "../saves";
 import { askingAgainStore, configStore, promptsStore, restoredStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
-import type { FullItem } from "../reader";
 import { send } from "../ws";
 import { ContextPopover } from "./ContextPopover";
 import { ModelSelect } from "./ModelSelect";
@@ -26,21 +26,24 @@ const MOD = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
 /**
  * Send the text and empty the box, whichever way it was sent.
  *
- * An open piece rides along as its path, not its body. pi has no attachment
- * type for text — its own @file inlines the whole thing — but the library is
- * files and pi has `read`, so a line naming the file does the same work for
- * one line of tokens instead of four thousand characters of them.
+ * The open note rides along as its path, beside the message and not in it:
+ * the server tells pi for the turn, so the path is never part of what was
+ * said, kept, compacted, or asked again later when it may be another note.
+ * Whatever is typed there and not yet written goes out on the same socket
+ * ahead of this, so pi reads what is on screen — see saves.ts.
  */
-function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "steer", path?: string) {
+function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "steer", note: string | null) {
 	const trimmed = text.trim();
 	if (!trimmed) return;
+	flushSaves();
 	// Where an earlier question is being asked again, its place in the session
 	// tree rides along: the server moves the leaf to just before it and sends
 	// this from there, so the two are alternatives rather than a sequence.
 	const asking = askingAgainStore.get();
 	send({
 		type: "prompt",
-		text: path ? `Open in the reader: ${path}\n\n${trimmed}` : trimmed,
+		text: trimmed,
+		...(note ? { note } : {}),
 		behavior,
 		...(asking ? { entryId: asking.entryId } : {}),
 	});
@@ -83,7 +86,7 @@ function AskingAgain() {
  * agents that will — Cursor, Claude Code — make it a gesture on the key you
  * press. So it is one here too, and only while a run is going.
  */
-export function Composer({ piece, onDetach }: { piece: FullItem | null; onDetach: () => void }) {
+export function Composer({ note }: { note: string | null }) {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const streaming = config?.isStreaming ?? false;
@@ -106,10 +109,9 @@ export function Composer({ piece, onDetach }: { piece: FullItem | null; onDetach
 			<QueuedMessages />
 			<AskingAgain />
 			<PromptInput
-				onSubmit={(message, event) => submit(event.currentTarget, message.text, "followUp", piece?.path ?? undefined)}
+				onSubmit={(message, event) => submit(event.currentTarget, message.text, "followUp", note)}
 			>
 				<PromptInputBody>
-					{piece?.path && <Attached title={piece.title} onDetach={onDetach} />}
 					{/* The component asks for four lines of empty box; one is enough until
 					    there is something to show, and it grows from there. */}
 					<PromptInputTextarea
@@ -123,7 +125,7 @@ export function Composer({ piece, onDetach }: { piece: FullItem | null; onDetach
 							// cuts a tool-using run short. Enter alone queues instead.
 							if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
 								e.preventDefault();
-								submit(e.currentTarget.form!, e.currentTarget.value, "steer", piece?.path ?? undefined);
+								submit(e.currentTarget.form!, e.currentTarget.value, "steer", note);
 							}
 						}}
 					/>
@@ -172,25 +174,3 @@ export function Composer({ piece, onDetach }: { piece: FullItem | null; onDetach
 	);
 }
 
-/**
- * What pi will be told is open, shown because it would otherwise be a line
- * appearing in a message nobody typed. Removable for the times the question is
- * not about the piece on screen.
- */
-function Attached({ title, onDetach }: { title: string; onDetach: () => void }) {
-	return (
-		<div className="flex w-full items-center gap-1.5 px-3 pt-2.5">
-			<span className="flex min-w-0 items-center gap-1.5 rounded-md border bg-muted/50 py-0.5 pr-0.5 pl-2 text-xs text-muted-foreground">
-				<span className="truncate">{title}</span>
-				<button
-					type="button"
-					onClick={onDetach}
-					aria-label="Detach"
-					className="rounded-sm p-0.5 hover:bg-accent hover:text-accent-foreground"
-				>
-					<X className="size-3" />
-				</button>
-			</span>
-		</div>
-	);
-}
