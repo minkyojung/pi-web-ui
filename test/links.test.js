@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { parser as markdown } from "@lezer/markdown";
 
-import { backlinksOf, linksIn, resolve, retarget } from "../links.ts";
+import { backlinksOf, linksIn, markdownLinkTo, resolve, retarget } from "../links.ts";
 import { wikiLink } from "../wikilink.ts";
 
 /** The node names a parse gives, in order, for asserting on the tree itself. */
@@ -86,6 +86,27 @@ test("이름 없는 대상은 링크를 쓴 노트다", () => {
   assert.equal(resolve("", paths, "Gamma Ray.md"), "Gamma Ray.md");
   assert.equal(resolve("", paths, "nope.md"), null, "없는 노트는 아니다");
   assert.equal(resolve(linksIn("[[Alpha#Intro]]")[0].target, paths, "Gamma Ray.md"), "Alpha.md", "제목은 노트를 정하지 않는다");
+});
+
+test("마크다운 링크는 노트의 폴더에서 경로로 찾고, 웹 주소는 웹 주소이며, 나머지는 어디로도 가지 않는다", () => {
+  const to = (url, from = "ideas/beta.md") => markdownLinkTo(url, paths, from);
+  assert.deepEqual(to("deep/Alpha.md"), { note: "ideas/deep/Alpha.md" });
+  assert.deepEqual(to("../Alpha.md"), { note: "Alpha.md" }, "위로");
+  assert.deepEqual(to("./deep/../beta.md"), { note: "ideas/beta.md" });
+  assert.deepEqual(to("/Gamma%20Ray.md"), { note: "Gamma Ray.md" }, "맨 위에서, 인코딩을 풀어서");
+  assert.deepEqual(to("<../Gamma Ray.md>"), { note: "Gamma Ray.md" }, "꺾쇠 안의 공백");
+  assert.deepEqual(to("../alpha.md#Intro"), { note: "Alpha.md" }, "조각은 떼고 대소문자는 가리지 않는다");
+  assert.equal(to("Alpha.md"), null, "노트의 폴더에 없다 — 제목으로 찾지 않는다");
+  assert.equal(to("../../Alpha.md"), null, "서재 밖으로는 못 간다");
+  assert.equal(to("../nope.md"), null);
+  assert.equal(to("../Alpha"), null, "노트가 아닌 경로");
+  assert.equal(to("pic.png"), null);
+  assert.equal(to("%E0%A4%A.md"), null, "풀리지 않는 인코딩");
+  assert.deepEqual(to("https://example.com/a.md"), { web: "https://example.com/a.md" });
+  assert.deepEqual(to("<HTTP://example.com>"), { web: "HTTP://example.com" });
+  assert.equal(to("mailto:a@b.c"), null);
+  assert.equal(to("file:///Alpha.md"), null);
+  assert.deepEqual(linksIn("[a](../Alpha.md) <https://example.com> https://example.com"), [], "색인에는 들어가지 않는다");
 });
 
 test("백링크는 이 노트로 풀리는 링크를 가진 노트들이다", () => {

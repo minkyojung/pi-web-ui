@@ -12,14 +12,20 @@
  * open that is only a cursor moved; in another, the place goes with the path
  * and is landed on once that note's text has arrived (see Editor.tsx).
  *
+ * An ordinary markdown link follows too, from the nodes the markdown parser
+ * already gives it: a path to a note in the vault opens the note, a web
+ * address opens in a new window, and anything else is left to the editor's
+ * own ⌘+click, which adds a cursor.
+ *
  * Which notes exist comes from the sidebar's list, read when the marks are
  * built; the editor pokes this when the list changes.
  */
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { type Extension, RangeSetBuilder, StateEffect } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
+import type { SyntaxNode } from "@lezer/common";
 
-import { type Link, type Place, readWikiLink, resolve } from "../../../links.ts";
+import { type Link, markdownLinkTo, type Place, readWikiLink, resolve } from "../../../links.ts";
 import { send } from "../ws";
 
 /** The list of notes changed: build the marks again, since a missing note may now exist. */
@@ -30,7 +36,7 @@ const missing = Decoration.mark({ class: "cm-wikilink cm-wikilink-missing" });
 /** The `!` of `![[a note]]`. The note is not shown in place — this is the source — so the mark is all that says it would be. */
 const embed = Decoration.mark({ class: "cm-wikiembed" });
 
-type Ctx = { notes: () => string[]; here: () => string; open: (path: string, place: Place) => void };
+type Ctx = { notes: () => string[]; here: () => string; open: (path: string, place?: Place) => void };
 
 /** How long a jump may wait for the parser to reach the end of a long note. */
 const PARSE_MS = 500;
@@ -42,6 +48,16 @@ function linkAt(view: EditorView, pos: number): Link | null {
 	if (node?.name === "WikiEmbed") node = node.getChild("WikiLink")!;
 	if (!node) return null;
 	return readWikiLink(node, (from, to) => view.state.doc.sliceString(from, to)).link;
+}
+
+/** The address of the markdown link at `pos` — `[words](url)`, `<url>`, or a bare URL — if the position is on one. */
+function urlAt(view: EditorView, pos: number): string | null {
+	for (let node: SyntaxNode | null = syntaxTree(view.state).resolveInner(pos, 1); node; node = node.parent) {
+		if (node.name === "Link" || node.name === "Autolink") node = node.getChild("URL");
+		if (node?.name === "URL") return view.state.doc.sliceString(node.from, node.to);
+		if (!node) return null;
+	}
+	return null;
 }
 
 /**
@@ -125,7 +141,15 @@ export function links(ctx: Ctx): Extension {
 				const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
 				if (pos === null) return false;
 				const hit = linkAt(view, pos);
-				if (!hit) return false;
+				if (!hit) {
+					const url = urlAt(view, pos);
+					const to = url === null ? null : markdownLinkTo(url, ctx.notes(), ctx.here());
+					if (!to) return false;
+					event.preventDefault();
+					if ("web" in to) window.open(to.web, "_blank", "noopener,noreferrer");
+					else if (to.note !== ctx.here()) ctx.open(to.note);
+					return true;
+				}
 				event.preventDefault();
 				const found = resolve(hit.target, ctx.notes(), ctx.here());
 				if (found === ctx.here()) landOn(view, hit);

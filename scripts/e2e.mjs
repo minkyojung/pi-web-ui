@@ -589,6 +589,19 @@ check("a name already taken is refused, and the old one comes back with Escape",
 	assert.equal(await app.evaluate("!!document.querySelector('#title ~ [role=alert]')"), false);
 });
 
+check("a slash in the title moves the note to that folder, and a leading one back to the top", async ({ app, cwd }) => {
+	await retitle(app, "ideas/moved");
+	await until("the new address", async () => (await app.evaluate("location.hash")) === "#ideas/moved.md");
+	assert.equal(await app.evaluate("document.getElementById('title').value"), "moved");
+	assert.equal(existsSync(join(cwd, "My note.md")), false);
+	assert.ok(readFileSync(join(cwd, "ideas/moved.md"), "utf8").includes("MOVED"), "the text went with it");
+	await until("the row to follow", async () => (await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.title`)) === "ideas/moved.md");
+	// Back to the top, where the checks after this one look for it.
+	await retitle(app, "/My note");
+	await until("the old address", async () => (await app.evaluate("location.hash")) === "#My%20note.md");
+	assert.ok(existsSync(join(cwd, "My note.md")) && !existsSync(join(cwd, "ideas/moved.md")));
+});
+
 check("a list item continues on Enter and ends on a second, and a bracket closes as it opens", async ({ app, cwd }) => {
 	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
@@ -745,6 +758,22 @@ check("⌘+click on a link to a heading or a block opens its note at that line",
 	}
 });
 
+check("⌘+click on a markdown link opens the note at its path, and a web address in a new window", async ({ app, cwd, api, devtools }) => {
+	const site = `http://127.0.0.1:${api}/?from=markdown-link`;
+	writeFileSync(join(cwd, "ideas", "plain.md"), `[up to jump](../jump.md)\n\n[the site](${site})\n`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="ideas/plain.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="ideas/plain.md"]').click()`);
+	await until("the note", async () => (await app.evaluate("location.hash")) === "#ideas/plain.md" && (await editorStatus(app)) === "saved");
+	// A markdown link is drawn as `[`, the words, `](`, the address, `)`: the fourth is the address.
+	const address = (line) => `#editor .cm-line:nth-child(${line}) > span:nth-child(4)`;
+	await app.click(address(3), 0, { meta: true });
+	const opened = await until("the new window", async () => (await (await fetch(`http://localhost:${devtools}/json/list`)).json()).find((t) => t.url === site));
+	await fetch(`http://localhost:${devtools}/json/close/${opened.id}`);
+	assert.equal(await app.evaluate("location.hash"), "#ideas/plain.md", "the note stayed where it was");
+	await app.click(address(1), 0, { meta: true });
+	await until("the note the path names", async () => (await app.evaluate("location.hash")) === "#jump.md" && (await editorStatus(app)) === "saved");
+});
+
 check("the bench renders every scenario it knows", async ({ bench }) => {
 	const scenarios = await until("the gallery", () =>
 		bench.evaluate("[...document.querySelectorAll('select option')].map((o) => o.value).join(',')"),
@@ -860,7 +889,7 @@ async function main() {
 		let failed = 0;
 		for (const { name, run } of checks) {
 			try {
-				await run({ app: page, bench, cwd, api });
+				await run({ app: page, bench, cwd, api, devtools });
 				console.log(`  ok  ${name}`);
 			} catch (error) {
 				failed++;

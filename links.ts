@@ -112,6 +112,40 @@ export function resolve(target: string, paths: Iterable<string>, from = ""): str
 	return byTitle[0];
 }
 
+/**
+ * Where an ordinary markdown link — `[words](url)` — goes from the note at
+ * `from`: a note in the vault, a web address, or nowhere this app can go.
+ *
+ * A path is a path, not a title: from the note's folder, or from the top of
+ * the vault when it starts with `/`, and never out of the vault. Its
+ * `#fragment` is dropped and its `%20`s decoded, as other editors write them.
+ * Such links are followed but not indexed; the index is the wikilinks'.
+ */
+export function markdownLinkTo(url: string, paths: Iterable<string>, from: string): { note: string } | { web: string } | null {
+	let raw = url.trim();
+	if (raw.startsWith("<") && raw.endsWith(">")) raw = raw.slice(1, -1);
+	if (/^https?:\/\//i.test(raw)) return { web: raw };
+	if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) return null; // mailto:, file: and the rest are not this app's to open.
+	const hash = raw.indexOf("#");
+	if (hash !== -1) raw = raw.slice(0, hash);
+	let path: string;
+	try {
+		path = decodeURIComponent(raw);
+	} catch {
+		return null;
+	}
+	if (!path.toLowerCase().endsWith(".md")) return null;
+	const parts = path.startsWith("/") ? [] : from.split("/").slice(0, -1);
+	for (const part of path.split("/")) {
+		if (part === "" || part === ".") continue;
+		if (part !== "..") parts.push(part);
+		else if (parts.pop() === undefined) return null;
+	}
+	const want = parts.join("/").toLowerCase();
+	const found = [...paths].find((p) => p.toLowerCase() === want);
+	return found ? { note: found } : null;
+}
+
 /** Each note's links, by path — what the sidecar holds. */
 export type LinkIndex = Record<string, Link[]>;
 
