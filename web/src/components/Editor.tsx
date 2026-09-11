@@ -5,9 +5,11 @@ import { markdown, markdownKeymap, markdownLanguage } from "@codemirror/lang-mar
 import { languages } from "@codemirror/language-data";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { Annotation, ChangeSet, EditorState, type Extension, Transaction } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import { highlightSelectionMatches } from "@codemirror/search";
+import { drawSelection, dropCursor, EditorView, keymap, placeholder, scrollPastEnd } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
+import { codeBlocks } from "../features/codeBlocks";
 import { pending, setSpans } from "../features/pending";
 import { noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
@@ -46,10 +48,12 @@ const theme = EditorView.theme({
 	// Not --accent: in the light theme that is nearly the page colour, and a
 	// selection that cannot be seen is not one. A share of the text colour
 	// reads in both themes.
-	".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": {
+	".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
 		backgroundColor: "color-mix(in oklab, var(--foreground) 18%, transparent)",
 	},
-	".cm-activeLine": { backgroundColor: "transparent" },
+	".cm-placeholder": { color: "var(--muted-foreground)" },
+	// Drawn by the editor now, so ::selection is left to the browser's default.
+	".cm-selectionMatch": { backgroundColor: "color-mix(in oklab, var(--foreground) 10%, transparent)" },
 });
 
 const markup = HighlightStyle.define([
@@ -192,7 +196,17 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 				closeBrackets(),
 				markdownLanguage.data.of({ closeBrackets: { brackets: ["(", "[", "{", "'", '"', "`"] } }),
 				syntaxHighlighting(markup),
+				codeBlocks,
 				EditorView.lineWrapping,
+				// The selection and cursor drawn by the editor rather than the
+				// browser, which is what lets there be more than one of each.
+				drawSelection(),
+				EditorState.allowMultipleSelections.of(true),
+				dropCursor(),
+				highlightSelectionMatches(),
+				scrollPastEnd(),
+				placeholder("Write here"),
+				EditorView.contentAttributes.of({ spellcheck: "true", "aria-label": "Note" }),
 				theme,
 				EditorView.updateListener.of((u) => {
 					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) onChange(u.changes);

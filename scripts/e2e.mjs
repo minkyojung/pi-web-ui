@@ -607,6 +607,19 @@ check("a list item continues on Enter and ends on a second, and a bracket closes
 	assert.match(readFileSync(join(cwd, "ideas/second.md"), "utf8"), /- one\n- two\n\n?after \(\)/);
 });
 
+check("an empty note says so, and a code block is drawn in a monospace", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "empty.md"), "");
+	writeFileSync(join(cwd, "code.md"), "text\n\n```js\nconst a = 1;\n```\n");
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="code.md"]') && !!document.querySelector('#notes button[title="empty.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="empty.md"]').click()`);
+	await until("the placeholder", () => app.evaluate("document.querySelector('#editor .cm-placeholder')?.textContent === 'Write here'"));
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-content')?.getAttribute('aria-label')"), "Note");
+	await app.evaluate(`document.querySelector('#notes button[title="code.md"]').click()`);
+	await until("the code lines", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-code-line').length")) === 3);
+	// "text", the blank under it, and the empty last line after the closing fence.
+	assert.equal(await app.evaluate("[...document.querySelectorAll('#editor .cm-line')].filter((l) => !l.classList.contains('cm-code-line')).length"), 3, "the prose lines are not");
+});
+
 check("the bench renders every scenario it knows", async ({ bench }) => {
 	const scenarios = await until("the gallery", () =>
 		bench.evaluate("[...document.querySelectorAll('select option')].map((o) => o.value).join(',')"),
