@@ -22,7 +22,8 @@ const REASONS = {
  * name. Nothing happens while the name is being typed; Enter or leaving the
  * field asks the server to move the note, and Escape puts the old name back.
  * Whatever was typed in the body goes down first, on the old path, before the
- * path moves.
+ * path moves. A slash in the name is a folder — `ideas/name` under this
+ * note's folder, `/name` at the top — so moving a note is renaming it.
  *
  * Uncontrolled like the composer, and keyed on the path so a rename from
  * anywhere — this field, another tab — resets what it shows.
@@ -48,6 +49,12 @@ export function Title({ path }: { path: string }) {
 		const target = renameTarget(path, name);
 		if ("error" in target) {
 			setError(target.error);
+			return;
+		}
+		// A path can name where the note already is (`/name` at the top), and
+		// the field, keyed on the path, would otherwise keep showing what was typed.
+		if (target.to === path) {
+			reset();
 			return;
 		}
 		setError(null);

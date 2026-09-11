@@ -266,8 +266,11 @@ it("지우면 휴지통으로 가고 로그도 따라가며, 되살리면 둘 �
 
 it("이름을 주고 새 노트를 청하면 그 이름이 되고, 있는 이름이나 안 되는 이름은 거절된다", async () => {
   clear();
+  send({ type: "new_note", name: "../wanted" });
+  assert.equal((await want("note_rename_failed")).reason, "invalid", "폴더 밖으로는 못 만든다");
+  clear();
   send({ type: "new_note", name: "ideas/wanted" });
-  assert.equal((await want("note_rename_failed")).reason, "invalid", "슬래시는 이름에 못 들어간다");
+  assert.equal((await want("note_created")).path, "ideas/wanted.md", "슬래시는 폴더다");
   clear();
   send({ type: "new_note", name: "wanted" });
   assert.equal((await want("note_created")).path, "wanted.md");
@@ -303,6 +306,29 @@ it("노트를 열면 백링크가 오고, 다른 노트가 링크를 쓰면 다�
   const after = await want("backlinks", (m) => m.path === "goal.md" && m.notes.length === 2);
   assert.deepEqual(after.notes.map((b) => b.path).sort(), ["a.md", "source.md"]);
   assert.equal(history("source.md").at(-1).author, "me", "링크 고침은 내 편집으로 기록된다");
+});
+
+it("하위 폴더로 옮기면 링크가 경로 또는 제목으로 따라온다", async () => {
+  // "lone" is the only note by its name, so its title still finds it in a
+  // folder; "twin" has a namesake in other/, which its title would then mean.
+  writeFileSync(join(cwd, "lone.md"), "# lone\n");
+  writeFileSync(join(cwd, "twin.md"), "# twin\n");
+  mkdirSync(join(cwd, "other"));
+  writeFileSync(join(cwd, "other/twin.md"), "# the other twin\n");
+  writeFileSync(join(cwd, "linker.md"), "[[lone]] and [[twin|t]]\n");
+  await new Promise((r) => setTimeout(r, 400)); // the watcher's reports
+  clear();
+  send({ type: "rename_note", path: "lone.md", to: "sub/lone.md" });
+  const lone = await want("backlinks", (m) => m.path === "sub/lone.md" && m.notes.length > 0);
+  assert.deepEqual(lone.notes.map((b) => b.path), ["linker.md"]);
+  assert.equal(readFileSync(join(cwd, "linker.md"), "utf8"), "[[lone]] and [[twin|t]]\n", "제목이 여전히 그 노트다");
+  clear();
+  send({ type: "rename_note", path: "twin.md", to: "sub/twin.md" });
+  await until("the link to follow", () => readFileSync(join(cwd, "linker.md"), "utf8") === "[[lone]] and [[sub/twin|t]]\n");
+  const twin = await want("backlinks", (m) => m.path === "sub/twin.md" && m.notes.length > 0);
+  assert.deepEqual(twin.notes.map((b) => b.path), ["linker.md"]);
+  assert.equal(existsSync(join(cwd, "lone.md")) || existsSync(join(cwd, "twin.md")), false);
+  assert.ok(existsSync(join(cwd, "sub/lone.md")) && existsSync(join(cwd, "sub/twin.md")), "없던 폴더가 만들어졌다");
 });
 
 it("폴더 밖과 노트 아닌 것은 열리지도 쓰이지도 않는다", async () => {

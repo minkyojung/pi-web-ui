@@ -9,16 +9,24 @@ export function titleOf(path: string): string {
 }
 
 /**
- * Where a note goes when its title is changed to `name`: the same folder,
- * that name, `.md`. What is refused here is refused before a request is
+ * Where a note goes when its title is changed to `name`: that name, `.md`, in
+ * the same folder. A name with slashes is a path, as in Obsidian — from the
+ * note's folder, or from the top of the vault when it starts with one — so a
+ * note moves between folders by the field that names it, and a folder that
+ * is not there is made. What is refused here is refused before a request is
  * made; the server checks again, and also for a name already taken.
  */
 export function renameTarget(path: string, name: string): { to: string } | { error: string } {
 	const title = name.trim();
 	if (!title) return { error: "A note needs a name." };
-	if (title.includes("/") || title.includes("\\")) return { error: "A name cannot contain a slash." };
-	if (title.startsWith(".")) return { error: "A name cannot start with a dot." };
+	if (title.includes("\\")) return { error: "A name cannot contain a backslash." };
+	const fromTop = title.startsWith("/");
+	// Each part trimmed, so "ideas / moved" is the folder a person meant and not "ideas ".
+	const parts = (fromTop ? title.slice(1) : title).split("/").map((part) => part.trim());
+	if (parts.some((part) => !part)) return { error: "A folder or a name cannot be empty." };
+	if (parts.includes("..")) return { error: "A name cannot go up a folder; start it with / to go to the top." };
+	if (parts.some((part) => part.startsWith("."))) return { error: "A folder or a name cannot start with a dot." };
 	if (title.endsWith(".md")) return { error: "The .md is added for you." };
-	const folder = path.slice(0, path.lastIndexOf("/") + 1);
-	return { to: `${folder}${title}.md` };
+	const folder = fromTop ? "" : path.slice(0, path.lastIndexOf("/") + 1);
+	return { to: `${folder}${parts.join("/")}.md` };
 }

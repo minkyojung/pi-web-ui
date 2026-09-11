@@ -93,7 +93,18 @@ test("제목을 바꾸면 같은 폴더에 그 이름의 .md가 되고, 안 되�
   assert.deepEqual(renameTarget("old.md", "한글 제목"), { to: "한글 제목.md" });
   assert.ok("error" in renameTarget("old.md", ""));
   assert.ok("error" in renameTarget("old.md", "   "));
-  assert.ok("error" in renameTarget("old.md", "a/b"));
   assert.ok("error" in renameTarget("old.md", ".hidden"));
   assert.ok("error" in renameTarget("old.md", "name.md"));
+  assert.ok("error" in renameTarget("old.md", "a\\b"));
+});
+
+test("제목의 슬래시는 폴더다 — 앞에 있으면 맨 위에서, 없으면 노트의 폴더에서", () => {
+  assert.deepEqual(renameTarget("old.md", "ideas/moved"), { to: "ideas/moved.md" }, "하위로");
+  assert.deepEqual(renameTarget("ideas/old.md", "sub/moved"), { to: "ideas/sub/moved.md" }, "노트의 폴더에서");
+  assert.deepEqual(renameTarget("ideas/sub/old.md", "/moved"), { to: "moved.md" }, "루트로");
+  assert.deepEqual(renameTarget("ideas/old.md", "/archive/2026/moved"), { to: "archive/2026/moved.md" });
+  assert.deepEqual(renameTarget("old.md", " ideas / moved "), { to: "ideas/moved.md" }, "부분마다 앞뒤 공백이 떨어진다");
+  for (const name of ["../out", "ideas/../out", "/..", "ideas/..", "a//b", "ideas/", "/", "//a", "ideas/.hidden", ".git/x", "ideas/name.md"]) {
+    assert.ok("error" in renameTarget("ideas/old.md", name), name);
+  }
 });
