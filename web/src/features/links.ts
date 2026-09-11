@@ -27,16 +27,19 @@ export const notesChanged = StateEffect.define<null>();
 
 const link = Decoration.mark({ class: "cm-wikilink" });
 const missing = Decoration.mark({ class: "cm-wikilink cm-wikilink-missing" });
+/** The `!` of `![[a note]]`. The note is not shown in place — this is the source — so the mark is all that says it would be. */
+const embed = Decoration.mark({ class: "cm-wikiembed" });
 
 type Ctx = { notes: () => string[]; here: () => string; open: (path: string, place: Place) => void };
 
 /** How long a jump may wait for the parser to reach the end of a long note. */
 const PARSE_MS = 500;
 
-/** The wikilink at `pos`, if the position is inside one. */
+/** The wikilink at `pos`, if the position is inside one — or on the `!` of an embed, which is part of it. */
 function linkAt(view: EditorView, pos: number): Link | null {
 	let node = syntaxTree(view.state).resolveInner(pos, 1);
-	while (node && node.name !== "WikiLink") node = node.parent!;
+	while (node && node.name !== "WikiLink" && node.name !== "WikiEmbed") node = node.parent!;
+	if (node?.name === "WikiEmbed") node = node.getChild("WikiLink")!;
 	if (!node) return null;
 	return readWikiLink(node, (from, to) => view.state.doc.sliceString(from, to)).link;
 }
@@ -87,6 +90,8 @@ function marks(view: EditorView, ctx: Ctx): DecorationSet {
 			from,
 			to,
 			enter: (node) => {
+				// The `!`, then on into the link it holds, which is drawn as any other.
+				if (node.name === "WikiEmbed") return void builder.add(node.from, node.from + 1, embed);
 				if (node.name !== "WikiLink") return;
 				const { target } = readWikiLink(node.node, slice).link;
 				builder.add(node.from, node.to, resolve(target, notes, here) ? link : missing);
@@ -133,6 +138,7 @@ export function links(ctx: Ctx): Extension {
 		EditorView.baseTheme({
 			".cm-wikilink": { textDecoration: "underline", textDecorationColor: "var(--muted-foreground)", textUnderlineOffset: "3px", cursor: "text" },
 			".cm-wikilink-missing": { textDecorationStyle: "dotted", color: "var(--muted-foreground)" },
+			".cm-wikiembed": { fontWeight: "600", color: "var(--muted-foreground)" },
 		}),
 	];
 }

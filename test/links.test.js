@@ -53,6 +53,17 @@ test("줄 끝의 ^id는 블록의 이름이고, 그 밖의 ^나 코드 안의 �
   assert.equal(ids("inline `code ^b1`"), 0);
 });
 
+test("![[노트]]는 WikiLink를 품은 WikiEmbed이고, 링크로서 똑같이 찾아진다", () => {
+  assert.deepEqual(nodes("![[a]]").slice(2), ["WikiEmbed", "WikiLinkMark", "WikiLink", "WikiLinkMark", "WikiLinkTarget", "WikiLinkMark"]);
+  const text = "see ![[Alpha#Intro|x]] and [[beta]] but ![img](pic.png)";
+  const links = linksIn(text);
+  assert.deepEqual(links.map((l) => [l.target, l.heading, l.alias]), [["Alpha", "Intro", "x"], ["beta", null, null]]);
+  assert.equal(text.slice(links[0].from, links[0].to), "[[Alpha#Intro|x]]", "링크의 자리는 ! 뒤다");
+  assert.ok(nodes("![img](pic.png)").includes("Image"), "그림은 그대로 그림이다");
+  assert.ok(!nodes("![[]] ![[open").includes("WikiEmbed"));
+  assert.deepEqual(linksIn("```\n![[not]]\n```"), []);
+});
+
 const paths = ["Alpha.md", "ideas/beta.md", "ideas/deep/Alpha.md", "Gamma Ray.md"];
 
 test("제목으로 찾고 대소문자는 가리지 않으며, 같은 제목은 가까운 쪽이다", () => {
@@ -101,6 +112,7 @@ test("이름이 바뀌어도 링크의 #제목과 ^블록은 그대로다", () =
   const text = "[[Alpha#Intro|the A]] [[Alpha#^b1]] [[Alpha^b1]] [[#here]]";
   const after = retarget(text, "Alpha.md", "Omega.md", ["Alpha.md", "Gamma Ray.md"], "Gamma Ray.md");
   assert.equal(after, "[[Omega#Intro|the A]] [[Omega#^b1]] [[Omega^b1]] [[#here]]");
+  assert.equal(retarget("![[Alpha]]", "Alpha.md", "Omega.md", ["Alpha.md", "Gamma Ray.md"], "Gamma Ray.md"), "![[Omega]]", "삽입은 삽입으로 남는다");
 });
 
 test("새 이름을 제목만으로는 못 찾을 때 — 더 가까운 같은 제목이 있을 때 — 경로로 가리킨다", () => {

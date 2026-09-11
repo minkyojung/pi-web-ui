@@ -70,3 +70,10 @@ test("폴더와 맞아도 다른 파서가 만든 사이드카는 믿지 않고 
   assert.deepEqual(store.backlinks("a.md"), [{ path: "c.md", count: 2 }, { path: "ideas/b.md", count: 1 }]);
   assert.equal(typeof JSON.parse(readFileSync(join(DIR, LINKS_PATH), "utf8")).version, "number");
 });
+
+test("삽입도 링크처럼 색인되어 백링크가 된다", () => {
+  const store = new LinkStore(DIR);
+  store.load();
+  assert.deepEqual(store.update("c.md", "![[a]]\n"), ["a.md"]);
+  assert.deepEqual(store.backlinks("a.md"), [{ path: "c.md", count: 1 }, { path: "ideas/b.md", count: 1 }]);
+});
