@@ -124,12 +124,13 @@ function connect(): void {
 		// and sessions on connect, so there is nothing to ask for here.
 		//
 		// What the snapshot cannot carry, it loses. itemsFromMessages emits no
-		// `done` markers and no live-only notices, so those disappear from the
-		// conversation on reconnect, and a tool that was mid-execution comes
-		// back with result: null whose tool_execution_end will find no open
-		// entry to attach to and stay pending. This is the same trade resuming
-		// a session already makes. Rebroadcasting a snapshot on agent_settled
-		// would not fix it and would delete every `done` in the conversation.
+		// live-only notices, so those disappear from the conversation on
+		// reconnect, and a tool that was mid-execution comes back with result:
+		// null whose tool_execution_end will find no open entry to attach to and
+		// stay pending. This is the same trade resuming a session already makes,
+		// and the one the server makes on purpose after a question is asked
+		// again, when it rebroadcasts a snapshot so the new question can carry
+		// its place in the session tree.
 	};
 	ws.onmessage = (e: MessageEvent<string>) => {
 		if (gen !== generation) return;

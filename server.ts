@@ -367,6 +367,19 @@ function toWireEvent(event: AgentSessionEvent): unknown {
 	return { type: event.type, usage, assistantMessageEvent: delta };
 }
 
+/**
+ * Whether the run in flight was a question asked again.
+ *
+ * Such a run makes a branch, and the arrows that reach it hang off the new
+ * question's place in the session tree. A conversation folded from live events
+ * cannot know that place — pi puts it in the session file and emits nothing
+ * that carries it — so when that run settles the conversation is read back
+ * from the file once. Only then: a snapshot replaces the conversation, and
+ * with it the notices that exist only live, like a retry that explained a
+ * silence, so it is not worth doing after runs that made no branch.
+ */
+let rereadWhenSettled = false;
+
 function onEvent(event: AgentSessionEvent): void {
 	broadcast(toWireEvent(event));
 	// isStreaming and the queue drive the stop button and pending count.
@@ -375,6 +388,10 @@ function onEvent(event: AgentSessionEvent): void {
 	}
 	// Cost only moves when a message completes.
 	if (event.type === "message_end" || event.type === "agent_settled") broadcast(usage());
+	if (event.type === "agent_settled" && rereadWhenSettled) {
+		rereadWhenSettled = false;
+		broadcast(snapshot());
+	}
 	// A finished run is a new branch under whatever it was asked from, so the
 	// message it answered may have just gained a sibling.
 	if (event.type === "agent_settled") broadcast(branches());
@@ -750,14 +767,22 @@ wss.on("connection", async (ws) => {
 						// The screen still shows the question about to be replaced, so
 						// the shortened conversation goes out before the new one starts.
 						await broadcastAll();
+						rereadWhenSettled = true;
 					}
 					// "steer" redirects the run in progress; "followUp" waits for it to finish.
 					const behavior = msg.behavior === "steer" ? "steer" : "followUp";
-					// prompt() throws if the session is streaming and no behavior is given.
-					await session().prompt(
-						msg.text,
-						session().isStreaming ? { streamingBehavior: behavior } : undefined,
-					);
+					try {
+						// prompt() throws if the session is streaming and no behavior is given.
+						await session().prompt(
+							msg.text,
+							session().isStreaming ? { streamingBehavior: behavior } : undefined,
+						);
+					} catch (err) {
+						// A prompt that never started a run never settles, and the next
+						// run — which made no branch — would reread the file for it.
+						rereadWhenSettled = false;
+						throw err;
+					}
 					break;
 				}
 
