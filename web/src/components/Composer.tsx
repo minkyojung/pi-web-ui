@@ -22,8 +22,15 @@ import {
 
 const MOD = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
 
-/** Send the text and empty the box, whichever way it was sent. */
-function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "steer") {
+/**
+ * Send the text and empty the box, whichever way it was sent.
+ *
+ * The open note rides along as its path, not its body: pi has `read`, so a
+ * line naming the file does the same work for one line of tokens. The editor
+ * has written any pause in typing down already, and its last keystrokes go
+ * out on the same socket ahead of this, so pi reads what is on screen.
+ */
+function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "steer", note: string | null) {
 	const trimmed = text.trim();
 	if (!trimmed) return;
 	// Where an earlier question is being asked again, its place in the session
@@ -32,7 +39,7 @@ function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "ste
 	const asking = askingAgainStore.get();
 	send({
 		type: "prompt",
-		text: trimmed,
+		text: note ? `Open in the editor: ${note}\n\n${trimmed}` : trimmed,
 		behavior,
 		...(asking ? { entryId: asking.entryId } : {}),
 	});
@@ -75,7 +82,7 @@ function AskingAgain() {
  * agents that will — Cursor, Claude Code — make it a gesture on the key you
  * press. So it is one here too, and only while a run is going.
  */
-export function Composer() {
+export function Composer({ note }: { note: string | null }) {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const streaming = config?.isStreaming ?? false;
@@ -98,7 +105,7 @@ export function Composer() {
 			<QueuedMessages />
 			<AskingAgain />
 			<PromptInput
-				onSubmit={(message, event) => submit(event.currentTarget, message.text, "followUp")}
+				onSubmit={(message, event) => submit(event.currentTarget, message.text, "followUp", note)}
 			>
 				<PromptInputBody>
 					{/* The component asks for four lines of empty box; one is enough until
@@ -114,7 +121,7 @@ export function Composer() {
 							// cuts a tool-using run short. Enter alone queues instead.
 							if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
 								e.preventDefault();
-								submit(e.currentTarget.form!, e.currentTarget.value, "steer");
+								submit(e.currentTarget.form!, e.currentTarget.value, "steer", note);
 							}
 						}}
 					/>

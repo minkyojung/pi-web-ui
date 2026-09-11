@@ -21,7 +21,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -241,7 +241,7 @@ check("the app renders a conversation", async ({ app }) => {
 
 check("the sidebar lists the folder's notes and nothing else", async ({ app }) => {
 	const listed = await until("the notes", () =>
-		app.evaluate("[...document.querySelectorAll('#notes li')].map((li) => li.title).join(',')"),
+		app.evaluate("[...document.querySelectorAll('#notes button')].map((b) => b.title).join(',')"),
 	);
 	assert.deepEqual(listed.split(",").sort(), ["first.md", "ideas/second.md"]);
 });
@@ -301,6 +301,55 @@ check("changing your mind about it costs nothing", async ({ app }) => {
 	// The text stays in the box: it was copied in, and cancelling is about
 	// where it will be sent, not about what was typed.
 	assert.ok(await app.evaluate(`document.querySelector('textarea')?.value?.includes("rewrite the reducer")`));
+});
+
+/** What the editor shows, as text. CodeMirror draws only the visible lines, but these notes are short. */
+const editorText = (page) => page.evaluate("document.querySelector('#editor .cm-content')?.textContent ?? ''");
+const editorStatus = (page) => page.evaluate("document.getElementById('editor')?.dataset.status ?? ''");
+/**
+ * Typing, as the browser sees it: focus the box and insert text the way an
+ * input method does, so it goes through CodeMirror's DOM observer rather than
+ * being handed to it as a transaction the way the server's text is.
+ */
+const type = (page, text) =>
+	page.evaluate(`(() => {
+		const box = document.querySelector('#editor .cm-content');
+		if (!box) return false;
+		box.focus();
+		return document.execCommand("insertText", false, ${JSON.stringify(text)});
+	})()`);
+
+check("a row in the sidebar opens its note in the middle", async ({ app }) => {
+	assert.equal(
+		await app.evaluate(`(() => { const b = document.querySelector('#notes button[title="first.md"]'); if (!b) return false; b.click(); return true; })()`),
+		true,
+	);
+	await until("the note to load", async () => (await editorStatus(app)) === "saved");
+	assert.ok((await editorText(app)).includes("# first"));
+	assert.equal(await app.evaluate("location.hash"), "#first.md");
+	await app.shot("editor");
+});
+
+check("typing is written down on its own, and a reload finds it", async ({ app, cwd }) => {
+	assert.equal(await type(app, "TYPED "), true);
+	await until("the typing to be marked", async () => (await editorStatus(app)) === "unsaved");
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.ok(readFileSync(join(cwd, "first.md"), "utf8").includes("TYPED"), "the file has what was typed");
+	await app.evaluate("location.reload()");
+	await until("the same note after a reload", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("TYPED"));
+});
+
+check("a write from elsewhere under unsaved typing is put to the person", async ({ app, cwd }) => {
+	// Someone — pi, another editor — writes the file while a keystroke is pending.
+	writeFileSync(join(cwd, "first.md"), "# first\n\nfrom outside\n");
+	assert.equal(await type(app, "MORE "), true);
+	await until("the refusal", async () => (await editorStatus(app)) === "conflict");
+	assert.ok((await app.evaluate("document.querySelector('#editor [role=alert]')?.textContent ?? ''")).includes("changed on disk"));
+	assert.ok(!readFileSync(join(cwd, "first.md"), "utf8").includes("MORE"), "nothing was written over it");
+	// Reload takes the disk's version.
+	await app.evaluate(`[...document.querySelectorAll('#editor [role=alert] button')].find((b) => b.textContent === "Reload").click()`);
+	await until("the disk's text", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("from outside"));
+	assert.equal(await app.evaluate("!!document.querySelector('#editor [role=alert]')"), false);
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {
@@ -406,7 +455,7 @@ async function main() {
 		let failed = 0;
 		for (const { name, run } of checks) {
 			try {
-				await run({ app: page, bench });
+				await run({ app: page, bench, cwd });
 				console.log(`  ok  ${name}`);
 			} catch (error) {
 				failed++;

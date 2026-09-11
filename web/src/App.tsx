@@ -1,22 +1,42 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 
 import { Composer } from "./components/Composer";
 import { Conversation } from "./components/Conversation";
+import { Editor } from "./components/Editor";
 import { RawView } from "./components/RawView";
 import { SettingsBar } from "./components/SettingsBar";
 import { Sidebar } from "./components/Sidebar";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 import { TooltipProvider } from "./components/ui/tooltip";
+import { hashForNote, noteFromHash } from "./noteSync";
 import { getItems, subscribe } from "./store";
 
 /**
- * Three columns: a sidebar, the middle, and pi. pi is not an assistant off to
- * the side; it is the other person at the table, and the column is its seat.
- * It collapses with ⌘\ so it can be ignored.
+ * The address carries which note is open, so a reload lands where you left
+ * off and a row in the sidebar is a link rather than a call.
+ */
+function useOpenNote(): [string | null, (path: string | null) => void] {
+	const [path, setPath] = useState(() => noteFromHash(location.hash));
+	useEffect(() => {
+		const onHash = () => setPath(noteFromHash(location.hash));
+		addEventListener("hashchange", onHash);
+		return () => removeEventListener("hashchange", onHash);
+	}, []);
+	const open = useCallback((next: string | null) => {
+		location.hash = next ? hashForNote(next) : "";
+	}, []);
+	return [path, open];
+}
+
+/**
+ * Three columns: the notes, the open one, and pi. pi is not an assistant off
+ * to the side; it is the other person at the table, and the column is its
+ * seat. It collapses with ⌘\ so it can be ignored.
  */
 export function App() {
 	const items = useSyncExternalStore(subscribe, getItems);
+	const [open, setOpen] = useOpenNote();
 	// A debug view, so it is behind a shortcut rather than a permanent control in
 	// the best seat on screen. RawView says how to leave, since nothing says it
 	// is there in the first place.
@@ -44,13 +64,13 @@ export function App() {
 		<TooltipProvider delayDuration={300}>
 			<ResizablePanelGroup orientation="horizontal" className="h-screen">
 				<ResizablePanel id="sidebar" defaultSize="22%" minSize="16%" className="min-w-0">
-					<Sidebar />
+					<Sidebar open={open} onOpen={setOpen} />
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel id="main" minSize="30%" className="min-w-0">
-					{/* Empty on purpose: what goes here is the next thing to build, and
-					    the column is kept so the layout does not move when it arrives. */}
-					<div id="main" className="h-full" />
+					{/* Keyed by path so a different note is a different editor, with its
+					    own history, rather than one editor with its text swapped. */}
+					{open ? <Editor key={open} path={open} /> : <div id="main" className="h-full" />}
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel
@@ -66,7 +86,7 @@ export function App() {
 					{/* The two views used to be swapped by a body.raw class, which has no
 					    home in a utility stylesheet — and only one was ever read. */}
 					{raw ? <RawView /> : <Conversation items={items} />}
-					<Composer />
+					<Composer note={open} />
 				</ResizablePanel>
 			</ResizablePanelGroup>
 		</TooltipProvider>
