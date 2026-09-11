@@ -182,7 +182,7 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
 		return true;
 	};
-	const CODES = { Enter: 13, Backspace: 8, Escape: 27, n: 78 };
+	const CODES = { Enter: 13, Backspace: 8, Escape: 27, n: 78, z: 90 };
 	const press = async (key, { meta = false } = {}) => {
 		const modifiers = meta ? 4 : 0;
 		const code = key.length === 1 ? `Key${key.toUpperCase()}` : key;
@@ -455,6 +455,21 @@ check("a change that does not touch unsaved typing is fitted around it", async (
 	}
 });
 
+check("⌘Z undoes what was typed here, not what arrived from elsewhere", async ({ app, cwd }) => {
+	await until("a clean editor", async () => (await editorStatus(app)) === "saved");
+	assert.ok((await editorText(app)).includes("THIRD"), "the other tab's line is on screen");
+	await app.click("#editor .cm-line", 0);
+	await new Promise((r) => setTimeout(r, 100));
+	await app.press("z", { meta: true });
+	await app.press("z", { meta: true });
+	await new Promise((r) => setTimeout(r, 200));
+	const text = await editorText(app);
+	assert.ok(text.includes("THIRD"), "undo did not reach the other tab's change");
+	assert.ok(!text.includes("MINE"), "undo did take back the typing");
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.ok(readFileSync(join(cwd, "first.md"), "utf8").includes("THIRD"));
+});
+
 check("a change to the same words as unsaved typing is put to the person", async ({ app, api, cwd }) => {
 	const other = await otherTab(api);
 	try {
@@ -488,6 +503,19 @@ check("a write that did not pass through the app arrives as outside's change", a
 	assert.equal(await type(app, "AFTER "), true);
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 	assert.ok(readFileSync(join(cwd, "first.md"), "utf8").includes("AFTER"));
+});
+
+check("a note deleted on disk is put to the person, and can be put back from the screen", async ({ app, cwd }) => {
+	await until("a clean editor", async () => (await editorStatus(app)) === "saved");
+	const shown = await editorText(app);
+	rmSync(join(cwd, "first.md"));
+	await until("the notice", async () => (await editorStatus(app)) === "gone");
+	assert.ok((await app.evaluate("document.querySelector('#editor [role=alert]')?.textContent ?? ''")).includes("no longer on disk"));
+	await app.evaluate(`[...document.querySelectorAll('#editor [role=alert] button')].find((b) => b.textContent === "Put it back").click()`);
+	await until("the note back", async () => (await editorStatus(app)) === "saved" && existsSync(join(cwd, "first.md")));
+	// textContent runs the lines together; the file has its newlines.
+	assert.equal(readFileSync(join(cwd, "first.md"), "utf8").replace(/\n/g, ""), shown);
+	assert.equal(await app.evaluate("!!document.querySelector('#editor [role=alert]')"), false);
 });
 
 check("what pi wrote is marked, until it is accepted or put back", async ({ app, cwd }) => {

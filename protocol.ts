@@ -40,7 +40,7 @@ export type ClientMsg =
 	| { type: "prompt_response"; id: string; answer?: string; cancelled?: boolean }
 	| { type: "navigate"; entryId: string }
 	| { type: "set_session_name"; name: string }
-	/** A note to look at. Answered with `note`, or `error` if there is no such note. */
+	/** A note to look at. Answered with `note`, or `note_gone` if there is no such note. */
 	| { type: "open_note"; path: string }
 	/**
 	 * A note's whole text, on top of the version it was read at — `base` is
@@ -208,6 +208,16 @@ export interface NoteRenameFailedMsg {
 	reason: "invalid" | "missing" | "exists";
 }
 
+/**
+ * The note is not on disk. Sent to every tab when the watcher sees it go, and
+ * to a tab that asks to open or save one that is gone. A tab with it open
+ * decides: put it back from what it shows, or close it.
+ */
+export interface NoteGoneMsg {
+	type: "note_gone";
+	path: string;
+}
+
 /** The save was refused: the note changed since `base`. `modified` is what is there now. */
 export interface NoteConflictMsg {
 	type: "note_conflict";
@@ -288,6 +298,7 @@ export type StateMsg =
 	| NoteCreatedMsg
 	| NoteRenamedMsg
 	| NoteRenameFailedMsg
+	| NoteGoneMsg
 	| NoteConflictMsg
 	| PromptRequestMsg
 	| PromptDismissMsg

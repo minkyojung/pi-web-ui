@@ -331,6 +331,7 @@ function noticed(path: string): void {
 	const found = readNote(CWD, path);
 	if (!found) {
 		known.delete(path);
+		broadcast({ type: "note_gone", path });
 		broadcast(files());
 		return;
 	}
@@ -826,7 +827,7 @@ wss.on("connection", async (ws) => {
 					if (typeof msg.path !== "string") return;
 					const found = note(msg.path);
 					if (!found) {
-						reply({ type: "error", message: `no such note: ${msg.path}` });
+						reply({ type: "note_gone", path: msg.path });
 						return;
 					}
 					reply(found);
@@ -843,6 +844,7 @@ wss.on("connection", async (ws) => {
 					const written = writeNote(CWD, msg.path, msg.text, base);
 					if (!written.ok) {
 						if (written.reason === "conflict") reply({ type: "note_conflict", path: msg.path, modified: written.modified });
+						else if (written.reason === "missing") reply({ type: "note_gone", path: msg.path });
 						else reply({ type: "error", message: `cannot save ${msg.path}` });
 						return;
 					}

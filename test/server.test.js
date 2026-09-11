@@ -220,16 +220,36 @@ it("있는 이름, 없는 노트, 노트 아닌 이름으로는 바꿀 수 없�
   assert.equal(readFileSync(join(cwd, "a.md"), "utf8").length > 0, true);
 });
 
+it("없는 노트를 열면 note_gone이고, 지워진 노트 위의 저장도 note_gone이며, 지워지는 것은 모든 탭이 듣는다", async () => {
+  clear();
+  send({ type: "open_note", path: "never.md" });
+  assert.equal((await want("note_gone")).path, "never.md");
+  writeFileSync(join(cwd, "doomed.md"), "soon\n");
+  clear();
+  send({ type: "open_note", path: "doomed.md" });
+  const { modified } = await want("note", (m) => m.path === "doomed.md");
+  clear();
+  rmSync(join(cwd, "doomed.md"));
+  assert.equal((await want("note_gone")).path, "doomed.md", "감시기가 알린다");
+  clear();
+  send({ type: "save_note", path: "doomed.md", text: "back\n", base: modified });
+  assert.equal((await want("note_gone")).path, "doomed.md");
+  clear();
+  send({ type: "save_note", path: "doomed.md", text: "back\n", base: null });
+  await want("note", (m) => m.path === "doomed.md");
+  assert.equal(readFileSync(join(cwd, "doomed.md"), "utf8"), "back\n", "base 없이 쓰면 되살아난다");
+});
+
 it("폴더 밖과 노트 아닌 것은 열리지도 쓰이지도 않는다", async () => {
   clear();
   send({ type: "open_note", path: "../etc/passwd.md" });
-  assert.match((await want("error")).message, /no such note/);
+  assert.equal((await want("note_gone")).path, "../etc/passwd.md");
   clear();
   send({ type: "save_note", path: "../escape.md", text: "x", base: null });
   assert.match((await want("error")).message, /cannot save/);
   clear();
   send({ type: "open_note", path: "a.txt" });
-  assert.match((await want("error")).message, /no such note/);
+  assert.equal((await want("note_gone")).path, "a.txt");
 });
 
 it("잘못된 JSON은 이 탭에만 에러이고 서버는 산다", async () => {

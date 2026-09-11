@@ -71,7 +71,8 @@ test("없던 노트는 base가 null일 때만 만들어지고, 폴더도 같이 
   assert.equal(r.ok, true);
   assert.equal(readFileSync(join(DIR, "new/dir/note.md"), "utf8"), "hi\n");
   assert.equal(r.modified, readNote(DIR, "new/dir/note.md").modified);
-  assert.deepEqual(writeNote(DIR, "new/other.md", "x", 12345), { ok: false, reason: "invalid" });
+  assert.deepEqual(writeNote(DIR, "new/other.md", "x", 12345), { ok: false, reason: "missing" }, "있던 노트가 없어졌다");
+  assert.deepEqual(writeNote(DIR, "../out.md", "x", null), { ok: false, reason: "invalid" });
   assert.equal(existsSync(join(DIR, "new/other.md")), false);
 });
 

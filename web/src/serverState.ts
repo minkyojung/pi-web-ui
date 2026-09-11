@@ -13,6 +13,7 @@ import type {
 	NoteConflictMsg,
 	NoteCreatedMsg,
 	NoteFile,
+	NoteGoneMsg,
 	NoteRenamedMsg,
 	NoteRenameFailedMsg,
 	NoteMsg,
@@ -77,6 +78,9 @@ export const noteRenamedStore = createStore<NoteRenamedMsg | null>(null);
 
 /** A rename this tab asked for that was refused. Cleared by the title field. */
 export const noteRenameFailedStore = createStore<NoteRenameFailedMsg | null>(null);
+
+/** A note that is not on disk any more. A tab with it open puts it to the person. */
+export const noteGoneStore = createStore<NoteGoneMsg | null>(null);
 
 /** A save this tab made that was refused. Cleared by whoever deals with it. */
 export const noteConflictStore = createStore<NoteConflictMsg | null>(null);

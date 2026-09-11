@@ -89,6 +89,8 @@ export type WriteResult =
 	| { ok: true; modified: number }
 	/** The file has changed since `base`; the current time is sent so the caller can reload. */
 	| { ok: false; reason: "conflict"; modified: number }
+	/** The writer had a version, and the file is gone. */
+	| { ok: false; reason: "missing" }
 	| { ok: false; reason: "invalid" };
 
 /**
@@ -109,7 +111,7 @@ export function writeNote(root: string, path: string, text: string, base: number
 		// No file yet. `base` must say so too.
 	}
 	if (current !== base) {
-		return current === null ? { ok: false, reason: "invalid" } : { ok: false, reason: "conflict", modified: current };
+		return current === null ? { ok: false, reason: "missing" } : { ok: false, reason: "conflict", modified: current };
 	}
 	mkdirSync(dirname(full), { recursive: true });
 	const tmp = `${full}.${process.pid}.tmp`;

@@ -3,12 +3,12 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { Annotation, ChangeSet, EditorState, type Extension } from "@codemirror/state";
+import { Annotation, ChangeSet, EditorState, type Extension, Transaction } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
 import { pending, setSpans } from "../features/pending";
-import { noteChangedStore, noteConflictStore, noteStore } from "../serverState";
+import { noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { registerSave } from "../saves";
 import { getConnection, subscribe } from "../store";
@@ -20,6 +20,13 @@ const AUTOSAVE_MS = 600;
 
 /** Marks a change the server made, so it is not taken for typing and saved back. */
 const fromServer = Annotation.define<boolean>();
+/**
+ * On every change the server makes: not typing, and not undoable. ⌘Z undoes
+ * what the person typed; what pi or another editor wrote is not theirs to
+ * take back that way, and an undo that reached it would then be saved as a
+ * change of theirs.
+ */
+const serverChange = [fromServer.of(true), Transaction.addToHistory.of(false)];
 
 /**
  * The editor in the app's own colours, both themes, since the tokens switch
@@ -35,7 +42,12 @@ const theme = EditorView.theme({
 	".cm-line": { padding: "0" },
 	"&.cm-focused": { outline: "none" },
 	".cm-cursor": { borderLeftColor: "var(--foreground)" },
-	".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": { backgroundColor: "var(--accent)" },
+	// Not --accent: in the light theme that is nearly the page colour, and a
+	// selection that cannot be seen is not one. A share of the text colour
+	// reads in both themes.
+	".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": {
+		backgroundColor: "color-mix(in oklab, var(--foreground) 18%, transparent)",
+	},
 	".cm-activeLine": { backgroundColor: "transparent" },
 });
 
@@ -94,7 +106,28 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 	const stale = useRef(false);
 	const dirty = useRef(false);
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const [status, setStatus] = useState<"loading" | "saved" | "unsaved" | "conflict">("loading");
+	const [status, setStatus] = useState<"loading" | "saved" | "unsaved" | "conflict" | "gone">("loading");
+	/**
+	 * Work that changes the doc, held while the person is mid-composition —
+	 * a Hangul syllable half typed — since a transaction then would cut the
+	 * composition short. Run in order once it ends.
+	 */
+	const held = useRef<(() => void)[]>([]);
+	const whenNotComposing = (fn: () => void) => {
+		const v = view.current;
+		if (!v) return;
+		held.current.push(fn);
+		if (held.current.length > 1) return; // A tick is already waiting.
+		const tick = () => {
+			const view_ = view.current;
+			if (!view_) return void (held.current = []);
+			if (view_.composing) return void setTimeout(tick, 40);
+			const jobs = held.current;
+			held.current = [];
+			for (const job of jobs) job();
+		};
+		tick();
+	};
 
 	const save = () => {
 		const v = view.current;
@@ -104,10 +137,9 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 		const text = v.state.doc.toString();
 		// Only a save that went out is one to expect an echo of. One sent to a
 		// closed socket is dropped, and the doc stays dirty for the next chance.
-		if (send({ type: "save_note", path: at.current, text, base: base.current })) {
-			sent.current = text;
-			sinceSent.current = ChangeSet.empty(text.length);
-		}
+		if (!send({ type: "save_note", path: at.current, text, base: base.current })) return false;
+		sent.current = text;
+		sinceSent.current = ChangeSet.empty(text.length);
 		return true;
 	};
 
@@ -193,8 +225,9 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 	// on a version this editor does not have.
 	const note = useSyncExternalStore(noteStore.subscribe, noteStore.get);
 	useEffect(() => {
-		const v = view.current;
-		if (!v || !note || note.path !== path) return;
+		if (!view.current || !note || note.path !== path) return;
+		whenNotComposing(() => {
+		const v = view.current!;
 		const doc = v.state.doc.toString();
 		const decision = base.current === null && sent.current === null
 			? { kind: "replace" as const } // The first answer to open_note.
@@ -210,6 +243,8 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 					base.current = note.modified;
 					local.current = sinceSent.current;
 					sent.current = null;
+					dirty.current = !local.current.empty;
+					setStatus(dirty.current ? "unsaved" : "saved");
 					v.dispatch({ effects: setSpans.of({ spans: note.spans, through: local.current }) });
 				}
 				return;
@@ -220,7 +255,7 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 			case "replace":
 				v.dispatch({
 					changes: { from: 0, to: v.state.doc.length, insert: note.text },
-					annotations: fromServer.of(true),
+					annotations: serverChange,
 					// Keep the cursor where it was if the text still reaches there.
 					selection: { anchor: Math.min(v.state.selection.main.head, note.text.length) },
 					effects: setSpans.of({ spans: note.spans }),
@@ -231,13 +266,17 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 				setStatus("conflict");
 				return;
 		}
+		});
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [note, path]);
 
 	// A change to the note, from whoever made it, over the version it was made to.
 	const changed = useSyncExternalStore(noteChangedStore.subscribe, noteChangedStore.get);
 	useEffect(() => {
-		const v = view.current;
-		if (!v || !changed || changed.path !== path || base.current === null) return;
+		if (!view.current || !changed || changed.path !== path) return;
+		whenNotComposing(() => {
+		const v = view.current!;
+		if (base.current === null) return;
 		if (changed.base !== base.current) {
 			// Not a version this editor has — a change missed while offline, or
 			// one already past. The language-server answer: ask for the whole.
@@ -258,7 +297,7 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 			return;
 		}
 		if (!dirty.current) {
-			v.dispatch({ changes: theirs, annotations: fromServer.of(true), effects: setSpans.of({ spans: changed.spans }) });
+			v.dispatch({ changes: theirs, annotations: serverChange, effects: setSpans.of({ spans: changed.spans }) });
 			settle(text, changed.modified);
 			return;
 		}
@@ -268,7 +307,7 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 			return;
 		}
 		// Their change, around the typing; the typing, over their text.
-		v.dispatch({ changes: fit.theirs, annotations: fromServer.of(true), effects: setSpans.of({ spans: changed.spans, through: fit.ours }) });
+		v.dispatch({ changes: fit.theirs, annotations: serverChange, effects: setSpans.of({ spans: changed.spans, through: fit.ours }) });
 		saved.current = text;
 		base.current = changed.modified;
 		local.current = fit.ours;
@@ -279,11 +318,28 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 			// come on this version. Everything typed is over their text now, so
 			// it is sent again on that, and the refusal on its way is not news.
 			sent.current = null;
-			stale.current = true;
-			save();
+			// Only a save that went out has a refusal coming. One that did not
+			// — the socket down — leaves nothing to ignore, and the latch must
+			// not stay set to swallow a real refusal later.
+			stale.current = save();
 		}
+		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [changed, path]);
+
+	// The note is gone from the disk: deleted by pi's bash, another program,
+	// or a save that found nothing to save over. What is on screen is the only
+	// copy; the person decides whether it goes back.
+	const gone = useSyncExternalStore(noteGoneStore.subscribe, noteGoneStore.get);
+	useEffect(() => {
+		if (!gone || gone.path !== path) return;
+		noteGoneStore.set(null);
+		if (timer.current) clearTimeout(timer.current);
+		timer.current = null;
+		sent.current = null;
+		stale.current = false;
+		setStatus("gone");
+	}, [gone, path]);
 
 	// A save of ours the server refused: the same situation as above.
 	const conflict = useSyncExternalStore(noteConflictStore.subscribe, noteConflictStore.get);
@@ -298,19 +354,31 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 		setStatus("conflict");
 	}, [conflict, path]);
 
+	/** Take the disk's version. Everything typed here is given up, and the answer settles the rest. */
 	const reload = () => {
+		const v = view.current;
+		if (timer.current) clearTimeout(timer.current);
+		timer.current = null;
 		dirty.current = false;
 		sent.current = null;
+		stale.current = false;
+		local.current = ChangeSet.empty(v?.state.doc.length ?? 0);
+		sinceSent.current = local.current;
 		noteConflictStore.set(null);
 		send({ type: "open_note", path });
 	};
+	/** Put what is on screen over whatever is there — the version the refusal named, or none if the note is gone. */
 	const overwrite = () => {
-		// On top of whatever is there now: the server said what that is, or the
-		// note we last saw did.
-		base.current = conflict?.path === path ? conflict.modified : (note?.path === path ? note.modified : base.current);
+		if (status === "gone") base.current = null;
+		else if (conflict?.path === path) base.current = conflict.modified;
+		else if (note?.path === path) base.current = note.modified;
+		else return reload(); // No version to write over is known here; the disk's answer will say.
 		dirty.current = true;
 		noteConflictStore.set(null);
 		save();
+	};
+	const close = () => {
+		location.hash = "";
 	};
 
 	return (
@@ -323,6 +391,17 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 					</Button>
 					<Button variant="outline" size="sm" className="h-7 text-xs" onClick={overwrite}>
 						Keep mine
+					</Button>
+				</div>
+			)}
+			{status === "gone" && (
+				<div role="alert" className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs">
+					<span className="flex-1">This note is no longer on disk. What is here is the only copy.</span>
+					<Button variant="outline" size="sm" className="h-7 text-xs" onClick={overwrite}>
+						Put it back
+					</Button>
+					<Button variant="outline" size="sm" className="h-7 text-xs" onClick={close}>
+						Close
 					</Button>
 				</div>
 			)}
