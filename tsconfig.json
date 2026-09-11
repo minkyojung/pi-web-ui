@@ -12,6 +12,7 @@
 		"skipLibCheck": true,
 		"isolatedModules": true,
 		"verbatimModuleSyntax": true,
+		"allowImportingTsExtensions": true,
 		"types": ["vite/client", "node"],
 		"paths": { "@/*": ["./web/src/*"] }
 	},

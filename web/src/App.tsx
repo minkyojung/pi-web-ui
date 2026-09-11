@@ -7,10 +7,12 @@ import { Editor } from "./components/Editor";
 import { RawView } from "./components/RawView";
 import { SettingsBar } from "./components/SettingsBar";
 import { Sidebar } from "./components/Sidebar";
+import { QuickOpen } from "./components/QuickOpen";
 import { Title } from "./components/Title";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { hashForNote, noteFromHash } from "./noteSync";
+import { bump, forget, readRecent, writeRecent } from "./recent";
 import { noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
 import { Button } from "./components/ui/button";
 import { getConnection, getItems, subscribe } from "./store";
@@ -81,6 +83,21 @@ export function App() {
 	const [raw, setRaw] = useState(false);
 	const pi = useRef<PanelImperativeHandle>(null);
 
+	// Which notes were opened, newest first, for the quick-open list. Follows
+	// a rename and drops a delete, so it never names a note that is not there.
+	const [recent, setRecent] = useState(readRecent);
+	useEffect(() => {
+		if (open) setRecent((list) => bump(list, open));
+	}, [open]);
+	const renamedForRecent = useSyncExternalStore(noteRenamedStore.subscribe, noteRenamedStore.get);
+	useEffect(() => {
+		if (renamedForRecent) setRecent((list) => forget(list, renamedForRecent.from, renamedForRecent.to));
+	}, [renamedForRecent]);
+	useEffect(() => {
+		writeRecent(recent);
+	}, [recent]);
+	const [picking, setPicking] = useState(false);
+
 	// ⌘N asks the server for a new note; it comes back named, and is opened by
 	// address like any other. The server names it, since it owns the folder.
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
@@ -96,7 +113,9 @@ export function App() {
 	// then offers to bring it back, until something else is opened.
 	const deleted = useSyncExternalStore(noteDeletedStore.subscribe, noteDeletedStore.get);
 	useEffect(() => {
-		if (deleted && deleted.path === open) setOpen(null);
+		if (!deleted) return;
+		setRecent((list) => forget(list, deleted.path));
+		if (deleted.path === open) setOpen(null);
 	}, [deleted, open, setOpen]);
 
 	useEffect(() => {
@@ -105,6 +124,10 @@ export function App() {
 			if ((e.key === "n" || e.key === "N") && mod && !e.shiftKey) {
 				e.preventDefault();
 				if (online) send({ type: "new_note" });
+			}
+			if ((e.key === "p" || e.key === "P") && mod && !e.shiftKey) {
+				e.preventDefault();
+				setPicking((on) => !on);
 			}
 			if ((e.key === "d" || e.key === "D") && e.shiftKey && mod) {
 				e.preventDefault();
@@ -122,6 +145,7 @@ export function App() {
 
 	return (
 		<TooltipProvider delayDuration={300}>
+			<QuickOpen open={picking} onOpenChange={setPicking} recent={recent} onPick={setOpen} />
 			<ResizablePanelGroup orientation="horizontal" className="h-screen">
 				<ResizablePanel id="sidebar" defaultSize="22%" minSize="16%" className="min-w-0">
 					<Sidebar open={open} onOpen={setOpen} />
@@ -153,7 +177,7 @@ export function App() {
 									</Button>
 								</>
 							) : (
-								<span>No note open · ⌘N for a new one</span>
+								<span>No note open · ⌘P to find one · ⌘N for a new one</span>
 							)}
 						</div>
 					)}

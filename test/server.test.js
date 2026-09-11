@@ -264,6 +264,19 @@ it("지우면 휴지통으로 가고 로그도 따라가며, 되살리면 둘 �
   assert.equal((await want("note_gone")).path, "never.md");
 });
 
+it("이름을 주고 새 노트를 청하면 그 이름이 되고, 있는 이름이나 안 되는 이름은 거절된다", async () => {
+  clear();
+  send({ type: "new_note", name: "ideas/wanted" });
+  assert.equal((await want("note_rename_failed")).reason, "invalid", "슬래시는 이름에 못 들어간다");
+  clear();
+  send({ type: "new_note", name: "wanted" });
+  assert.equal((await want("note_created")).path, "wanted.md");
+  assert.equal(readFileSync(join(cwd, "wanted.md"), "utf8"), "");
+  clear();
+  send({ type: "new_note", name: "wanted" });
+  assert.equal((await want("note_rename_failed")).reason, "exists");
+});
+
 it("폴더 밖과 노트 아닌 것은 열리지도 쓰이지도 않는다", async () => {
   clear();
   send({ type: "open_note", path: "../etc/passwd.md" });

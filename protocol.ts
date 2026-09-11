@@ -52,8 +52,13 @@ export type ClientMsg =
 	| { type: "save_note"; path: string; text: string; base: number | null }
 	/** The words at [from, to) are fine as they are. Answered with `note` to every tab. */
 	| { type: "accept_note"; path: string; from: number; to: number }
-	/** A new, empty note, named by the server. Answered with `note_created` to this tab and `note` to every tab. */
-	| { type: "new_note" }
+	/**
+	 * A new, empty note. Named by the server unless `name` is given — a title,
+	 * as the title field takes one — and refused with `note_rename_failed` if
+	 * that name is taken or not a note's. Answered with `note_created` to this
+	 * tab and `note` to every tab.
+	 */
+	| { type: "new_note"; name?: string }
 	/** Give a note another path. Answered with `note_renamed` to every tab, or `note_rename_failed` to this one. */
 	| { type: "rename_note"; path: string; to: string }
 	/** Put a note in the trash. Answered with `note_deleted` to every tab. */

@@ -182,7 +182,7 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
 		return true;
 	};
-	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, n: 78, z: 90 };
+	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, n: 78, p: 80, z: 90 };
 	const press = async (key, { meta = false } = {}) => {
 		const modifiers = meta ? 4 : 0;
 		const code = key.length === 1 ? `Key${key.toUpperCase()}` : key;
@@ -632,6 +632,25 @@ check("deleting a note closes it and offers it back, and Restore brings it back 
 	await until("the note back", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("location.hash")) === "#code.md");
 	assert.equal(existsSync(join(cwd, "code.md")), true);
 	assert.ok((await editorText(app)).includes("const a = 1;"));
+});
+
+check("⌘P finds a note by a few letters, and makes one that is not there", async ({ app, cwd }) => {
+	await app.press("p", { meta: true });
+	await until("the palette", () => app.evaluate("document.activeElement?.dataset.slot === 'command-input'"));
+	// Before typing: the notes opened most recently, newest first.
+	const first = await app.evaluate(`document.querySelector('[data-slot=command-list] [cmdk-group-heading]')?.textContent`);
+	assert.equal(first, "Recent");
+	await app.keys("my no");
+	await until("the match", () => app.evaluate(`[...document.querySelectorAll('[data-slot=command-list] [cmdk-item][data-selected="true"]')].map((i) => i.textContent).join(',')`).then((t) => t.includes("My note")));
+	await app.press("Enter");
+	await until("the note", async () => (await app.evaluate("location.hash")) === "#My%20note.md" && (await editorStatus(app)) === "saved");
+	await app.press("p", { meta: true });
+	await until("the palette", () => app.evaluate("document.activeElement?.dataset.slot === 'command-input'"));
+	await app.keys("brand new");
+	await until("the offer", () => app.evaluate(`[...document.querySelectorAll('[data-slot=command-list] [cmdk-item]')].some((i) => i.textContent.includes('Create "brand new"'))`));
+	await app.press("Enter");
+	await until("the new note", async () => (await app.evaluate("location.hash")) === "#brand%20new.md" && (await editorStatus(app)) === "saved");
+	assert.equal(existsSync(join(cwd, "brand new.md")), true);
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {

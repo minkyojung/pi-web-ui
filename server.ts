@@ -33,6 +33,7 @@ import { accept, type Change, historyPath, moveHistory, moveLog, reconcile, reco
 import { recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
 import { guard, VAULT_PROMPT } from "./guard.ts";
+import { renameTarget } from "./naming.ts";
 import type {
 	BranchesMsg,
 	ClientMsg,
@@ -874,10 +875,25 @@ wss.on("connection", async (ws) => {
 				// the truth, so a note exists once it is on disk and not before.
 				// Named Untitled; the title field is where it gets a name.
 				case "new_note": {
-					const path = newNoteName(listNotes(CWD).map((f) => f.path));
+					const existing = listNotes(CWD).map((f) => f.path);
+					let path: string;
+					if (typeof msg.name === "string") {
+						const target = renameTarget("Untitled.md", msg.name);
+						if ("error" in target) {
+							reply({ type: "note_rename_failed", path: "", to: msg.name, reason: "invalid" });
+							return;
+						}
+						path = target.to;
+						if (existing.includes(path)) {
+							reply({ type: "note_rename_failed", path: "", to: path, reason: "exists" });
+							return;
+						}
+					} else {
+						path = newNoteName(existing);
+					}
 					const written = writeNote(CWD, path, "", null);
 					if (!written.ok) {
-						reply({ type: "error", message: `cannot create ${path}` });
+						reply({ type: "note_rename_failed", path: "", to: path, reason: "invalid" });
 						return;
 					}
 					record(CWD, path, "", "", { author: "me", at: Date.now() });
