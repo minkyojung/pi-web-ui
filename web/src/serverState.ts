@@ -11,6 +11,7 @@ import type {
 	ContextSourcesMsg,
 	NoteChangedMsg,
 	NoteConflictMsg,
+	NoteCreatedMsg,
 	NoteFile,
 	NoteMsg,
 	PromptRequest,
@@ -65,6 +66,9 @@ export const noteStore = createStore<NoteMsg | null>(null);
 
 /** The last change to a note the server sent, from whichever writer. */
 export const noteChangedStore = createStore<NoteChangedMsg | null>(null);
+
+/** A note this tab asked for and now exists, waiting to be opened. Cleared by whoever opens it. */
+export const noteCreatedStore = createStore<NoteCreatedMsg | null>(null);
 
 /** A save this tab made that was refused. Cleared by whoever deals with it. */
 export const noteConflictStore = createStore<NoteConflictMsg | null>(null);

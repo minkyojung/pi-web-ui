@@ -182,10 +182,11 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
 		return true;
 	};
-	const CODES = { Enter: 13, Backspace: 8 };
+	const CODES = { Enter: 13, Backspace: 8, n: 78 };
 	const press = async (key, { meta = false } = {}) => {
 		const modifiers = meta ? 4 : 0;
-		const base = { key, code: key, windowsVirtualKeyCode: CODES[key], nativeVirtualKeyCode: CODES[key], modifiers };
+		const code = key.length === 1 ? `Key${key.toUpperCase()}` : key;
+		const base = { key, code, windowsVirtualKeyCode: CODES[key], nativeVirtualKeyCode: CODES[key], modifiers };
 		await call("Input.dispatchKeyEvent", { type: "keyDown", ...base });
 		await call("Input.dispatchKeyEvent", { type: "keyUp", ...base });
 	};
@@ -505,6 +506,18 @@ check("what pi wrote is marked, until it is accepted or put back", async ({ app,
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 	assert.ok(readFileSync(join(cwd, "ideas/second.md"), "utf8").startsWith("# second"));
 	assert.deepEqual(await piMarks(app), []);
+});
+
+check("⌘N makes today's note and opens it", async ({ app, cwd }) => {
+	await app.evaluate("document.body.focus()");
+	await app.press("n", { meta: true });
+	await until("the new note", async () => (await editorStatus(app)) === "saved" && /^#\d{4}-\d{2}-\d{2}\.md$/.test(await app.evaluate("location.hash")));
+	const path = decodeURIComponent((await app.evaluate("location.hash")).slice(1));
+	assert.equal(readFileSync(join(cwd, path), "utf8"), "");
+	assert.equal(await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.title`), path);
+	assert.equal(await type(app, "# today"), true);
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.equal(readFileSync(join(cwd, path), "utf8"), "# today");
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {

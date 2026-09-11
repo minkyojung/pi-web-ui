@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, w
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { listNotes, readNote, resolveNote, writeNote } from "../vault.ts";
+import { listNotes, newNoteName, readNote, resolveNote, writeNote } from "../vault.ts";
 
 const DIR = mkdtempSync(join(tmpdir(), "notes-"));
 test.after(() => rmSync(DIR, { recursive: true, force: true }));
@@ -94,4 +94,13 @@ test("임시 파일을 남기지 않는다", () => {
   const leftovers = listNotes(DIR).filter((f) => f.path.includes(".tmp"));
   assert.deepEqual(leftovers, []);
   assert.equal(existsSync(join(DIR, `tmp.md.${process.pid}.tmp`)), false);
+});
+
+test("새 노트는 오늘 날짜이고, 있으면 번호가 붙는다", () => {
+  const day = new Date(2026, 8, 11, 15, 0);
+  assert.equal(newNoteName([], day), "2026-09-11.md");
+  assert.equal(newNoteName(["2026-09-11.md"], day), "2026-09-11 2.md");
+  assert.equal(newNoteName(["2026-09-11.md", "2026-09-11 2.md"], day), "2026-09-11 3.md");
+  assert.equal(newNoteName(["deep/2026-09-11.md"], day), "2026-09-11.md", "다른 폴더의 같은 이름은 다른 노트");
+  assert.equal(newNoteName([], new Date(2026, 0, 5)), "2026-01-05.md");
 });

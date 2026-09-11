@@ -28,7 +28,7 @@ import { modeToolNames } from "./toolModes.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { listNotes, readNote, writeNote } from "./vault.ts";
+import { listNotes, newNoteName, readNote, writeNote } from "./vault.ts";
 import { accept, type Change, reconcile, record, replay, readHistory } from "./history.ts";
 import { recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
@@ -848,6 +848,21 @@ wss.on("connection", async (ws) => {
 					}
 					const changes = record(CWD, msg.path, had?.text ?? "", msg.text, { author: "me", at: Date.now() });
 					wrote(msg.path, had?.modified ?? null, changes);
+					break;
+				}
+
+				// An empty note, made now rather than on first save: the file is
+				// the truth, so a note exists once it is on disk and not before.
+				case "new_note": {
+					const path = newNoteName(listNotes(CWD).map((f) => f.path));
+					const written = writeNote(CWD, path, "", null);
+					if (!written.ok) {
+						reply({ type: "error", message: `cannot create ${path}` });
+						return;
+					}
+					record(CWD, path, "", "", { author: "me", at: Date.now() });
+					reply({ type: "note_created", path });
+					wrote(path, null, []);
 					break;
 				}
 

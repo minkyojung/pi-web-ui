@@ -49,7 +49,9 @@ export type ClientMsg =
 	 */
 	| { type: "save_note"; path: string; text: string; base: number | null }
 	/** The words at [from, to) are fine as they are. Answered with `note` to every tab. */
-	| { type: "accept_note"; path: string; from: number; to: number };
+	| { type: "accept_note"; path: string; from: number; to: number }
+	/** A new, empty note, named by the server. Answered with `note_created` to this tab and `note` to every tab. */
+	| { type: "new_note" };
 
 export type ClientMsgType = ClientMsg["type"];
 
@@ -184,6 +186,12 @@ export interface NoteChangedMsg {
 	spans: Span[];
 }
 
+/** The note new_note made, for the tab that asked to open it. */
+export interface NoteCreatedMsg {
+	type: "note_created";
+	path: string;
+}
+
 /** The save was refused: the note changed since `base`. `modified` is what is there now. */
 export interface NoteConflictMsg {
 	type: "note_conflict";
@@ -261,6 +269,7 @@ export type StateMsg =
 	| FilesMsg
 	| NoteMsg
 	| NoteChangedMsg
+	| NoteCreatedMsg
 	| NoteConflictMsg
 	| PromptRequestMsg
 	| PromptDismissMsg

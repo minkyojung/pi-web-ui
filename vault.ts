@@ -117,3 +117,15 @@ export function writeNote(root: string, path: string, text: string, base: number
 	renameSync(tmp, full);
 	return { ok: true, modified: statSync(full).mtimeMs };
 }
+
+/**
+ * The name of a new note: today's date, and a number when today already has
+ * one. Time is the one structure the vault keeps, so a note starts with the
+ * day it began; a person renames what deserves a name.
+ */
+export function newNoteName(existing: Iterable<string>, now = new Date()): string {
+	const day = [now.getFullYear(), now.getMonth() + 1, now.getDate()].map((n) => String(n).padStart(2, "0")).join("-");
+	const taken = new Set(existing);
+	if (!taken.has(`${day}.md`)) return `${day}.md`;
+	for (let n = 2; ; n++) if (!taken.has(`${day} ${n}.md`)) return `${day} ${n}.md`;
+}

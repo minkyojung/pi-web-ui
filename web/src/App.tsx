@@ -10,7 +10,9 @@ import { Sidebar } from "./components/Sidebar";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { hashForNote, noteFromHash } from "./noteSync";
-import { getItems, subscribe } from "./store";
+import { noteCreatedStore } from "./serverState";
+import { getConnection, getItems, subscribe } from "./store";
+import { send } from "./ws";
 
 /**
  * The address carries which note is open, so a reload lands where you left
@@ -43,9 +45,23 @@ export function App() {
 	const [raw, setRaw] = useState(false);
 	const pi = useRef<PanelImperativeHandle>(null);
 
+	// ⌘N asks the server for a new note; it comes back named, and is opened by
+	// address like any other. The server names it, since it owns the folder.
+	const online = useSyncExternalStore(subscribe, getConnection) === "open";
+	const created = useSyncExternalStore(noteCreatedStore.subscribe, noteCreatedStore.get);
+	useEffect(() => {
+		if (!created) return;
+		noteCreatedStore.set(null);
+		setOpen(created.path);
+	}, [created, setOpen]);
+
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			const mod = e.metaKey || e.ctrlKey;
+			if ((e.key === "n" || e.key === "N") && mod && !e.shiftKey) {
+				e.preventDefault();
+				if (online) send({ type: "new_note" });
+			}
 			if ((e.key === "d" || e.key === "D") && e.shiftKey && mod) {
 				e.preventDefault();
 				setRaw((on) => !on);
@@ -58,7 +74,7 @@ export function App() {
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, []);
+	}, [online]);
 
 	return (
 		<TooltipProvider delayDuration={300}>

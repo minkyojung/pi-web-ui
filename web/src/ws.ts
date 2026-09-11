@@ -13,6 +13,7 @@ import {
 	filesStore,
 	noteChangedStore,
 	noteConflictStore,
+	noteCreatedStore,
 	noteStore,
 	promptsStore,
 	pushRaw,
@@ -62,6 +63,7 @@ const STATE: Record<StateMsg["type"], true> = {
 	files: true,
 	note: true,
 	note_changed: true,
+	note_created: true,
 	note_conflict: true,
 	prompt_request: true,
 	prompt_dismiss: true,
@@ -107,6 +109,9 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "note_conflict":
 			noteConflictStore.set(msg);
+			return;
+		case "note_created":
+			noteCreatedStore.set(msg);
 			return;
 		case "snapshot":
 			// A snapshot means the server's session may not be the one these

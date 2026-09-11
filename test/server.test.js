@@ -170,6 +170,21 @@ it("없던 노트는 base가 null일 때 만들어져 통째로 오고, 목록�
   assert.equal(files.files[0].path, "new/one.md", "새 것이 맨 위");
 });
 
+it("새 노트를 청하면 오늘 날짜로 만들어져 이 탭에 이름이 오고, 두 번째는 번호가 붙는다", async () => {
+  const day = new Date();
+  const today = [day.getFullYear(), day.getMonth() + 1, day.getDate()].map((n) => String(n).padStart(2, "0")).join("-");
+  clear();
+  send({ type: "new_note" });
+  const first = await want("note_created");
+  assert.equal(first.path, `${today}.md`);
+  assert.equal(readFileSync(join(cwd, first.path), "utf8"), "");
+  await want("note", (m) => m.path === first.path);
+  await want("files", (m) => m.files.some((f) => f.path === first.path));
+  clear();
+  send({ type: "new_note" });
+  assert.equal((await want("note_created")).path, `${today} 2.md`);
+});
+
 it("폴더 밖과 노트 아닌 것은 열리지도 쓰이지도 않는다", async () => {
   clear();
   send({ type: "open_note", path: "../etc/passwd.md" });
