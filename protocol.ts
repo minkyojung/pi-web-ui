@@ -104,7 +104,8 @@ export interface UsageMsg {
 	tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
 	messages: number;
 	toolCalls: number;
-	context: { tokens: number | null; window: number; percent: number } | null;
+	/** `percent` is null when pi has no count yet; the gauge draws "unknown" for it. */
+	context: { tokens: number | null; window: number; percent: number | null } | null;
 }
 
 /** Sizes of what fills the context besides the conversation. See contextBreakdown.ts. */

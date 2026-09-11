@@ -29,6 +29,18 @@ import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
 import { listNotes } from "./files.ts";
+import type {
+	BranchesMsg,
+	ClientMsg,
+	ConfigMsg,
+	ContextSourcesMsg,
+	FilesMsg,
+	PiEventMsg,
+	ServerMsg,
+	SessionsMsg,
+	SnapshotMsg,
+	UsageMsg,
+} from "./protocol.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 /**
@@ -181,7 +193,7 @@ const session = () => runtime.session;
 type ThinkingLevel = ReturnType<typeof session>["thinkingLevel"];
 
 /** Everything the settings UI needs. Re-sent whenever any of it changes. */
-function config() {
+function config(): ConfigMsg {
 	const s = session();
 	const model = s.model;
 	return {
@@ -206,7 +218,7 @@ function config() {
  * Token spend and context pressure. pi tracks both; without surfacing them the
  * user has no idea what a turn costs or how close the session is to overflowing.
  */
-function usage() {
+function usage(): UsageMsg {
 	const stats = session().getSessionStats();
 	const context = session().getContextUsage();
 	return {
@@ -224,7 +236,7 @@ function usage() {
  * events. A resumed session has history but emits no events for it, so without
  * this the browser would show an empty conversation.
  */
-function snapshot() {
+function snapshot(): SnapshotMsg {
 	// The same objects, not copies: pi hands the message the agent holds to the
 	// session file — "keeps agent state ... and persistence in sync", as it puts
 	// it — so identity is what ties a message on screen to its place in the tree.
@@ -242,7 +254,7 @@ function snapshot() {
  * fixed parts the way pi itself estimates — four characters a token. Sent when
  * a session is built and when the tools or model change, not per message.
  */
-function contextSources() {
+function contextSources(): ContextSourcesMsg {
 	const s = session();
 	const active = new Set(s.getActiveToolNames());
 	const loader = runtime.services.resourceLoader;
@@ -269,17 +281,17 @@ function contextSources() {
  * Where the conversation on screen has alternatives. See branches.ts, which
  * holds the tree reading so it can be tested against a session built on purpose.
  */
-function branches() {
+function branches(): BranchesMsg {
 	return { type: "branches", nodes: branchPoints(session().sessionManager) };
 }
 
 /** The notes in the working folder. See files.ts. */
-function files() {
+function files(): FilesMsg {
 	return { type: "files", files: listNotes(CWD) };
 }
 
 /** Saved sessions for this working directory, newest first. */
-async function sessions() {
+async function sessions(): Promise<SessionsMsg> {
 	const current = session().sessionFile;
 	const list = (await SessionManager.list(CWD))
 		.sort((a, b) => b.modified.getTime() - a.modified.getTime())
@@ -327,7 +339,7 @@ async function abortWithin(ms: number): Promise<void> {
 
 const clients = new Set<WebSocket>();
 
-function broadcast(payload: unknown): void {
+function broadcast(payload: ServerMsg): void {
 	const text = safeStringify(payload);
 	for (const client of clients) {
 		if (client.readyState === client.OPEN) client.send(text);
@@ -343,8 +355,8 @@ const prompts = createPromptBridge(broadcast);
  * reconstructible from the deltas the client already folds in. Dropping them
  * keeps the raw view readable at 300 events.
  */
-function toWireEvent(event: AgentSessionEvent): unknown {
-	if (event.type !== "message_update") return event;
+function toWireEvent(event: AgentSessionEvent): PiEventMsg {
+	if (event.type !== "message_update") return event as unknown as PiEventMsg;
 	const usage = event.message.role === "assistant" ? event.message.usage : undefined;
 	const sub = event.assistantMessageEvent;
 	if (!("partial" in sub)) return { type: event.type, usage, assistantMessageEvent: sub };
@@ -545,34 +557,26 @@ wss.on("connection", async (ws) => {
 		console.error("websocket error:", err.message);
 		clients.delete(ws);
 	});
-	ws.send(safeStringify(config()));
-	ws.send(safeStringify(usage()));
-	ws.send(safeStringify(contextSources()));
-	ws.send(safeStringify(snapshot()));
-	ws.send(safeStringify(branches()));
-	ws.send(safeStringify(files()));
+	/** To this tab only: answers to what it asked, and the state it needs to start. */
+	const reply = (msg: ServerMsg) => ws.send(safeStringify(msg));
+	reply(config());
+	reply(usage());
+	reply(contextSources());
+	reply(snapshot());
+	reply(branches());
+	reply(files());
 	// A tab opened while a question is waiting should see it too.
-	for (const prompt of prompts.open()) ws.send(safeStringify({ type: "prompt_request", prompt }));
+	for (const prompt of prompts.open()) reply({ type: "prompt_request", prompt });
 
 	ws.on("message", async (data) => {
-		let msg: {
-			type?: string;
-			text?: string;
-			names?: string[];
-			level?: string;
-			model?: string;
-			behavior?: string;
-			path?: string;
-			name?: string;
-			id?: string;
-			entryId?: string;
-			answer?: string;
-			cancelled?: boolean;
-		};
+		// Typed as what the browser sends, which is what lets each case below
+		// read its own fields. Not trusted as that: it came over a socket, so
+		// each case still checks the field it is about to hand to pi.
+		let msg: ClientMsg;
 		try {
 			msg = JSON.parse(data.toString());
 		} catch {
-			ws.send(safeStringify({ type: "error", message: "invalid JSON from client" }));
+			reply({ type: "error", message: "invalid JSON from client" });
 			return;
 		}
 		try {
@@ -589,7 +593,7 @@ wss.on("connection", async (ws) => {
 					// arrive in that gap, and nobody should have to look at it.
 					if (typeof msg.entryId === "string") {
 						if (session().isStreaming) {
-							ws.send(safeStringify({ type: "error", message: "Wait for the reply to finish before asking again." }));
+							reply({ type: "error", message: "Wait for the reply to finish before asking again." });
 							return;
 						}
 						const moved = await session().navigateTree(msg.entryId);
@@ -632,7 +636,7 @@ wss.on("connection", async (ws) => {
 					// tab that asked so they land in the box it was typed in. Every tab
 					// learns the queue is empty from the queue_update this emits.
 					const cleared = session().clearQueue();
-					ws.send(safeStringify({ type: "queue_cleared", ...cleared }));
+					reply({ type: "queue_cleared", ...cleared });
 					break;
 				}
 
@@ -655,7 +659,7 @@ wss.on("connection", async (ws) => {
 						if (provider) next = (await modelRuntime.getAvailable(provider)).find((m) => modelKey(m) === msg.model);
 					}
 					if (!next) {
-						ws.send(safeStringify({ type: "error", message: `unknown model: ${msg.model}` }));
+						reply({ type: "error", message: `unknown model: ${msg.model}` });
 						return;
 					}
 					// Throws when the model has no configured auth. Thinking level is
@@ -673,7 +677,7 @@ wss.on("connection", async (ws) => {
 					// value would silently become "off". Validate first.
 					const levels = config().thinkingLevels;
 					if (typeof msg.level !== "string" || !levels.includes(msg.level as ThinkingLevel)) {
-						ws.send(safeStringify({ type: "error", message: `unsupported thinking level: ${msg.level}` }));
+						reply({ type: "error", message: `unsupported thinking level: ${msg.level}` });
 						return;
 					}
 					// As with the model: persist makes the choice outlive this session.
@@ -698,7 +702,7 @@ wss.on("connection", async (ws) => {
 					if (msg.path === session().sessionFile) return;
 					const known = (await sessions()).sessions.some((s) => s.path === msg.path);
 					if (!known) {
-						ws.send(safeStringify({ type: "error", message: `unknown session: ${msg.path}` }));
+						reply({ type: "error", message: `unknown session: ${msg.path}` });
 						return;
 					}
 					prompts.cancelAll();
@@ -721,7 +725,7 @@ wss.on("connection", async (ws) => {
 					// navigateTree throws on this, and a rejection the browser can act
 					// on is better than an error it has to read.
 					if (session().isStreaming) {
-						ws.send(safeStringify({ type: "error", message: "Wait for the reply to finish before moving." }));
+						reply({ type: "error", message: "Wait for the reply to finish before moving." });
 						return;
 					}
 					const result = await session().navigateTree(msg.entryId);
@@ -735,7 +739,7 @@ wss.on("connection", async (ws) => {
 					// that asked, like a cleared queue does, to land in the box it was
 					// typed in.
 					if (result.editorText) {
-						ws.send(safeStringify({ type: "queue_cleared", steering: [result.editorText], followUp: [] }));
+						reply({ type: "queue_cleared", steering: [result.editorText], followUp: [] });
 					}
 					break;
 				}
@@ -756,7 +760,7 @@ wss.on("connection", async (ws) => {
 	// list touches the disk, and anything the client sent while that await was
 	// outstanding would arrive at a socket with no 'message' listener and be
 	// dropped without a trace.
-	ws.send(safeStringify(await sessions()));
+	reply(await sessions());
 });
 
 server.listen(PORT, HOST, () => {
