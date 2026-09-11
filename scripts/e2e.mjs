@@ -239,6 +239,13 @@ check("the app renders a conversation", async ({ app }) => {
 	await until("the conversation", () => app.evaluate("!!document.getElementById('chat')"));
 });
 
+check("the sidebar lists the folder's notes and nothing else", async ({ app }) => {
+	const listed = await until("the notes", () =>
+		app.evaluate("[...document.querySelectorAll('#notes li')].map((li) => li.title).join(',')"),
+	);
+	assert.deepEqual(listed.split(",").sort(), ["first.md", "ideas/second.md"]);
+});
+
 check("a branched session opens on its newest branch", async ({ app }) => {
 	await until("the resumed session", async () => (await marks(app)).includes("ANSWER-GAMMA"));
 	assert.equal(await marks(app), "ANSWER-GAMMA 3/3");
@@ -319,6 +326,11 @@ async function main() {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-e2e-"));
 	const profile = mkdtempSync(join(tmpdir(), "pi-e2e-chrome-"));
 	const sessionFile = branchedSession(cwd);
+	// Two notes and a file that is not one, for the sidebar to sort out.
+	mkdirSync(join(cwd, "ideas"));
+	writeFileSync(join(cwd, "ideas", "second.md"), "# second\n");
+	writeFileSync(join(cwd, "first.md"), "# first\n");
+	writeFileSync(join(cwd, "not-a-note.txt"), "no\n");
 	const [api, web, devtools] = await Promise.all([freePort(), freePort(), freePort()]);
 	const children = [];
 	const logs = new Map();

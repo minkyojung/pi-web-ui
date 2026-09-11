@@ -28,6 +28,7 @@ import { modeToolNames } from "./toolModes.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
+import { listNotes } from "./files.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 /**
@@ -272,6 +273,11 @@ function branches() {
 	return { type: "branches", nodes: branchPoints(session().sessionManager) };
 }
 
+/** The notes in the working folder. See files.ts. */
+function files() {
+	return { type: "files", files: listNotes(CWD) };
+}
+
 /** Saved sessions for this working directory, newest first. */
 async function sessions() {
 	const current = session().sessionFile;
@@ -374,6 +380,8 @@ function onEvent(event: AgentSessionEvent): void {
 	// A finished run is a new branch under whatever it was asked from, so the
 	// message it answered may have just gained a sibling.
 	if (event.type === "agent_settled") broadcast(branches());
+	// And it may have written a note, or renamed one.
+	if (event.type === "agent_settled") broadcast(files());
 }
 
 let unsubscribe: (() => void) | undefined;
@@ -419,6 +427,7 @@ async function broadcastAll(): Promise<void> {
 	broadcast(contextSources());
 	broadcast(snapshot());
 	broadcast(branches());
+	broadcast(files());
 	broadcast(await sessions());
 }
 
@@ -541,6 +550,7 @@ wss.on("connection", async (ws) => {
 	ws.send(safeStringify(contextSources()));
 	ws.send(safeStringify(snapshot()));
 	ws.send(safeStringify(branches()));
+	ws.send(safeStringify(files()));
 	// A tab opened while a question is waiting should see it too.
 	for (const prompt of prompts.open()) ws.send(safeStringify({ type: "prompt_request", prompt }));
 

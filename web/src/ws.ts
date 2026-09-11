@@ -10,6 +10,7 @@ import {
 	branchesStore,
 	configStore,
 	contextSourcesStore,
+	filesStore,
 	promptsStore,
 	pushRaw,
 	removePrompt,
@@ -23,6 +24,7 @@ import type {
 	BranchesMsg,
 	ConfigMsg,
 	ContextSourcesMsg,
+	FilesMsg,
 	Item,
 	PromptDismissMsg,
 	PromptRequestMsg,
@@ -77,6 +79,9 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "sessions":
 			sessionsStore.set((msg as { sessions: SessionInfo[] }).sessions);
+			return;
+		case "files":
+			filesStore.set((msg as FilesMsg).files);
 			return;
 		case "snapshot":
 			// A snapshot means the server's session may not be the one these

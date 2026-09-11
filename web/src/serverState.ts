@@ -5,7 +5,16 @@
  * opening config/usage/snapshot/sessions would otherwise land with nobody
  * listening and the settings bar would stay empty until something changed.
  */
-import type { BranchPoint, ConfigMsg, ContextSourcesMsg, PromptRequest, ServerMsg, SessionInfo, UsageMsg } from "./types";
+import type {
+	BranchPoint,
+	ConfigMsg,
+	ContextSourcesMsg,
+	NoteFile,
+	PromptRequest,
+	ServerMsg,
+	SessionInfo,
+	UsageMsg,
+} from "./types";
 
 export interface Store<T> {
 	get: () => T;
@@ -41,6 +50,9 @@ export const contextSourcesStore = createStore<ContextSourcesMsg | null>(null);
  * the session tree. Empty until a question has been asked more than one way.
  */
 export const branchesStore = createStore<BranchPoint[]>([]);
+
+/** The notes in the working folder, as the server last listed them. */
+export const filesStore = createStore<NoteFile[]>([]);
 
 /**
  * Text a cleared queue handed back, waiting to be put in the composer. Emptied

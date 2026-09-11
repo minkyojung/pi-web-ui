@@ -120,11 +120,23 @@ export interface PromptDismissMsg {
 	cancelled: boolean;
 }
 
+/** A markdown file in the working folder. Mirrors NoteFile in files.ts. */
+export interface NoteFile {
+	path: string;
+	modified: number;
+}
+
+export interface FilesMsg {
+	type: "files";
+	files: NoteFile[];
+}
+
 export type ServerMsg =
 	| ConfigMsg
 	| UsageMsg
 	| ContextSourcesMsg
 	| BranchesMsg
+	| FilesMsg
 	| PromptRequestMsg
 	| PromptDismissMsg
 	| QueueClearedMsg
