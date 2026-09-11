@@ -12,7 +12,7 @@
  * this, so nothing here may run.
  */
 import type { BranchPoint } from "./branches";
-import type { NoteFile } from "./files";
+import type { NoteFile } from "./vault";
 
 export type { BranchPoint, NoteFile };
 
@@ -138,7 +138,7 @@ export interface SnapshotMsg {
 	items: Item[];
 }
 
-/** The notes in the working folder. See files.ts. */
+/** The notes in the working folder. See vault.ts. */
 export interface FilesMsg {
 	type: "files";
 	files: NoteFile[];

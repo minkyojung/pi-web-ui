@@ -28,7 +28,7 @@ import { modeToolNames } from "./toolModes.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { listNotes } from "./files.ts";
+import { listNotes } from "./vault.ts";
 import type {
 	BranchesMsg,
 	ClientMsg,
@@ -285,7 +285,7 @@ function branches(): BranchesMsg {
 	return { type: "branches", nodes: branchPoints(session().sessionManager) };
 }
 
-/** The notes in the working folder. See files.ts. */
+/** The notes in the working folder. See vault.ts. */
 function files(): FilesMsg {
 	return { type: "files", files: listNotes(CWD) };
 }
