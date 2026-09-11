@@ -182,7 +182,7 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
 		return true;
 	};
-	const CODES = { Enter: 13, Backspace: 8, Escape: 27, n: 78, z: 90 };
+	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, n: 78, z: 90 };
 	const press = async (key, { meta = false } = {}) => {
 		const modifiers = meta ? 4 : 0;
 		const code = key.length === 1 ? `Key${key.toUpperCase()}` : key;
@@ -190,7 +190,14 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchKeyEvent", { type: "keyDown", ...base });
 		await call("Input.dispatchKeyEvent", { type: "keyUp", ...base });
 	};
-	return { evaluate, shot, errors, click, press, close: () => socket.close() };
+	/** Characters one key at a time, which is what an input handler such as bracket closing hears. */
+	const keys = async (text) => {
+		for (const ch of text) {
+			await call("Input.dispatchKeyEvent", { type: "keyDown", key: ch, text: ch, unmodifiedText: ch });
+			await call("Input.dispatchKeyEvent", { type: "keyUp", key: ch });
+		}
+	};
+	return { evaluate, shot, errors, click, press, keys, close: () => socket.close() };
 }
 
 /**
@@ -579,6 +586,25 @@ check("a name already taken is refused, and the old one comes back with Escape",
 	await app.press("Escape");
 	assert.equal(await app.evaluate("document.getElementById('title').value"), "My note");
 	assert.equal(await app.evaluate("!!document.querySelector('#title ~ [role=alert]')"), false);
+});
+
+check("a list item continues on Enter and ends on a second, and a bracket closes as it opens", async ({ app, cwd }) => {
+	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	// Start a list at the end of the note.
+	await app.press("End", { meta: true });
+	await app.press("Enter");
+	assert.equal(await type(app, "- one"), true);
+	await app.press("Enter");
+	assert.equal(await type(app, "two"), true);
+	await app.press("Enter");
+	await app.press("Enter");
+	assert.equal(await type(app, "after "), true);
+	await app.keys("(");
+	await until("the list and the pair", async () => (await editorText(app)).includes("- one- twoafter ()"));
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	// The second Enter takes the empty marker away and leaves the cursor on that line.
+	assert.match(readFileSync(join(cwd, "ideas/second.md"), "utf8"), /- one\n- two\n\n?after \(\)/);
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {

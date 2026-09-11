@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { markdown, markdownKeymap, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { Annotation, ChangeSet, EditorState, type Extension, Transaction } from "@codemirror/state";
@@ -172,8 +173,24 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 			doc: "",
 			extensions: [
 				history(),
-				keymap.of([{ key: "Mod-s", run: () => (save(), true) }, indentWithTab, ...defaultKeymap, ...historyKeymap]),
+				// Order is precedence. The markdown keys go before the default ones
+				// or Enter would never reach them: a list item continues on Enter
+				// and ends on a second, a quote likewise. closeBrackets' Backspace
+				// takes the pair out together; it too has to see the key first.
+				keymap.of([
+					{ key: "Mod-s", run: () => (save(), true) },
+					indentWithTab,
+					...markdownKeymap,
+					...closeBracketsKeymap,
+					...defaultKeymap,
+					...historyKeymap,
+				]),
 				markdown({ base: markdownLanguage, codeLanguages: languages }),
+				// Pairs close as they open. Backticks too, for inline code; not
+				// `*`, which opens a list item as often as it opens emphasis, and
+				// `[[` needs nothing — the second `[` lands inside the first pair.
+				closeBrackets(),
+				markdownLanguage.data.of({ closeBrackets: { brackets: ["(", "[", "{", "'", '"', "`"] } }),
 				syntaxHighlighting(markup),
 				EditorView.lineWrapping,
 				theme,
@@ -190,6 +207,10 @@ export function Editor({ path, extensions = [] }: { path: string; extensions?: E
 		sent.current = null;
 		dirty.current = false;
 		setStatus("loading");
+		// A note opened is a note about to be typed in — unless the person was
+		// mid-sentence to pi, whose box is not to be taken from under them.
+		const active = document.activeElement;
+		if (!(active instanceof HTMLTextAreaElement) && !(active instanceof HTMLInputElement)) v.focus();
 		// The write barrier, in its three forms: before a prompt (whoever sends
 		// one calls flushSaves), before the page goes, and before this box does.
 		const unregister = registerSave(save);
