@@ -122,6 +122,27 @@ export function replay(changes: Change[]): { text: string; spans: Span[] } {
 	return { text, spans };
 }
 
+/**
+ * Where a place in a note has moved to, after the changes since.
+ *
+ * A change lies before the place, after it, or around it: before, the place
+ * shifts by what the change added or took; after, it does not move; around,
+ * the text it named is gone and the place collapses to the end of what took
+ * its place. The arithmetic CodeMirror's mapPos does over a change set — the
+ * log is the change set here.
+ *
+ * Two places mapped this way come out equal when everything between them was
+ * replaced whole, which is how a chosen part of a note is known to be gone.
+ */
+export function mapThrough(changes: Change[], pos: number): number {
+	for (const change of changes) {
+		if (isTouch(change)) continue;
+		if (change.to <= pos) pos += change.inserted.length - (change.to - change.from);
+		else if (change.from < pos) pos = change.from + change.inserted.length;
+	}
+	return pos;
+}
+
 /** Mark what lies in [from, to) as accepted, cutting spans at the edges. */
 function touch(spans: Span[], from: number, to: number): Span[] {
 	const out: Span[] = [];
