@@ -60,3 +60,58 @@ test("범위 밖은 보지 않는다", () => {
   for (; it.value; it.next()) out.push(it.from);
   assert.deepEqual(out, [0]);
 });
+
+import { ensureSyntaxTree } from "@codemirror/language";
+import { blocks, toggleTask } from "../web/src/features/livePreview.ts";
+
+const parsed = (doc, cursor) => {
+  const s = state(doc, cursor);
+  ensureSyntaxTree(s, s.doc.length, 1000);
+  return s;
+};
+/** Each block decoration as [line number or text, kind]. */
+const drawn = (s) => {
+  const out = [];
+  const it = blocks(s).deco.iter();
+  for (; it.value; it.next()) {
+    const d = it.value;
+    if (d.spec.class) out.push([s.doc.lineAt(it.from).number, d.spec.class]);
+    else if (d.spec.widget) out.push([s.doc.sliceString(it.from, it.to), d.spec.widget.constructor.name]);
+    else out.push([s.doc.sliceString(it.from, it.to), "hidden"]);
+  }
+  return out;
+};
+
+test("펜스 코드는 줄마다 한 급으로, 마커 줄까지", () => {
+  assert.deepEqual(drawn(parsed("a\n\n```js\nx\n```\n")), [[3, "cm-code-line"], [4, "cm-code-line"], [5, "cm-code-line"]]);
+});
+
+test("인용은 줄마다 막대가 서고, 커서가 없으면 >가 숨는다", () => {
+  assert.deepEqual(drawn(parsed("> a\n> b\n\nc")), [[1, "cm-quote-line"], ["> ", "hidden"], [2, "cm-quote-line"], ["> ", "hidden"]]);
+  assert.deepEqual(drawn(parsed("> a\n> b\n\nc", 5)), [[1, "cm-quote-line"], [2, "cm-quote-line"]], "cursor on any of its lines shows every >");
+});
+
+test("구분선은 커서가 그 줄에 없을 때만 선으로 그려진다", () => {
+  assert.deepEqual(drawn(parsed("a\n\n---\n\nb")), [["---", "Rule"]]);
+  assert.deepEqual(drawn(parsed("a\n\n---\n\nb", 3)), []);
+});
+
+test("할 일 표시는 커서가 없는 줄에서 상자가 되고, 그 상자는 건너뛰는 범위다", () => {
+  const s = parsed("- [ ] a\n- [x] b\n", 0);
+  assert.deepEqual(drawn(s), [["[x] ", "Checkbox"]]);
+  const atoms = [];
+  const it = blocks(s).atoms.iter();
+  for (; it.value; it.next()) atoms.push([it.from, it.to]);
+  assert.deepEqual(atoms, [[10, 14]]);
+});
+
+test("Mod-Enter는 커서 줄의 할 일을 켜고 끈다, 없으면 손대지 않는다", () => {
+  const run = (doc, cursor) => {
+    let out = null;
+    const handled = toggleTask({ state: parsed(doc, cursor), dispatch: (tr) => (out = tr.changes) });
+    return { handled, out };
+  };
+  assert.deepEqual(run("- [ ] a\n", 7), { handled: true, out: [{ from: 2, to: 5, insert: "[x]" }] });
+  assert.deepEqual(run("- [X] a\n", 7), { handled: true, out: [{ from: 2, to: 5, insert: "[ ]" }] });
+  assert.deepEqual(run("- a\n", 3), { handled: false, out: null });
+});

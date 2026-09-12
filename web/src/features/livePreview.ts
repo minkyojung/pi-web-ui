@@ -1,21 +1,30 @@
 /**
- * Markup hidden where the cursor is not — Obsidian's Live Preview, the
- * inline half of it.
+ * Markup hidden where the cursor is not — Obsidian's Live Preview.
  *
- * One rule: a heading, an emphasis, a link keeps its markup while any
- * selection range touches it, and hides it otherwise. `hidden` is that rule
- * as a pure function of the state and the ranges to look at, so it can be
- * pinned in node without a browser; the view plugin below only calls it
- * over the visible lines and again when the doc, the viewport or the
- * selection moves. Nothing here spans a line break, which is what lets it
- * be a plugin rather than a state field (see EditorView.decorations).
+ * One rule: a node keeps its markup while any selection range touches it,
+ * and hides it otherwise. Two halves, as CodeMirror divides them:
  *
- * The layer sits in a compartment so Mod-e takes it out and puts it back —
+ * - Inline (`hidden`): headings, emphasis, links. Nothing spans a line
+ *   break, so a view plugin builds it over the visible lines only.
+ * - Block (`blocks`): fenced code lines, quote bars, a rule, a checkbox.
+ *   Line decorations and widgets change the vertical layout, which the
+ *   docs allow only from a state field, so this half is one, over the whole
+ *   note, mapped through typing and rebuilt when the tree or the selection
+ *   moves. Its widgets are atomic: the cursor steps over a checkbox, not
+ *   into it.
+ *
+ * Both are pure functions of the state and the ranges, so they are pinned
+ * in node without a browser; the plugin and the field only call them. The
+ * layer sits in a compartment so Mod-e takes it out and puts it back —
  * source mode and live preview, as Obsidian has them.
+ *
+ * Mod-Enter on a task line ticks its box. The pending layer binds the same
+ * key above this one and lets it through when the cursor is not on pi's
+ * words, so the two do not meet.
  */
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import { Compartment, type EditorState, type Extension, RangeSetBuilder, type SelectionRange } from "@codemirror/state";
-import { Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate } from "@codemirror/view";
+import { Compartment, type EditorState, type Extension, Prec, RangeSetBuilder, type SelectionRange, StateField, type Transaction } from "@codemirror/state";
+import { Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { SyntaxNodeRef } from "@lezer/common";
 
 const hide = Decoration.replace({});
@@ -99,6 +108,162 @@ const plugin = ViewPlugin.fromClass(
 	{ decorations: (p) => p.decorations },
 );
 
+// ---- The block half ----
+
+const codeLine = Decoration.line({ class: "cm-code-line" });
+const quoteLine = Decoration.line({ class: "cm-quote-line" });
+
+class Rule extends WidgetType {
+	toDOM() {
+		const el = document.createElement("hr");
+		el.className = "cm-rule";
+		return el;
+	}
+	eq() {
+		return true;
+	}
+}
+
+class Checkbox extends WidgetType {
+	readonly checked: boolean;
+	constructor(checked: boolean) {
+		super();
+		this.checked = checked;
+	}
+	toDOM() {
+		const el = document.createElement("input");
+		el.type = "checkbox";
+		el.className = "cm-task";
+		el.checked = this.checked;
+		return el;
+	}
+	eq(other: Checkbox) {
+		return other.checked === this.checked;
+	}
+	// The click is ours (below); everything else is the editor's.
+	ignoreEvent(e: Event) {
+		return e.type !== "mousedown" && e.type !== "click";
+	}
+}
+
+const rule = Decoration.replace({ widget: new Rule() });
+const box = (checked: boolean) => Decoration.replace({ widget: new Checkbox(checked) });
+
+/** Whether the selection is on any line of the block. */
+const onLines = (state: EditorState, ranges: readonly SelectionRange[], from: number, to: number) =>
+	touches(ranges, state.doc.lineAt(from).from, state.doc.lineAt(to).to);
+
+/**
+ * The block decorations for the whole note: every fenced code line and
+ * quote line in its class, and — where the selection is not — a quote's
+ * `>` hidden, a rule drawn as one, a task's marker drawn as a box.
+ * `atoms` is the widgets alone, for cursor motion to step over.
+ */
+export function blocks(state: EditorState, ranges = state.selection.ranges): { deco: DecorationSet; atoms: DecorationSet } {
+	const deco: { from: number; to: number; value: Decoration }[] = [];
+	const atoms = new RangeSetBuilder<Decoration>();
+	const lines = (from: number, to: number, value: Decoration) => {
+		const first = state.doc.lineAt(from).number;
+		const last = state.doc.lineAt(to).number;
+		for (let n = first; n <= last; n++) {
+			const l = state.doc.line(n);
+			deco.push({ from: l.from, to: l.from, value });
+		}
+	};
+	syntaxTree(state).iterate({
+		enter: (node: SyntaxNodeRef) => {
+			switch (node.name) {
+				case "FencedCode":
+					lines(node.from, node.to, codeLine);
+					return false;
+				case "Blockquote": {
+					lines(node.from, node.to, quoteLine);
+					if (onLines(state, ranges, node.from, node.to)) return false;
+					// The marks of the lines after the first sit inside the paragraph, so the whole quote is walked.
+					node.node.cursor().iterate((c) => {
+						if (c.name !== "QuoteMark") return;
+						const end = state.doc.sliceString(c.to, c.to + 1) === " " ? c.to + 1 : c.to;
+						deco.push({ from: c.from, to: end, value: hide });
+					});
+					return false;
+				}
+				case "HorizontalRule":
+					if (onLines(state, ranges, node.from, node.to)) return false;
+					deco.push({ from: node.from, to: node.to, value: rule });
+					atoms.add(node.from, node.to, rule);
+					return false;
+				case "Task": {
+					const marker = node.node.getChild("TaskMarker");
+					if (!marker || onLines(state, ranges, node.from, node.to)) return false;
+					const checked = state.doc.sliceString(marker.from, marker.to).toLowerCase() === "[x]";
+					const end = state.doc.sliceString(marker.to, marker.to + 1) === " " ? marker.to + 1 : marker.to;
+					deco.push({ from: marker.from, to: end, value: box(checked) });
+					atoms.add(marker.from, end, box(checked));
+					return false;
+				}
+			}
+		},
+	});
+	return { deco: Decoration.set(deco.map((d) => d.value.range(d.from, d.to)), true), atoms: atoms.finish() };
+}
+
+/** The change that ticks or unticks the task on the line at `pos`, if there is one. */
+function taskToggle(state: EditorState, pos: number): { from: number; to: number; insert: string } | null {
+	const line = state.doc.lineAt(pos);
+	let change: { from: number; to: number; insert: string } | null = null;
+	syntaxTree(state).iterate({
+		from: line.from,
+		to: line.to,
+		enter: (n) => {
+			if (n.name !== "TaskMarker") return;
+			const on = state.doc.sliceString(n.from, n.to).toLowerCase() === "[x]";
+			change = { from: n.from, to: n.to, insert: on ? "[ ]" : "[x]" };
+			return false;
+		},
+	});
+	return change;
+}
+
+/** Tick or untick the task on the line of every cursor. */
+export const toggleTask = (view: EditorView) => {
+	const changes = view.state.selection.ranges.map((r) => taskToggle(view.state, r.head)).filter((c) => c !== null);
+	if (changes.length === 0) return false;
+	view.dispatch({ changes, userEvent: "input" });
+	return true;
+};
+
+const field = StateField.define<{ deco: DecorationSet; atoms: DecorationSet }>({
+	create: (state) => blocks(state),
+	update(value, tr: Transaction) {
+		if (tr.docChanged || tr.selection || syntaxTree(tr.startState) !== syntaxTree(tr.state)) return blocks(tr.state);
+		return value;
+	},
+	provide: (f) => [EditorView.decorations.from(f, (v) => v.deco), EditorView.atomicRanges.of((view) => view.state.field(f).atoms)],
+});
+
+const blockLayer: Extension = [
+	field,
+	EditorView.domEventHandlers({
+		mousedown(event, view) {
+			const el = event.target;
+			if (!(el instanceof HTMLInputElement) || !el.classList.contains("cm-task")) return false;
+			event.preventDefault();
+			const change = taskToggle(view.state, view.posAtDOM(el));
+			if (change) view.dispatch({ changes: change, userEvent: "input" });
+			return true;
+		},
+	}),
+	// Above the editor's own keys, which give Mod-Enter a blank line. The
+	// pending layer's Mod-Enter is as high and listed first, so it goes first.
+	Prec.high(keymap.of([{ key: "Mod-Enter", run: toggleTask }])),
+	EditorView.baseTheme({
+		".cm-code-line": { fontFamily: "ui-monospace, monospace", fontSize: "0.9em" },
+		".cm-quote-line": { borderLeft: "2px solid var(--border)", paddingLeft: "0.75rem" },
+		".cm-rule": { border: "none", borderTop: "1px solid var(--border)", margin: "0.6em 0", display: "block" },
+		".cm-task": { verticalAlign: "middle", margin: "0 0.4em 0 0" },
+	}),
+];
+
 const mode = new Compartment();
 const off: Extension = [];
 
@@ -106,11 +271,13 @@ const off: Extension = [];
 export const isLivePreview = (state: EditorState) => mode.get(state) !== off;
 
 export const toggleLivePreview = (view: EditorView) => {
-	view.dispatch({ effects: mode.reconfigure(isLivePreview(view.state) ? off : plugin) });
+	view.dispatch({ effects: mode.reconfigure(isLivePreview(view.state) ? off : layer) });
 	return true;
 };
 
+const layer: Extension = [plugin, blockLayer];
+
 export const livePreview: Extension = [
-	mode.of(plugin),
-	keymap.of([{ key: "Mod-e", run: toggleLivePreview }]),
+	mode.of(layer),
+	Prec.high(keymap.of([{ key: "Mod-e", run: toggleLivePreview }])),
 ];

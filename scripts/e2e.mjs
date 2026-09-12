@@ -653,6 +653,25 @@ check("an empty note says so, and a code block is drawn in a monospace", async (
 	assert.equal(await app.evaluate("[...document.querySelectorAll('#editor .cm-line')].filter((l) => !l.classList.contains('cm-code-line')).length"), 3, "the prose lines are not");
 });
 
+check("a task is a box off the cursor's line, ticked by a click or ⌘Enter, and a rule is a line", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "tasks.md"), "- [ ] one\n- [x] two\n\n---\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="tasks.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="tasks.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("- [ ] one"));
+	// The cursor lands on the first line, so that task stays as text and the other is a box; the rule is a line.
+	await until("one box and a rule", () => app.evaluate("document.querySelectorAll('#editor input.cm-task').length === 1 && document.querySelectorAll('#editor hr.cm-rule').length === 1"));
+	assert.ok((await shownText(app)).includes("[ ] one"));
+	assert.ok(!(await shownText(app)).includes("[x] two"));
+	// Clicking the box ticks it off in the text.
+	assert.equal(await app.click("#editor input.cm-task", 0), true);
+	await until("two unticked", async () => (await editorText(app)).includes("- [ ] two"));
+	// ⌘Enter on the cursor's line ticks that one.
+	await app.press("Enter", { meta: true });
+	await until("one ticked", async () => (await editorText(app)).includes("- [x] one"));
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.equal(readFileSync(join(cwd, "tasks.md"), "utf8"), "- [x] one\n- [ ] two\n\n---\n\nend\n");
+});
+
 check("deleting a note closes it and offers it back, and Restore brings it back open", async ({ app, cwd }) => {
 	await app.evaluate(`document.querySelector('#notes button[title="code.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved");

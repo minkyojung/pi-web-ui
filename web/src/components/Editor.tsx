@@ -9,7 +9,6 @@ import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/sea
 import { drawSelection, dropCursor, EditorView, keymap, placeholder, scrollPastEnd } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-import { codeBlocks } from "../features/codeBlocks";
 import { linkCompletion } from "../features/linkCompletion";
 import { livePreview } from "../features/livePreview";
 import { landOn, links, notesChanged } from "../features/links";
@@ -248,7 +247,6 @@ export function Editor({
 				closeBrackets(),
 				markdownLanguage.data.of({ closeBrackets: { brackets: ["(", "[", "{", "'", '"', "`"] } }),
 				syntaxHighlighting(markup),
-				codeBlocks,
 				EditorView.lineWrapping,
 				// The selection and cursor drawn by the editor rather than the
 				// browser, which is what lets there be more than one of each.
