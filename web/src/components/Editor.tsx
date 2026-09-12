@@ -107,6 +107,8 @@ const markup = HighlightStyle.define([
 	{ tag: tags.processingInstruction, color: "var(--muted-foreground)" },
 	{ tag: tags.quote, color: "var(--muted-foreground)" },
 	{ tag: tags.meta, color: "var(--muted-foreground)" },
+	// %%a note to self%%: there, but plainly not part of the note.
+	{ tag: tags.comment, color: "var(--muted-foreground)", fontStyle: "italic", class: "cm-comment" },
 ]);
 
 /**

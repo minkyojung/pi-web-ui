@@ -58,6 +58,10 @@ test("==강조==는 양끝의 표시를 숨긴다", () => {
   assert.deepEqual(gone(state("a ==hi== b\n", 4)), []);
 });
 
+test("%%주석%%은 양끝의 표시를 숨긴다", () => {
+  assert.deepEqual(gone(state("a %%hi%% b\n")), ["%%", "%%"]);
+});
+
 test("범위 밖은 보지 않는다", () => {
   const s = state("# a\n\n# b\n");
   const it = hidden(s, 0, 3).iter();

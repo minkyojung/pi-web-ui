@@ -785,6 +785,16 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
 });
 
+check("%%a comment%% is set apart, its marks hidden off the cursor", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "comment.md"), "say %%to self%% now\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="comment.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="comment.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("%%to self%%"));
+	await until("the comment, as one span", () => app.evaluate("[...document.querySelectorAll('#editor .cm-comment')].map((s) => s.textContent).join('')").then((t) => t.includes("to self")));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("the marks to be hidden", async () => (await shownText(app)).includes("say to self now"));
+});
+
 check("a quote opening with [!note] is a callout, named by its type", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "callout.md"), "> [!note] Keep\n> the body\n\nafter\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="callout.md"]')`));
