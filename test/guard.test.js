@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { VAULT_PROMPT, guard, looking, mentionsAppDir, underAppDir } from "../guard.ts";
 
@@ -75,6 +78,20 @@ test("앱의 폴더는 여전히 먼저 막히고, 그 이유로 막힌다", asy
   const answer = await refusing("/v")("write", { path: ".pi/history/a.md.jsonl" });
   assert.equal(answer?.block, true);
   assert.match(answer.reason, /belongs to the app/);
+});
+
+test("대문자로 쓴 확장자도 노트로 알아본다 — 파일시스템이 같은 파일을 열어 준다면", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "guard-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "a.md"), "mine\n");
+  try {
+    readFileSync(join(dir, "a.MD"));
+  } catch {
+    return t.skip("대소문자를 구분하는 파일시스템");
+  }
+  const answer = await refusing(dir)("write", { path: "a.MD" });
+  assert.equal(answer?.block, true, "글자만 봐서는 노트가 아니지만, 쓰면 노트가 바뀐다");
+  assert.match(answer.reason, /note_write/);
 });
 
 test("프롬프트는 노트를 쓰는 도구가 무엇인지 말한다", () => {

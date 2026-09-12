@@ -11,8 +11,8 @@
  * the two writers are one person and one agent that works in turns, so this
  * is rare, and rare things are better seen than smoothed over.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
 export type NoteFile = {
 	/** Relative to the folder, with forward slashes, so it reads as a name. */
@@ -56,43 +56,93 @@ export function listNotes(root: string): NoteFile[] {
 }
 
 /**
- * The absolute path of a note, or null for anything that is not one.
+ * A path as the file system itself spells it.
  *
- * Inside the folder, and a markdown file: pi may reach every file in the
- * folder with its own tools, but what the editor opens and saves is a note.
- * Resolved and compared, not pattern-matched, so `..` in any encoding is
- * caught the same way.
+ * Two strings can name one file. A Mac opens `a.MD` when the file is `a.md`,
+ * and opens `회의록.md` whichever way its characters are composed; a symlink
+ * is a second name for a third place. Deciding "is this the same note?" by
+ * comparing the strings gets all of these wrong, and getting them wrong means
+ * the app writes one note's history under two names.
+ *
+ * So it is not decided here: realpath asks the file system, which is the only
+ * thing that knows. This is the same problem git settles with core.ignorecase
+ * and core.precomposeunicode, taken at the one place a path becomes a name.
+ *
+ * A note being made does not exist yet, so the deepest part of the path that
+ * does is resolved and the rest kept as asked — which is the spelling it will
+ * be created with, and true from then on.
  */
-export function resolveNote(root: string, path: string): string | null {
-	if (!path || isAbsolute(path) || !path.endsWith(".md")) return null;
-	const full = normalize(join(root, path));
-	const rel = relative(root, full);
-	if (!rel || rel.startsWith("..") || isAbsolute(rel)) return null;
-	if (rel.split(sep).some((part) => part.startsWith("."))) return null;
-	return full;
+function asOnDisk(full: string): string {
+	const tail: string[] = [];
+	let at = full;
+	for (;;) {
+		try {
+			return join(realpathSync.native(at), ...tail);
+		} catch {
+			const up = dirname(at);
+			if (up === at) return full; // No part of it is there.
+			tail.unshift(basename(at));
+			at = up;
+		}
+	}
 }
 
 /**
- * The note a tool's path argument names, as the vault knows notes — from the
- * root, with no leading slash — or null if it does not name one.
+ * The note a path names, as the vault names it — from the root, forward
+ * slashes, spelled as the disk spells it — or null if it names none.
  *
- * pi's tools take a path as given, relative or absolute, and every part of the
- * app that has to decide whether pi is touching a note asks this one question
- * so that they cannot disagree about the answer.
+ * Inside the folder, and a markdown file: pi may reach every file in the
+ * folder with its own tools, but what the editor opens and saves is a note.
+ * Containment is checked after resolving, so `..` in any encoding is caught,
+ * and so is a symlink pointing out of the folder, which no amount of reading
+ * the string would catch.
+ */
+export function noteAt(root: string, given: string): { path: string; full: string } | null {
+	if (!given) return null;
+	const full = asOnDisk(isAbsolute(given) ? given : join(root, given));
+	const rel = relative(asOnDisk(root), full);
+	if (!rel || rel.startsWith("..") || isAbsolute(rel)) return null;
+	if (rel.split(sep).some((part) => part.startsWith("."))) return null;
+	// On the disk's spelling, so `a.MD` is this note where the file system says
+	// it is, and a name that is only ever going to be `.MD` is not a note.
+	if (!rel.endsWith(".md")) return null;
+	return { path: rel.split(sep).join("/"), full };
+}
+
+/**
+ * The absolute path of a note named from the folder, or null for anything
+ * that is not one. Notes are named from the folder and nowhere else, so an
+ * absolute path is not one of them — see notePath for what pi may send.
+ */
+export function resolveNote(root: string, path: string): string | null {
+	if (isAbsolute(path)) return null;
+	return noteAt(root, path)?.full ?? null;
+}
+
+/**
+ * The note a tool's path argument names, as the vault knows notes.
+ *
+ * pi's tools take a path as given, relative or absolute and spelled however
+ * the model spelled it, and every part of the app that has to decide whether
+ * pi is touching a note asks this one question so that they cannot disagree
+ * about the answer — or about which note it was.
  */
 export function notePath(root: string, given: string): string | null {
-	const path = isAbsolute(given) ? relative(root, given) : given;
-	return resolveNote(root, path) ? path : null;
+	return noteAt(root, given)?.path ?? null;
 }
 
 export type Note = { path: string; text: string; modified: number };
 
-/** A note's text and the time it was written, or null if there is no such note. */
+/**
+ * A note's text and the time it was written, or null if there is no such note.
+ * The path comes back as the vault names it, which is not always how it was
+ * asked for, and is what everything downstream files it under.
+ */
 export function readNote(root: string, path: string): Note | null {
-	const full = resolveNote(root, path);
-	if (!full) return null;
+	const found = noteAt(root, path);
+	if (!found) return null;
 	try {
-		return { path, text: readFileSync(full, "utf8"), modified: statSync(full).mtimeMs };
+		return { path: found.path, text: readFileSync(found.full, "utf8"), modified: statSync(found.full).mtimeMs };
 	} catch {
 		return null;
 	}
