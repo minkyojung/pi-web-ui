@@ -34,6 +34,13 @@ export type ClientMsg =
 			/** The note open in the editor, for pi to be told about this turn. Not part of the message. */
 			note?: string;
 			/**
+			 * The words chosen in that note when this was sent, for pi to be told
+			 * about this turn beside the note itself. Like `note`, not part of the
+			 * message: what is chosen when a question is asked again later is
+			 * whatever is chosen then, which is nothing to do with this one.
+			 */
+			chosen?: string;
+			/**
 			 * Asking about a chosen part of the open note rather than typing in the
 			 * box: `text` is the question and this is what it is about. The chosen
 			 * words are quoted into what pi is sent, and the answer is written into

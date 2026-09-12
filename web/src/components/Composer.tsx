@@ -1,12 +1,14 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { PencilIcon, X } from "lucide-react";
+import { PencilIcon, TextQuoteIcon, X } from "lucide-react";
 
+import { type Chosen as ChosenWords, chosenStore } from "../chosen";
 import { appendRestored } from "../queue";
 import { flushSaves } from "../saves";
 import { askingAgainStore, configStore, promptsStore, restoredStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
+import { Badge } from "./ui/badge";
 import { ContextPopover } from "./ContextPopover";
 import { ModelSelect } from "./ModelSelect";
 import { QueuedMessages } from "./QueuedMessages";
@@ -16,6 +18,7 @@ import {
 	PromptInput,
 	PromptInputBody,
 	PromptInputFooter,
+	PromptInputHeader,
 	PromptInputSubmit,
 	PromptInputTextarea,
 	PromptInputTools,
@@ -32,7 +35,13 @@ const MOD = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
  * Whatever is typed there and not yet written goes out on the same socket
  * ahead of this, so pi reads what is on screen — see saves.ts.
  */
-function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "steer", note: string | null) {
+function submit(
+	form: HTMLFormElement,
+	text: string,
+	behavior: "followUp" | "steer",
+	note: string | null,
+	chosen: ChosenWords | null,
+) {
 	const trimmed = text.trim();
 	if (!trimmed) return;
 	flushSaves();
@@ -44,6 +53,9 @@ function submit(form: HTMLFormElement, text: string, behavior: "followUp" | "ste
 		type: "prompt",
 		text: trimmed,
 		...(note ? { note } : {}),
+		// What was chosen in the note, for this turn: pi is told what the
+		// question is about, and the words stay out of the message itself.
+		...(chosen && chosen.path === note ? { chosen: chosen.text } : {}),
 		behavior,
 		...(asking ? { entryId: asking.entryId } : {}),
 	});
@@ -78,6 +90,35 @@ function AskingAgain() {
 }
 
 /**
+ * What is chosen in the note, above the box, so that a question can be about
+ * it without being made to quote it.
+ *
+ * It appears by being chosen and goes by being unchosen — no key, no button to
+ * attach with. Dropping it with the × leaves the words chosen on screen and
+ * only stops them riding along, until something else is chosen.
+ */
+function Chosen({ chosen, onDrop }: { chosen: ChosenWords | null; onDrop: () => void }) {
+	if (!chosen) return null;
+
+	return (
+		<PromptInputHeader id="chosen">
+			<Badge variant="secondary" className="max-w-full gap-1 font-normal" title={chosen.text}>
+				<TextQuoteIcon className="size-3 shrink-0" />
+				<span className="min-w-0 truncate">{chosen.text}</span>
+				<button
+					type="button"
+					onClick={onDrop}
+					aria-label="Do not send the chosen words"
+					className="rounded-sm p-0.5 hover:bg-accent hover:text-accent-foreground"
+				>
+					<X className="size-3" />
+				</button>
+			</Badge>
+		</PromptInputHeader>
+	);
+}
+
+/**
  * Where you write to pi.
  *
  * What to do with a message typed mid-run used to be a dropdown, which asked
@@ -91,6 +132,10 @@ export function Composer({ note }: { note: string | null }) {
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const streaming = config?.isStreaming ?? false;
 	const asking = useSyncExternalStore(promptsStore.subscribe, promptsStore.get).length > 0;
+	// What the editor points at, unless this one has been dropped with the ×.
+	const chosen = useSyncExternalStore(chosenStore.subscribe, chosenStore.get);
+	const [dropped, setDropped] = useState<string | null>(null);
+	const pointing = chosen && chosen.path === note && chosen.text !== dropped ? chosen : null;
 
 	// Text a cleared queue handed back. The box is uncontrolled — PromptInput
 	// reads it out of the form on submit — so it is written directly, appended
@@ -109,8 +154,9 @@ export function Composer({ note }: { note: string | null }) {
 			<QueuedMessages />
 			<AskingAgain />
 			<PromptInput
-				onSubmit={(message, event) => submit(event.currentTarget, message.text, "followUp", note)}
+				onSubmit={(message, event) => submit(event.currentTarget, message.text, "followUp", note, pointing)}
 			>
+				<Chosen chosen={pointing} onDrop={() => setDropped(pointing?.text ?? null)} />
 				<PromptInputBody>
 					{/* The component asks for four lines of empty box; one is enough until
 					    there is something to show, and it grows from there. */}
@@ -125,7 +171,7 @@ export function Composer({ note }: { note: string | null }) {
 							// cuts a tool-using run short. Enter alone queues instead.
 							if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
 								e.preventDefault();
-								submit(e.currentTarget.form!, e.currentTarget.value, "steer", note);
+								submit(e.currentTarget.form!, e.currentTarget.value, "steer", note, pointing);
 							}
 						}}
 					/>

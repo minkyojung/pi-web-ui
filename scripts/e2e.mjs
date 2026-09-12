@@ -183,6 +183,17 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1, modifiers });
 		return true;
 	};
+	/** Choosing words with the mouse: press at one end of an element and let go at the other. */
+	const drag = async (selector, nth = 0) => {
+		const box = await evaluate(`(() => { const el = document.querySelectorAll(${JSON.stringify(selector)})[${nth}]; if (!el) return null; const r = el.getBoundingClientRect(); return [r.left + 1, r.top + r.height / 2, r.right - 1]; })()`);
+		if (!box) return false;
+		const [x, y, end] = box;
+		await call("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1 });
+		await call("Input.dispatchMouseEvent", { type: "mouseMoved", x: (x + end) / 2, y, button: "left", buttons: 1 });
+		await call("Input.dispatchMouseEvent", { type: "mouseMoved", x: end, y, button: "left", buttons: 1 });
+		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x: end, y, button: "left", buttons: 0, clickCount: 1 });
+		return true;
+	};
 	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, f: 70, n: 78, p: 80, z: 90 };
 	const press = async (key, { meta = false, shift = false } = {}) => {
 		const modifiers = (meta ? 4 : 0) | (shift ? 8 : 0);
@@ -198,7 +209,7 @@ async function openPage(devtoolsPort, url) {
 			await call("Input.dispatchKeyEvent", { type: "keyUp", key: ch });
 		}
 	};
-	return { evaluate, shot, errors, click, press, keys, close: () => socket.close() };
+	return { evaluate, shot, errors, click, drag, press, keys, close: () => socket.close() };
 }
 
 /**
@@ -542,6 +553,23 @@ check("what pi wrote is marked, until it is accepted or put back", async ({ app,
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 	assert.ok(readFileSync(join(cwd, "ideas/second.md"), "utf8").startsWith("# second"));
 	assert.deepEqual(await piMarks(app), []);
+});
+
+check("choosing words in a note shows them above the box, and the × takes them off", async ({ app }) => {
+	await app.evaluate(`document.querySelector('#notes button[title="first.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved");
+	// Chosen the way a person chooses: dragged across the line.
+	assert.equal(await app.drag("#editor .cm-line", 0), true);
+	const chip = await until("the chosen words above the box", async () => {
+		const text = await app.evaluate("document.getElementById('chosen')?.textContent ?? ''");
+		return text.trim() ? text : null;
+	});
+	assert.ok((await editorText(app)).includes(chip.trim()), `what is above the box is what is chosen in the note: ${chip}`);
+	await app.shot("chosen");
+	// Taking them off leaves the words chosen on screen and only stops them going.
+	await app.evaluate(`document.querySelector('#chosen button').click()`);
+	await until("the chip to go", async () => !(await app.evaluate("!!document.getElementById('chosen')")));
+	assert.equal(await app.evaluate("!!document.querySelector('#editor .cm-selectionBackground, #editor .cm-selectionLayer > *')"), true, "the words are still chosen");
 });
 
 check("⌘N makes an untitled note and opens it", async ({ app, cwd }) => {
