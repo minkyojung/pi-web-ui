@@ -3,7 +3,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { markdown, markdownKeymap, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { Annotation, ChangeSet, EditorState, type Extension, Transaction } from "@codemirror/state";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { drawSelection, dropCursor, EditorView, keymap, placeholder, scrollPastEnd } from "@codemirror/view";
@@ -273,6 +273,10 @@ export function Editor({
 				]),
 				// No HTML tag completion: a `<` in prose is a less-than, not a tag.
 				markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [noteSyntax], completeHTMLTags: false }),
+				// Four spaces, as Typora and GitHub have it and as Obsidian's tab
+				// counts: what a Tab inserts, and enough to nest under `1. ` or
+				// `10. `, which two would not be.
+				indentUnit.of("    "),
 				// Pairs close as they open. Backticks too, for inline code; not
 				// `*`, which opens a list item as often as it opens emphasis, and
 				// `[[` needs nothing — the second `[` lands inside the first pair.

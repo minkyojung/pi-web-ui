@@ -194,7 +194,7 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x: end, y, button: "left", buttons: 0, clickCount: 1 });
 		return true;
 	};
-	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, b: 66, e: 69, f: 70, i: 73, k: 75, n: 78, p: 80, z: 90 };
+	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, Tab: 9, b: 66, e: 69, f: 70, i: 73, k: 75, n: 78, p: 80, z: 90 };
 	const press = async (key, { meta = false, shift = false } = {}) => {
 		const modifiers = (meta ? 4 : 0) | (shift ? 8 : 0);
 		const code = key.length === 1 ? `Key${key.toUpperCase()}` : key;
@@ -783,6 +783,19 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	await until("the link", async () => (await editorText(app)).endsWith("[[My note]]"));
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
+});
+
+check("Tab nests a numbered item and the numbers follow; Shift-Tab brings it back", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "numbered.md"), "1. a\n2. b\n3. c\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="numbered.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="numbered.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 6 } }); })()`);
+	await app.press("Tab");
+	await until("b nested under a, c renumbered", async () => (await editorText(app)) === "1. a\n    1. b\n2. c\n");
+	await app.press("Tab", { shift: true });
+	await until("back in one list", async () => (await editorText(app)) === "1. a\n2. b\n3. c\n");
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 });
 
 check("the smaller marks hide too, and a done task reads as done", async ({ app, cwd }) => {
