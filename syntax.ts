@@ -9,6 +9,7 @@
  * URL is the URL's on both, a `[[link]]` in a property is text on both. Add
  * a syntax here, once, and both ends know it.
  */
+import { styleTags, Tag, tags } from "@lezer/highlight";
 import { Emoji, GFM, type MarkdownExtension, parser as commonmark, Subscript, Superscript } from "@lezer/markdown";
 
 import { comment } from "./comment.ts";
@@ -17,8 +18,17 @@ import { highlight } from "./highlight.ts";
 import { tag } from "./tag.ts";
 import { wikiLink } from "./wikilink.ts";
 
+/**
+ * Inline code as a tag of its own under monospace, so the editor can draw
+ * it in a box the way Obsidian does, while fenced code — monospace too —
+ * stays a plain block. The highlighter takes the most specific rule, so the
+ * editor's rule for this tag says the font as well.
+ */
+export const inlineCodeTag = Tag.define(tags.monospace);
+const inlineCode = { props: [styleTags({ "InlineCode/...": inlineCodeTag })] };
+
 /** The note syntax, for the editor to add to its markdown language. */
-export const noteSyntax: MarkdownExtension = [wikiLink, frontMatter, highlight, tag, comment];
+export const noteSyntax: MarkdownExtension = [wikiLink, frontMatter, highlight, tag, comment, inlineCode];
 
 /** The whole language, for the server: what the editor parses with, without the editor. */
 export const parser = commonmark.configure([GFM, Subscript, Superscript, Emoji, noteSyntax]);

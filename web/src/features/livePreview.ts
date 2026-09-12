@@ -37,12 +37,18 @@ const MARKUP: Record<string, Set<string>> = {
 	ATXHeading4: new Set(["HeaderMark"]),
 	ATXHeading5: new Set(["HeaderMark"]),
 	ATXHeading6: new Set(["HeaderMark"]),
+	SetextHeading1: new Set(["HeaderMark"]),
+	SetextHeading2: new Set(["HeaderMark"]),
 	Emphasis: new Set(["EmphasisMark"]),
 	StrongEmphasis: new Set(["EmphasisMark"]),
+	Strikethrough: new Set(["StrikethroughMark"]),
+	InlineCode: new Set(["CodeMark"]),
 	Link: new Set(["LinkMark", "URL", "LinkTitle"]),
 	WikiLink: new Set(["WikiLinkMark"]),
 	Highlight: new Set(["HighlightMark"]),
 	Comment: new Set(["CommentMark"]),
+	/** `\*`: the backslash is the mark; the node has no children, so it is handled by hand below. */
+	Escape: new Set(),
 };
 
 const touches = (ranges: readonly SelectionRange[], from: number, to: number) =>
@@ -88,6 +94,10 @@ export function hidden(state: EditorState, from: number, to: number, ranges = st
 			if (!marks) return;
 			if (node.name === "Link" && isCalloutMark(state, node)) return false;
 			if (touches(ranges, node.from, node.to)) return false;
+			if (node.name === "Escape") {
+				builder.add(node.from, node.from + 1, hide);
+				return false;
+			}
 			const aliased = node.name === "WikiLink" && node.node.getChild("WikiLinkAlias") !== null;
 			for (let c = node.node.firstChild; c; c = c.nextSibling) {
 				const target = aliased && c.name === "WikiLinkTarget";
@@ -137,6 +147,7 @@ const plugin = ViewPlugin.fromClass(
 // ---- The block half ----
 
 const codeLine = Decoration.line({ class: "cm-code-line" });
+const doneLine = Decoration.line({ class: "cm-task-done" });
 const quoteLine = Decoration.line({ class: "cm-quote-line" });
 const calloutLines = new Map<string, [Decoration, Decoration]>();
 /** A callout's lines, and its first line, which carries the type for the CSS to show. */
@@ -241,8 +252,11 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): { d
 					return false;
 				case "Task": {
 					const marker = node.node.getChild("TaskMarker");
-					if (!marker || onLines(state, ranges, node.from, node.to)) return false;
+					if (!marker) return false;
 					const checked = state.doc.sliceString(marker.from, marker.to).toLowerCase() === "[x]";
+					// A done task reads as done, cursor or not: the line is dimmed and struck.
+					if (checked) deco.push({ from: doc.lineAt(node.from).from, to: doc.lineAt(node.from).from, value: doneLine });
+					if (onLines(state, ranges, node.from, node.to)) return false;
 					const end = state.doc.sliceString(marker.to, marker.to + 1) === " " ? marker.to + 1 : marker.to;
 					deco.push({ from: marker.from, to: end, value: box(checked) });
 					atoms.add(marker.from, end, box(checked));
@@ -313,6 +327,7 @@ const blockLayer: Extension = [
 		".cm-line.cm-callout-title::before": { content: "attr(data-callout)", textTransform: "capitalize", marginRight: "0.4em" },
 		".cm-rule": { border: "none", borderTop: "1px solid var(--border)", margin: "0.6em 0", display: "block" },
 		".cm-task": { verticalAlign: "middle", margin: "0 0.4em 0 0" },
+		".cm-line.cm-task-done": { color: "var(--muted-foreground)", textDecoration: "line-through" },
 	}),
 ];
 

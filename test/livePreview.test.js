@@ -53,6 +53,16 @@ test("위키링크는 괄호를 숨기고, 별칭이 있으면 대상도 숨긴�
   assert.deepEqual(gone(state("[[note]] [[note|shown]]\n")), ["[[", "]]", "[[", "note", "|", "]]"]);
 });
 
+test("취소선과 인라인 코드도 표시를 숨기고, 이스케이프는 백슬래시를 숨긴다", () => {
+  assert.deepEqual(gone(state("~~a~~ `b` \\* c\n")), ["~~", "~~", "`", "`", "\\"]);
+  assert.deepEqual(gone(state("~~a~~ `b` \\* c\n", 3)), ["`", "`", "\\"]);
+});
+
+test("Setext 헤딩의 밑줄은 표시다", () => {
+  assert.deepEqual(gone(state("Title\n=====\n\ntext")), ["====="]);
+  assert.deepEqual(gone(state("Title\n=====\n\ntext", 2)), []);
+});
+
 test("==강조==는 양끝의 표시를 숨긴다", () => {
   assert.deepEqual(gone(state("a ==hi== b\n")), ["==", "=="]);
   assert.deepEqual(gone(state("a ==hi== b\n", 4)), []);
@@ -121,9 +131,10 @@ test("구분선은 커서가 그 줄에 없을 때만 선으로 그려진다", (
   assert.deepEqual(drawn(parsed("a\n\n---\n\nb", 3)), []);
 });
 
-test("할 일 표시는 커서가 없는 줄에서 상자가 되고, 그 상자는 건너뛰는 범위다", () => {
+test("할 일 표시는 커서가 없는 줄에서 상자가 되고, 그 상자는 건너뛰는 범위다; 끝난 할 일은 커서와 상관없이 그렇게 읽힌다", () => {
   const s = parsed("- [ ] a\n- [x] b\n", 0);
-  assert.deepEqual(drawn(s), [["[x] ", "Checkbox"]]);
+  assert.deepEqual(drawn(s), [[2, "cm-task-done"], ["[x] ", "Checkbox"]]);
+  assert.deepEqual(drawn(parsed("- [x] b\n", 7)), [[1, "cm-task-done"]], "on the line, the box is text again but the line stays done");
   const atoms = [];
   const it = blocks(s).atoms.iter();
   for (; it.value; it.next()) atoms.push([it.from, it.to]);

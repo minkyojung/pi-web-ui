@@ -785,6 +785,18 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
 });
 
+check("the smaller marks hide too, and a done task reads as done", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "small.md"), "- [x] done ~~gone~~ `code`\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="small.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="small.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("~~gone~~"));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("the marks hidden", async () => (await shownText(app)).includes("done gone code"));
+	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-task-done')).textDecorationLine"), "line-through");
+	assert.notEqual(await app.evaluate("[...document.querySelectorAll('#editor .cm-task-done span')].map((s) => getComputedStyle(s).backgroundColor).find((c) => c !== 'rgba(0, 0, 0, 0)')"), undefined, "inline code sits in a box");
+	await app.shot("small-marks");
+});
+
 check("a %% line opens a comment that runs over blank lines to the next", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "block-comment.md"), "kept\n\n%%\nnot [[this]]\n\n# nor this\n%%\n\nkept too\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="block-comment.md"]')`));

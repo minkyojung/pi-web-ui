@@ -18,7 +18,7 @@ import { pending, setSpans } from "../features/pending";
 import { toggleMarks } from "../features/toggleMarks";
 import { comeBack, leave, scrollBack } from "../features/viewMemory";
 import { highlightTag } from "../../../highlight.ts";
-import { noteSyntax } from "../../../syntax.ts";
+import { inlineCodeTag, noteSyntax } from "../../../syntax.ts";
 import { tagTag } from "../../../tag.ts";
 import type { Place } from "../../../links.ts";
 import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, taggedStore } from "../serverState";
@@ -96,6 +96,10 @@ const markup = HighlightStyle.define([
 	{ tag: tags.heading, fontWeight: "600" },
 	{ tag: tags.heading1, fontSize: "1.4em" },
 	{ tag: tags.heading2, fontSize: "1.2em" },
+	{ tag: tags.heading3, fontSize: "1.1em" },
+	{ tag: tags.heading4, fontSize: "1em" },
+	{ tag: tags.heading5, fontSize: "0.95em" },
+	{ tag: tags.heading6, fontSize: "0.9em", color: "var(--muted-foreground)" },
 	{ tag: tags.emphasis, fontStyle: "italic" },
 	{ tag: tags.strong, fontWeight: "600" },
 	{ tag: tags.strikethrough, textDecoration: "line-through" },
@@ -104,6 +108,15 @@ const markup = HighlightStyle.define([
 	{ tag: tags.link, textDecoration: "underline", color: "var(--muted-foreground)" },
 	{ tag: tags.url, color: "var(--muted-foreground)" },
 	{ tag: tags.monospace, fontFamily: "ui-monospace, monospace", fontSize: "0.9em" },
+	// Inline code in a box; the font again, since this rule is the one taken for it.
+	{
+		tag: inlineCodeTag,
+		fontFamily: "ui-monospace, monospace",
+		fontSize: "0.9em",
+		backgroundColor: "color-mix(in oklab, var(--foreground) 7%, transparent)",
+		borderRadius: "3px",
+		padding: "0.1em 0.3em",
+	},
 	{ tag: tags.processingInstruction, color: "var(--muted-foreground)" },
 	{ tag: tags.quote, color: "var(--muted-foreground)" },
 	{ tag: tags.meta, color: "var(--muted-foreground)" },
