@@ -240,7 +240,8 @@ export function Editor({
 					...defaultKeymap,
 					...historyKeymap,
 				]),
-				markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [wikiLink] }),
+				// No HTML tag completion: a `<` in prose is a less-than, not a tag.
+				markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [wikiLink], completeHTMLTags: false }),
 				// Pairs close as they open. Backticks too, for inline code; not
 				// `*`, which opens a list item as often as it opens emphasis, and
 				// `[[` needs nothing — the second `[` lands inside the first pair.

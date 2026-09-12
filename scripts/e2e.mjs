@@ -757,6 +757,18 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
 });
 
+check("a < in prose offers no HTML tags", async ({ app }) => {
+	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.press("End", { meta: true });
+	await app.keys(" <di");
+	await until("the letters", async () => (await editorText(app)).includes(" <di"));
+	// Completion opens a moment after typing; give it that moment, and see that it did not.
+	await new Promise((r) => setTimeout(r, 400));
+	assert.equal(await app.evaluate("!!document.querySelector('.cm-tooltip-autocomplete')"), false);
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+});
+
 check("⌘⇧F finds words in any note, and Enter opens the note they are in", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "far.md"), "# far\n\nsomewhere a Haystack-Needle sits\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="far.md"]')`));
