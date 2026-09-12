@@ -248,8 +248,13 @@ export type Blocks = { deco: DecorationSet; atoms: DecorationSet; wrappers: Rang
 export function blocks(state: EditorState, ranges = state.selection.ranges): Blocks {
 	const { doc } = state;
 	const deco: { from: number; to: number; value: Decoration }[] = [];
-	const atoms = new RangeSetBuilder<Decoration>();
+	// Collected, then sorted: the indentation ranges come last, out of order.
+	const atomRanges: Range<Decoration>[] = [];
+	const atoms = { add: (from: number, to: number, value: Decoration) => atomRanges.push(value.range(from, to)) };
 	const wrappers: Range<BlockWrapper>[] = [];
+	/** The lines of list items, and the lines of fenced code, where leading spaces are the code's own. */
+	const listLines = new Set<number>();
+	const codeLines = new Set<number>();
 	/** The nearest quote around `node`, and how many are around that. */
 	const quoteOf = (node: SyntaxNodeRef) => {
 		let quote: SyntaxNode | null = null;
@@ -277,6 +282,7 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 					// the block's lines — the fences gone from the layout, so the
 					// code sits in the box alone with the language named on it.
 					lines(node.from, node.to, codeLine);
+					for (let n = doc.lineAt(node.from).number; n <= doc.lineAt(node.to).number; n++) codeLines.add(n);
 					const info = node.node.getChild("CodeInfo");
 					const first = doc.lineAt(node.from);
 					const last = doc.lineAt(node.to);
@@ -315,12 +321,17 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 				case "ListItem": {
 					// `-`, `*` or `+` as a dot, off its line; on a task item, nothing,
 					// since the box is the marker there. The item's other lines and
-					// the lists inside it are walked on.
+					// the lists inside it are walked on. Every line of the item is
+					// noted, for its indentation to be hidden below.
+					for (let n = doc.lineAt(node.from).number; n <= doc.lineAt(node.to).number; n++) listLines.add(n);
 					const mark = node.node.getChild("ListMark");
 					if (!mark || !/^[-*+]$/.test(doc.sliceString(mark.from, mark.to))) return;
 					if (onLines(state, ranges, mark.from, mark.from)) return;
+					// The marker and the space after it, as one: the dot is made one
+					// indent unit wide (listIndent.ts), so the words start where the
+					// wrapped rows do, and nothing is left for the marker's box to wrap.
 					const task = mark.nextSibling?.name === "Task";
-					const end = task && doc.sliceString(mark.to, mark.to + 1) === " " ? mark.to + 1 : mark.to;
+					const end = doc.sliceString(mark.to, mark.to + 1) === " " ? mark.to + 1 : mark.to;
 					const value = task ? hide : bullet;
 					deco.push({ from: mark.from, to: end, value });
 					atoms.add(mark.from, end, value);
@@ -341,9 +352,21 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 			}
 		},
 	});
+	// A list line's leading spaces are markup — they say how deep the item
+	// is, which the padding already shows — so off the cursor's line they go,
+	// and the words start where the padding puts them. Not in a fence, where
+	// the spaces are the code's; and on the cursor's line, the text, to edit.
+	for (const n of listLines) {
+		if (codeLines.has(n)) continue;
+		const l = doc.line(n);
+		const indent = /^[ \t]*/.exec(l.text)![0].length;
+		if (indent === 0 || indent === l.length || onLines(state, ranges, l.from, l.from)) continue;
+		deco.push({ from: l.from, to: l.from + indent, value: hide });
+		atoms.add(l.from, l.from + indent, hide);
+	}
 	return {
 		deco: Decoration.set(deco.map((d) => d.value.range(d.from, d.to)), true),
-		atoms: atoms.finish(),
+		atoms: Decoration.set(atomRanges, true),
 		wrappers: BlockWrapper.set(wrappers, true),
 	};
 }

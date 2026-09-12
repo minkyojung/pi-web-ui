@@ -12,8 +12,13 @@
  * view plugin builds it over the visible lines from the tree.
  *
  * A line of an item that has no marker of its own — a second paragraph, or
- * a lazy continuation — gets the padding only; its leading spaces stay as
- * they are, so the cursor moves the way the text reads.
+ * a lazy continuation — gets the padding only. Live preview hides the
+ * leading spaces of every list line off the cursor (livePreview.ts), so
+ * there the box holds the marker alone and the words start on the padding.
+ *
+ * A task's box holds the checkbox too — the bullet is hidden there, the
+ * box being the marker — and the checkbox is made one unit wide, so the
+ * box is still one unit and the wrapped rows still meet the words.
  */
 import { indentLess, indentMore } from "@codemirror/commands";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
@@ -59,7 +64,9 @@ export function listLines(state: EditorState, from: number, to: number): Decorat
 				const last = doc.lineAt(Math.min(node.to, to)).number;
 				for (let n = first; n <= last; n++) level.set(n, depth);
 			} else if (node.name === "ListMark") {
-				markAt.set(doc.lineAt(node.from).number, node.to);
+				// Through the task's marker, when the item is one: `- [ ] ` is the prefix, not `- `.
+				const task = node.node.nextSibling?.name === "Task" ? node.node.nextSibling.getChild("TaskMarker") : null;
+				markAt.set(doc.lineAt(node.from).number, task ? task.to : node.to);
 			}
 		},
 		leave: (node) => {
@@ -182,5 +189,11 @@ export const listIndent: Extension = [
 		".cm-line.cm-list-line": { paddingLeft: "var(--list-indent)" },
 		".cm-line.cm-list-marker": { textIndent: `-${UNIT}em` },
 		".cm-list-prefix": { display: "inline-block", minWidth: `${UNIT}em`, textIndent: "0" },
+		// The checkbox as the whole marker: one unit, box and gap together. On
+		// the line, not the prefix box: off the cursor the whole prefix is
+		// hidden or widget, so there is no text for the box to wrap.
+		".cm-line.cm-list-marker .cm-task": { width: "1em", height: "1em", margin: `0 ${UNIT - 1}em 0 0`, boxSizing: "border-box" },
+		// Likewise the dot a bullet is drawn as (livePreview.ts): the marker and its space, one unit.
+		".cm-line.cm-list-marker .cm-bullet": { display: "inline-block", width: `${UNIT}em` },
 	}),
 ];

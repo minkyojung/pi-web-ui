@@ -166,12 +166,20 @@ test("할 일 표시는 커서가 없는 줄에서 상자가 되고, 그 상자�
 });
 
 test("불릿은 커서가 없는 줄에서 점이 되고, 그 줄에 오면 글자다; 번호는 그대로다", () => {
-  assert.deepEqual(drawn(parsed("- a\n* b\n1. c\n", 0)), [["*", "Bullet"]]);
-  assert.deepEqual(drawn(parsed("- a\n* b\n1. c\n", 9)), [["-", "Bullet"], ["*", "Bullet"]]);
+  assert.deepEqual(drawn(parsed("- a\n* b\n1. c\n", 0)), [["* ", "Bullet"]]);
+  assert.deepEqual(drawn(parsed("- a\n* b\n1. c\n", 9)), [["- ", "Bullet"], ["* ", "Bullet"]]);
   const atoms = [];
   const it = blocks(parsed("- a\n", 3)).atoms.iter();
   for (; it.value; it.next()) atoms.push([it.from, it.to]);
   assert.deepEqual(atoms, [], "cursor on the line: the marker is text, nothing to step over");
+});
+
+test("리스트 줄의 앞 공백은 커서가 없는 줄에서 숨고, 코드 펜스 안과 커서 줄에서는 남는다", () => {
+  const doc = "- a\n  more\n    - b\n\n    ```\n    code\n    ```\n";
+  const off = drawn(parsed(doc, 0)).filter(([, k]) => k === "hidden").map(([t]) => t);
+  assert.deepEqual(off, ["  ", "    ", "    ```", "    ```"], "the continuation line's and the nested item's indentation, and the fences by the code chrome; the code's own spaces are not touched");
+  const on = drawn(parsed(doc, 6)).filter(([, k]) => k === "hidden").map(([t]) => t);
+  assert.deepEqual(on, ["    ", "    ```", "    ```"], "on the continuation line its spaces show; the nested item's still hide");
 });
 
 test("Mod-Enter는 커서 줄의 할 일을 켜고 끈다, 없으면 손대지 않는다", () => {

@@ -53,6 +53,10 @@ test("번호와 인용 속 항목도 같다", () => {
   ]);
 });
 
+test("할 일 항목의 상자는 체크 표시까지다", () => {
+  assert.deepEqual(drawn(parsed("- [ ] a\n")), [[1, "--list-indent:1.5em marker"], ["- [ ] "]]);
+});
+
 test("리스트가 아닌 줄과 범위 밖은 손대지 않는다", () => {
   assert.deepEqual(drawn(parsed("text\n\n- a\n")), [[3, "--list-indent:1.5em marker"], ["- "]]);
   assert.deepEqual(drawn(parsed("- a\n- b\n"), 0, 3), [[1, "--list-indent:1.5em marker"], ["- "]]);
