@@ -18,6 +18,7 @@ import { pending, setSpans } from "../features/pending";
 import { toggleMarks } from "../features/toggleMarks";
 import { comeBack, leave, scrollBack } from "../features/viewMemory";
 import { frontMatter } from "../../../frontmatter.ts";
+import { highlightTag, highlight } from "../../../highlight.ts";
 import { wikiLink } from "../../../wikilink.ts";
 import type { Place } from "../../../links.ts";
 import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
@@ -62,6 +63,8 @@ const theme = EditorView.theme({
 		backgroundColor: "color-mix(in oklab, var(--foreground) 18%, transparent)",
 	},
 	".cm-placeholder": { color: "var(--muted-foreground)" },
+	// ==words==: a wash of the text colour, like the selection but lighter, so it reads in both themes.
+	".cm-highlight": { backgroundColor: "color-mix(in oklab, var(--foreground) 12%, transparent)", borderRadius: "2px" },
 	// The search panel, in the app's own chrome rather than CodeMirror's grey.
 	".cm-panels": { backgroundColor: "var(--background)", color: "var(--foreground)", borderColor: "var(--border)" },
 	".cm-panels-top": { borderBottom: "1px solid var(--border)" },
@@ -94,6 +97,7 @@ const markup = HighlightStyle.define([
 	{ tag: tags.emphasis, fontStyle: "italic" },
 	{ tag: tags.strong, fontWeight: "600" },
 	{ tag: tags.strikethrough, textDecoration: "line-through" },
+	{ tag: highlightTag, class: "cm-highlight" },
 	{ tag: tags.link, textDecoration: "underline", color: "var(--muted-foreground)" },
 	{ tag: tags.url, color: "var(--muted-foreground)" },
 	{ tag: tags.monospace, fontFamily: "ui-monospace, monospace", fontSize: "0.9em" },
@@ -250,7 +254,7 @@ export function Editor({
 					...historyKeymap,
 				]),
 				// No HTML tag completion: a `<` in prose is a less-than, not a tag.
-				markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [wikiLink, frontMatter], completeHTMLTags: false }),
+				markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [wikiLink, frontMatter, highlight], completeHTMLTags: false }),
 				// Pairs close as they open. Backticks too, for inline code; not
 				// `*`, which opens a list item as often as it opens emphasis, and
 				// `[[` needs nothing — the second `[` lands inside the first pair.

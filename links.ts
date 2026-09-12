@@ -15,9 +15,11 @@ import type { SyntaxNode } from "@lezer/common";
 import { parser as markdown } from "@lezer/markdown";
 import { titleOf } from "./naming.ts";
 import { frontMatter } from "./frontmatter.ts";
+import { highlight } from "./highlight.ts";
 import { wikiLink } from "./wikilink.ts";
 
-const parser = markdown.configure([wikiLink, frontMatter]);
+// The same parser as the editor's, so both ends see one tree.
+const parser = markdown.configure([wikiLink, frontMatter, highlight]);
 
 export type Link = {
 	target: string;

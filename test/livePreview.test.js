@@ -4,11 +4,12 @@ import test from "node:test";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState } from "@codemirror/state";
 
+import { highlight } from "../highlight.ts";
 import { hidden } from "../web/src/features/livePreview.ts";
 import { wikiLink } from "../wikilink.ts";
 
 const state = (doc, cursor = doc.length) =>
-	EditorState.create({ doc, selection: EditorSelection.cursor(cursor), extensions: [markdown({ base: markdownLanguage, extensions: [wikiLink] })] });
+	EditorState.create({ doc, selection: EditorSelection.cursor(cursor), extensions: [markdown({ base: markdownLanguage, extensions: [wikiLink, highlight] })] });
 
 /** What `hidden` hides, as the text of each range. */
 const gone = (s) => {
@@ -51,6 +52,11 @@ test("마크다운 링크는 글만 남긴다", () => {
 
 test("위키링크는 괄호를 숨기고, 별칭이 있으면 대상도 숨긴다", () => {
   assert.deepEqual(gone(state("[[note]] [[note|shown]]\n")), ["[[", "]]", "[[", "note", "|", "]]"]);
+});
+
+test("==강조==는 양끝의 표시를 숨긴다", () => {
+  assert.deepEqual(gone(state("a ==hi== b\n")), ["==", "=="]);
+  assert.deepEqual(gone(state("a ==hi== b\n", 4)), []);
 });
 
 test("범위 밖은 보지 않는다", () => {

@@ -41,6 +41,7 @@ const MARKUP: Record<string, Set<string>> = {
 	StrongEmphasis: new Set(["EmphasisMark"]),
 	Link: new Set(["LinkMark", "URL", "LinkTitle"]),
 	WikiLink: new Set(["WikiLinkMark"]),
+	Highlight: new Set(["HighlightMark"]),
 };
 
 const touches = (ranges: readonly SelectionRange[], from: number, to: number) =>

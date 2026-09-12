@@ -785,6 +785,18 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
 });
 
+check("==words== are washed with colour, their marks hidden off the cursor", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "hl.md"), "say ==hi== now\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="hl.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="hl.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("==hi=="));
+	await until("the highlight, as one span", () => app.evaluate("[...document.querySelectorAll('#editor .cm-highlight')].map((s) => s.textContent).join('|')").then((t) => t.includes("hi")));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("the marks to be hidden", async () => (await shownText(app)).includes("say hi now"));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 6 } }); })()`);
+	await until("the marks back under the cursor", async () => (await shownText(app)).includes("==hi=="));
+});
+
 check("a note's front matter is one muted block, not a rule and a paragraph", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "props.md"), "---\ntags: [x]\n---\n\n# body\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="props.md"]')`));
