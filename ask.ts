@@ -15,8 +15,16 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-/** A part of a note, chosen in the editor. `id` is the tab's own count of asks, sent back with the outcome. */
-export type Ask = { id: number; path: string; from: number; to: number };
+/**
+ * A part of a note, chosen in the editor. `id` is the tab's own count of asks,
+ * sent back with the outcome.
+ *
+ * `card` says the answer belongs in a card in the note's margin rather than in
+ * the note itself, and is the card's name — made by the tab, so that the card
+ * it drew and the card the server keeps are the same one from the first frame.
+ * Without it the answer goes into the note under the chosen words.
+ */
+export type Ask = { id: number; path: string; from: number; to: number; card?: string };
 
 /** How an ask ended. Only `written` put anything in the note. */
 export type AskOutcome =

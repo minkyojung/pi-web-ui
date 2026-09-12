@@ -13,12 +13,13 @@
  */
 import type { Ask, AskOutcome } from "./ask";
 import type { BranchPoint } from "./branches";
+import type { Card } from "./cards";
 import type { Author, Change, Span } from "./history";
 import type { NoteFile } from "./vault";
 import type { Backlink } from "./linkIndex";
 import type { SearchHit } from "./search";
 
-export type { Ask, AskOutcome, Author, Backlink, BranchPoint, Change, NoteFile, SearchHit, Span };
+export type { Ask, AskOutcome, Author, Backlink, BranchPoint, Card, Change, NoteFile, SearchHit, Span };
 
 // ---------------------------------------------------------------------------
 // Browser → server
@@ -80,7 +81,17 @@ export type ClientMsg =
 	 * tab; `id` is the tab's own count of asks, sent back so an answer that
 	 * arrives after a newer ask can be told apart and dropped.
 	 */
-	| { type: "search_notes"; query: string; id: number };
+	| { type: "search_notes"; query: string; id: number }
+	/**
+	 * Put the card's answer into the note, under the words it was opened on,
+	 * where it becomes pi's words like any other — marked until accepted.
+	 * Answered with `note_changed` and `cards` to every tab.
+	 */
+	| { type: "place_card"; path: string; card: string }
+	/** Answered and done with: the card is kept and stops being shown. */
+	| { type: "resolve_card"; path: string; card: string }
+	/** The card was a mistake. Answered with `cards` to every tab. */
+	| { type: "delete_card"; path: string; card: string };
 
 export type ClientMsgType = ClientMsg["type"];
 
@@ -315,6 +326,20 @@ export interface PromptDismissMsg {
 }
 
 /**
+ * A note's cards, where they sit in it as the server last saw it — see
+ * cards.ts. Sent to a tab that opens the note, and to every tab whenever a
+ * card or the note changes, since a write moves the cards below it.
+ *
+ * A tab with typing the server has not seen moves them the rest of the way
+ * itself, the way it does the marks on pi's words.
+ */
+export interface CardsMsg {
+	type: "cards";
+	path: string;
+	cards: Card[];
+}
+
+/**
  * How the ask `id` ended, to the tab that asked. The answer itself is not here:
  * it went into the note, so it arrives as `note_changed` like any other write.
  */
@@ -372,6 +397,7 @@ export type StateMsg =
 	| NoteDeletedMsg
 	| NoteConflictMsg
 	| SearchResultsMsg
+	| CardsMsg
 	| AskDoneMsg
 	| PromptRequestMsg
 	| PromptDismissMsg
