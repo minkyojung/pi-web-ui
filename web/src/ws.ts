@@ -7,7 +7,9 @@
  */
 import {
 	addPrompt,
+	askDoneStore,
 	branchesStore,
+	cardsStore,
 	setBacklinks,
 	configStore,
 	contextSourcesStore,
@@ -145,6 +147,12 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "search_results":
 			searchResultsStore.set(msg);
+			return;
+		case "cards":
+			cardsStore.set(msg);
+			return;
+		case "ask_done":
+			askDoneStore.set(msg);
 			return;
 		case "snapshot":
 			// A snapshot means the server's session may not be the one these
