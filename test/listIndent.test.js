@@ -9,7 +9,8 @@ import { listLines } from "../web/src/features/listIndent.ts";
 
 const parsed = (doc) => {
   const s = EditorState.create({ doc, extensions: [markdown({ base: markdownLanguage })] });
-  ensureSyntaxTree(s, s.doc.length, 1000);
+  // The whole tree, or the test is not one: a partial parse under load would only look like a wrong answer.
+  assert.ok(ensureSyntaxTree(s, s.doc.length, 5000), "parsed whole");
   return s;
 };
 /** Each decoration as [line, style] for a line, or [prefix text] for the marker's box. */
