@@ -258,7 +258,8 @@ const blockLayer: Extension = [
 	Prec.high(keymap.of([{ key: "Mod-Enter", run: toggleTask }])),
 	EditorView.baseTheme({
 		".cm-code-line": { fontFamily: "ui-monospace, monospace", fontSize: "0.9em" },
-		".cm-quote-line": { borderLeft: "2px solid var(--border)", paddingLeft: "0.75rem" },
+		// Two classes, so this outweighs listIndent's padding and adds its indent to the bar's.
+		".cm-line.cm-quote-line": { borderLeft: "2px solid var(--border)", paddingLeft: "calc(0.75rem + var(--list-indent, 0em))" },
 		".cm-rule": { border: "none", borderTop: "1px solid var(--border)", margin: "0.6em 0", display: "block" },
 		".cm-task": { verticalAlign: "middle", margin: "0 0.4em 0 0" },
 	}),

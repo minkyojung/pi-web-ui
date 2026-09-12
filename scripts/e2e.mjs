@@ -785,6 +785,28 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
 });
 
+check("a list item's wrapped lines start where its words do", async ({ app, cwd }) => {
+	const long = "word ".repeat(40).trim();
+	writeFileSync(join(cwd, "list.md"), `- ${long}\n  - inner ${long}\n\n> - quoted\n`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="list.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="list.md"]').click()`);
+	await until("the list lines", () => app.evaluate("document.querySelectorAll('#editor .cm-list-line').length === 3"));
+	// The second row of the outer item sits under its words, not under the bullet; the inner item's, one unit further.
+	const rows = await app.evaluate(`(() => {
+		const px = (el) => parseFloat(getComputedStyle(el).paddingLeft);
+		const lines = [...document.querySelectorAll('#editor .cm-list-line')];
+		const [outer, inner, quoted] = lines;
+		const prefix = outer.querySelector('.cm-list-prefix').getBoundingClientRect();
+		return { outer: px(outer), inner: px(inner), quoted: px(quoted), prefixWidth: prefix.width, prefixLeft: prefix.left - outer.getBoundingClientRect().left, tall: outer.getBoundingClientRect().height > 2 * inner.querySelector('.cm-list-prefix').getBoundingClientRect().height };
+	})()`);
+	assert.ok(rows.tall, "the item wraps");
+	assert.ok(rows.outer > 0 && Math.abs(rows.inner - 2 * rows.outer) < 1, `inner is one unit further: ${JSON.stringify(rows)}`);
+	assert.ok(Math.abs(rows.prefixWidth - rows.outer) < 1, `the marker's box is one unit wide: ${JSON.stringify(rows)}`);
+	assert.ok(Math.abs(rows.prefixLeft) < 1, `the marker starts at the line's edge: ${JSON.stringify(rows)}`);
+	assert.ok(rows.quoted > rows.outer, `a quoted item keeps the bar's padding too: ${JSON.stringify(rows)}`);
+	await app.shot("list-indent");
+});
+
 check("⌘B and ⌘I put a mark around the chosen words and take it off again", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "marks.md"), "say hi now\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="marks.md"]')`));

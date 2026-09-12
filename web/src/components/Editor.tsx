@@ -11,6 +11,7 @@ import { tags } from "@lezer/highlight";
 
 import { choose, chosenStore } from "../chosen";
 import { linkCompletion } from "../features/linkCompletion";
+import { listIndent } from "../features/listIndent";
 import { livePreview } from "../features/livePreview";
 import { landOn, links, notesChanged } from "../features/links";
 import { pending, setSpans } from "../features/pending";
@@ -225,6 +226,9 @@ export function Editor({
 			// Markup hidden where the cursor is not; Mod-e shows it all again.
 			livePreview,
 			toggleMarks,
+			// Wrapped list lines start where the item's words do. Outside the
+			// compartment: source mode wants this too.
+			listIndent,
 		];
 		const state = EditorState.create({
 			doc: "",
