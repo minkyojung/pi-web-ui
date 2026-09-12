@@ -19,6 +19,7 @@ import { toggleMarks } from "../features/toggleMarks";
 import { comeBack, leave, scrollBack } from "../features/viewMemory";
 import { highlightTag } from "../../../highlight.ts";
 import { noteSyntax } from "../../../syntax.ts";
+import { tagTag } from "../../../tag.ts";
 import type { Place } from "../../../links.ts";
 import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
 import { titleOf } from "../noteSync";
@@ -64,6 +65,8 @@ const theme = EditorView.theme({
 	".cm-placeholder": { color: "var(--muted-foreground)" },
 	// ==words==: a wash of the text colour, like the selection but lighter, so it reads in both themes.
 	".cm-highlight": { backgroundColor: "color-mix(in oklab, var(--foreground) 12%, transparent)", borderRadius: "2px" },
+	// #tag: set off from the prose the way a link is, without being one yet.
+	".cm-tag": { color: "var(--muted-foreground)", backgroundColor: "color-mix(in oklab, var(--foreground) 6%, transparent)", borderRadius: "4px", padding: "0 0.25em" },
 	// The search panel, in the app's own chrome rather than CodeMirror's grey.
 	".cm-panels": { backgroundColor: "var(--background)", color: "var(--foreground)", borderColor: "var(--border)" },
 	".cm-panels-top": { borderBottom: "1px solid var(--border)" },
@@ -97,6 +100,7 @@ const markup = HighlightStyle.define([
 	{ tag: tags.strong, fontWeight: "600" },
 	{ tag: tags.strikethrough, textDecoration: "line-through" },
 	{ tag: highlightTag, class: "cm-highlight" },
+	{ tag: tagTag, class: "cm-tag" },
 	{ tag: tags.link, textDecoration: "underline", color: "var(--muted-foreground)" },
 	{ tag: tags.url, color: "var(--muted-foreground)" },
 	{ tag: tags.monospace, fontFamily: "ui-monospace, monospace", fontSize: "0.9em" },

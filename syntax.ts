@@ -1,7 +1,7 @@
 /**
  * What this app's markdown is, in one place: CommonMark, GFM as the editor
  * has it, and the note syntax taught here — wikilinks, front matter,
- * highlights.
+ * highlights, tags.
  *
  * The editor's language (lang-markdown's markdownLanguage) is CommonMark
  * with GFM, subscript, superscript and emoji; the server's parser is built
@@ -13,10 +13,11 @@ import { Emoji, GFM, type MarkdownExtension, parser as commonmark, Subscript, Su
 
 import { frontMatter } from "./frontmatter.ts";
 import { highlight } from "./highlight.ts";
+import { tag } from "./tag.ts";
 import { wikiLink } from "./wikilink.ts";
 
 /** The note syntax, for the editor to add to its markdown language. */
-export const noteSyntax: MarkdownExtension = [wikiLink, frontMatter, highlight];
+export const noteSyntax: MarkdownExtension = [wikiLink, frontMatter, highlight, tag];
 
 /** The whole language, for the server: what the editor parses with, without the editor. */
 export const parser = commonmark.configure([GFM, Subscript, Superscript, Emoji, noteSyntax]);

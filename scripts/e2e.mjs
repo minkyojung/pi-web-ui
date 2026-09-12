@@ -785,6 +785,14 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
 });
 
+check("a #tag is set off from the prose, and a # in a URL or a heading is not", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "tags.md"), "# top\n\nsee #one and https://x.y/p#frag\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="tags.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="tags.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("#one"));
+	await until("one tag", () => app.evaluate("[...document.querySelectorAll('#editor .cm-tag')].map((s) => s.textContent).join('|')").then((t) => t === "#one"));
+});
+
 check("==words== are washed with colour, their marks hidden off the cursor", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "hl.md"), "say ==hi== now\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="hl.md"]')`));
