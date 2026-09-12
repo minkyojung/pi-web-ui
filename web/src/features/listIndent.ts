@@ -193,7 +193,10 @@ export const listIndent: Extension = [
 		// the line, not the prefix box: off the cursor the whole prefix is
 		// hidden or widget, so there is no text for the box to wrap.
 		".cm-line.cm-list-marker .cm-task": { width: "1em", height: "1em", margin: `0 ${UNIT - 1}em 0 0`, boxSizing: "border-box" },
-		// Likewise the dot a bullet is drawn as (livePreview.ts): the marker and its space, one unit.
-		".cm-line.cm-list-marker .cm-bullet": { display: "inline-block", width: `${UNIT}em` },
+		// Likewise the dot a bullet is drawn as (livePreview.ts): the marker and
+		// its space, one unit. `text-indent` inherits, and the line's pulls a
+		// first row back one unit: without its own, the dot's box would stay put
+		// and the dot inside it would be drawn one unit out to the left.
+		".cm-line.cm-list-marker .cm-bullet": { display: "inline-block", width: `${UNIT}em`, textIndent: "0" },
 	}),
 ];

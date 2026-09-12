@@ -974,10 +974,13 @@ check("a list item's wrapped lines start where its words do", async ({ app, cwd 
 		// Off the cursor, the marker is the dot, one unit wide, at the line's edge; a task's is its box and gap.
 		const dot = outer.querySelector('.cm-bullet').getBoundingClientRect();
 		const innerDot = inner.querySelector('.cm-bullet').getBoundingClientRect();
+		// The glyph, not its box: an inherited text-indent once drew the dot a unit out of a box that measured fine.
+		const glyphOf = (el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect(); };
+		const glyph = glyphOf(outer.querySelector('.cm-bullet'));
 		const box = task.querySelector('.cm-task');
 		const taskPrefix = { width: box.getBoundingClientRect().width + parseFloat(getComputedStyle(box).marginRight) };
 		const quotedDot = quoted.querySelector('.cm-bullet').getBoundingClientRect();
-		return { outer: px(outer), inner: px(inner), continued: px(continued), quoted: quoted.getBoundingClientRect().left - outer.getBoundingClientRect().left, quotedDotLeft: quotedDot.left - quoted.getBoundingClientRect().left, quotedPad: px(quoted), prefixWidth: dot.width, innerPrefixWidth: innerDot.width, taskPrefixWidth: taskPrefix.width, prefixLeft: dot.left - outer.getBoundingClientRect().left, tall: outer.getBoundingClientRect().height > 2 * innerDot.height };
+		return { outer: px(outer), inner: px(inner), continued: px(continued), quoted: quoted.getBoundingClientRect().left - outer.getBoundingClientRect().left, quotedDotLeft: quotedDot.left - quoted.getBoundingClientRect().left, quotedPad: px(quoted), prefixWidth: dot.width, innerPrefixWidth: innerDot.width, taskPrefixWidth: taskPrefix.width, prefixLeft: dot.left - outer.getBoundingClientRect().left, glyphIn: glyph.left - dot.left, tall: outer.getBoundingClientRect().height > 2 * innerDot.height };
 	})()`);
 	assert.ok(Math.abs(rows.innerPrefixWidth - rows.outer) < 1, `the nested marker is one unit too, its indentation hidden: ${JSON.stringify(rows)}`);
 	assert.ok(Math.abs(rows.taskPrefixWidth - rows.outer) < 1.5, `the task's box and gap are one unit: ${JSON.stringify(rows)}`);
@@ -986,6 +989,7 @@ check("a list item's wrapped lines start where its words do", async ({ app, cwd 
 	assert.ok(rows.outer > 0 && Math.abs(rows.inner - 2 * rows.outer) < 1, `inner is one unit further: ${JSON.stringify(rows)}`);
 	assert.ok(Math.abs(rows.prefixWidth - rows.outer) < 1, `the marker's box is one unit wide: ${JSON.stringify(rows)}`);
 	assert.ok(Math.abs(rows.prefixLeft) < 1, `the marker starts at the line's edge: ${JSON.stringify(rows)}`);
+	assert.ok(rows.glyphIn >= 0 && rows.glyphIn < rows.prefixWidth, `the dot is drawn inside its box: ${JSON.stringify(rows)}`);
 	assert.ok(rows.quoted > 0, `a quoted item sits inside the quote's room, past the bar: ${JSON.stringify(rows)}`);
 	assert.ok(Math.abs(rows.quotedDotLeft) < 1, `and its dot at its line's edge, not out over the bar: ${JSON.stringify(rows)}`);
 	await app.shot("list-indent");
