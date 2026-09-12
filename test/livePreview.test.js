@@ -97,6 +97,21 @@ test("인용은 줄마다 막대가 서고, 커서가 없으면 >가 숨는다",
   assert.deepEqual(drawn(parsed("> a\n> b\n\nc", 5)), [[1, "cm-quote-line"], [2, "cm-quote-line"]], "cursor on any of its lines shows every >");
 });
 
+test("[!type]으로 여는 인용은 콜아웃이다: 줄마다 종류가 붙고, 첫 줄은 제목이며, 표시는 커서가 없을 때 숨는다", () => {
+  const off = drawn(parsed("> [!Note] Title\n> body\n\nafter", 24));
+  assert.deepEqual(off, [
+    [1, "cm-quote-line"], [1, "cm-callout"], [1, "cm-callout cm-callout-title"], ["> ", "hidden"], ["[!Note] ", "hidden"],
+    [2, "cm-quote-line"], [2, "cm-callout"], ["> ", "hidden"],
+  ]);
+  const on = drawn(parsed("> [!Note] Title\n> body\n\nafter", 3));
+  assert.deepEqual(on.filter(([, k]) => k === "hidden"), [], "on the callout, every mark shows");
+  assert.deepEqual(gone(state("> [!Note] Title\n\nafter")), [], "the inline half leaves the marker's brackets to the block half");
+});
+
+test("종류 뒤의 +와 -도 표시의 일부다", () => {
+  assert.deepEqual(drawn(parsed("> [!tip]- t\n\nx", 14)).filter(([, k]) => k === "hidden"), [["> ", "hidden"], ["[!tip]- ", "hidden"]]);
+});
+
 test("구분선은 커서가 그 줄에 없을 때만 선으로 그려진다", () => {
   assert.deepEqual(drawn(parsed("a\n\n---\n\nb")), [["---", "Rule"]]);
   assert.deepEqual(drawn(parsed("a\n\n---\n\nb", 3)), []);

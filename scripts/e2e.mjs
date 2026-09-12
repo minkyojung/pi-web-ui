@@ -785,6 +785,19 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
 });
 
+check("a quote opening with [!note] is a callout, named by its type", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "callout.md"), "> [!note] Keep\n> the body\n\nafter\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="callout.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="callout.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("[!note]"));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("two callout lines, the first a title", () => app.evaluate("document.querySelectorAll('#editor .cm-callout').length === 2 && document.querySelector('#editor .cm-callout-title')?.dataset.callout === 'note'"));
+	await until("the marker hidden", async () => !(await shownText(app)).includes("[!note]"));
+	// The type is drawn before the title by CSS, from the attribute.
+	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-callout-title'), '::before').content"), '"note"');
+	await app.shot("callout");
+});
+
 check("a #tag is set off from the prose, and a # in a URL or a heading is not", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "tags.md"), "# top\n\nsee #one and https://x.y/p#frag\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="tags.md"]')`));

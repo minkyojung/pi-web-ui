@@ -48,6 +48,29 @@ const touches = (ranges: readonly SelectionRange[], from: number, to: number) =>
 	ranges.some((r) => r.from <= to && r.to >= from);
 
 /**
+ * Obsidian's callout: a quote whose first line opens with `[!type]`, and
+ * maybe a `+` or `-` after it. Not a syntax of its own — the parser reads
+ * the marker as a link, and the type is only a word — so it is read here,
+ * from the quote's first paragraph, by both halves: the block half draws
+ * the quote as a callout, and the inline half leaves the marker's brackets
+ * to it.
+ */
+export function calloutOf(state: EditorState, quote: SyntaxNodeRef): { type: string; from: number; to: number } | null {
+	const para = quote.node.firstChild?.nextSibling;
+	if (para?.name !== "Paragraph") return null;
+	const m = /^\[!([\w-]+)\][+-]? ?/.exec(state.doc.sliceString(para.from, state.doc.lineAt(para.from).to));
+	return m ? { type: m[1].toLowerCase(), from: para.from, to: para.from + m[0].length } : null;
+}
+
+/** Whether this link is the `[!type]` that opens a callout: the block half draws that. */
+function isCalloutMark(state: EditorState, link: SyntaxNodeRef): boolean {
+	const para = link.node.parent;
+	const quote = para?.parent;
+	if (para?.name !== "Paragraph" || quote?.name !== "Blockquote" || link.from !== para.from) return false;
+	return calloutOf(state, quote) !== null;
+}
+
+/**
  * The markup to hide between `from` and `to`, given the selection: every
  * mark of a node the selection does not touch. A heading's mark takes the
  * space after it too, so the words start where the `#` did. A wikilink with
@@ -62,6 +85,7 @@ export function hidden(state: EditorState, from: number, to: number, ranges = st
 		enter: (node: SyntaxNodeRef) => {
 			const marks = MARKUP[node.name];
 			if (!marks) return;
+			if (node.name === "Link" && isCalloutMark(state, node)) return false;
 			if (touches(ranges, node.from, node.to)) return false;
 			const aliased = node.name === "WikiLink" && node.node.getChild("WikiLinkAlias") !== null;
 			for (let c = node.node.firstChild; c; c = c.nextSibling) {
@@ -113,6 +137,19 @@ const plugin = ViewPlugin.fromClass(
 
 const codeLine = Decoration.line({ class: "cm-code-line" });
 const quoteLine = Decoration.line({ class: "cm-quote-line" });
+const calloutLines = new Map<string, [Decoration, Decoration]>();
+/** A callout's lines, and its first line, which carries the type for the CSS to show. */
+const calloutLine = (type: string) => {
+	let d = calloutLines.get(type);
+	if (!d) {
+		d = [
+			Decoration.line({ class: "cm-callout", attributes: { "data-callout": type } }),
+			Decoration.line({ class: "cm-callout cm-callout-title", attributes: { "data-callout": type } }),
+		];
+		calloutLines.set(type, d);
+	}
+	return d;
+};
 
 class Rule extends WidgetType {
 	toDOM() {
@@ -161,6 +198,7 @@ const onLines = (state: EditorState, ranges: readonly SelectionRange[], from: nu
  * `atoms` is the widgets alone, for cursor motion to step over.
  */
 export function blocks(state: EditorState, ranges = state.selection.ranges): { deco: DecorationSet; atoms: DecorationSet } {
+	const { doc } = state;
 	const deco: { from: number; to: number; value: Decoration }[] = [];
 	const atoms = new RangeSetBuilder<Decoration>();
 	const lines = (from: number, to: number, value: Decoration) => {
@@ -179,7 +217,14 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): { d
 					return false;
 				case "Blockquote": {
 					lines(node.from, node.to, quoteLine);
+					const callout = calloutOf(state, node);
+					if (callout) {
+						const [body, title] = calloutLine(callout.type);
+						lines(node.from, node.to, body);
+						deco.push({ from: doc.lineAt(node.from).from, to: doc.lineAt(node.from).from, value: title });
+					}
 					if (onLines(state, ranges, node.from, node.to)) return false;
+					if (callout) deco.push({ from: callout.from, to: callout.to, value: hide });
 					// The marks of the lines after the first sit inside the paragraph, so the whole quote is walked.
 					node.node.cursor().iterate((c) => {
 						if (c.name !== "QuoteMark") return;
@@ -261,6 +306,10 @@ const blockLayer: Extension = [
 		".cm-code-line": { fontFamily: "ui-monospace, monospace", fontSize: "0.9em" },
 		// Two classes, so this outweighs listIndent's padding and adds its indent to the bar's.
 		".cm-line.cm-quote-line": { borderLeft: "2px solid var(--border)", paddingLeft: "calc(0.75rem + var(--list-indent, 0em))" },
+		// A callout is a quote with a wash and a heavier bar; its first line names the type, from the attribute, so no widget is needed.
+		".cm-line.cm-callout": { backgroundColor: "color-mix(in oklab, var(--foreground) 5%, transparent)", borderLeftColor: "var(--foreground)" },
+		".cm-line.cm-callout-title": { fontWeight: "600" },
+		".cm-line.cm-callout-title::before": { content: "attr(data-callout)", textTransform: "capitalize", marginRight: "0.4em" },
 		".cm-rule": { border: "none", borderTop: "1px solid var(--border)", margin: "0.6em 0", display: "block" },
 		".cm-task": { verticalAlign: "middle", margin: "0 0.4em 0 0" },
 	}),
