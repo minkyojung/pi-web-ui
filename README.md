@@ -139,6 +139,30 @@ log, so the marks come back from the same place everything else does.
 `web/src/features/pending.ts` is the first feature and the shape every one after
 it takes: it reads the note's history, draws one decoration, and binds two keys.
 
+### Looking over what a run did
+
+Marks say which words are pi's. They cannot say what pi took away, because what
+was taken away is not in the file — and a note where pi deleted a paragraph and
+wrote nothing has no mark at all.
+
+So when a run stops, the server sends the tab the note as it stood before that
+run's first write to it, replayed from the log, and the editor shows the two as
+a diff: CodeMirror's own `unifiedMergeView`, which colours what was added in
+place and draws what was removed above it in a widget. Keep and Undo sit on
+each chunk, and `⌘Enter` / `⌘Backspace` do the same to the one under the cursor
+— the same keys as the marks, which they fall through to when there is no chunk
+here.
+
+Keeping a chunk is two things, not one: the view forgets it, and `accept_note`
+tells the record, or the words would stay pi's and stay marked. Undoing is one
+thing — it puts the text back, which is an edit like any other, saved and
+logged as the person's.
+
+This only holds while pi has just written. After the person has typed for a
+while "before" is no longer one text, so the diff closes and the marks are what
+is left. Cursor and Zed scope their diffs to the same moment for the same
+reason.
+
 ### The door pi writes a note by
 
 pi's own `edit` and `write` put bytes on disk and tell nobody. Everything a note

@@ -263,3 +263,15 @@ test("로그는 노트를 따라 옮겨지고, 없는 로그는 옮길 것이 �
   moveHistory(DIR, "mv/never.md", "mv/x.md");
   assert.equal(existsSync(historyPath(DIR, "mv/x.md")), false);
 });
+
+test("기록한 변경은 로그의 맨 뒤에 온다 — 먼저 정산한 것이 있어도", () => {
+  record(DIR, "tail.md", "", "mine\n", me);
+  // Someone wrote outside the app; the next record settles that first.
+  writeFileSync(join(DIR, "tail.md"), "mine, theirs\n");
+  const changes = record(DIR, "tail.md", "mine, theirs\n", "mine, theirs, pi's\n", pi);
+  const log = readHistory(DIR, "tail.md");
+  assert.deepEqual(log.slice(log.length - changes.length), changes, "마지막 n줄이 방금 쓴 그 n개다");
+  assert.equal(log.at(-1 - changes.length).author, "outside", "정산한 줄은 그 앞에 있다");
+  // Which is what lets a caller say where the log stood just before this write.
+  assert.equal(replay(log.slice(0, log.length - changes.length)).text, "mine, theirs\n");
+});

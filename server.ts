@@ -47,6 +47,7 @@ import type {
 	FilesMsg,
 	NoteChangedMsg,
 	NoteMsg,
+	NoteReviewMsg,
 	PiEventMsg,
 	ServerMsg,
 	SessionsMsg,
@@ -427,6 +428,7 @@ function noticed(path: string): void {
  * other than the disk, which is not a state a change can be measured from.
  */
 function wrote(path: string, base: number | null, changes: Change[]): void {
+	if (changes[0]?.author === "pi") runWrote(path, changes.length);
 	const found = readNote(CWD, path);
 	if (found) touchedBy(links.update(path, found.text));
 	if (found && base !== null && replay(readHistory(CWD, path)).text === found.text) {
@@ -439,6 +441,37 @@ function wrote(path: string, base: number | null, changes: Change[]): void {
 		if (msg) broadcast(msg);
 	}
 	broadcast(files());
+}
+
+/**
+ * For each note the run in flight has written, where that note's log stood
+ * just before it did.
+ *
+ * The text before is not kept, only the place in the log to replay up to. It
+ * is the trick the ask uses to find its place again, and it means nothing here
+ * can go stale: whatever else lands in the log afterwards, everything up to
+ * that line is still the note as the run found it.
+ *
+ * A run the server did not see the start of leaves this empty and is offered
+ * no diff, which is right — a diff whose "before" is a guess is worse than
+ * none.
+ */
+const beforeRun = new Map<string, number>();
+
+/** pi has written `count` changes to `path`, and they are the last of its log. */
+function runWrote(path: string, count: number): void {
+	// Only the first write of the run. The rest of them are the same diff.
+	if (beforeRun.has(path)) return;
+	beforeRun.set(path, Math.max(0, readHistory(CWD, path).length - count));
+}
+
+/** The run has stopped: every note it wrote, as it stood before it did. */
+function offerReview(): void {
+	for (const [path, at] of beforeRun) {
+		const msg: NoteReviewMsg = { type: "note_review", path, original: replay(readHistory(CWD, path).slice(0, at)).text };
+		broadcast(msg);
+	}
+	beforeRun.clear();
 }
 
 /** End the ask in flight, whatever came of it, and stop waiting for an answer. */
@@ -635,6 +668,9 @@ function onEvent(event: AgentSessionEvent): void {
 	if (event.type === "agent_settled") broadcast(branches());
 	// And it may have written a note, or renamed one.
 	if (event.type === "agent_settled") broadcast(files());
+	// What it wrote is offered as a diff, once, now that it has stopped writing.
+	if (event.type === "agent_start") beforeRun.clear();
+	if (event.type === "agent_settled") offerReview();
 }
 
 let unsubscribe: (() => void) | undefined;

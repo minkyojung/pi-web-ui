@@ -244,6 +244,23 @@ export interface NoteChangedMsg {
 	spans: Span[];
 }
 
+/**
+ * pi has stopped, and it wrote this note: `original` is the note as it stood
+ * before pi's first write of the run, so the tab can show what the run did as
+ * a diff and take it a piece at a time.
+ *
+ * The text and not the changes, because a diff is made of two texts — the
+ * editor computes its own from these, at the grain a person reads. It holds
+ * only while pi has just written: once the person has typed for a while,
+ * "before" is no longer one text, and the marks on the words are what is left
+ * to say whose they are.
+ */
+export interface NoteReviewMsg {
+	type: "note_review";
+	path: string;
+	original: string;
+}
+
 /** The note new_note made, for the tab that asked to open it. */
 export interface NoteCreatedMsg {
 	type: "note_created";
@@ -382,6 +399,7 @@ export type StateMsg =
 	| BacklinksMsg
 	| TaggedMsg
 	| NoteChangedMsg
+	| NoteReviewMsg
 	| NoteCreatedMsg
 	| NoteRenamedMsg
 	| NoteRenameFailedMsg

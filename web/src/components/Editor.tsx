@@ -15,13 +15,14 @@ import { listIndent } from "../features/listIndent";
 import { livePreview } from "../features/livePreview";
 import { landOn, links, notesChanged } from "../features/links";
 import { pending, setSpans } from "../features/pending";
+import { review, showDiff } from "../features/review";
 import { toggleMarks } from "../features/toggleMarks";
 import { comeBack, leave, scrollBack } from "../features/viewMemory";
 import { highlightTag } from "../../../highlight.ts";
 import { inlineCodeTag, noteSyntax } from "../../../syntax.ts";
 import { tagTag } from "../../../tag.ts";
 import type { Place } from "../../../links.ts";
-import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, taggedStore } from "../serverState";
+import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteReviewStore, noteStore, taggedStore } from "../serverState";
 import { titleOf } from "../noteSync";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { registerSave } from "../saves";
@@ -241,6 +242,8 @@ export function Editor({
 		if (!host.current) return;
 		const features = [
 			pending(() => at.current),
+			// What the last run did to this note, while it is still one thing.
+			review(() => at.current),
 			links({
 				notes: () => filesStore.get().map((f) => f.path),
 				here: () => at.current,
@@ -476,6 +479,21 @@ export function Editor({
 		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [changed, path]);
+
+	// A run has stopped, and it wrote this note: what it did is offered as a
+	// diff to look over. Only for the note in front — every other tab and every
+	// other note lets it go by. Cleared here, because a review that stayed in
+	// the store would be offered again the next time this editor mounted.
+	const runWrote = useSyncExternalStore(noteReviewStore.subscribe, noteReviewStore.get);
+	useEffect(() => {
+		if (!runWrote || runWrote.path !== path) return;
+		noteReviewStore.set(null);
+		if (view.current) showDiff(view.current, runWrote.original);
+	}, [runWrote, path]);
+
+	// The diff is about one note as one run left it. Opening another note, or
+	// having this one replaced wholesale, is the end of that.
+	useEffect(() => () => { if (view.current) showDiff(view.current, null); }, [path]);
 
 	// The note is gone from the disk: deleted by pi's bash, another program,
 	// or a save that found nothing to save over. What is on screen is the only
