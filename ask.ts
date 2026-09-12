@@ -14,6 +14,7 @@
  * Inline, like guard.ts and recorder.ts, and bound per session with them.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { NOTE_TOOLS } from "./noteEdit.ts";
 
 /** A part of a note, chosen in the editor. `id` is the tab's own count of asks, sent back with the outcome. */
 export type Ask = { id: number; path: string; from: number; to: number };
@@ -94,9 +95,14 @@ export const answering = (asking: () => boolean, onAnswer: OnAnswer) => (pi: Ext
 	// The instruction above is the soft version; this is the one that holds
 	// when it is forgotten. A note pi edited here would be written twice: once
 	// by pi's tool, once by the server putting the answer in.
+	//
+	// `edit` and `write` are in the list beside the note tools although
+	// guard.ts already refuses those on a note: what it recognises as a note
+	// and what the file system will accept are not quite the same set, and
+	// this refusal costs nothing where they differ.
 	pi.on("tool_call", async (event) => {
 		if (!asking()) return undefined;
-		if (event.toolName !== "edit" && event.toolName !== "write") return undefined;
+		if (!NOTE_TOOLS.has(event.toolName) && event.toolName !== "edit" && event.toolName !== "write") return undefined;
 		return { block: true, reason: REFUSAL };
 	});
 

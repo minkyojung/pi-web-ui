@@ -10,10 +10,10 @@ import { readHistory, reconcile, record } from "../history.ts";
 const me = { author: "me", at: 1 };
 
 /**
- * pi's extension API, only as much of it as recorder.ts uses: somewhere to
- * put handlers and a way to call them. Blocking is not modelled — what a
- * block does to the recorder is that `tool_call` ran and `tool_result` never
- * will, which is exactly what these tests send.
+ * pi's extension API, only as much of it as recorder.ts uses: somewhere to put
+ * handlers and a way to call them. The recorder watches a shell call from
+ * tool_call to tool_execution_end, and those are what these tests send — the
+ * pair pi emits whether a call ran, was refused, or was stopped.
  */
 const ctx = { sessionManager: { getSessionId: () => "s1", getLeafId: () => "e1" } };
 
@@ -41,18 +41,9 @@ function vault(t) {
   return { dir, written, claim, emit, note };
 }
 
-const call = (id = "c1", toolName = "bash") =>
-  toolName === "bash"
-    ? { type: "tool_call", toolCallId: id, toolName, input: { command: "true" } }
-    : { type: "tool_call", toolCallId: id, toolName, input: { path: "a.md" } };
+const call = (id = "c1") => ({ type: "tool_call", toolCallId: id, toolName: "bash", input: { command: "true" } });
 
-const ended = (id = "c1", toolName = "bash", isError = false) => ({
-  type: "tool_execution_end",
-  toolCallId: id,
-  toolName,
-  isError,
-  result: {},
-});
+const ended = (id = "c1") => ({ type: "tool_execution_end", toolCallId: id, toolName: "bash", isError: false, result: {} });
 
 test("bash가 노트를 바꾸면 pi가 쓴 것으로 기록된다", async (t) => {
   const { dir, written, emit, note } = vault(t);
@@ -137,23 +128,6 @@ test("호출 중에 생긴 노트는 통째로 pi의 것이 맞다", async (t) =
   const log = readHistory(dir, "new.md");
   assert.deepEqual(log.map((c) => c.author), ["pi"]);
   assert.equal(log[0].sessionId, "s1");
-});
-
-test("막힌 edit은 아무것도 남기지 않고 자리도 비운다", async (t) => {
-  const { dir, written, emit, note } = vault(t);
-  note("a.md", "mine\n");
-  record(dir, "a.md", "", "mine\n", me);
-  const logged = readHistory(dir, "a.md").length;
-
-  await emit("tool_call", call("e1", "edit"));
-  await emit("tool_execution_end", ended("e1", "edit", true));
-  assert.equal(readHistory(dir, "a.md").length, logged, "바뀐 것이 없으니 붙일 것도 없다");
-  assert.deepEqual(written, []);
-
-  // Had the entry been kept, this one would sign someone else's write as pi's.
-  note("a.md", "mine, theirs\n");
-  await emit("tool_execution_end", ended("e1", "edit", true));
-  assert.equal(readHistory(dir, "a.md").length, logged);
 });
 
 test("배치가 끊겨도 turn_end가 남은 것을 치운다", async (t) => {

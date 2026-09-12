@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { VAULT_PROMPT, looking, mentionsAppDir, underAppDir } from "../guard.ts";
+import { VAULT_PROMPT, guard, looking, mentionsAppDir, underAppDir } from "../guard.ts";
 
 test("앱 폴더 아래의 경로는 상대든 절대든 잡힌다", () => {
   assert.equal(underAppDir("/v", ".pi/history/a.md.jsonl"), true);
@@ -40,4 +40,44 @@ test("고른 글이 있으면 인용으로 붙고, 그게 무엇에 대한 물�
   assert.match(said, /open in their editor right now: a\.md/);
   assert.match(said, /what their message is about/);
   assert.ok(said.endsWith("> 첫 줄\n> 둘째 줄"), "고른 글은 인용된 채 마지막에 온다");
+});
+
+// --- what the guard refuses, as pi's runner would ask it ---
+
+/** The handler pi would call, from a guard bound to `root`. */
+const refusing = (root) => {
+  let handler;
+  guard(root, () => null)({ on: (event, fn) => { if (event === "tool_call") handler = fn; } });
+  return (toolName, input) => handler({ type: "tool_call", toolCallId: "c1", toolName, input });
+};
+
+test("노트를 edit이나 write로 쓰려 하면 막고, 무엇을 쓰라고 알려 준다", async () => {
+  const ask = refusing("/v");
+  for (const tool of ["edit", "write"]) {
+    for (const path of ["a.md", "ideas/b.md", "/v/a.md"]) {
+      const answer = await ask(tool, { path });
+      assert.equal(answer?.block, true, `${tool} ${path}`);
+      assert.match(answer.reason, /note_edit/);
+      assert.match(answer.reason, /note_write/);
+    }
+  }
+});
+
+test("노트가 아닌 파일은 pi가 그대로 고친다", async () => {
+  const ask = refusing("/v");
+  assert.equal(await ask("edit", { path: "server.ts" }), undefined);
+  assert.equal(await ask("write", { path: "sub/script.py" }), undefined);
+  assert.equal(await ask("write", { path: "../outside.md" }), undefined, "폴더 밖은 노트가 아니다");
+  assert.equal(await ask("read", { path: "a.md" }), undefined, "읽기는 막지 않는다");
+});
+
+test("앱의 폴더는 여전히 먼저 막히고, 그 이유로 막힌다", async () => {
+  const answer = await refusing("/v")("write", { path: ".pi/history/a.md.jsonl" });
+  assert.equal(answer?.block, true);
+  assert.match(answer.reason, /belongs to the app/);
+});
+
+test("프롬프트는 노트를 쓰는 도구가 무엇인지 말한다", () => {
+  assert.match(VAULT_PROMPT, /note_edit/);
+  assert.match(VAULT_PROMPT, /note_write/);
 });

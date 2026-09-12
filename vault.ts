@@ -72,6 +72,19 @@ export function resolveNote(root: string, path: string): string | null {
 	return full;
 }
 
+/**
+ * The note a tool's path argument names, as the vault knows notes — from the
+ * root, with no leading slash — or null if it does not name one.
+ *
+ * pi's tools take a path as given, relative or absolute, and every part of the
+ * app that has to decide whether pi is touching a note asks this one question
+ * so that they cannot disagree about the answer.
+ */
+export function notePath(root: string, given: string): string | null {
+	const path = isAbsolute(given) ? relative(root, given) : given;
+	return resolveNote(root, path) ? path : null;
+}
+
 export type Note = { path: string; text: string; modified: number };
 
 /** A note's text and the time it was written, or null if there is no such note. */

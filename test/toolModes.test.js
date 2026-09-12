@@ -62,3 +62,19 @@ test("toggling an extension tool by hand does not rename the mode", () => {
 	assert.equal(activeModeId(["read", "grep", "find", "ls"], MAC), "plan");
 	assert.equal(activeModeId(["read", "grep", "find", "ls", "ask_user"], MAC), "plan");
 });
+
+/** The same session, once the note tools are registered. */
+const WITH_NOTES = ["read", "bash", "edit", "write", "note_edit", "note_write", "grep", "find", "ls", "ask_user"];
+
+test("notes are written on the Coding rung, so Plan cannot rewrite one", () => {
+	assert.deepEqual(modeToolNames("plan", WITH_NOTES), ["read", "grep", "find", "ls", "ask_user"]);
+	assert.ok(modeToolNames("coding", WITH_NOTES).includes("note_edit"));
+	assert.ok(modeToolNames("coding", WITH_NOTES).includes("note_write"));
+	assert.deepEqual(modeToolNames("full", WITH_NOTES), WITH_NOTES);
+});
+
+test("a mode with the note tools on still reads back as that mode", () => {
+	for (const id of ["plan", "coding", "full"]) {
+		assert.equal(activeModeId(modeToolNames(id, WITH_NOTES), WITH_NOTES), id);
+	}
+});

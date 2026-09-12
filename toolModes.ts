@@ -9,10 +9,12 @@
  * tools. Turning bash off is a stronger read-only than any prompt, and it needs
  * no new protocol: `set_tools` already exists.
  *
- * The ladder tools are pi's own eight built-ins (core/tools/index.js). Anything
- * else in the registry is an extension tool; it sits outside the ladder and
- * stays on in every mode, because `ask_user` is what makes read-only planning
- * conversational in the first place.
+ * The ladder tools are pi's own eight built-ins (core/tools/index.js), plus
+ * the pair a note is written by — those are ours, but they are writing all the
+ * same, and a Plan mode that let the agent rewrite a note would not be one.
+ * Anything else in the registry is an extension tool; it sits outside the
+ * ladder and stays on in every mode, because `ask_user` is what makes
+ * read-only planning conversational in the first place.
  *
  * At the repo root, like conversation.js, because the server picks the mode a
  * new session opens on and the browser names the one it is in. One ladder, not
@@ -31,7 +33,7 @@ export type ToolModeId = "plan" | "coding" | "full";
  */
 const RUNGS: { id: ToolModeId; name: string; tools: string[]; grant: string }[] = [
 	{ id: "plan", name: "Plan", tools: ["read", "grep", "find", "ls"], grant: "Read, search and list files" },
-	{ id: "coding", name: "Coding", tools: ["edit", "write"], grant: "Edit and create files" },
+	{ id: "coding", name: "Coding", tools: ["edit", "write", "note_edit", "note_write"], grant: "Edit and create files" },
 	{ id: "full", name: "Full access", tools: ["bash", "powershell"], grant: "Run shell commands" },
 ];
 

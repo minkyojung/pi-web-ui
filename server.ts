@@ -28,7 +28,8 @@ import { modeToolNames } from "./toolModes.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { listNotes, newNoteName, readNote, renameNote, restoreNote, trashNote, writeNote } from "./vault.ts";
+import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, trashNote, writeNote, type WriteResult } from "./vault.ts";
+import { noteTools } from "./noteEdit.ts";
 import { accept, type Change, historyPath, mapThrough, moveHistory, moveLog, reconcile, record, replay, readHistory, trashHistoryPath } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { type Claim, recorder } from "./recorder.ts";
@@ -211,6 +212,9 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 			extensionFactories: [
 				// The guard first: a blocked call never reaches the recorder.
 				{ name: "guard", factory: guard(CWD, () => openNote) },
+				// The one pair a note is written by — what the guard above sends
+				// edit and write to when they reach for one. See noteEdit.ts.
+				{ name: "notes", factory: noteTools(CWD, piWrote) },
 				// pi's writes to notes go into their history as they happen, and the
 				// tabs looking at a note hear about it.
 				{ name: "recorder", factory: notes.factory },
@@ -466,23 +470,34 @@ function beginAsk(ask: Ask, question: string, tab: WebSocket): string | null {
 }
 
 /**
- * pi's words, put into the note under the line the words at `to` end on, as
- * pi's — marked until the person accepts them, like anything pi writes.
+ * A note as pi leaves it, by the path every write takes: the file, then the
+ * log, then the tabs.
+ *
+ * `had` is the note as it was read a moment ago — what the change is measured
+ * from, and the version the write is refused over if the person has typed past
+ * it since. Null for a note that is not there yet. The same shape as the
+ * editor's own save, which is the point: pi's writing is held to what a
+ * person's is, and marked until they accept it.
+ */
+function piWrote(path: string, had: Note | null, text: string, sessionId: string, entryId?: string): WriteResult {
+	const written = writeNote(CWD, path, text, had?.modified ?? null);
+	if (!written.ok) return written;
+	const changes = record(CWD, path, had?.text ?? "", text, { author: "pi", at: Date.now(), sessionId, entryId });
+	wrote(path, had?.modified ?? null, changes);
+	return written;
+}
+
+/**
+ * pi's words, put into the note under the line the words at `to` end on.
  *
  * The person asking for them to be put there does not make them theirs; what
  * it makes is the moment they land, which is why this is a write of pi's made
- * on a person's word, and goes out by the path every write takes: the file,
- * then the log, then the tabs.
+ * on a person's word.
  */
 function putUnder(path: string, to: number, words: string, sessionId: string, entryId?: string): boolean {
 	const found = readNote(CWD, path);
 	if (!found) return false;
-	const text = under(found.text, to, words);
-	const written = writeNote(CWD, path, text, found.modified);
-	if (!written.ok) return false;
-	const changes = record(CWD, path, found.text, text, { author: "pi", at: Date.now(), sessionId, entryId });
-	wrote(path, found.modified, changes);
-	return true;
+	return piWrote(path, found, under(found.text, to, words), sessionId, entryId).ok;
 }
 
 /**

@@ -1,14 +1,14 @@
 /**
- * The pi extension that says which of a note's words are pi's.
+ * Whose the words are, when a note was written by no door of ours.
  *
- * pi reaches the vault two ways, and only one of them says where it is going.
- * `edit` and `write` name the note, so it can be read as it was before the
- * call and diffed after it — a before and an after, which is all history.ts
- * asks for. `bash` names nothing: a command that writes a note cannot be told
- * from one that reads it, and there is no parse of a shell line that settles
- * it. So a write made there is found the way any write from outside the app
- * is found — the disk stops agreeing with the log — and what this adds is the
- * answer to whose it was.
+ * A note pi means to write goes through note_edit or note_write, which know
+ * what they changed and say so — see noteEdit.ts — and `edit` and `write` are
+ * refused on one before they run, in guard.ts. What is left is `bash`, which
+ * names nothing: a command that writes a note cannot be told from one that
+ * reads it, and there is no parse of a shell line that settles it. So a write
+ * made there is found the way any write from outside the app is found — the
+ * disk stops agreeing with the log — and what this file adds is the answer to
+ * whose it was.
  *
  * The log is append-only and has no line that changes an earlier line's
  * author, so that answer has to be right at the moment the line is written.
@@ -25,14 +25,12 @@
  * again — the cheap wrong answer rather than the expensive one.
  *
  * Runs inside pi's extension runner, like the reader's set_gist did, so it is
- * bound per session and retired with it. Only paths that are notes are kept:
- * pi editing a source file is not the vault's business.
+ * bound per session and retired with it. Only notes are looked at: pi running a
+ * build or a test is not the vault's business.
  */
-import { readFileSync, statSync } from "node:fs";
-import { isAbsolute, relative } from "node:path";
-import { type ExtensionAPI, isToolCallEventType } from "@earendil-works/pi-coding-agent";
-import { type Change, type Origin, readHistory, reconcile, record } from "./history.ts";
-import { LIMIT, listNotes, readNote, resolveNote } from "./vault.ts";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { type Change, type Origin, readHistory, reconcile } from "./history.ts";
+import { LIMIT, listNotes, readNote } from "./vault.ts";
 
 /**
  * Tell the server a note was written: the version it was written over (its
@@ -65,32 +63,8 @@ type Shell = {
 };
 
 export function recorder(root: string, onWritten: OnNoteWritten): { factory: (pi: ExtensionAPI) => void; claim: Claim } {
-	/** What each in-flight edit or write is about to change, by call id. */
-	const before = new Map<string, { path: string; text: string; modified: number | null; sessionId: string; entryId?: string }>();
 	/** Each in-flight shell call, by call id. More than one: tools run in parallel. */
 	const shells = new Map<string, Shell>();
-
-	// pi's tools take a path as given, relative or absolute; the vault knows
-	// notes by their path from the root.
-	const notePath = (given: string): string | null => {
-		const path = isAbsolute(given) ? relative(root, given) : given;
-		return resolveNote(root, path) ? path : null;
-	};
-
-	const readOrEmpty = (path: string): string => {
-		try {
-			return readFileSync(resolveNote(root, path)!, "utf8");
-		} catch {
-			return ""; // Not there yet: `write` creating it.
-		}
-	};
-	const modifiedOrNull = (path: string): number | null => {
-		try {
-			return statSync(resolveNote(root, path)!).mtimeMs;
-		} catch {
-			return null;
-		}
-	};
 
 	const snapshot = (): Pick<Shell, "notes" | "capped"> => {
 		const found = listNotes(root);
@@ -155,53 +129,34 @@ export function recorder(root: string, onWritten: OnNoteWritten): { factory: (pi
 
 	const factory = (pi: ExtensionAPI) => {
 		pi.on("tool_call", async (event, ctx) => {
-			const sessionId = ctx.sessionManager.getSessionId();
-			// The assistant message that made the call: pi waits for the session
-			// to catch up to it before tool_call runs.
-			const entryId = ctx.sessionManager.getLeafId() ?? undefined;
-			if (SHELL.has(event.toolName)) {
-				shells.set(event.toolCallId, { startedAt: Date.now(), sessionId, entryId, ...snapshot() });
-				return;
-			}
-			if (!isToolCallEventType("edit", event) && !isToolCallEventType("write", event)) return;
-			const path = notePath(event.input.path);
-			if (path) before.set(event.toolCallId, { path, text: readOrEmpty(path), modified: modifiedOrNull(path), sessionId, entryId });
+			if (!SHELL.has(event.toolName)) return;
+			shells.set(event.toolCallId, {
+				startedAt: Date.now(),
+				sessionId: ctx.sessionManager.getSessionId(),
+				// The assistant message that made the call: pi waits for the
+				// session to catch up to it before tool_call runs.
+				entryId: ctx.sessionManager.getLeafId() ?? undefined,
+				...snapshot(),
+			});
 		});
 
 		// Not tool_result: that one is skipped entirely when a call is blocked
-		// by another extension or aborted mid-batch, and what was put aside for
-		// it would be held — a note's whole text — for the rest of the session.
-		// This one is emitted either way.
+		// by another extension or aborted mid-batch, and the listing put aside
+		// for it would be held for the rest of the session. This one is emitted
+		// either way.
 		pi.on("tool_execution_end", async (event) => {
 			const shell = shells.get(event.toolCallId);
-			if (shell) {
-				// Settled before it is forgotten, so the question it answers is
-				// asked of this call too — and of any other still running beside it.
-				settle(shell);
-				shells.delete(event.toolCallId);
-			}
-			const had = before.get(event.toolCallId);
-			if (!had) return;
-			before.delete(event.toolCallId);
-			// Whether the call said it failed is not asked: a failed edit changed
-			// nothing and diffs to nothing, and one that was stopped halfway
-			// through its write did change the note, and that is pi's doing too.
-			const changes = record(root, had.path, had.text, readOrEmpty(had.path), {
-				author: "pi",
-				at: Date.now(),
-				sessionId: had.sessionId,
-				entryId: had.entryId,
-			});
-			if (changes.length) onWritten(had.path, had.modified, changes);
+			if (!shell) return;
+			// Settled before it is forgotten, so the question it answers is asked
+			// of this call too — and of any other still running beside it.
+			settle(shell);
+			shells.delete(event.toolCallId);
 		});
 
 		// A batch that is aborted leaves its later calls with no end of their
 		// own. Every call of a turn is over by the turn's end, so anything still
 		// here is never coming back.
-		const forget = () => {
-			before.clear();
-			shells.clear();
-		};
+		const forget = () => shells.clear();
 		pi.on("turn_end", async () => forget());
 		pi.on("agent_end", async () => forget());
 	};
