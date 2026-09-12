@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { accept, apply, appendHistory, changesBetween, historyPath, moveHistory, readHistory, reconcile, record, replay } from "../history.ts";
+import { accept, apply, appendHistory, changesBetween, historyPath, mapThrough, moveHistory, readHistory, reconcile, record, replay } from "../history.ts";
 
 const me = { author: "me", at: 1 };
 const pi = { author: "pi", at: 2, sessionId: "s1", entryId: "e1" };
@@ -133,6 +133,32 @@ test("구간 하나는 언제나 글자 하나 이상이고 서로 겹치지 않
     last = s.to;
   }
   assert.equal(last, text.length, "구간들이 본문 전체를 덮는다");
+});
+
+test("자리는 앞에서 일어난 변경만큼 밀리고, 뒤에서 일어난 변경에는 안 움직인다", () => {
+  const text = "one two three";
+  const before = changesBetween(text, "ONE one two three", me);
+  const after = changesBetween(text, "one two three four", me);
+  const at = text.indexOf("two");
+  assert.equal(mapThrough(before, at), at + "ONE ".length);
+  assert.equal(mapThrough(after, at), at);
+  assert.equal(mapThrough([], at), at);
+});
+
+test("고른 글이 지워지면 두 끝이 만난다 — 답을 달아 줄 자리가 없어진 것", () => {
+  const text = "one two three";
+  const from = text.indexOf("two");
+  const to = from + "two".length;
+  const gone = changesBetween(text, "one three", me);
+  assert.equal(mapThrough(gone, from), mapThrough(gone, to));
+  // 고쳐 쓴 것은 없어진 것이 아니다: 자리는 그대로 남는다.
+  const rewritten = changesBetween(text, "one TWO three", me);
+  assert.ok(mapThrough(rewritten, from) < mapThrough(rewritten, to));
+});
+
+test("받아들임은 글을 바꾸지 않으니 자리도 움직이지 않는다", () => {
+  const touch = [{ ...me, from: 0, to: 3, inserted: "one", removed: "one" }];
+  assert.equal(mapThrough(touch, 8), 8);
 });
 
 // --- on disk ---
