@@ -169,11 +169,11 @@ interface DashboardBridgeState {
 }
 
 /**
- * The note open in the editor of the tab that last sent a prompt, given to
- * pi for the turn as a line of the system prompt — see guard.ts. One value,
- * not one per tab: pi has one conversation.
+ * The note open in the editor of the tab that last sent a prompt, and the
+ * words chosen in it, given to pi for the turn as lines of the system prompt
+ * — see guard.ts. One value, not one per tab: pi has one conversation.
  */
-let openNote: string | null = null;
+let openNote: { path: string; chosen: string | null } | null = null;
 
 /**
  * The ask waiting for an answer, if there is one: what was chosen, where the
@@ -803,7 +803,10 @@ wss.on("connection", async (ws) => {
 			switch (msg.type) {
 				case "prompt": {
 					if (typeof msg.text !== "string") return;
-					openNote = typeof msg.note === "string" ? msg.note : null;
+					openNote =
+						typeof msg.note === "string"
+							? { path: msg.note, chosen: typeof msg.chosen === "string" && msg.chosen ? msg.chosen : null }
+							: null;
 					// Anything else said to pi takes the waiting answer with it: after
 					// this, which reply was the answer cannot be told, and a guess
 					// would write the wrong words into someone's note.

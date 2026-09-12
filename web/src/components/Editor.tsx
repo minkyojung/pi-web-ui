@@ -9,6 +9,7 @@ import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/sea
 import { drawSelection, dropCursor, EditorView, keymap, placeholder, scrollPastEnd } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
+import { choose, chosenStore } from "../chosen";
 import { linkCompletion } from "../features/linkCompletion";
 import { livePreview } from "../features/livePreview";
 import { landOn, links, notesChanged } from "../features/links";
@@ -266,7 +267,12 @@ export function Editor({
 				theme,
 				EditorView.updateListener.of((u) => {
 					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) onChange(u.changes);
-					}),
+					// What is chosen, for the box under pi's column to point with.
+					if (u.selectionSet || u.docChanged) {
+						const { from, to } = u.state.selection.main;
+						choose(at.current, u.state.sliceDoc(from, to));
+					}
+				}),
 				...features,
 				...extensions,
 			],
@@ -290,6 +296,8 @@ export function Editor({
 			save();
 			removeEventListener("pagehide", onHide);
 			unregister();
+			// Nothing is chosen in a note that is not open.
+			chosenStore.set(null);
 			v.destroy();
 			view.current = null;
 		};

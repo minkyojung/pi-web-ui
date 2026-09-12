@@ -12,10 +12,12 @@
  *   `edit`, `write` and `bash` are blocked before they run, whatever the
  *   mode. The instruction above is the soft version; this is the one that
  *   holds when the instruction is forgotten.
- * - The note open in the editor, given as a line of the system prompt for
- *   the turn rather than as text in the person's message. As user text it
- *   was kept in the session, compacted with it, and replayed with a stale
- *   path when a question was asked again or a branch navigated.
+ * - The note open in the editor, and the words chosen in it, given as lines of
+ *   the system prompt for the turn rather than as text in the person's
+ *   message. As user text they were kept in the session, compacted with it,
+ *   and replayed with a stale path when a question was asked again or a
+ *   branch navigated — and what is chosen belongs to the moment even more
+ *   than the path does.
  *
  * Inline, like recorder.ts, and bound per session with it.
  */
@@ -48,7 +50,20 @@ export function mentionsAppDir(command: string): boolean {
 	return new RegExp(`(^|[\\s"'\`=:(])\\${APP_DIR_NAME}(?=[/\\s"'\`)]|$)`).test(command);
 }
 
-export type OpenNote = () => string | null;
+/** The note open in the editor, and the words chosen in it, if any. */
+export type OpenNote = () => { path: string; chosen: string | null } | null;
+
+/** The line of the turn's system prompt that says what the person is looking at. */
+export function looking(note: { path: string; chosen: string | null }): string {
+	const line = `The person has this note open in their editor right now: ${note.path}`;
+	if (!note.chosen) return line;
+	// Quoted, and said to be a part of the note rather than a thing to answer
+	// about on its own: the question is the message, this is what it points at.
+	return `${line}\nThey have chosen these words in it, which is what their message is about unless they say otherwise:\n${note.chosen
+		.split("\n")
+		.map((words) => `> ${words}`)
+		.join("\n")}`;
+}
 
 export const guard = (root: string, openNote: OpenNote) => (pi: ExtensionAPI) => {
 	pi.on("tool_call", async (event) => {
@@ -67,6 +82,6 @@ export const guard = (root: string, openNote: OpenNote) => (pi: ExtensionAPI) =>
 	pi.on("before_agent_start", async (event) => {
 		const note = openNote();
 		if (!note) return undefined;
-		return { systemPrompt: `${event.systemPrompt}\n\nThe person has this note open in their editor right now: ${note}` };
+		return { systemPrompt: `${event.systemPrompt}\n\n${looking(note)}` };
 	});
 };
