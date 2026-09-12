@@ -36,7 +36,7 @@ import { type Claim, recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
 import { guard, VAULT_PROMPT } from "./guard.ts";
 import { renameTarget } from "./naming.ts";
-import { LinkStore } from "./linkIndex.ts";
+import { LinkStore, type Touched } from "./linkIndex.ts";
 import { backlinksOf, retarget } from "./links.ts";
 import { search } from "./search.ts";
 import type {
@@ -370,7 +370,7 @@ function note(path: string): NoteMsg | null {
 	if (!found) return null;
 	const { spans } = settleDisk(path, found.text, found.modified, Date.now());
 	known.set(path, found.modified);
-	return { type: "note", path, text: found.text, modified: found.modified, spans, backlinks: links.backlinks(path) };
+	return { type: "note", path, text: found.text, modified: found.modified, spans, backlinks: links.backlinks(path), tagged: links.tagged(path) };
 }
 
 /** Every note's links, for "who links here" — see linkIndex.ts. */
@@ -380,6 +380,12 @@ links.load();
 /** After a change to what links where: the notes whose backlinks may differ hear theirs again. */
 function backlinksFor(paths: string[]): void {
 	for (const path of paths) broadcast({ type: "backlinks", path, notes: links.backlinks(path) });
+}
+
+/** After a change to what links where or what is tagged how: everyone whose lists may differ hears them again. */
+function touchedBy(touched: Touched): void {
+	backlinksFor(touched.backlinks);
+	for (const path of touched.tagged) broadcast({ type: "tagged", path, notes: links.tagged(path) });
 }
 
 /**
@@ -403,7 +409,7 @@ function noticed(path: string): void {
 		// moved it — a rename, a delete — is already told, and known forgets
 		// it first.
 		if (known.delete(path)) broadcast({ type: "note_gone", path });
-		backlinksFor(links.remove(path));
+		touchedBy(links.remove(path));
 		broadcast(files());
 		return;
 	}
@@ -422,7 +428,7 @@ function noticed(path: string): void {
  */
 function wrote(path: string, base: number | null, changes: Change[]): void {
 	const found = readNote(CWD, path);
-	if (found) backlinksFor(links.update(path, found.text));
+	if (found) touchedBy(links.update(path, found.text));
 	if (found && base !== null && replay(readHistory(CWD, path)).text === found.text) {
 		const { spans } = replay(readHistory(CWD, path));
 		known.set(path, found.modified);
@@ -1107,6 +1113,8 @@ wss.on("connection", async (ws) => {
 							wrote(other, had.modified, changes);
 						}
 						backlinksFor([msg.to]);
+						// The renamed note's tags are its own still; the notes sharing them now name it by its new path.
+						touchedBy({ backlinks: [], tagged: [msg.to, ...links.tagged(msg.to).map((t) => t.path)] });
 					}
 					break;
 				}
@@ -1123,7 +1131,7 @@ wss.on("connection", async (ws) => {
 					moveLog(historyPath(CWD, msg.path), trashHistoryPath(CWD, gone.trashed));
 					broadcast({ type: "note_deleted", path: msg.path, trashed: gone.trashed });
 					broadcast(files());
-					backlinksFor(links.remove(msg.path));
+					touchedBy(links.remove(msg.path));
 					break;
 				}
 

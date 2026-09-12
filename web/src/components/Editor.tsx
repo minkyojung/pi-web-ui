@@ -21,7 +21,7 @@ import { highlightTag } from "../../../highlight.ts";
 import { noteSyntax } from "../../../syntax.ts";
 import { tagTag } from "../../../tag.ts";
 import type { Place } from "../../../links.ts";
-import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
+import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, taggedStore } from "../serverState";
 import { titleOf } from "../noteSync";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { registerSave } from "../saves";
@@ -540,6 +540,7 @@ export function Editor({
 			)}
 			<div ref={host} className="min-h-0 flex-1 overflow-hidden" />
 			<Backlinks path={path} onOpen={onOpen} />
+			<TaggedWith path={path} onOpen={onOpen} />
 		</div>
 	);
 }
@@ -566,6 +567,35 @@ function Backlinks({ path, onOpen }: { path: string; onOpen?: (path: string) => 
 				>
 					{titleOf(b.path)}
 					{b.count > 1 && <span className="ml-1 text-muted-foreground">{b.count}</span>}
+				</button>
+			))}
+		</div>
+	);
+}
+
+/**
+ * The notes that share a tag with this one, under the note, beside the
+ * backlinks and from the same index: sent with the note, and again whenever
+ * a note's tags changed. Each with the tags shared, since that is why it is
+ * here. Nothing when there are none.
+ */
+function TaggedWith({ path, onOpen }: { path: string; onOpen?: (path: string) => void }) {
+	const all = useSyncExternalStore(taggedStore.subscribe, taggedStore.get);
+	const notes = all[path] ?? [];
+	if (notes.length === 0) return null;
+	return (
+		<div id="tagged" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t px-6 py-2 text-xs text-muted-foreground">
+			<span>Tagged with</span>
+			{notes.map((t) => (
+				<button
+					key={t.path}
+					type="button"
+					title={t.path}
+					onClick={() => onOpen?.(t.path)}
+					className="cursor-default rounded-sm px-1 text-foreground hover:bg-accent"
+				>
+					{titleOf(t.path)}
+					<span className="ml-1 text-muted-foreground">{t.tags.map((tag: string) => `#${tag}`).join(" ")}</span>
 				</button>
 			))}
 		</div>

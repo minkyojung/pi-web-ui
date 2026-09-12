@@ -23,6 +23,7 @@ import type {
 	SearchResultsMsg,
 	ServerMsg,
 	SessionInfo,
+	Tagged,
 	UsageMsg,
 } from "./types";
 
@@ -69,6 +70,13 @@ export const backlinksStore = createStore<Record<string, Backlink[]>>({});
 
 export function setBacklinks(path: string, notes: Backlink[]): void {
 	backlinksStore.set({ ...backlinksStore.get(), [path]: notes });
+}
+
+/** The notes that share a tag with each note, as last told, by path. */
+export const taggedStore = createStore<Record<string, Tagged[]>>({});
+
+export function setTagged(path: string, notes: Tagged[]): void {
+	taggedStore.set({ ...taggedStore.get(), [path]: notes });
 }
 
 /**

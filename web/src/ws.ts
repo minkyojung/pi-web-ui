@@ -9,6 +9,7 @@ import {
 	addPrompt,
 	branchesStore,
 	setBacklinks,
+	setTagged,
 	configStore,
 	contextSourcesStore,
 	filesStore,
@@ -69,6 +70,7 @@ const STATE: Record<StateMsg["type"], true> = {
 	files: true,
 	note: true,
 	backlinks: true,
+	tagged: true,
 	note_changed: true,
 	note_created: true,
 	note_renamed: true,
@@ -116,10 +118,14 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "note":
 			setBacklinks(msg.path, msg.backlinks);
+			setTagged(msg.path, msg.tagged);
 			noteStore.set(msg);
 			return;
 		case "backlinks":
 			setBacklinks(msg.path, msg.notes);
+			return;
+		case "tagged":
+			setTagged(msg.path, msg.notes);
 			return;
 		case "note_changed":
 			noteChangedStore.set(msg);

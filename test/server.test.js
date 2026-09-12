@@ -280,6 +280,24 @@ it("이름을 주고 새 노트를 청하면 그 이름이 되고, 있는 이름
   assert.equal((await want("note_rename_failed")).reason, "exists");
 });
 
+it("노트를 열면 같은 태그의 노트가 오고, 다른 노트의 태그가 바뀌면 다시 온다", async () => {
+  writeFileSync(join(cwd, "tag-a.md"), "#shared one\n");
+  writeFileSync(join(cwd, "tag-b.md"), "#shared two\n");
+  await new Promise((r) => setTimeout(r, 400)); // the watcher's reports
+  clear();
+  send({ type: "open_note", path: "tag-a.md" });
+  const note = await want("note", (m) => m.path === "tag-a.md");
+  assert.deepEqual(note.tagged, [{ path: "tag-b.md", tags: ["shared"] }]);
+  // The other note drops the tag: this one hears its list again, now empty.
+  clear();
+  send({ type: "open_note", path: "tag-b.md" });
+  const b = await want("note", (m) => m.path === "tag-b.md");
+  clear();
+  send({ type: "save_note", path: "tag-b.md", text: "#other two\n", base: b.modified });
+  const again = await want("tagged", (m) => m.path === "tag-a.md");
+  assert.deepEqual(again.notes, []);
+});
+
 it("노트를 열면 백링크가 오고, 다른 노트가 링크를 쓰면 다시 오며, 이름을 바꾸면 링크가 따라온다", async () => {
   writeFileSync(join(cwd, "target.md"), "# target\n");
   writeFileSync(join(cwd, "source.md"), "see [[target]] and [[target|it]]\n");

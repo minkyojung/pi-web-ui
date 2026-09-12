@@ -785,6 +785,18 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
 });
 
+check("under a note, the notes that share its tags", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "shared-a.md"), "#team notes\n");
+	writeFileSync(join(cwd, "shared-b.md"), "more #Team and #other\n");
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="shared-a.md"]') && !!document.querySelector('#notes button[title="shared-b.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="shared-a.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("#team"));
+	await until("the tagged strip", () => app.evaluate("document.querySelector('#tagged')?.textContent ?? ''").then((t) => t.includes("shared-b") && t.includes("#team") && !t.includes("#other")));
+	// The other note loses the tag: the strip goes.
+	writeFileSync(join(cwd, "shared-b.md"), "no more\n");
+	await until("the strip to go", () => app.evaluate("!document.querySelector('#tagged')"));
+});
+
 check("%%a comment%% is set apart, its marks hidden off the cursor", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "comment.md"), "say %%to self%% now\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="comment.md"]')`));

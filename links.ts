@@ -79,6 +79,22 @@ export function linksIn(text: string): Link[] {
 	return wikiLinksIn(text).map((l) => l.link);
 }
 
+/**
+ * The tags of a note, each once, as Obsidian keeps them: without the `#`,
+ * and in lower case, since `#Todo` and `#todo` are one tag.
+ */
+export function tagsIn(text: string): string[] {
+	const out = new Set<string>();
+	parser.parse(text).iterate({
+		enter: (node) => {
+			if (node.name !== "Tag") return;
+			out.add(text.slice(node.from + 1, node.to).toLowerCase());
+			return false;
+		},
+	});
+	return [...out];
+}
+
 /** How many folders two paths do not share: the distance a nearest-wins rule measures. */
 function distance(a: string, b: string): number {
 	const x = a.split("/").slice(0, -1);

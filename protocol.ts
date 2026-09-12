@@ -15,10 +15,10 @@ import type { Ask, AskOutcome } from "./ask";
 import type { BranchPoint } from "./branches";
 import type { Author, Change, Span } from "./history";
 import type { NoteFile } from "./vault";
-import type { Backlink } from "./linkIndex";
+import type { Backlink, Tagged } from "./linkIndex";
 import type { SearchHit } from "./search";
 
-export type { Ask, AskOutcome, Author, Backlink, BranchPoint, Change, NoteFile, SearchHit, Span };
+export type { Ask, AskOutcome, Author, Backlink, BranchPoint, Change, NoteFile, SearchHit, Span, Tagged };
 
 // ---------------------------------------------------------------------------
 // Browser → server
@@ -206,6 +206,8 @@ export interface NoteMsg {
 	spans: Span[];
 	/** The notes that link to this one, from the index. */
 	backlinks: Backlink[];
+	/** The notes that share a tag with this one, from the index. */
+	tagged: Tagged[];
 }
 
 /**
@@ -217,6 +219,13 @@ export interface BacklinksMsg {
 	type: "backlinks";
 	path: string;
 	notes: Backlink[];
+}
+
+/** The notes sharing a tag with `path`, again: sent the same way, whenever a note's tags changed. */
+export interface TaggedMsg {
+	type: "tagged";
+	path: string;
+	notes: Tagged[];
 }
 
 /**
@@ -371,6 +380,7 @@ export type StateMsg =
 	| FilesMsg
 	| NoteMsg
 	| BacklinksMsg
+	| TaggedMsg
 	| NoteChangedMsg
 	| NoteCreatedMsg
 	| NoteRenamedMsg
