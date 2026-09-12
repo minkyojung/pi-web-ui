@@ -4,12 +4,11 @@ import test from "node:test";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState } from "@codemirror/state";
 
-import { highlight } from "../highlight.ts";
+import { noteSyntax } from "../syntax.ts";
 import { hidden } from "../web/src/features/livePreview.ts";
-import { wikiLink } from "../wikilink.ts";
 
 const state = (doc, cursor = doc.length) =>
-	EditorState.create({ doc, selection: EditorSelection.cursor(cursor), extensions: [markdown({ base: markdownLanguage, extensions: [wikiLink, highlight] })] });
+	EditorState.create({ doc, selection: EditorSelection.cursor(cursor), extensions: [markdown({ base: markdownLanguage, extensions: [noteSyntax] })] });
 
 /** What `hidden` hides, as the text of each range. */
 const gone = (s) => {
@@ -41,7 +40,7 @@ test("선택 영역이 걸친 노드는 모두 드러난다", () => {
   const s = EditorState.create({
     doc: "*a* and **b**\n",
     selection: EditorSelection.range(1, 10),
-    extensions: [markdown({ base: markdownLanguage, extensions: [wikiLink] })],
+    extensions: [markdown({ base: markdownLanguage, extensions: [noteSyntax] })],
   });
   assert.deepEqual(gone(s), []);
 });

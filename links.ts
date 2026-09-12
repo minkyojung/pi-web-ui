@@ -12,14 +12,8 @@
  * from the notes. Nothing here touches the disk; the server does.
  */
 import type { SyntaxNode } from "@lezer/common";
-import { parser as markdown } from "@lezer/markdown";
 import { titleOf } from "./naming.ts";
-import { frontMatter } from "./frontmatter.ts";
-import { highlight } from "./highlight.ts";
-import { wikiLink } from "./wikilink.ts";
-
-// The same parser as the editor's, so both ends see one tree.
-const parser = markdown.configure([wikiLink, frontMatter, highlight]);
+import { parser } from "./syntax.ts";
 
 export type Link = {
 	target: string;

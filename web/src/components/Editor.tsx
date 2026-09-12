@@ -17,9 +17,8 @@ import { landOn, links, notesChanged } from "../features/links";
 import { pending, setSpans } from "../features/pending";
 import { toggleMarks } from "../features/toggleMarks";
 import { comeBack, leave, scrollBack } from "../features/viewMemory";
-import { frontMatter } from "../../../frontmatter.ts";
-import { highlightTag, highlight } from "../../../highlight.ts";
-import { wikiLink } from "../../../wikilink.ts";
+import { highlightTag } from "../../../highlight.ts";
+import { noteSyntax } from "../../../syntax.ts";
 import type { Place } from "../../../links.ts";
 import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
 import { titleOf } from "../noteSync";
@@ -254,7 +253,7 @@ export function Editor({
 					...historyKeymap,
 				]),
 				// No HTML tag completion: a `<` in prose is a less-than, not a tag.
-				markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [wikiLink, frontMatter, highlight], completeHTMLTags: false }),
+				markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [noteSyntax], completeHTMLTags: false }),
 				// Pairs close as they open. Backticks too, for inline code; not
 				// `*`, which opens a list item as often as it opens emphasis, and
 				// `[[` needs nothing — the second `[` lands inside the first pair.
