@@ -10,15 +10,13 @@ import { drawSelection, dropCursor, EditorView, keymap, placeholder, scrollPastE
 import { tags } from "@lezer/highlight";
 
 import { codeBlocks } from "../features/codeBlocks";
-import { cards as cardMarks, setCards, type Draft } from "../features/cards";
 import { linkCompletion } from "../features/linkCompletion";
 import { livePreview } from "../features/livePreview";
 import { landOn, links, notesChanged } from "../features/links";
 import { pending, setSpans } from "../features/pending";
-import { Cards } from "./Cards";
 import { wikiLink } from "../../../wikilink.ts";
 import type { Place } from "../../../links.ts";
-import { backlinksStore, cardsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
+import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
 import { titleOf } from "../noteSync";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { registerSave } from "../saves";
@@ -155,15 +153,6 @@ export function Editor({
 	const dirty = useRef(false);
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [status, setStatus] = useState<"loading" | "saved" | "unsaved" | "conflict" | "gone">("loading");
-	/** The card being written, if any. Where it points is the editor's; what it says is here. */
-	const [draft, setDraft] = useState<Draft | null>(null);
-	/**
-	 * Bumped whenever the text moved under the margin — scrolled, typed into,
-	 * written to, resized — and once when the view first exists. The cards are
-	 * put at the height of their words, and that is where they have to be asked
-	 * for again.
-	 */
-	const [moved, setMoved] = useState(0);
 	/**
 	 * Work that changes the doc, held while the person is mid-composition —
 	 * a Hangul syllable half typed — since a transaction then would cut the
@@ -184,19 +173,6 @@ export function Editor({
 			for (const job of jobs) job();
 		};
 		tick();
-	};
-
-	/**
-	 * Ask the margin to put the cards where their words now are, at most once a
-	 * frame: a scroll asks on every wheel event.
-	 */
-	const frame = useRef(0);
-	const restack = () => {
-		if (frame.current) return;
-		frame.current = requestAnimationFrame(() => {
-			frame.current = 0;
-			setMoved((n) => n + 1);
-		});
 	};
 
 	const save = () => {
@@ -239,7 +215,6 @@ export function Editor({
 		if (!host.current) return;
 		const features = [
 			pending(() => at.current),
-			cardMarks(setDraft),
 			links({
 				notes: () => filesStore.get().map((f) => f.path),
 				here: () => at.current,
@@ -290,8 +265,7 @@ export function Editor({
 				theme,
 				EditorView.updateListener.of((u) => {
 					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) onChange(u.changes);
-					if (u.docChanged || u.geometryChanged || u.viewportChanged) restack();
-				}),
+					}),
 				...features,
 				...extensions,
 			],
@@ -311,19 +285,9 @@ export function Editor({
 		const unregister = registerSave(save);
 		const onHide = () => save();
 		addEventListener("pagehide", onHide);
-		// The cards sit beside the text, so they move with it: scrolling, and a
-		// box that changed size under it. The first call is for the margin, which
-		// rendered before there was a view to ask where anything is.
-		v.scrollDOM.addEventListener("scroll", restack, { passive: true });
-		const resize = new ResizeObserver(restack);
-		resize.observe(v.scrollDOM);
-		restack();
 		return () => {
 			save();
 			removeEventListener("pagehide", onHide);
-			v.scrollDOM.removeEventListener("scroll", restack);
-			resize.disconnect();
-			if (frame.current) cancelAnimationFrame(frame.current);
 			unregister();
 			v.destroy();
 			view.current = null;
@@ -346,15 +310,6 @@ export function Editor({
 		send({ type: "open_note", path });
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [online, path]);
-
-	// The note's cards, over the server's text: moved the rest of the way by
-	// the typing it has not seen, as the marks on pi's words are.
-	const cardsMsg = useSyncExternalStore(cardsStore.subscribe, cardsStore.get);
-	useEffect(() => {
-		if (!view.current || !cardsMsg || cardsMsg.path !== path) return;
-		view.current.dispatch({ effects: setCards.of({ cards: cardsMsg.cards, through: local.current }) });
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [cardsMsg, path]);
 
 	// A note made or renamed elsewhere may be the one a link here names.
 	const notes = useSyncExternalStore(filesStore.subscribe, filesStore.get);
@@ -550,10 +505,7 @@ export function Editor({
 					</Button>
 				</div>
 			)}
-			<div className="flex min-h-0 flex-1 overflow-hidden">
-				<div ref={host} className="h-full min-w-0 flex-1" />
-				<Cards view={view.current} path={path} draft={draft} moved={moved} onDraft={setDraft} />
-			</div>
+			<div ref={host} className="min-h-0 flex-1 overflow-hidden" />
 			<Backlinks path={path} onOpen={onOpen} />
 		</div>
 	);

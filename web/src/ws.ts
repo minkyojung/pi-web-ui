@@ -7,9 +7,7 @@
  */
 import {
 	addPrompt,
-	askDoneStore,
 	branchesStore,
-	cardsStore,
 	setBacklinks,
 	configStore,
 	contextSourcesStore,
@@ -79,7 +77,6 @@ const STATE: Record<StateMsg["type"], true> = {
 	note_deleted: true,
 	note_conflict: true,
 	search_results: true,
-	cards: true,
 	ask_done: true,
 	prompt_request: true,
 	prompt_dismiss: true,
@@ -147,12 +144,6 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "search_results":
 			searchResultsStore.set(msg);
-			return;
-		case "cards":
-			cardsStore.set(msg);
-			return;
-		case "ask_done":
-			askDoneStore.set(msg);
 			return;
 		case "snapshot":
 			// A snapshot means the server's session may not be the one these

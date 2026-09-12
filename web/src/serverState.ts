@@ -6,10 +6,8 @@
  * listening and the settings bar would stay empty until something changed.
  */
 import type {
-	AskDoneMsg,
 	Backlink,
 	BranchPoint,
-	CardsMsg,
 	ConfigMsg,
 	ContextSourcesMsg,
 	NoteChangedMsg,
@@ -105,12 +103,6 @@ export const noteConflictStore = createStore<NoteConflictMsg | null>(null);
 
 /** The last search answer this tab got. The palette shows it only if it answers the latest ask. */
 export const searchResultsStore = createStore<SearchResultsMsg | null>(null);
-
-/** A note's cards, as the server last sent them. The margin shows the ones for the note in front. */
-export const cardsStore = createStore<CardsMsg | null>(null);
-
-/** How this tab's last ask ended. What a card drawn before the server knew of it waits on. */
-export const askDoneStore = createStore<AskDoneMsg | null>(null);
 
 /**
  * Text a cleared queue handed back, waiting to be put in the composer. Emptied

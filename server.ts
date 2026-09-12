@@ -31,7 +31,6 @@ import { branchPoints } from "./branches.ts";
 import { listNotes, newNoteName, readNote, renameNote, restoreNote, trashNote, writeNote } from "./vault.ts";
 import { accept, type Change, historyPath, mapThrough, moveHistory, moveLog, reconcile, record, replay, readHistory, trashHistoryPath } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
-import { appendCard, cardsOf, cardsPath, trashCardsPath } from "./cards.ts";
 import { type Claim, recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
 import { guard, VAULT_PROMPT } from "./guard.ts";
@@ -41,7 +40,6 @@ import { backlinksOf, retarget } from "./links.ts";
 import { search } from "./search.ts";
 import type {
 	BranchesMsg,
-	CardsMsg,
 	ClientMsg,
 	ConfigMsg,
 	ContextSourcesMsg,
@@ -371,16 +369,6 @@ function note(path: string): NoteMsg | null {
 	return { type: "note", path, text: found.text, modified: found.modified, spans, backlinks: links.backlinks(path) };
 }
 
-/**
- * A note's cards, where they now sit in it. The disk is settled first, as
- * note() does: a write that missed the app moves the cards below it too.
- */
-function cardsOn(path: string): CardsMsg {
-	const found = readNote(CWD, path);
-	if (found) settleDisk(path, found.text, found.modified, Date.now());
-	return { type: "cards", path, cards: cardsOf(CWD, path) };
-}
-
 /** Every note's links, for "who links here" — see linkIndex.ts. */
 const links = new LinkStore(CWD);
 links.load();
@@ -440,25 +428,14 @@ function wrote(path: string, base: number | null, changes: Change[]): void {
 		const msg = note(path);
 		if (msg) broadcast(msg);
 	}
-	// The cards below the write sit somewhere else now.
-	if (existsSync(cardsPath(CWD, path))) broadcast(cardsOn(path));
 	broadcast(files());
 }
 
-/**
- * End the ask in flight, whatever came of it, and stop waiting for an answer.
- * An ask that was a card's says so in the card, which is where the person will
- * look for it — the tab that asked may be gone, and another may be watching.
- */
+/** End the ask in flight, whatever came of it, and stop waiting for an answer. */
 function settle(outcome: AskOutcome): void {
 	const ask = asking;
 	asking = null;
-	if (!ask) return;
-	if (ask.card && outcome !== "written") {
-		appendCard(CWD, ask.path, { kind: "failed", id: ask.card, at: Date.now(), why: outcome });
-		broadcast(cardsOn(ask.path));
-	}
-	ask.done(outcome);
+	ask?.done(outcome);
 }
 
 /**
@@ -480,25 +457,13 @@ function beginAsk(ask: Ask, question: string, tab: WebSocket): string | null {
 		done(outcome);
 		return null;
 	};
-	if (ask.card !== undefined && !isCardName(ask.card)) return null;
 	if (asking || session().isStreaming) return refuse("interrupted");
 	const found = readNote(CWD, ask.path);
 	if (!found) return refuse("gone");
 	if (!(ask.from >= 0 && ask.to > ask.from && ask.to <= found.text.length)) return refuse("gone");
-	const at = readHistory(CWD, ask.path).length;
-	const quote = found.text.slice(ask.from, ask.to);
-	asking = { ...ask, at, done };
-	// The card is opened before pi is asked, so it is on screen — with its
-	// question and nothing under it yet — for as long as the answer takes.
-	if (ask.card) {
-		appendCard(CWD, ask.path, { kind: "opened", id: ask.card, at: Date.now(), from: ask.from, to: ask.to, log: at, quote, question });
-		broadcast(cardsOn(ask.path));
-	}
-	return asked(quote, question);
+	asking = { ...ask, at: readHistory(CWD, ask.path).length, done };
+	return asked(found.text.slice(ask.from, ask.to), question);
 }
-
-/** A name a tab made for a card. Kept to what can be a file's contents and a key. */
-const isCardName = (name: unknown): name is string => typeof name === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(name);
 
 /**
  * pi's words, put into the note under the line the words at `to` end on, as
@@ -521,23 +486,17 @@ function putUnder(path: string, to: number, words: string, sessionId: string, en
 }
 
 /**
- * pi's answer to the ask in flight: into the card it was asked from, or into
- * the note under what was asked about when it was asked without one.
+ * pi's answer to the ask in flight, put into the note under what was asked
+ * about.
  *
  * The note has moved on while pi thought — the person kept typing, and their
  * saves are in the log — so the place is mapped through the changes since, the
- * way the editor maps its own around a write. A card needs none of that: it
- * keeps its own place and is moved when it is read.
+ * way the editor maps its own around a write.
  */
 function answered(answer: string | null, sessionId: string, entryId?: string): void {
 	const ask = asking;
 	if (!ask) return;
 	if (!answer) return settle("failed");
-	if (ask.card) {
-		appendCard(CWD, ask.path, { kind: "answered", id: ask.card, at: Date.now(), text: answer, sessionId, entryId });
-		broadcast(cardsOn(ask.path));
-		return settle("written");
-	}
 	const found = readNote(CWD, ask.path);
 	if (!found) return settle("gone");
 	// Settle what the disk says first: a write that missed the app belongs in
@@ -1041,7 +1000,6 @@ wss.on("connection", async (ws) => {
 						return;
 					}
 					reply(found);
-					reply(cardsOn(msg.path));
 					break;
 				}
 
@@ -1107,7 +1065,6 @@ wss.on("connection", async (ws) => {
 					}
 					if (msg.path !== msg.to) {
 						moveHistory(CWD, msg.path, msg.to);
-						moveLog(cardsPath(CWD, msg.path), cardsPath(CWD, msg.to));
 						const version = known.get(msg.path);
 						known.delete(msg.path);
 						if (version !== undefined) known.set(msg.to, version);
@@ -1146,7 +1103,6 @@ wss.on("connection", async (ws) => {
 						return;
 					}
 					moveLog(historyPath(CWD, msg.path), trashHistoryPath(CWD, gone.trashed));
-					moveLog(cardsPath(CWD, msg.path), trashCardsPath(CWD, gone.trashed));
 					broadcast({ type: "note_deleted", path: msg.path, trashed: gone.trashed });
 					broadcast(files());
 					backlinksFor(links.remove(msg.path));
@@ -1161,36 +1117,8 @@ wss.on("connection", async (ws) => {
 						return;
 					}
 					moveLog(trashHistoryPath(CWD, msg.trashed), historyPath(CWD, msg.path));
-					moveLog(trashCardsPath(CWD, msg.trashed), cardsPath(CWD, msg.path));
 					reply({ type: "note_created", path: msg.path });
 					wrote(msg.path, null, []);
-					break;
-				}
-
-				// The card's answer into the note, under the words the card was
-				// opened on. pi's words there, and marked until accepted: the person
-				// chose when they land, not who wrote them.
-				case "place_card": {
-					if (typeof msg.path !== "string" || !isCardName(msg.card)) return;
-					const card = cardsOn(msg.path).cards.find((c) => c.id === msg.card);
-					if (!card?.answer || card.placed || card.orphaned) return;
-					if (!putUnder(msg.path, card.to, card.answer.text, card.answer.sessionId, card.answer.entryId)) {
-						reply({ type: "error", message: `cannot write ${msg.path}` });
-						return;
-					}
-					appendCard(CWD, msg.path, { kind: "placed", id: card.id, at: Date.now() });
-					broadcast(cardsOn(msg.path));
-					break;
-				}
-
-				// Done with, or a mistake. Either way a line in the card log: the
-				// note itself has nothing to do with its cards.
-				case "resolve_card":
-				case "delete_card": {
-					if (typeof msg.path !== "string" || !isCardName(msg.card)) return;
-					const kind = msg.type === "resolve_card" ? "resolved" : "deleted";
-					appendCard(CWD, msg.path, { kind, id: msg.card, at: Date.now() });
-					broadcast(cardsOn(msg.path));
 					break;
 				}
 
