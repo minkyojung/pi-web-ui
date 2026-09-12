@@ -148,6 +148,18 @@ const plugin = ViewPlugin.fromClass(
 // ---- The block half ----
 
 const codeLine = Decoration.line({ class: "cm-code-line" });
+/** A fence line taken out of the layout whole, off the block's lines: a block replace, drawing nothing. */
+const fenceGone = Decoration.replace({ block: true });
+const codeWrappers = new Map<string, BlockWrapper>();
+/** The element around a code block's lines, carrying the language for the CSS to show. */
+const codeWrapper = (lang: string) => {
+	let w = codeWrappers.get(lang);
+	if (!w) {
+		w = BlockWrapper.create({ tagName: "div", attributes: lang ? { class: "cm-code", "data-lang": lang } : { class: "cm-code" } });
+		codeWrappers.set(lang, w);
+	}
+	return w;
+};
 const doneLine = Decoration.line({ class: "cm-task-done" });
 const calloutTitles = new Map<string, Decoration>();
 /** A callout's first line, which carries the type for the CSS to show before the title. */
@@ -260,9 +272,22 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 	syntaxTree(state).iterate({
 		enter: (node: SyntaxNodeRef) => {
 			switch (node.name) {
-				case "FencedCode":
+				case "FencedCode": {
+					// The box around the block, its lines in the code face, and — off
+					// the block's lines — the fences gone from the layout, so the
+					// code sits in the box alone with the language named on it.
 					lines(node.from, node.to, codeLine);
+					const info = node.node.getChild("CodeInfo");
+					const first = doc.lineAt(node.from);
+					const last = doc.lineAt(node.to);
+					wrappers.push(codeWrapper(info ? doc.sliceString(info.from, info.to).trim() : "").range(first.from, node.to));
+					if (onLines(state, ranges, node.from, node.to)) return false;
+					const marks = node.node.getChildren("CodeMark");
+					// The opening fence is the first line; the closing one, when it is there, is the last.
+					deco.push({ from: first.from, to: first.to, value: fenceGone });
+					if (marks.length > 1 && doc.lineAt(marks[marks.length - 1].from).number === last.number) deco.push({ from: last.from, to: last.to, value: fenceGone });
 					return false;
+				}
 				case "Blockquote": {
 					// The wrapper, and the callout's title line; the marks are
 					// hidden as they come, each by its own quote (QuoteMark below),
@@ -378,6 +403,23 @@ const blockLayer: Extension = [
 	Prec.high(keymap.of([{ key: "Mod-Enter", run: toggleTask }])),
 	EditorView.baseTheme({
 		".cm-code-line": { fontFamily: "ui-monospace, monospace", fontSize: "0.9em" },
+		// The code block's element: the box is here, the face is on the lines. The
+		// language sits in the corner, from the attribute, so no widget is needed.
+		".cm-code": {
+			position: "relative",
+			backgroundColor: "color-mix(in oklab, var(--foreground) 5%, transparent)",
+			borderRadius: "6px",
+			padding: "0.5em 0.75em",
+		},
+		".cm-code[data-lang]::before": {
+			content: "attr(data-lang)",
+			position: "absolute",
+			top: "0.3em",
+			right: "0.75em",
+			fontSize: "0.75em",
+			color: "var(--muted-foreground)",
+			fontFamily: "ui-monospace, monospace",
+		},
 		// The quote's element: the bar and the room for it are here, not on
 		// its lines, so a quote inside a quote is a bar inside a bar, and a
 		// list inside a quote keeps its own indent.

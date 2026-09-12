@@ -102,8 +102,16 @@ const drawn = (s) => {
   return out;
 };
 
-test("펜스 코드는 줄마다 한 급으로, 마커 줄까지", () => {
-  assert.deepEqual(drawn(parsed("a\n\n```js\nx\n```\n")), [[3, "cm-code-line"], [4, "cm-code-line"], [5, "cm-code-line"]]);
+test("펜스 코드는 요소 하나에 언어가 붙고, 줄마다 코드 급이며, 커서가 없으면 펜스 줄이 사라진다", () => {
+  const s = parsed("a\n\n```js\nx\n```\n", 0);
+  assert.deepEqual(wrapped(s), [[3, 14, "cm-code", 50]], "to the node's end; the default rank");
+  // A block replace sorts before the line decoration at the same position.
+  assert.deepEqual(drawn(s), [["```js", "hidden"], [3, "cm-code-line"], [4, "cm-code-line"], ["```", "hidden"], [5, "cm-code-line"]]);
+  assert.deepEqual(drawn(parsed("a\n\n```js\nx\n```\n", 9)), [[3, "cm-code-line"], [4, "cm-code-line"], [5, "cm-code-line"]], "on any of its lines both fences show");
+});
+
+test("닫히지 않은 펜스는 여는 줄만 사라진다", () => {
+  assert.deepEqual(drawn(parsed("before\n\n```\nx\ny\n", 0)).filter(([, k]) => k === "hidden"), [["```", "hidden"]]);
 });
 
 /** Each block wrapper as [from, to, class, rank]. */
