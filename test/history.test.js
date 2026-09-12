@@ -203,6 +203,31 @@ test("앱을 거치지 않은 편집은 바깥 것으로 기록된다", () => {
   assert.equal(replay(readHistory(DIR, "ext.md")).text, text, "로그가 디스크를 따라잡았다");
 });
 
+test("누구 것인지 말해주면 그 이름으로 기록된다", () => {
+  record(DIR, "claimed.md", "", "mine\n", me);
+  const { appended } = reconcile(DIR, "claimed.md", "mine, pi's\n", 11, pi);
+  assert.deepEqual(appended.map((c) => [c.author, c.sessionId, c.entryId]), [["pi", "s1", "e1"]]);
+  const text = "mine, pi's\n";
+  assert.deepEqual(
+    replay(readHistory(DIR, "claimed.md")).spans.map((s) => [s.author, text.slice(s.from, s.to)]),
+    [["me", "mine"], ["pi", ", pi's"], ["me", "\n"]],
+    "바뀐 낱말만 pi의 것이다",
+  );
+});
+
+test("처음 보는 노트도 말해준 이름으로 통째로 심어진다", () => {
+  const { spans } = reconcile(DIR, "seeded-pi.md", "all of it\n", 12, pi);
+  assert.deepEqual(spans.map((s) => s.author), ["pi"], "recorder가 이 경우를 가려내는 근거");
+});
+
+test("따라잡을 것이 없으면 아무것도 붙지 않는다", () => {
+  reconcile(DIR, "twice.md", "once\n", 13, pi);
+  const before = readHistory(DIR, "twice.md").length;
+  const { appended } = reconcile(DIR, "twice.md", "once\n", 14, pi);
+  assert.deepEqual(appended, []);
+  assert.equal(readHistory(DIR, "twice.md").length, before, "감시기가 이미 한 일을 recorder가 되풀이하지 않는다");
+});
+
 test("기록은 쓴 쪽이 본 것부터 재고, 그 결과가 디스크와 같다", () => {
   record(DIR, "rec.md", "", "draft\n", me);
   const changes = record(DIR, "rec.md", "draft\n", "draft, revised\n", pi);

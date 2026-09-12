@@ -25,7 +25,7 @@ export type NoteFile = {
 const SKIP = new Set(["node_modules", "dist", "dist-server", "release", "build", "out"]);
 
 /** Enough to be more than anyone scrolls, few enough that a monorepo cannot stall the server. */
-const LIMIT = 2000;
+export const LIMIT = 2000;
 
 export function listNotes(root: string): NoteFile[] {
 	const out: NoteFile[] = [];

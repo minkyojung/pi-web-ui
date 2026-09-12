@@ -32,7 +32,7 @@ import { listNotes, newNoteName, readNote, renameNote, restoreNote, trashNote, w
 import { accept, type Change, historyPath, mapThrough, moveHistory, moveLog, reconcile, record, replay, readHistory, trashHistoryPath } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { appendCard, cardsOf, cardsPath, trashCardsPath } from "./cards.ts";
-import { recorder } from "./recorder.ts";
+import { type Claim, recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
 import { guard, VAULT_PROMPT } from "./guard.ts";
 import { renameTarget } from "./naming.ts";
@@ -187,8 +187,20 @@ let openNote: string | null = null;
  */
 let asking: (Ask & { at: number; done: (outcome: AskOutcome) => void }) | null = null;
 
+/**
+ * The way to ask this session's recorder whether a write found on disk is
+ * pi's — see recorder.ts. Null between sessions, so a retired recorder cannot
+ * still be answering for the one that replaced it.
+ */
+let claimant: Claim | null = null;
+
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
 	retireDashboardBridge();
+	// Built here rather than in the list below, because what it hears about
+	// pi's shell is also what the watcher asks — and the one that answers has
+	// to be this session's, not the one being replaced.
+	const notes = recorder(CWD, (path, base, changes) => wrote(path, base, changes));
+	claimant = notes.claim;
 	const services = await createAgentSessionServices({
 		cwd,
 		modelRuntime,
@@ -203,7 +215,7 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 				{ name: "guard", factory: guard(CWD, () => openNote) },
 				// pi's writes to notes go into their history as they happen, and the
 				// tabs looking at a note hear about it.
-				{ name: "recorder", factory: recorder(CWD, (path, base, changes) => wrote(path, base, changes)) },
+				{ name: "recorder", factory: notes.factory },
 				// A turn that answers about a chosen part of a note says it rather
 				// than writing it; the answer is put in here — see ask.ts.
 				{ name: "answering", factory: answering(() => asking !== null, answered) },
@@ -335,6 +347,18 @@ function files(): FilesMsg {
 }
 
 /**
+ * Bring a note's log up to what is on disk, asking whose the difference is.
+ *
+ * Every place that settles the disk goes through here, because the answer is
+ * the same question everywhere: a write that missed the app is the person's,
+ * unless pi's shell was running and this is what it did — which only the
+ * recorder knows. See recorder.ts.
+ */
+function settleDisk(path: string, text: string, mtime: number, at: number) {
+	return reconcile(CWD, path, text, at, claimant?.(path, mtime) ?? { author: "outside", at });
+}
+
+/**
  * One note, with who wrote what. Opening it also brings its history up to the
  * disk: an edit made outside the app is logged as such here, before anything
  * is drawn or measured against it.
@@ -342,7 +366,7 @@ function files(): FilesMsg {
 function note(path: string): NoteMsg | null {
 	const found = readNote(CWD, path);
 	if (!found) return null;
-	const { spans } = reconcile(CWD, path, found.text, Date.now());
+	const { spans } = settleDisk(path, found.text, found.modified, Date.now());
 	known.set(path, found.modified);
 	return { type: "note", path, text: found.text, modified: found.modified, spans, backlinks: links.backlinks(path) };
 }
@@ -353,7 +377,7 @@ function note(path: string): NoteMsg | null {
  */
 function cardsOn(path: string): CardsMsg {
 	const found = readNote(CWD, path);
-	if (found) reconcile(CWD, path, found.text, Date.now());
+	if (found) settleDisk(path, found.text, found.modified, Date.now());
 	return { type: "cards", path, cards: cardsOf(CWD, path) };
 }
 
@@ -376,9 +400,9 @@ const known = new Map<string, number>();
 
 /**
  * The disk changed under a note, and not by this process: pi's bash, another
- * editor. Logged to "outside" and sent on as a change over the version the
- * tabs have, the same as any other write — or whole, if no tab could have a
- * version of it yet. A note that is gone is only news to the list.
+ * editor. Logged to whoever it belongs to and sent on as a change over the
+ * version the tabs have, the same as any other write — or whole, if no tab
+ * could have a version of it yet. A note that is gone is only news to the list.
  */
 function noticed(path: string): void {
 	const found = readNote(CWD, path);
@@ -393,9 +417,9 @@ function noticed(path: string): void {
 	}
 	const base = known.get(path) ?? null;
 	if (base === found.modified) return; // This process's own write, already sent.
-	const { outside } = reconcile(CWD, path, found.text, Date.now());
+	const { appended } = settleDisk(path, found.text, found.modified, Date.now());
 	// Touched but not changed still moves the version the next save is measured against.
-	wrote(path, base, outside);
+	wrote(path, base, appended);
 }
 
 /**

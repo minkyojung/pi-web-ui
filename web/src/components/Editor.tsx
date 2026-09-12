@@ -12,6 +12,7 @@ import { tags } from "@lezer/highlight";
 import { codeBlocks } from "../features/codeBlocks";
 import { cards as cardMarks, setCards, type Draft } from "../features/cards";
 import { linkCompletion } from "../features/linkCompletion";
+import { livePreview } from "../features/livePreview";
 import { landOn, links, notesChanged } from "../features/links";
 import { pending, setSpans } from "../features/pending";
 import { Cards } from "./Cards";
@@ -246,6 +247,7 @@ export function Editor({
 			}),
 			linkCompletion(() => filesStore.get().map((f) => f.path)),
 			// Markup hidden where the cursor is not; Mod-e shows it all again.
+			livePreview,
 		];
 		const state = EditorState.create({
 			doc: "",

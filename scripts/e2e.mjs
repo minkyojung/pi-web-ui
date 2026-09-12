@@ -183,7 +183,7 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1, modifiers });
 		return true;
 	};
-	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, f: 70, k: 75, n: 78, p: 80, z: 90 };
+	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, e: 69, f: 70, k: 75, n: 78, p: 80, z: 90 };
 	const press = async (key, { meta = false, shift = false } = {}) => {
 		const modifiers = (meta ? 4 : 0) | (shift ? 8 : 0);
 		const code = key.length === 1 ? `Key${key.toUpperCase()}` : key;
@@ -335,8 +335,14 @@ check("changing your mind about it costs nothing", async ({ app }) => {
 	assert.ok(await app.evaluate(`document.querySelector('textarea')?.value?.includes("rewrite the reducer")`));
 });
 
-/** The note as the editor holds it. Not the DOM's text: live preview hides markup, and only the visible lines are drawn. */
-const editorText = (page) => page.evaluate("document.querySelector('#editor .cm-content')?.textContent ?? ''");
+/**
+ * The note as the editor holds it. Not the DOM's text: live preview hides
+ * markup, and only the visible lines are drawn. `cmTile.root.view` is what
+ * EditorView.findFromDOM reads, without needing the class in the page.
+ */
+const editorText = (page) => page.evaluate("document.querySelector('#editor .cm-content')?.cmTile?.root?.view?.state.doc.toString() ?? ''");
+/** What is drawn, as text: the doc less whatever live preview hides. */
+const shownText = (page) => page.evaluate("document.querySelector('#editor .cm-content')?.textContent ?? ''");
 const editorStatus = (page) => page.evaluate("document.getElementById('editor')?.dataset.status ?? ''");
 /**
  * Typing, as the browser sees it: focus the box and insert text the way an
@@ -360,6 +366,20 @@ check("a row in the sidebar opens its note in the middle", async ({ app }) => {
 	assert.ok((await editorText(app)).includes("# first"));
 	assert.equal(await app.evaluate("location.hash"), "#first.md");
 	await app.shot("editor");
+});
+
+check("a heading's marks are hidden until the cursor is on it, and ⌘E shows them all", async ({ app }) => {
+	// The cursor is on the first line after opening; move it off the heading.
+	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("the # to be hidden", async () => !(await shownText(app)).includes("# first") && (await shownText(app)).includes("first"));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 0 } }); })()`);
+	await until("the # to be back under the cursor", async () => (await shownText(app)).includes("# first"));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("hidden again", async () => !(await shownText(app)).includes("# first"));
+	await app.press("e", { meta: true });
+	await until("source mode", async () => (await shownText(app)).includes("# first"));
+	await app.press("e", { meta: true });
+	await until("live preview again", async () => !(await shownText(app)).includes("# first"));
 });
 
 check("typing is written down on its own, and a reload finds it", async ({ app, cwd }) => {
@@ -521,8 +541,7 @@ check("a note deleted on disk is put to the person, and can be put back from the
 	assert.ok((await app.evaluate("document.querySelector('#editor [role=alert]')?.textContent ?? ''")).includes("no longer on disk"));
 	await app.evaluate(`[...document.querySelectorAll('#editor [role=alert] button')].find((b) => b.textContent === "Put it back").click()`);
 	await until("the note back", async () => (await editorStatus(app)) === "saved" && existsSync(join(cwd, "first.md")));
-	// textContent runs the lines together; the file has its newlines.
-	assert.equal(readFileSync(join(cwd, "first.md"), "utf8").replace(/\n/g, ""), shown);
+	assert.equal(readFileSync(join(cwd, "first.md"), "utf8"), shown);
 	assert.equal(await app.evaluate("!!document.querySelector('#editor [role=alert]')"), false);
 });
 
@@ -684,7 +703,7 @@ check("a list item continues on Enter and ends on a second, and a bracket closes
 	await app.press("Enter");
 	assert.equal(await type(app, "after "), true);
 	await app.keys("(");
-	await until("the list and the pair", async () => (await editorText(app)).includes("- one- twoafter ()"));
+	await until("the list and the pair", async () => /- one\n- two\n\n?after \(\)/.test(await editorText(app)));
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 	// The second Enter takes the empty marker away and leaves the cursor on that line.
 	assert.match(readFileSync(join(cwd, "ideas/second.md"), "utf8"), /- one\n- two\n\n?after \(\)/);

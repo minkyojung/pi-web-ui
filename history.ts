@@ -237,25 +237,32 @@ export function appendHistory(root: string, path: string, changes: Change[]): vo
  *
  * The log's replay is what the app last knew the note to be. If the disk
  * differs, someone wrote without passing through here — pi's bash, another
- * editor — and the difference is logged to "outside" first, so that a change
- * about to be recorded is measured from what is really there. A note with no
- * log yet is seeded whole the same way.
+ * editor — and the difference is logged first, so that a change about to be
+ * recorded is measured from what is really there. A note with no log yet is
+ * seeded whole the same way.
+ *
+ * Whose that difference is, the caller says. "outside" is the answer when
+ * nobody claims it, and the only one this file can work out on its own; a
+ * caller that knows pi's shell was running says so instead — see recorder.ts.
+ * The log is append-only and has no line that changes an earlier line's
+ * author, so the answer has to be right as it is written.
  */
 export function reconcile(
 	root: string,
 	path: string,
 	onDisk: string,
 	at: number,
-): { changes: Change[]; outside: Change[]; spans: Span[] } {
+	origin: Origin = { author: "outside", at },
+): { changes: Change[]; appended: Change[]; spans: Span[] } {
 	const changes = readHistory(root, path);
 	const { text } = replay(changes);
-	let outside: Change[] = [];
+	let appended: Change[] = [];
 	if (text !== onDisk) {
-		outside = changesBetween(text, onDisk, { author: "outside", at });
-		appendHistory(root, path, outside);
-		changes.push(...outside);
+		appended = changesBetween(text, onDisk, origin);
+		appendHistory(root, path, appended);
+		changes.push(...appended);
 	}
-	return { changes, outside, spans: replay(changes).spans };
+	return { changes, appended, spans: replay(changes).spans };
 }
 
 /** Log that the person accepted the words at [from, to) as they are. */
