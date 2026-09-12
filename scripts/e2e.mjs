@@ -785,6 +785,16 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
 });
 
+check("a %% line opens a comment that runs over blank lines to the next", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "block-comment.md"), "kept\n\n%%\nnot [[this]]\n\n# nor this\n%%\n\nkept too\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="block-comment.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="block-comment.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("kept too"));
+	// Everything between the fences is one comment: no link drawn, no heading style. The fences are marks, drawn as marks are.
+	await until("the comment", () => app.evaluate("[...document.querySelectorAll('#editor .cm-comment')].map((s) => s.textContent).join('')").then((t) => t.includes("not [[this]]") && t.includes("# nor this")));
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-wikilink').length"), 0);
+});
+
 check("under a note, the notes that share its tags", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "shared-a.md"), "#team notes\n");
 	writeFileSync(join(cwd, "shared-b.md"), "more #Team and #other\n");
