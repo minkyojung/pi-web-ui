@@ -11,13 +11,14 @@
  * Shared at the repo root like toolModes.ts. Types only: the client bundles
  * this, so nothing here may run.
  */
+import type { Ask, AskOutcome } from "./ask";
 import type { BranchPoint } from "./branches";
 import type { Author, Change, Span } from "./history";
 import type { NoteFile } from "./vault";
 import type { Backlink } from "./linkIndex";
 import type { SearchHit } from "./search";
 
-export type { Author, Backlink, BranchPoint, Change, NoteFile, SearchHit, Span };
+export type { Ask, AskOutcome, Author, Backlink, BranchPoint, Change, NoteFile, SearchHit, Span };
 
 // ---------------------------------------------------------------------------
 // Browser → server
@@ -32,6 +33,13 @@ export type ClientMsg =
 			entryId?: string;
 			/** The note open in the editor, for pi to be told about this turn. Not part of the message. */
 			note?: string;
+			/**
+			 * Asking about a chosen part of the open note rather than typing in the
+			 * box: `text` is the question and this is what it is about. The chosen
+			 * words are quoted into what pi is sent, and the answer is written into
+			 * the note under them — see ask.ts. Answered with `ask_done`.
+			 */
+			ask?: Ask;
 	  }
 	| { type: "abort" }
 	| { type: "clear_queue" }
@@ -306,6 +314,16 @@ export interface PromptDismissMsg {
 	cancelled: boolean;
 }
 
+/**
+ * How the ask `id` ended, to the tab that asked. The answer itself is not here:
+ * it went into the note, so it arrives as `note_changed` like any other write.
+ */
+export interface AskDoneMsg {
+	type: "ask_done";
+	id: number;
+	outcome: AskOutcome;
+}
+
 /** The messages a clear took out of the queue, returned so they can go back in the box. */
 export interface QueueClearedMsg {
 	type: "queue_cleared";
@@ -354,6 +372,7 @@ export type StateMsg =
 	| NoteDeletedMsg
 	| NoteConflictMsg
 	| SearchResultsMsg
+	| AskDoneMsg
 	| PromptRequestMsg
 	| PromptDismissMsg
 	| QueueClearedMsg

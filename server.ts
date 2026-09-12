@@ -29,7 +29,8 @@ import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
 import { listNotes, newNoteName, readNote, renameNote, restoreNote, trashNote, writeNote } from "./vault.ts";
-import { accept, type Change, historyPath, moveHistory, moveLog, reconcile, record, replay, readHistory, trashHistoryPath } from "./history.ts";
+import { accept, type Change, historyPath, mapThrough, moveHistory, moveLog, reconcile, record, replay, readHistory, trashHistoryPath } from "./history.ts";
+import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
 import { guard, VAULT_PROMPT } from "./guard.ts";
@@ -174,6 +175,16 @@ interface DashboardBridgeState {
  */
 let openNote: string | null = null;
 
+/**
+ * The ask waiting for an answer, if there is one: what was chosen, where the
+ * note's log stood when it was asked, and how to tell the tab it is over.
+ *
+ * One at a time. pi has one conversation, and an answer that could belong to
+ * either of two asks belongs to neither — so a second ask, or anything else
+ * said to pi meanwhile, ends the one waiting rather than guessing.
+ */
+let asking: (Ask & { at: number; done: (outcome: AskOutcome) => void }) | null = null;
+
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
 	retireDashboardBridge();
 	const services = await createAgentSessionServices({
@@ -191,6 +202,9 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 				// pi's writes to notes go into their history as they happen, and the
 				// tabs looking at a note hear about it.
 				{ name: "recorder", factory: recorder(CWD, (path, base, changes) => wrote(path, base, changes)) },
+				// A turn that answers about a chosen part of a note says it rather
+				// than writing it; the answer is put in here — see ask.ts.
+				{ name: "answering", factory: answering(() => asking !== null, answered) },
 			],
 		},
 	});
@@ -391,6 +405,71 @@ function wrote(path: string, base: number | null, changes: Change[]): void {
 		if (msg) broadcast(msg);
 	}
 	broadcast(files());
+}
+
+/** End the ask in flight, whatever came of it, and stop waiting for an answer. */
+function settle(outcome: AskOutcome): void {
+	const ask = asking;
+	asking = null;
+	ask?.done(outcome);
+}
+
+/**
+ * Take an ask, or say why not, and give back the question pi is sent: the
+ * chosen words as a quote, then what was asked about them.
+ *
+ * Where the log stands now is kept with it. That is the mark the answer's
+ * place is measured from — everything appended after it is what the note did
+ * while pi thought.
+ */
+function beginAsk(ask: Ask, question: string, tab: WebSocket): string | null {
+	if (typeof ask.id !== "number" || typeof ask.path !== "string" || typeof ask.from !== "number" || typeof ask.to !== "number") return null;
+	const done = (outcome: AskOutcome) => {
+		// The tab may be gone by the time the answer is. The answer still goes
+		// into the note; there is simply nobody left to tell about it.
+		if (tab.readyState === tab.OPEN) tab.send(safeStringify({ type: "ask_done", id: ask.id, outcome }));
+	};
+	const refuse = (outcome: AskOutcome): null => {
+		done(outcome);
+		return null;
+	};
+	if (asking || session().isStreaming) return refuse("interrupted");
+	const found = readNote(CWD, ask.path);
+	if (!found) return refuse("gone");
+	if (!(ask.from >= 0 && ask.to > ask.from && ask.to <= found.text.length)) return refuse("gone");
+	asking = { ...ask, at: readHistory(CWD, ask.path).length, done };
+	return asked(found.text.slice(ask.from, ask.to), question);
+}
+
+/**
+ * pi's answer to the ask in flight, put into the note under what was asked
+ * about.
+ *
+ * The note has moved on while pi thought — the person kept typing, and their
+ * saves are in the log — so the place is mapped through the changes since,
+ * the way the editor maps its own around a write. Written by the path every
+ * write takes: the file, then the log, then the tabs.
+ */
+function answered(answer: string | null, sessionId: string, entryId?: string): void {
+	const ask = asking;
+	if (!ask) return;
+	if (!answer) return settle("failed");
+	const found = readNote(CWD, ask.path);
+	if (!found) return settle("gone");
+	// Settle what the disk says first: a write that missed the app belongs in
+	// the log ahead of this one, and moves the place along with it.
+	reconcile(CWD, ask.path, found.text, Date.now());
+	const since = readHistory(CWD, ask.path).slice(ask.at);
+	const to = mapThrough(since, ask.to);
+	// The two ends meet when what was chosen was replaced whole: it is not
+	// there to answer under any more.
+	if (mapThrough(since, ask.from) >= to) return settle("gone");
+	const text = under(found.text, to, answer);
+	const written = writeNote(CWD, ask.path, text, found.modified);
+	if (!written.ok) return settle("failed");
+	const changes = record(CWD, ask.path, found.text, text, { author: "pi", at: Date.now(), sessionId, entryId });
+	wrote(ask.path, found.modified, changes);
+	settle("written");
 }
 
 /** Saved sessions for this working directory, newest first. */
@@ -687,6 +766,18 @@ wss.on("connection", async (ws) => {
 				case "prompt": {
 					if (typeof msg.text !== "string") return;
 					openNote = typeof msg.note === "string" ? msg.note : null;
+					// Anything else said to pi takes the waiting answer with it: after
+					// this, which reply was the answer cannot be told, and a guess
+					// would write the wrong words into someone's note.
+					if (!msg.ask) settle("interrupted");
+					// An ask is the same message with what it is about attached; what
+					// pi is sent is the chosen words quoted above the question.
+					let text = msg.text;
+					if (msg.ask) {
+						const question = beginAsk(msg.ask, msg.text, ws);
+						if (question === null) return;
+						text = question;
+					}
 					// Asking an earlier question again: move the leaf to just before
 					// it, so what is sent next becomes a sibling of it rather than a
 					// reply to it, and the branch it was on is left where it is.
@@ -712,13 +803,15 @@ wss.on("connection", async (ws) => {
 					try {
 						// prompt() throws if the session is streaming and no behavior is given.
 						await session().prompt(
-							msg.text,
+							text,
 							session().isStreaming ? { streamingBehavior: behavior } : undefined,
 						);
 					} catch (err) {
 						// A prompt that never started a run never settles, and the next
 						// run — which made no branch — would reread the file for it.
 						rereadWhenSettled = false;
+						// Nor is there a run left to answer an ask that went with it.
+						settle("failed");
 						throw err;
 					}
 					break;
@@ -726,6 +819,8 @@ wss.on("connection", async (ws) => {
 
 				case "abort":
 					prompts.cancelAll();
+					// The run that was to answer is being stopped; nothing goes in.
+					settle("interrupted");
 					await abortWithin(5000);
 					broadcast(config());
 					break;
@@ -793,6 +888,9 @@ wss.on("connection", async (ws) => {
 				case "new_session":
 					// A run in progress would keep writing to the session being replaced.
 					prompts.cancelAll();
+					// And an ask waiting on it would take the next session's first
+					// answer for its own.
+					settle("interrupted");
 					await abortWithin(5000);
 					await runtime.newSession();
 					await bind();
@@ -810,6 +908,7 @@ wss.on("connection", async (ws) => {
 						return;
 					}
 					prompts.cancelAll();
+					settle("interrupted");
 					await abortWithin(5000);
 					await runtime.switchSession(msg.path);
 					await bind();
