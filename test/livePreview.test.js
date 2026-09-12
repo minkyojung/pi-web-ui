@@ -106,17 +106,33 @@ test("펜스 코드는 줄마다 한 급으로, 마커 줄까지", () => {
   assert.deepEqual(drawn(parsed("a\n\n```js\nx\n```\n")), [[3, "cm-code-line"], [4, "cm-code-line"], [5, "cm-code-line"]]);
 });
 
-test("인용은 줄마다 막대가 서고, 커서가 없으면 >가 숨는다", () => {
-  assert.deepEqual(drawn(parsed("> a\n> b\n\nc")), [[1, "cm-quote-line"], ["> ", "hidden"], [2, "cm-quote-line"], ["> ", "hidden"]]);
-  assert.deepEqual(drawn(parsed("> a\n> b\n\nc", 5)), [[1, "cm-quote-line"], [2, "cm-quote-line"]], "cursor on any of its lines shows every >");
+/** Each block wrapper as [from, to, class, rank]. */
+const wrapped = (s) => {
+  const out = [];
+  const it = blocks(s).wrappers.iter();
+  for (; it.value; it.next()) out.push([it.from, it.to, it.value.attributes.class, it.value.rank]);
+  return out;
+};
+
+test("인용은 줄들을 감싸는 요소 하나이고, 커서가 없으면 >가 숨는다", () => {
+  assert.deepEqual(wrapped(parsed("> a\n> b\n\nc")), [[0, 7, "cm-quote", 100]]);
+  assert.deepEqual(drawn(parsed("> a\n> b\n\nc")), [["> ", "hidden"], ["> ", "hidden"]]);
+  assert.deepEqual(drawn(parsed("> a\n> b\n\nc", 5)), [], "cursor on any of its lines shows every >");
+});
+
+test("인용 속 인용은 요소 속 요소이고, 안쪽이 낮은 rank라 안에 놓인다", () => {
+  assert.deepEqual(wrapped(parsed("> a\n> > b\n> c\n")), [[0, 13, "cm-quote", 100], [4, 13, "cm-quote", 99]]);
+  assert.deepEqual(drawn(parsed("> a\n> > b\n> c\n")).map(([t]) => t), ["> ", "> ", "> ", "> "], "every mark hides, each by its own quote");
+});
+
+test("인용 속 코드 블록의 줄은 여전히 코드 줄이다", () => {
+  assert.deepEqual(drawn(parsed("> ```\n> x\n> ```\n")).filter(([, k]) => k === "cm-code-line").length, 3);
 });
 
 test("[!type]으로 여는 인용은 콜아웃이다: 줄마다 종류가 붙고, 첫 줄은 제목이며, 표시는 커서가 없을 때 숨는다", () => {
+  assert.deepEqual(wrapped(parsed("> [!Note] Title\n> body\n\nafter", 24)), [[0, 22, "cm-quote cm-callout", 100]]);
   const off = drawn(parsed("> [!Note] Title\n> body\n\nafter", 24));
-  assert.deepEqual(off, [
-    [1, "cm-quote-line"], [1, "cm-callout"], [1, "cm-callout cm-callout-title"], ["> ", "hidden"], ["[!Note] ", "hidden"],
-    [2, "cm-quote-line"], [2, "cm-callout"], ["> ", "hidden"],
-  ]);
+  assert.deepEqual(off, [[1, "cm-callout-title"], ["> ", "hidden"], ["[!Note] ", "hidden"], ["> ", "hidden"]]);
   const on = drawn(parsed("> [!Note] Title\n> body\n\nafter", 3));
   assert.deepEqual(on.filter(([, k]) => k === "hidden"), [], "on the callout, every mark shows");
   assert.deepEqual(gone(state("> [!Note] Title\n\nafter")), [], "the inline half leaves the marker's brackets to the block half");

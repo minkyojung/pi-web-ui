@@ -209,7 +209,15 @@ async function openPage(devtoolsPort, url) {
 			await call("Input.dispatchKeyEvent", { type: "keyUp", key: ch });
 		}
 	};
-	return { evaluate, shot, errors, click, drag, press, keys, close: () => socket.close() };
+	/** A syllable typed through an input method: composed as it is built, then committed as one. */
+	const ime = async (composing, committed) => {
+		for (let i = 1; i <= composing.length; i++) {
+			const text = composing.slice(0, i);
+			await call("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length });
+		}
+		await call("Input.insertText", { text: committed });
+	};
+	return { evaluate, shot, errors, click, drag, press, keys, ime, close: () => socket.close() };
 }
 
 /**
@@ -785,6 +793,34 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
 });
 
+check("a quote is one element around its lines; a quote in a quote is a bar in a bar; it wraps and takes Hangul", async ({ app, cwd }) => {
+	const long = "word ".repeat(40).trim();
+	// The bare `>` line: without it, "after" would be a lazy continuation of the inner quote, as CommonMark has it.
+	writeFileSync(join(cwd, "quotes.md"), `> ${long}\n> > inner\n>\n> after\n\nend\n`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="quotes.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="quotes.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await until("the quote elements", () => app.evaluate("document.querySelectorAll('#editor .cm-quote').length === 2 && !!document.querySelector('#editor .cm-quote .cm-quote')"));
+	const shape = await app.evaluate(`(() => {
+		const outer = document.querySelector('#editor .cm-quote'); const inner = outer.querySelector('.cm-quote');
+		const lines = [...outer.querySelectorAll(':scope > .cm-line')];
+		const px = (el) => parseFloat(getComputedStyle(el).paddingLeft);
+		return { outerLines: lines.length, innerLines: inner.querySelectorAll('.cm-line').length, wraps: lines[0].getBoundingClientRect().height > 2 * lines[2].getBoundingClientRect().height, innerLeft: inner.getBoundingClientRect().left - outer.getBoundingClientRect().left, room: px(outer) + parseFloat(getComputedStyle(outer).borderLeftWidth) };
+	})()`);
+	assert.equal(shape.outerLines, 3, `the outer quote's own lines — the long one, the bare >, "after": ${JSON.stringify(shape)}`);
+	assert.equal(shape.innerLines, 1, `the inner quote's line: ${JSON.stringify(shape)}`);
+	assert.ok(shape.wraps, `the long line wraps inside the element: ${JSON.stringify(shape)}`);
+	assert.ok(Math.abs(shape.innerLeft - shape.room) < 1, `the inner bar stands just inside the outer's bar and room: ${JSON.stringify(shape)}`);
+	// Hangul composed on a quote line, where the marks are drawn back under the cursor: lands whole, nothing torn.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const line = v.state.doc.line(4); v.dispatch({ selection: { anchor: line.to } }); })()`);
+	await app.ime("ㅎㅏㄴ", "한");
+	await app.ime("ㄱㅡㄹ", "글");
+	await until("the syllables", async () => (await editorText(app)).includes("> after한글"));
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.deepEqual(app.errors, [], "nothing thrown while composing");
+	await app.shot("quotes");
+});
+
 check("a bullet is a dot off its line, and a task shows its box alone", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "bullets.md"), "- one\n- [ ] two\n\nend\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="bullets.md"]')`));
@@ -860,7 +896,7 @@ check("a quote opening with [!note] is a callout, named by its type", async ({ a
 	await app.evaluate(`document.querySelector('#notes button[title="callout.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("[!note]"));
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
-	await until("two callout lines, the first a title", () => app.evaluate("document.querySelectorAll('#editor .cm-callout').length === 2 && document.querySelector('#editor .cm-callout-title')?.dataset.callout === 'note'"));
+	await until("one callout element around two lines, the first a title", () => app.evaluate("document.querySelectorAll('#editor .cm-callout').length === 1 && document.querySelectorAll('#editor .cm-callout .cm-line').length === 2 && document.querySelector('#editor .cm-callout-title')?.dataset.callout === 'note'"));
 	await until("the marker hidden", async () => !(await shownText(app)).includes("[!note]"));
 	// The type is drawn before the title by CSS, from the attribute.
 	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-callout-title'), '::before').content"), '"note"');
@@ -926,13 +962,13 @@ check("a list item's wrapped lines start where its words do", async ({ app, cwd 
 		const lines = [...document.querySelectorAll('#editor .cm-list-line')];
 		const [outer, inner, quoted] = lines;
 		const prefix = outer.querySelector('.cm-list-prefix').getBoundingClientRect();
-		return { outer: px(outer), inner: px(inner), quoted: px(quoted), prefixWidth: prefix.width, prefixLeft: prefix.left - outer.getBoundingClientRect().left, tall: outer.getBoundingClientRect().height > 2 * inner.querySelector('.cm-list-prefix').getBoundingClientRect().height };
+		return { outer: px(outer), inner: px(inner), quoted: quoted.getBoundingClientRect().left - outer.getBoundingClientRect().left, prefixWidth: prefix.width, prefixLeft: prefix.left - outer.getBoundingClientRect().left, tall: outer.getBoundingClientRect().height > 2 * inner.querySelector('.cm-list-prefix').getBoundingClientRect().height };
 	})()`);
 	assert.ok(rows.tall, "the item wraps");
 	assert.ok(rows.outer > 0 && Math.abs(rows.inner - 2 * rows.outer) < 1, `inner is one unit further: ${JSON.stringify(rows)}`);
 	assert.ok(Math.abs(rows.prefixWidth - rows.outer) < 1, `the marker's box is one unit wide: ${JSON.stringify(rows)}`);
 	assert.ok(Math.abs(rows.prefixLeft) < 1, `the marker starts at the line's edge: ${JSON.stringify(rows)}`);
-	assert.ok(rows.quoted > rows.outer, `a quoted item keeps the bar's padding too: ${JSON.stringify(rows)}`);
+	assert.ok(rows.quoted > 0, `a quoted item sits inside the quote's room, past the bar: ${JSON.stringify(rows)}`);
 	await app.shot("list-indent");
 });
 

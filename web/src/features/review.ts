@@ -14,10 +14,12 @@
  * words — see pending.ts — are what is left to say whose they are. Cursor and
  * Zed scope their diffs to the same moment for the same reason.
  *
- * The marks from pending.ts are left drawn underneath. They are not the same
- * thing said twice: a note can hold words pi wrote in an earlier run, which
- * this diff knows nothing about and which only the marks say anything about.
- * Where they do overlap, both go when the chunk does.
+ * The marks from pending.ts are not drawn while it is open. Both say "pi wrote
+ * this", the diff says it better and says more, and drawn at once they are one
+ * wash over another with a dotted line under it. They are hidden rather than
+ * taken out: the marks are a state field, and a field taken out of the editor
+ * and put back comes back empty — it would then say nothing until the server
+ * next sent the note, which after a review it has no reason to do.
  *
  * Accepting is not only the view's business. The merge view forgets a chunk it
  * has accepted, but the record has to be told too, or the words stay pi's and
@@ -37,14 +39,15 @@ export const reviewing = (view: EditorView): boolean => getChunks(view.state) !=
 const room = new Compartment();
 
 /**
- * Show the note against `original`, or close what is showing.
+ * Show the note against `original`, or close what is showing and put the marks
+ * back.
  *
  * A reconfiguration rather than a state field, because what goes in is a whole
  * extension — a diff needs its own decorations, widgets and gutter, and they
  * are only wanted while there is a diff.
  */
 export function showDiff(view: EditorView, original: string | null): void {
-	view.dispatch({ effects: room.reconfigure(original === null ? [] : diff(original)) });
+	view.dispatch({ effects: room.reconfigure(original === null ? [] : [diff(original), open]) });
 }
 
 /**
@@ -81,7 +84,13 @@ const reject: Command = (view) => {
 	return chunk ? rejectChunk(view, chunk.from) : false;
 };
 
+/** Said on the editor while a diff is open, so the rules below can defer to it. */
+const open = EditorView.editorAttributes.of({ class: "cm-reviewing" });
+
 const style = EditorView.baseTheme({
+	// pending.ts's marks, out of the way of the diff that is already saying it.
+	// `&` is the editor's own element, which is where the class sits.
+	"&.cm-reviewing .cm-pi": { backgroundColor: "transparent", borderBottom: "none" },
 	".cm-deletedChunk": { backgroundColor: "color-mix(in oklab, var(--destructive) 12%, transparent)" },
 	".cm-changedLine": { backgroundColor: "color-mix(in oklab, var(--primary) 8%, transparent)" },
 	".cm-changedText": { backgroundColor: "color-mix(in oklab, var(--primary) 18%, transparent)" },

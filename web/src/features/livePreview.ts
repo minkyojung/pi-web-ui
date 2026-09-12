@@ -6,12 +6,13 @@
  *
  * - Inline (`hidden`): headings, emphasis, links. Nothing spans a line
  *   break, so a view plugin builds it over the visible lines only.
- * - Block (`blocks`): fenced code lines, quote bars, a rule, a checkbox.
- *   Line decorations and widgets change the vertical layout, which the
- *   docs allow only from a state field, so this half is one, over the whole
- *   note, mapped through typing and rebuilt when the tree or the selection
- *   moves. Its widgets are atomic: the cursor steps over a checkbox, not
- *   into it.
+ * - Block (`blocks`): fenced code lines, quotes, a rule, a checkbox, a
+ *   bullet. Line decorations and widgets change the vertical layout, which
+ *   the docs allow only from a state field, so this half is one, over the
+ *   whole note, mapped through typing and rebuilt when the tree or the
+ *   selection moves. Its widgets are atomic: the cursor steps over a
+ *   checkbox, not into it. A quote is a block wrapper — one element around
+ *   its lines, with the bar on it — so a quote in a quote is a bar in a bar.
  *
  * Both are pure functions of the state and the ranges, so they are pinned
  * in node without a browser; the plugin and the field only call them. The
@@ -23,9 +24,9 @@
  * words, so the two do not meet.
  */
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import { Compartment, type EditorState, type Extension, Prec, RangeSetBuilder, type SelectionRange, StateField, type Transaction } from "@codemirror/state";
-import { Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
-import type { SyntaxNodeRef } from "@lezer/common";
+import { Compartment, type EditorState, type Extension, Prec, type Range, type RangeSet, RangeSetBuilder, type SelectionRange, StateField, type Transaction } from "@codemirror/state";
+import { BlockWrapper, Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
+import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
 
 const hide = Decoration.replace({});
 
@@ -148,20 +149,27 @@ const plugin = ViewPlugin.fromClass(
 
 const codeLine = Decoration.line({ class: "cm-code-line" });
 const doneLine = Decoration.line({ class: "cm-task-done" });
-const quoteLine = Decoration.line({ class: "cm-quote-line" });
-const calloutLines = new Map<string, [Decoration, Decoration]>();
-/** A callout's lines, and its first line, which carries the type for the CSS to show. */
-const calloutLine = (type: string) => {
-	let d = calloutLines.get(type);
+const calloutTitles = new Map<string, Decoration>();
+/** A callout's first line, which carries the type for the CSS to show before the title. */
+const calloutTitle = (type: string) => {
+	let d = calloutTitles.get(type);
 	if (!d) {
-		d = [
-			Decoration.line({ class: "cm-callout", attributes: { "data-callout": type } }),
-			Decoration.line({ class: "cm-callout cm-callout-title", attributes: { "data-callout": type } }),
-		];
-		calloutLines.set(type, d);
+		d = Decoration.line({ class: "cm-callout-title", attributes: { "data-callout": type } });
+		calloutTitles.set(type, d);
 	}
 	return d;
 };
+/**
+ * The element around a quote's lines. Depth sets the rank, so the outer
+ * quote is the outer element when two start on the same line; a callout is
+ * a quote with a class and its type.
+ */
+const quoteWrapper = (depth: number, callout: string | null) =>
+	BlockWrapper.create({
+		tagName: "div",
+		attributes: callout ? { class: "cm-quote cm-callout", "data-callout": callout } : { class: "cm-quote" },
+		rank: Math.max(0, 100 - depth),
+	});
 
 class Rule extends WidgetType {
 	toDOM() {
@@ -223,10 +231,24 @@ const onLines = (state: EditorState, ranges: readonly SelectionRange[], from: nu
  * `>` hidden, a rule drawn as one, a task's marker drawn as a box.
  * `atoms` is the widgets alone, for cursor motion to step over.
  */
-export function blocks(state: EditorState, ranges = state.selection.ranges): { deco: DecorationSet; atoms: DecorationSet } {
+export type Blocks = { deco: DecorationSet; atoms: DecorationSet; wrappers: RangeSet<BlockWrapper> };
+
+export function blocks(state: EditorState, ranges = state.selection.ranges): Blocks {
 	const { doc } = state;
 	const deco: { from: number; to: number; value: Decoration }[] = [];
 	const atoms = new RangeSetBuilder<Decoration>();
+	const wrappers: Range<BlockWrapper>[] = [];
+	/** The nearest quote around `node`, and how many are around that. */
+	const quoteOf = (node: SyntaxNodeRef) => {
+		let quote: SyntaxNode | null = null;
+		let depth = 0;
+		for (let n = node.node.parent; n; n = n.parent) {
+			if (n.name !== "Blockquote") continue;
+			if (!quote) quote = n;
+			depth++;
+		}
+		return { quote, depth };
+	};
 	const lines = (from: number, to: number, value: Decoration) => {
 		const first = state.doc.lineAt(from).number;
 		const last = state.doc.lineAt(to).number;
@@ -242,21 +264,22 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): { d
 					lines(node.from, node.to, codeLine);
 					return false;
 				case "Blockquote": {
-					lines(node.from, node.to, quoteLine);
+					// The wrapper, and the callout's title line; the marks are
+					// hidden as they come, each by its own quote (QuoteMark below),
+					// so a quote in a quote, or code in a quote, is walked on into.
+					const { depth } = quoteOf(node);
 					const callout = calloutOf(state, node);
-					if (callout) {
-						const [body, title] = calloutLine(callout.type);
-						lines(node.from, node.to, body);
-						deco.push({ from: doc.lineAt(node.from).from, to: doc.lineAt(node.from).from, value: title });
-					}
-					if (onLines(state, ranges, node.from, node.to)) return false;
-					if (callout) deco.push({ from: callout.from, to: callout.to, value: hide });
-					// The marks of the lines after the first sit inside the paragraph, so the whole quote is walked.
-					node.node.cursor().iterate((c) => {
-						if (c.name !== "QuoteMark") return;
-						const end = state.doc.sliceString(c.to, c.to + 1) === " " ? c.to + 1 : c.to;
-						deco.push({ from: c.from, to: end, value: hide });
-					});
+					const line = doc.lineAt(node.from);
+					wrappers.push(quoteWrapper(depth, callout?.type ?? null).range(line.from, node.to));
+					if (callout) deco.push({ from: line.from, to: line.from, value: calloutTitle(callout.type) });
+					if (callout && !onLines(state, ranges, node.from, node.to)) deco.push({ from: callout.from, to: callout.to, value: hide });
+					return;
+				}
+				case "QuoteMark": {
+					const { quote } = quoteOf(node);
+					if (!quote || onLines(state, ranges, quote.from, quote.to)) return false;
+					const end = doc.sliceString(node.to, node.to + 1) === " " ? node.to + 1 : node.to;
+					deco.push({ from: node.from, to: end, value: hide });
 					return false;
 				}
 				case "HorizontalRule":
@@ -293,7 +316,11 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): { d
 			}
 		},
 	});
-	return { deco: Decoration.set(deco.map((d) => d.value.range(d.from, d.to)), true), atoms: atoms.finish() };
+	return {
+		deco: Decoration.set(deco.map((d) => d.value.range(d.from, d.to)), true),
+		atoms: atoms.finish(),
+		wrappers: BlockWrapper.set(wrappers, true),
+	};
 }
 
 /** The change that ticks or unticks the task on the line at `pos`, if there is one. */
@@ -321,13 +348,17 @@ export const toggleTask = (view: EditorView) => {
 	return true;
 };
 
-const field = StateField.define<{ deco: DecorationSet; atoms: DecorationSet }>({
+const field = StateField.define<Blocks>({
 	create: (state) => blocks(state),
 	update(value, tr: Transaction) {
 		if (tr.docChanged || tr.selection || syntaxTree(tr.startState) !== syntaxTree(tr.state)) return blocks(tr.state);
 		return value;
 	},
-	provide: (f) => [EditorView.decorations.from(f, (v) => v.deco), EditorView.atomicRanges.of((view) => view.state.field(f).atoms)],
+	provide: (f) => [
+		EditorView.decorations.from(f, (v) => v.deco),
+		EditorView.atomicRanges.of((view) => view.state.field(f).atoms),
+		EditorView.blockWrappers.from(f, (v) => v.wrappers),
+	],
 });
 
 const blockLayer: Extension = [
@@ -347,10 +378,12 @@ const blockLayer: Extension = [
 	Prec.high(keymap.of([{ key: "Mod-Enter", run: toggleTask }])),
 	EditorView.baseTheme({
 		".cm-code-line": { fontFamily: "ui-monospace, monospace", fontSize: "0.9em" },
-		// Two classes, so this outweighs listIndent's padding and adds its indent to the bar's.
-		".cm-line.cm-quote-line": { borderLeft: "2px solid var(--border)", paddingLeft: "calc(0.75rem + var(--list-indent, 0em))" },
+		// The quote's element: the bar and the room for it are here, not on
+		// its lines, so a quote inside a quote is a bar inside a bar, and a
+		// list inside a quote keeps its own indent.
+		".cm-quote": { borderLeft: "2px solid var(--border)", paddingLeft: "0.75rem" },
 		// A callout is a quote with a wash and a heavier bar; its first line names the type, from the attribute, so no widget is needed.
-		".cm-line.cm-callout": { backgroundColor: "color-mix(in oklab, var(--foreground) 5%, transparent)", borderLeftColor: "var(--foreground)" },
+		".cm-quote.cm-callout": { backgroundColor: "color-mix(in oklab, var(--foreground) 5%, transparent)", borderLeftColor: "var(--foreground)" },
 		".cm-line.cm-callout-title": { fontWeight: "600" },
 		".cm-line.cm-callout-title::before": { content: "attr(data-callout)", textTransform: "capitalize", marginRight: "0.4em" },
 		".cm-rule": { border: "none", borderTop: "1px solid var(--border)", margin: "0.6em 0", display: "block" },
