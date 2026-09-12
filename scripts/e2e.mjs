@@ -995,6 +995,25 @@ check("a list item's wrapped lines start where its words do", async ({ app, cwd 
 	await app.shot("list-indent");
 });
 
+check("a mark typed over chosen words wraps them; typed alone it is a letter", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "wrap.md"), "say hi now\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="wrap.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="wrap.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: 4, head: 6 } })`);
+	await app.keys("*");
+	await until("wrapped once", async () => (await editorText(app)) === "say *hi* now\n");
+	await app.keys("*");
+	await until("wrapped twice", async () => (await editorText(app)) === "say **hi** now\n");
+	await app.keys("=");
+	await until("highlighted", async () => (await editorText(app)) === "say **==hi==** now\n");
+	// A bare cursor: the character is just typed.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length - 1 } }); })()`);
+	await app.keys("*");
+	await until("typed alone", async () => (await editorText(app)) === "say **==hi==** now*\n");
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+});
+
 check("⌘B and ⌘I put a mark around the chosen words and take it off again", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "marks.md"), "say hi now\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="marks.md"]')`));

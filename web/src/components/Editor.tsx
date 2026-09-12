@@ -18,6 +18,7 @@ import { pending, setSpans } from "../features/pending";
 import { review, showDiff } from "../features/review";
 import { toggleMarks } from "../features/toggleMarks";
 import { comeBack, leave, scrollBack } from "../features/viewMemory";
+import { wrapSelection } from "../features/wrapSelection";
 import { highlightTag } from "../../../highlight.ts";
 import { inlineCodeTag, noteSyntax } from "../../../syntax.ts";
 import { tagTag } from "../../../tag.ts";
@@ -256,6 +257,8 @@ export function Editor({
 			// Wrapped list lines start where the item's words do. Outside the
 			// compartment: source mode wants this too.
 			listIndent,
+			// A mark typed over chosen words wraps them.
+			wrapSelection,
 		];
 		const state = EditorState.create({
 			doc: "",
