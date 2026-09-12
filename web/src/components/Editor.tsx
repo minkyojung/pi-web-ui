@@ -16,6 +16,7 @@ import { livePreview } from "../features/livePreview";
 import { landOn, links, notesChanged } from "../features/links";
 import { pending, setSpans } from "../features/pending";
 import { toggleMarks } from "../features/toggleMarks";
+import { comeBack, leave, scrollBack } from "../features/viewMemory";
 import { wikiLink } from "../../../wikilink.ts";
 import type { Place } from "../../../links.ts";
 import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
@@ -298,6 +299,9 @@ export function Editor({
 		addEventListener("pagehide", onHide);
 		return () => {
 			save();
+			// Only a note whose text came is a note that was left somewhere:
+			// StrictMode runs this once right after mount, over an empty doc.
+			if (base.current !== null) leave(at.current, v);
 			removeEventListener("pagehide", onHide);
 			unregister();
 			// Nothing is chosen in a note that is not open.
@@ -361,20 +365,26 @@ export function Editor({
 				settle(note.text, note.modified);
 				v.dispatch({ effects: setSpans.of({ spans: note.spans }) });
 				return;
-			case "replace":
+			case "replace": {
+				// The first text of a note opened again: back where it was left,
+				// unless a link said where to land. Later whole texts keep the
+				// cursor where it is, if the text still reaches there.
+				const first = base.current === null;
+				const back = first && !landing.current ? comeBack(path, note.text.length) : null;
 				v.dispatch({
 					changes: { from: 0, to: v.state.doc.length, insert: note.text },
 					annotations: serverChange,
-					// Keep the cursor where it was if the text still reaches there.
-					selection: { anchor: Math.min(v.state.selection.main.head, note.text.length) },
+					selection: back ?? { anchor: Math.min(v.state.selection.main.head, note.text.length) },
 					effects: setSpans.of({ spans: note.spans }),
 				});
+				if (back) scrollBack(path, v);
 				settle(note.text, note.modified);
 				if (landing.current) {
 					landOn(v, landing.current);
 					landing.current = null;
 				}
 				return;
+			}
 			case "conflict":
 				setStatus("conflict");
 				return;

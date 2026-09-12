@@ -785,6 +785,21 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
 });
 
+check("a note opens again where it was left", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "left.md"), "one\ntwo\nthree\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="left.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="left.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("three"));
+	const head = () => app.evaluate("document.querySelector('#editor .cm-content')?.cmTile?.root?.view?.state.selection.main.head");
+	assert.equal(await head(), 0, "a note never left opens at the top");
+	const end = (await editorText(app)).length;
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: ${end} } }); })()`);
+	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await until("the other note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("second"));
+	await app.evaluate(`document.querySelector('#notes button[title="left.md"]').click()`);
+	await until("back at the end", async () => (await editorStatus(app)) === "saved" && (await head()) === end);
+});
+
 check("a list item's wrapped lines start where its words do", async ({ app, cwd }) => {
 	const long = "word ".repeat(40).trim();
 	writeFileSync(join(cwd, "list.md"), `- ${long}\n  - inner ${long}\n\n> - quoted\n`);
