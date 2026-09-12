@@ -78,7 +78,7 @@ test.after(async () => {
 });
 
 const send = (m) => ws.send(JSON.stringify(m));
-const want = (type, pred = () => true) => until(type, () => inbox.find((m) => m.type === type && pred(m)));
+const want = (type, pred = () => true, ms) => until(type, () => inbox.find((m) => m.type === type && pred(m)), ms);
 const clear = () => (inbox.length = 0);
 const history = (path) => readFileSync(join(cwd, `.pi/history/${path}.jsonl`), "utf8").trim().split("\n").map((l) => JSON.parse(l));
 
@@ -365,6 +365,52 @@ it("본문을 찾으면 일치한 줄이 이 탭에 오고, 답마다 요청 번
   clear();
   send({ type: "search_notes", query: "   ", id: 3 });
   assert.deepEqual((await want("search_results", (m) => m.id === 3)).hits, []);
+});
+
+it("고른 자리가 없는 노트나 노트 밖이면 묻지 않고 이 탭에만 답한다", async () => {
+  writeFileSync(join(cwd, "range.md"), "짧다\n");
+  clear();
+  send({ type: "prompt", text: "이게 뭐지", ask: { id: 8, path: "nope.md", from: 0, to: 3 } });
+  assert.equal((await want("ask_done", (m) => m.id === 8)).outcome, "gone");
+  clear();
+  send({ type: "prompt", text: "이게 뭐지", ask: { id: 9, path: "range.md", from: 0, to: 9999 } });
+  assert.equal((await want("ask_done", (m) => m.id === 9)).outcome, "gone");
+});
+
+// The one test here that spends a model call: everything before it is the
+// server on its own. What it pins is the whole of the wiring — the question
+// pi is sent, where the answer lands, and that the place survives the person
+// typing while pi thinks — so it earns the call.
+it("고른 부분을 물으면 답이 그 아래에 pi의 글로 들어오고, 기다리는 동안 위를 고쳐도 자리를 지킨다", async (t) => {
+  const chosen = "고양이는 밤에 잘 본다";
+  writeFileSync(join(cwd, "ask.md"), `머리말\n\n${chosen}\n\n맺음말\n`);
+  clear();
+  send({ type: "open_note", path: "ask.md" });
+  const note = await want("note", (m) => m.path === "ask.md");
+  const from = note.text.indexOf(chosen);
+  clear();
+  send({ type: "prompt", text: "왜 그런지 한 문장으로 알려줘.", note: "ask.md", ask: { id: 7, path: "ask.md", from, to: from + chosen.length } });
+  // 답을 기다리는 동안 고른 글 위를 고친다: 자리가 뒤로 밀린다.
+  send({ type: "save_note", path: "ask.md", text: note.text.replace("머리말", "머리말을 더 길게 고쳐 썼다"), base: note.modified });
+  await want("note_changed", (m) => m.path === "ask.md" && m.changes.some((c) => c.author === "me"));
+  const done = await want("ask_done", (m) => m.id === 7, 180_000);
+  // A model that would not answer — no quota, no network — is about the
+  // machine, like the credentials this whole file skips on.
+  const refused = inbox.find((m) => m.type === "message_end" && m.message?.stopReason === "error");
+  if (done.outcome !== "written" && refused) {
+    t.diagnostic(`모델이 답하지 못했다 — ${String(refused.message.errorMessage).slice(0, 160)}`);
+    return t.skip("이 기계의 모델이 답하지 못했다");
+  }
+  assert.equal(done.outcome, "written");
+  const text = readFileSync(join(cwd, "ask.md"), "utf8");
+  assert.ok(text.includes("머리말을 더 길게 고쳐 썼다"), "그 사이의 내 편집은 그대로 있다");
+  const under = text.slice(text.indexOf(chosen) + chosen.length, text.indexOf("맺음말"));
+  assert.ok(under.trim().length > 0, "답은 고른 문장과 다음 문단 사이에 들어간다");
+  assert.match(under, /^\n\n/, "제 문단으로 들어간다");
+  const last = history("ask.md").at(-1);
+  assert.equal(last.author, "pi");
+  assert.ok(last.sessionId && last.entryId, "어느 대화의 어느 턴이 쓴 것인지 남는다");
+  assert.equal(readFileSync(join(cwd, "ask.md"), "utf8").includes("> "), false, "인용은 질문에만 있고 노트에는 안 들어간다");
 });
 
 it("모르는 메시지는 버려지지 않고 이 탭에 에러로 답한다", async () => {

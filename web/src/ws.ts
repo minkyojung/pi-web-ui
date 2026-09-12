@@ -77,6 +77,7 @@ const STATE: Record<StateMsg["type"], true> = {
 	note_deleted: true,
 	note_conflict: true,
 	search_results: true,
+	ask_done: true,
 	prompt_request: true,
 	prompt_dismiss: true,
 	queue_cleared: true,
