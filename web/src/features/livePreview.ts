@@ -174,6 +174,20 @@ class Rule extends WidgetType {
 	}
 }
 
+/** The dot a bullet is drawn as. One for all, since they are all alike. */
+class Bullet extends WidgetType {
+	toDOM() {
+		const el = document.createElement("span");
+		el.className = "cm-bullet";
+		el.textContent = "•";
+		return el;
+	}
+	eq() {
+		return true;
+	}
+}
+const bullet = Decoration.replace({ widget: new Bullet() });
+
 class Checkbox extends WidgetType {
 	readonly checked: boolean;
 	constructor(checked: boolean) {
@@ -250,6 +264,20 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): { d
 					deco.push({ from: node.from, to: node.to, value: rule });
 					atoms.add(node.from, node.to, rule);
 					return false;
+				case "ListItem": {
+					// `-`, `*` or `+` as a dot, off its line; on a task item, nothing,
+					// since the box is the marker there. The item's other lines and
+					// the lists inside it are walked on.
+					const mark = node.node.getChild("ListMark");
+					if (!mark || !/^[-*+]$/.test(doc.sliceString(mark.from, mark.to))) return;
+					if (onLines(state, ranges, mark.from, mark.from)) return;
+					const task = mark.nextSibling?.name === "Task";
+					const end = task && doc.sliceString(mark.to, mark.to + 1) === " " ? mark.to + 1 : mark.to;
+					const value = task ? hide : bullet;
+					deco.push({ from: mark.from, to: end, value });
+					atoms.add(mark.from, end, value);
+					return;
+				}
 				case "Task": {
 					const marker = node.node.getChild("TaskMarker");
 					if (!marker) return false;
@@ -327,6 +355,7 @@ const blockLayer: Extension = [
 		".cm-line.cm-callout-title::before": { content: "attr(data-callout)", textTransform: "capitalize", marginRight: "0.4em" },
 		".cm-rule": { border: "none", borderTop: "1px solid var(--border)", margin: "0.6em 0", display: "block" },
 		".cm-task": { verticalAlign: "middle", margin: "0 0.4em 0 0" },
+		".cm-bullet": { color: "var(--muted-foreground)" },
 		".cm-line.cm-task-done": { color: "var(--muted-foreground)", textDecoration: "line-through" },
 	}),
 ];

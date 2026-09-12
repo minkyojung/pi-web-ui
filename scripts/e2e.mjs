@@ -785,6 +785,18 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
 });
 
+check("a bullet is a dot off its line, and a task shows its box alone", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "bullets.md"), "- one\n- [ ] two\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="bullets.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="bullets.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("- [ ] two"));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("a dot, and a box without a dash", async () => (await shownText(app)).includes("• one") && (await shownText(app)).includes("two") && !(await shownText(app)).includes("- "));
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-bullet').length"), 1);
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 2 } }); })()`);
+	await until("the dash back under the cursor", async () => (await shownText(app)).includes("- one"));
+});
+
 check("Tab nests a numbered item and the numbers follow; Shift-Tab brings it back", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "numbered.md"), "1. a\n2. b\n3. c\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="numbered.md"]')`));

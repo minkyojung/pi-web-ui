@@ -133,12 +133,21 @@ test("구분선은 커서가 그 줄에 없을 때만 선으로 그려진다", (
 
 test("할 일 표시는 커서가 없는 줄에서 상자가 되고, 그 상자는 건너뛰는 범위다; 끝난 할 일은 커서와 상관없이 그렇게 읽힌다", () => {
   const s = parsed("- [ ] a\n- [x] b\n", 0);
-  assert.deepEqual(drawn(s), [[2, "cm-task-done"], ["[x] ", "Checkbox"]]);
+  assert.deepEqual(drawn(s), [[2, "cm-task-done"], ["- ", "hidden"], ["[x] ", "Checkbox"]], "on a task item the bullet goes, the box being the marker");
   assert.deepEqual(drawn(parsed("- [x] b\n", 7)), [[1, "cm-task-done"]], "on the line, the box is text again but the line stays done");
   const atoms = [];
   const it = blocks(s).atoms.iter();
   for (; it.value; it.next()) atoms.push([it.from, it.to]);
-  assert.deepEqual(atoms, [[10, 14]]);
+  assert.deepEqual(atoms, [[8, 10], [10, 14]]);
+});
+
+test("불릿은 커서가 없는 줄에서 점이 되고, 그 줄에 오면 글자다; 번호는 그대로다", () => {
+  assert.deepEqual(drawn(parsed("- a\n* b\n1. c\n", 0)), [["*", "Bullet"]]);
+  assert.deepEqual(drawn(parsed("- a\n* b\n1. c\n", 9)), [["-", "Bullet"], ["*", "Bullet"]]);
+  const atoms = [];
+  const it = blocks(parsed("- a\n", 3)).atoms.iter();
+  for (; it.value; it.next()) atoms.push([it.from, it.to]);
+  assert.deepEqual(atoms, [], "cursor on the line: the marker is text, nothing to step over");
 });
 
 test("Mod-Enter는 커서 줄의 할 일을 켜고 끈다, 없으면 손대지 않는다", () => {
