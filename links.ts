@@ -14,9 +14,10 @@
 import type { SyntaxNode } from "@lezer/common";
 import { parser as markdown } from "@lezer/markdown";
 import { titleOf } from "./naming.ts";
+import { frontMatter } from "./frontmatter.ts";
 import { wikiLink } from "./wikilink.ts";
 
-const parser = markdown.configure([wikiLink]);
+const parser = markdown.configure([wikiLink, frontMatter]);
 
 export type Link = {
 	target: string;
@@ -37,7 +38,7 @@ export type Place = Pick<Link, "heading" | "block">;
  * a sidecar built when the parser found links differently is rebuilt rather
  * than trusted. Bump it with any change to what linksIn returns for a note.
  */
-export const LINKS_VERSION = 3;
+export const LINKS_VERSION = 4;
 
 /**
  * A WikiLink node read as a link, and where the note's name sits in it —

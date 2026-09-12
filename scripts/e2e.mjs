@@ -785,6 +785,18 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
 });
 
+check("a note's front matter is one muted block, not a rule and a paragraph", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "props.md"), "---\ntags: [x]\n---\n\n# body\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="props.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="props.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("# body"));
+	// Off the cursor's line a rule would be drawn as one; front matter's dashes are not rules.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("the heading's mark to be hidden", async () => !(await shownText(app)).includes("# body"));
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor hr.cm-rule').length"), 0);
+	assert.ok((await shownText(app)).includes("---tags: [x]---"), "the block is shown as written");
+});
+
 check("a note opens again where it was left", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "left.md"), "one\ntwo\nthree\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="left.md"]')`));
