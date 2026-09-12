@@ -13,6 +13,7 @@ import { linkCompletion } from "../features/linkCompletion";
 import { livePreview } from "../features/livePreview";
 import { landOn, links, notesChanged } from "../features/links";
 import { pending, setSpans } from "../features/pending";
+import { toggleMarks } from "../features/toggleMarks";
 import { wikiLink } from "../../../wikilink.ts";
 import type { Place } from "../../../links.ts";
 import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
@@ -222,6 +223,7 @@ export function Editor({
 			linkCompletion(() => filesStore.get().map((f) => f.path)),
 			// Markup hidden where the cursor is not; Mod-e shows it all again.
 			livePreview,
+			toggleMarks,
 		];
 		const state = EditorState.create({
 			doc: "",

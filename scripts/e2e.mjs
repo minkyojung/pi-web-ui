@@ -183,7 +183,7 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1, modifiers });
 		return true;
 	};
-	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, e: 69, f: 70, k: 75, n: 78, p: 80, z: 90 };
+	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, b: 66, e: 69, f: 70, i: 73, k: 75, n: 78, p: 80, z: 90 };
 	const press = async (key, { meta = false, shift = false } = {}) => {
 		const modifiers = (meta ? 4 : 0) | (shift ? 8 : 0);
 		const code = key.length === 1 ? `Key${key.toUpperCase()}` : key;
@@ -755,6 +755,23 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	await until("the link", async () => (await editorText(app)).endsWith("[[My note]]"));
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
+});
+
+check("⌘B and ⌘I put a mark around the chosen words and take it off again", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "marks.md"), "say hi now\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="marks.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="marks.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: 4, head: 6 } })`);
+	await app.press("b", { meta: true });
+	await until("bold", async () => (await editorText(app)) === "say **hi** now\n");
+	await app.press("i", { meta: true });
+	await until("bold italic", async () => (await editorText(app)) === "say ***hi*** now\n");
+	await app.press("b", { meta: true });
+	await until("italic alone", async () => (await editorText(app)) === "say *hi* now\n");
+	await app.press("i", { meta: true });
+	await until("plain", async () => (await editorText(app)) === "say hi now\n");
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 });
 
 check("a < in prose offers no HTML tags", async ({ app }) => {
