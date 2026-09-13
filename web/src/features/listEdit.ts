@@ -19,76 +19,13 @@
  * a list item, and the keymap goes on to its.
  */
 import { indentUnit, syntaxTree } from "@codemirror/language";
-import { type ChangeSpec, type EditorState, EditorSelection, type Line } from "@codemirror/state";
+import { type ChangeSpec, type EditorState, EditorSelection } from "@codemirror/state";
 import type { Command, EditorView } from "@codemirror/view";
 import type { SyntaxNode, Tree } from "@lezer/common";
 
-// ---- Reading the tree ----
+import { blockAt, blockOf, indentOf, indentWidth, itemAt, linesOf, markerOf, parentOf } from "./listTree.ts";
 
-/**
- * The list item whose line `pos` is on, if any: the innermost one, found
- * past the line's indentation. `tree` is the state's unless a fuller one
- * is passed: ensureSyntaxTree returns one without putting it in the state.
- */
-export function itemAt(state: EditorState, pos: number, tree: Tree = syntaxTree(state)): SyntaxNode | null {
-	const line = state.doc.lineAt(pos);
-	const start = line.from + /^\s*/.exec(line.text)![0].length;
-	let node: SyntaxNode | null = tree.resolveInner(start, 1);
-	while (node && node.name !== "ListItem") node = node.parent;
-	return node;
-}
-
-const isList = (n: SyntaxNode | null) => n !== null && (n.name === "BulletList" || n.name === "OrderedList");
-
-/** The outermost list around `item`: the block whose numbers a change touches. */
-function blockOf(item: SyntaxNode): SyntaxNode {
-	let top: SyntaxNode = item;
-	for (let n: SyntaxNode | null = item; n; n = n.parent) if (isList(n)) top = n;
-	return top;
-}
-
-/** The block around `pos`, if any: found from the item there, or — on a line of the block that is no item's, such as one just emptied — from the list itself. */
-export function blockAt(state: EditorState, pos: number, tree: Tree = syntaxTree(state)): SyntaxNode | null {
-	let top: SyntaxNode | null = null;
-	for (let n: SyntaxNode | null = itemAt(state, pos, tree) ?? tree.resolveInner(pos, -1); n; n = n.parent) if (isList(n)) top = n;
-	return top;
-}
-
-/** The item `item` is nested in, or null at the top of the block. */
-const parentOf = (item: SyntaxNode): SyntaxNode | null => {
-	const list = item.parent;
-	return list && isList(list) && list.parent?.name === "ListItem" ? list.parent : null;
-};
-
-/** How far into its line the marker line of `item` is indented, in characters. */
-function indentOf(state: EditorState, item: SyntaxNode): number {
-	const line = state.doc.lineAt(item.from);
-	return /^[ \t]*/.exec(line.text)![0].length;
-}
-
-/**
- * The marker line of `item`, taken apart: where the marker ends, and where
- * the content starts — past a task's box, and the space after either.
- * `marker` is the marker's text, `-` or `3.`.
- */
-function prefixOf(state: EditorState, item: SyntaxNode): { line: Line; marker: string; task: boolean; contentStart: number } | null {
-	const mark = item.getChild("ListMark");
-	if (!mark) return null;
-	const line = state.doc.lineAt(mark.from);
-	const taskMark = mark.nextSibling?.name === "Task" ? mark.nextSibling.getChild("TaskMarker") : null;
-	let end = taskMark ? taskMark.to : mark.to;
-	if (state.doc.sliceString(end, end + 1) === " ") end++;
-	return { line, marker: state.doc.sliceString(mark.from, mark.to), task: taskMark !== null, contentStart: end };
-}
-
-/** The lines of `item`, marker line first, children and all. */
-function linesOf(state: EditorState, item: SyntaxNode) {
-	const out = [];
-	const first = state.doc.lineAt(item.from).number;
-	const last = state.doc.lineAt(item.to).number;
-	for (let n = first; n <= last; n++) out.push(state.doc.line(n));
-	return out;
-}
+// ---- Reading the block ----
 
 /** One level of nesting, as this block has it: the indent of the first nested item past its parent's, or the editor's unit where nothing is nested yet. */
 function unitOf(state: EditorState, block: SyntaxNode): string {
@@ -157,7 +94,7 @@ function indented(state: EditorState, item: SyntaxNode, unit: string): ChangeSpe
 function outdented(state: EditorState, item: SyntaxNode, width: number): ChangeSpec[] {
 	const out: ChangeSpec[] = [];
 	for (const l of linesOf(state, item)) {
-		const n = Math.min(width, /^[ \t]*/.exec(l.text)![0].length);
+		const n = Math.min(width, indentWidth(l));
 		if (n > 0) out.push({ from: l.from, to: l.from + n });
 	}
 	return out;
@@ -215,12 +152,12 @@ export const listEnter: Command = (view) => {
 	if (!at) return false;
 	const { state } = view;
 	const { item, head } = at;
-	const prefix = prefixOf(state, item);
-	if (!prefix) return false;
-	const { line, marker, task, contentStart } = prefix;
+	const marker = markerOf(state, item);
+	if (!marker) return false;
+	const { line, text, task, contentStart } = marker;
 	const cursorLine = state.doc.lineAt(head);
 	if (cursorLine.number !== line.number) {
-		const indent = /^[ \t]*/.exec(cursorLine.text)![0];
+		const indent = cursorLine.text.slice(0, indentWidth(cursorLine));
 		dispatchInBlock(view, { from: head, insert: state.lineBreak + indent }, head + 1 + indent.length, "input");
 		return true;
 	}
@@ -235,7 +172,7 @@ export const listEnter: Command = (view) => {
 	while (from > contentStart && /\s/.test(line.text[from - line.from - 1])) from--;
 	let to = head;
 	while (to < line.to && /\s/.test(line.text[to - line.from])) to++;
-	const insert = state.lineBreak + line.text.slice(0, indentOf(state, item)) + marker + " " + (task ? "[ ] " : "");
+	const insert = state.lineBreak + line.text.slice(0, indentOf(state, item)) + text + " " + (task ? "[ ] " : "");
 	dispatchInBlock(view, { from, to, insert }, from + insert.length, "input");
 	return true;
 };
@@ -244,8 +181,8 @@ export const listEnter: Command = (view) => {
 export const listBackspace: Command = (view) => {
 	const at = single(view);
 	if (!at) return false;
-	const prefix = prefixOf(view.state, at.item);
-	if (!prefix || at.head !== prefix.contentStart) return false;
-	dispatchInBlock(view, { from: prefix.line.from, to: at.head }, prefix.line.from, "delete");
+	const marker = markerOf(view.state, at.item);
+	if (!marker || at.head !== marker.contentStart) return false;
+	dispatchInBlock(view, { from: marker.line.from, to: at.head }, marker.line.from, "delete");
 	return true;
 };

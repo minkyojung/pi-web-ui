@@ -18,7 +18,8 @@
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { type ChangeSpec, EditorState, type Extension, Transaction } from "@codemirror/state";
 
-import { blockAt, renumbered } from "./listEdit.ts";
+import { renumbered } from "./listEdit.ts";
+import { blockAt } from "./listTree.ts";
 import { fromServer } from "./origin.ts";
 
 export const listNumbers: Extension = EditorState.transactionFilter.of((tr) => {
