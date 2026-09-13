@@ -142,6 +142,12 @@ export interface ConfigMsg {
 	type: "config";
 	model: string | null;
 	models: string[];
+	/**
+	 * Why `models` may be short, when it may be: a provider pi could not check
+	 * just now, or pi's own report of trouble. See models.ts. Absent when the
+	 * list is what it should be.
+	 */
+	modelsNotice?: string;
 	thinkingLevel: string;
 	thinkingLevels: string[];
 	tools: { name: string; description?: string }[];

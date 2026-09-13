@@ -182,7 +182,7 @@ export function Composer({ note }: { note: string | null }) {
 						    entries in provider groups are picked by typing the first letters. */}
 						{config && (
 							<>
-								<ModelSelect model={config.model} models={config.models} />
+								<ModelSelect model={config.model} models={config.models} notice={config.modelsNotice} />
 								<ThinkingSelect level={config.thinkingLevel} levels={config.thinkingLevels} disabled={!online} />
 								<ToolModes
 									tools={config.tools}

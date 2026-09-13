@@ -336,10 +336,14 @@ because it looks handled.
 The controls sit with the message they apply to, under the composer, since all
 three are chosen per message:
 
-- **Model** — any model with usable credentials, grouped by provider, read from
-  pi each time it is sent rather than copied at startup: pi's first availability
-  pass can be cut short by a credential refresh and come back with one provider,
-  and a copy of that would have stayed wrong until a restart. Switching is live.
+- **Model** — any model with usable credentials, grouped by provider. pi decides
+  which by reading each provider's credential, and leaves out without a word any
+  it cannot read at that moment — and the file they all live in is rewritten
+  whole whenever an OAuth token is renewed, so a pass that reads it mid-write
+  comes back one provider short. pi's CLI runs the pass again each time its
+  picker opens; this server runs it when the credentials file changes and when
+  a tab connects, looks once more when a provider has gone missing, and says so
+  beside the picker meanwhile (see `models.ts`). Switching is live.
   Thinking level is clamped to the new model, which the config broadcast
   reflects. Set with `persist`, so pi writes it to its own settings and the next
   session opens on it.

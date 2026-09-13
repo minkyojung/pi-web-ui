@@ -24,7 +24,12 @@ function byProvider(models: string[]): [string, string[]][] {
  * the visible part is a ghost Button — text-fit, accent on hover — and the
  * real select lies over it invisibly, taking the clicks and the keyboard.
  */
-export function ModelSelect({ model, models }: { model: string | null; models: string[] }) {
+/**
+ * `notice` is why the list may be short, when the server knows: shown as a
+ * mark beside the picker with the reason on hover, so a provider that has gone
+ * missing is seen to be missing rather than taken for never having been there.
+ */
+export function ModelSelect({ model, models, notice }: { model: string | null; models: string[]; notice?: string }) {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	const label = model ? model.slice(model.indexOf("/") + 1) : "model";
 
@@ -60,6 +65,11 @@ export function ModelSelect({ model, models }: { model: string | null; models: s
 					</optgroup>
 				))}
 			</select>
+			{notice && (
+				<span className="ml-1 self-center text-xs text-destructive" title={notice} aria-label={notice} role="img">
+					⚠
+				</span>
+			)}
 		</span>
 	);
 }

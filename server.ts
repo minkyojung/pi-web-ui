@@ -7,7 +7,7 @@
  * server's state and are rebroadcast whenever it changes.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, watch } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { createServer, type IncomingMessage } from "node:http";
@@ -25,6 +25,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { itemsFromMessages } from "./conversation.js";
 import { modeToolNames } from "./toolModes.ts";
+import { lostProviders, modelsNotice as modelsNotice_ } from "./models.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
@@ -105,14 +106,8 @@ const modelRuntime = await ModelRuntime.create();
 const modelKey = (m: { provider: string; id: string }) => `${m.provider}/${m.id}`;
 
 /**
- * Models with usable credentials, as pi sees them right now.
- *
- * Read each time rather than once at startup, the way pi's own rpc and
- * interactive modes do. pi's availability pass can be invalidated by a
- * credential write that lands while it runs — a provider's OAuth token being
- * renewed as the process starts — and what that pass returns is then only the
- * provider that wrote. pi recovers on its next pass; a copy taken at startup
- * never would, and it showed one provider's models until a restart.
+ * Models with usable credentials, as of pi's last pass over them — which is
+ * run again whenever it can have gone stale; see refreshModels below.
  */
 const availableModels = () => modelRuntime.getAvailableSnapshot();
 
@@ -258,6 +253,7 @@ function config(): ConfigMsg {
 		type: "config",
 		model: model ? modelKey(model) : null,
 		models: availableModels().map(modelKey),
+		modelsNotice,
 		thinkingLevel: s.thinkingLevel,
 		thinkingLevels: s.supportsThinking() ? s.getAvailableThinkingLevels() : [],
 		tools: s.getAllTools().map((tool) => ({ name: tool.name, description: tool.description })),
@@ -706,16 +702,77 @@ if (!session().model) {
 	process.exit(1);
 }
 
+/**
+ * Keeping the model list true.
+ *
+ * pi builds the list by reading each provider's credential, and leaves out
+ * without a word any it cannot read at that moment. The file they all live in
+ * is rewritten whole whenever an OAuth token is renewed, so a pass that reads
+ * it mid-write comes back a provider short — and this process, unlike pi's
+ * CLI, does not run the pass again on its own. It ran once at startup, and
+ * one bad moment then was the list for days. See models.ts.
+ *
+ * So the pass is run again when the list can have gone stale: the
+ * credentials file changed, or a tab connected. One pass at a time; a second
+ * ask while one runs joins it. A pass that ends with pi reporting trouble, or
+ * with a provider gone that was there a moment ago, is followed by one more
+ * after a pause, since the likeliest reason is the file mid-write. Meanwhile
+ * the tabs are told why the list may be short, rather than shown a short
+ * list as if it were the whole of it.
+ */
+let modelsNotice: string | undefined;
+let refreshing: Promise<void> | null = null;
+let lookedAgain = 0;
+
+function refreshModels(): Promise<void> {
+	if (refreshing) return refreshing;
+	const before = availableModels().map(modelKey);
+	refreshing = (async () => {
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 15_000);
+		try {
+			await modelRuntime.refresh({ signal: controller.signal });
+		} catch {
+			// What went wrong is in getError(), read below.
+		} finally {
+			clearTimeout(timeout);
+		}
+		const after = availableModels().map(modelKey);
+		const notice = modelsNotice_(lostProviders(before, after), modelRuntime.getError());
+		const changed = notice !== modelsNotice || after.join() !== before.join();
+		modelsNotice = notice;
+		if (changed) broadcast(config());
+		if (notice && lookedAgain < 2) {
+			lookedAgain++;
+			setTimeout(() => void refreshModels(), 3_000);
+		} else if (!notice) lookedAgain = 0;
+	})().finally(() => {
+		refreshing = null;
+	});
+	return refreshing;
+}
+
 // As pi's rpc mode does after startup: bring the model catalogues up to date in
 // the background, and tell the clients if that changed what is on offer.
+void refreshModels();
+
+// The credentials file is what a pass reads, so a change to it is the one sure
+// sign the list can have moved. It is replaced whole on a token renewal, which
+// a watch on the file itself does not survive, so the folder is watched and
+// the name matched. A renewal writes more than once in quick succession; the
+// pass runs when that has settled.
 {
-	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), 15_000);
-	void modelRuntime
-		.refresh({ signal: controller.signal })
-		.then(() => broadcast(config()))
-		.catch(() => {})
-		.finally(() => clearTimeout(timeout));
+	let settle: ReturnType<typeof setTimeout> | null = null;
+	try {
+		watch(getAgentDir(), (_event, name) => {
+			if (name !== "auth.json") return;
+			if (settle) clearTimeout(settle);
+			settle = setTimeout(() => void refreshModels(), 750);
+		});
+	} catch {
+		// No folder yet, or a platform without watching: the other reasons to
+		// look again still apply.
+	}
 }
 
 /**
@@ -803,6 +860,9 @@ const wss = new WebSocketServer({ server });
 
 wss.on("connection", async (ws) => {
 	clients.add(ws);
+	// Someone is looking: a list that has gone stale since the last pass is
+	// brought up to date, and this tab hears of it like every other.
+	void refreshModels();
 	ws.on("close", () => clients.delete(ws));
 	// ws emits 'error' for a malformed frame. Node throws on an 'error' event
 	// with no listener, so without this one bad frame takes the process down.
