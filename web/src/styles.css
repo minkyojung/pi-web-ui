@@ -361,3 +361,22 @@
    three buttons at the inset the shell asks for, plus a gap — flush against
    them, the first tab reads as a fourth button. */
 .traffic-lights .titlebar-inset { padding-left: 88px; }
+
+/*
+ * The three columns scroll, but none of them draws a bar for it. The window is
+ * a place to read and write in, and a track down the edge of every pane is
+ * furniture; the position is already legible from the text moving. macOS
+ * overlay scrollbars fade on their own, so this only shows on the setups that
+ * keep theirs — where it would otherwise steal a strip of the measure.
+ *
+ * The editor is named by its own class because CodeMirror owns that element
+ * and there is nowhere to hang a className on it.
+ */
+.no-scrollbar,
+.cm-scroller {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar,
+.cm-scroller::-webkit-scrollbar {
+  display: none;
+}
