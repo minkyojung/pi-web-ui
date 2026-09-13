@@ -46,8 +46,20 @@ const line = (level: number, marker: boolean) => {
 	return d;
 };
 
-/** The list lines between `from` and `to`: padding per level, and the marker's box on the line that has one. */
-export function listLines(state: EditorState, from: number, to: number): DecorationSet {
+/**
+ * The lines of list items between `from` and `to`, each with its depth,
+ * and where the marker ends on the lines that carry one.
+ *
+ * A line of an item that has no marker of its own counts as the item's
+ * only if it is indented to where the item's words start. Markdown lets a
+ * paragraph go on under an item unindented — a lazy line — and the text
+ * typed right under a list, with no blank line between, is one: the tree
+ * puts it inside the last item. Drawn as the item's it would sit under
+ * the words, indented, while the note has it at the margin; so such a
+ * line takes the depth of the outermost item it is indented for, and none
+ * when it is not indented at all.
+ */
+export function listItemLines(state: EditorState, from: number, to: number): { level: Map<number, number>; markAt: Map<number, number> } {
 	const { doc } = state;
 	const level = new Map<number, number>();
 	const markAt = new Map<number, number>();
@@ -58,9 +70,17 @@ export function listLines(state: EditorState, from: number, to: number): Decorat
 		enter: (node) => {
 			if (node.name === "ListItem") {
 				depth++;
+				const mark = node.node.getChild("ListMark");
+				const markLine = mark ? doc.lineAt(mark.from) : null;
+				// The column the item's words start at: past the marker and its space.
+				const content = mark ? mark.to - markLine!.from + (doc.sliceString(mark.to, mark.to + 1) === " " ? 1 : 0) : 0;
 				const first = doc.lineAt(Math.max(node.from, from)).number;
 				const last = doc.lineAt(Math.min(node.to, to)).number;
-				for (let n = first; n <= last; n++) level.set(n, depth);
+				for (let n = first; n <= last; n++) {
+					const l = doc.line(n);
+					if (n !== markLine?.number && /^[ \t]*/.exec(l.text)![0].length < content) continue;
+					level.set(n, depth);
+				}
 			} else if (node.name === "ListMark") {
 				// Through the task's marker, when the item is one: `- [ ] ` is the prefix, not `- `.
 				const task = node.node.nextSibling?.name === "Task" ? node.node.nextSibling.getChild("TaskMarker") : null;
@@ -71,6 +91,13 @@ export function listLines(state: EditorState, from: number, to: number): Decorat
 			if (node.name === "ListItem") depth--;
 		},
 	});
+	return { level, markAt };
+}
+
+/** The list lines between `from` and `to`: padding per level, and the marker's box on the line that has one. */
+export function listLines(state: EditorState, from: number, to: number): DecorationSet {
+	const { doc } = state;
+	const { level, markAt } = listItemLines(state, from, to);
 	const out = [];
 	for (const [n, lvl] of level) {
 		const l = doc.line(n);

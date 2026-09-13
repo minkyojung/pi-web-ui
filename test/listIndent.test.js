@@ -60,3 +60,20 @@ test("리스트가 아닌 줄과 범위 밖은 손대지 않는다", () => {
   assert.deepEqual(drawn(parsed("text\n\n- a\n")), [[3, "--list-indent:1.5em marker"], ["- "]]);
   assert.deepEqual(drawn(parsed("- a\n- b\n"), 0, 3), [[1, "--list-indent:1.5em marker"], ["- "]]);
 });
+
+test("항목 밑에 붙여 쓴 글은 들여쓰지 않았으면 밀리지 않고, 들여썼으면 항목의 줄로 밀린다", () => {
+  assert.deepEqual(drawn(parsed("- a\n- b\ntext\n")), [
+    [1, "--list-indent:1.5em marker"], ["- "],
+    [2, "--list-indent:1.5em marker"], ["- "],
+  ]);
+  assert.deepEqual(drawn(parsed("- a\n  more\n")), [
+    [1, "--list-indent:1.5em marker"], ["- "],
+    [2, "--list-indent:1.5em"],
+  ]);
+  // Under a nested item, a line indented for the outer item alone is the outer item's.
+  assert.deepEqual(drawn(parsed("- a\n    - b\n  text\n")), [
+    [1, "--list-indent:1.5em marker"], ["- "],
+    [2, "--list-indent:3em marker"], ["    - "],
+    [3, "--list-indent:1.5em"],
+  ]);
+});

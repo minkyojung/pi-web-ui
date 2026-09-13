@@ -27,6 +27,7 @@ import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { Compartment, type EditorState, type Extension, Prec, type Range, type RangeSet, RangeSetBuilder, type SelectionRange, StateField, type Transaction } from "@codemirror/state";
 import { BlockWrapper, Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
+import { listItemLines } from "./listIndent.ts";
 
 const hide = Decoration.replace({});
 
@@ -252,8 +253,7 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 	const atomRanges: Range<Decoration>[] = [];
 	const atoms = { add: (from: number, to: number, value: Decoration) => atomRanges.push(value.range(from, to)) };
 	const wrappers: Range<BlockWrapper>[] = [];
-	/** The lines of list items, and the lines of fenced code, where leading spaces are the code's own. */
-	const listLines = new Set<number>();
+	/** The lines of fenced code, where leading spaces are the code's own. */
 	const codeLines = new Set<number>();
 	/** The nearest quote around `node`, and how many are around that. */
 	const quoteOf = (node: SyntaxNodeRef) => {
@@ -321,9 +321,7 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 				case "ListItem": {
 					// `-`, `*` or `+` as a dot, off its line; on a task item, nothing,
 					// since the box is the marker there. The item's other lines and
-					// the lists inside it are walked on. Every line of the item is
-					// noted, for its indentation to be hidden below.
-					for (let n = doc.lineAt(node.from).number; n <= doc.lineAt(node.to).number; n++) listLines.add(n);
+					// the lists inside it are walked on.
 					const mark = node.node.getChild("ListMark");
 					if (!mark || !/^[-*+]$/.test(doc.sliceString(mark.from, mark.to))) return;
 					if (onLines(state, ranges, mark.from, mark.from)) return;
@@ -354,9 +352,11 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 	});
 	// A list line's leading spaces are markup — they say how deep the item
 	// is, which the padding already shows — so off the cursor's line they go,
-	// and the words start where the padding puts them. Not in a fence, where
-	// the spaces are the code's; and on the cursor's line, the text, to edit.
-	for (const n of listLines) {
+	// and the words start where the padding puts them. The lines are the
+	// ones listIndent.ts pads, so a lazy line under an item, which it does
+	// not, keeps its spaces. Not in a fence, where the spaces are the code's;
+	// and on the cursor's line, the text, to edit.
+	for (const n of listItemLines(state, 0, doc.length).level.keys()) {
 		if (codeLines.has(n)) continue;
 		const l = doc.line(n);
 		const indent = /^[ \t]*/.exec(l.text)![0].length;
