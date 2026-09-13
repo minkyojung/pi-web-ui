@@ -11,7 +11,9 @@
  * when the run is still the whole of what pi wrote, and otherwise takes the
  * run out. Either way that is the person's edit, and saved as one. The two
  * are commands here and keys in Editor.tsx, where every key of the editor
- * is bound in one order.
+ * is bound in one order. Both are decisions, and look at the main cursor
+ * alone, as the editor's own acceptCompletion does; an editing key
+ * (listEdit.ts) works at every cursor or not at all.
  *
  * Marks are kept as a decoration set, which CodeMirror moves along with the
  * typing around them; they are replaced whole whenever the server sends the

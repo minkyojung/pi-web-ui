@@ -176,6 +176,7 @@ const diff = (original: string): Extension =>
 		mergeControls: control,
 	}) as Extension;
 
+/** At the main cursor: a decision looks there alone, as the editor's own acceptCompletion does. */
 const here = (run: (view: EditorView, pos: number) => boolean): Command => (view) => run(view, view.state.selection.main.head);
 
 /** Mod-Enter while a diff is open: keep the chunk under the cursor; no when there is none there. */

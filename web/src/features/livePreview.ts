@@ -208,7 +208,7 @@ class Rule extends WidgetType {
 	}
 }
 
-/** The dot a bullet is drawn as. One for all, since they are all alike. */
+/** The dot a bullet is drawn as. One for all, since they are all alike. A click on it is the editor's, as on a number: the caret lands by it. */
 class Bullet extends WidgetType {
 	toDOM() {
 		const el = document.createElement("span");
@@ -218,6 +218,9 @@ class Bullet extends WidgetType {
 	}
 	eq() {
 		return true;
+	}
+	ignoreEvent() {
+		return false;
 	}
 }
 const bullet = Decoration.replace({ widget: new Bullet() });

@@ -17,6 +17,12 @@
  *
  * A quote's `>` is left to lang-markdown: the commands here say no outside
  * a list item, and the keymap goes on to its.
+ *
+ * These are editing keys, and an editing key does its work at every
+ * cursor or not at all: with more than one cursor they say no, and the
+ * editor's own Enter, Tab and Backspace act at each. (A key that makes a
+ * decision — accepting pi's words, keeping a chunk — looks at the main
+ * cursor alone, as the editor's own acceptCompletion does.)
  */
 import { indentUnit, syntaxTree } from "@codemirror/language";
 import { type ChangeSpec, type EditorState, EditorSelection } from "@codemirror/state";
