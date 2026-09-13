@@ -198,6 +198,10 @@ test("Mod-Enter는 커서 줄의 할 일을 켜고 끈다, 없으면 손대지 �
   assert.deepEqual(run("- [ ] a\n", 7), { handled: true, out: [{ from: 2, to: 5, insert: "[x]" }] });
   assert.deepEqual(run("- [X] a\n", 7), { handled: true, out: [{ from: 2, to: 5, insert: "[ ]" }] });
   assert.deepEqual(run("- a\n", 3), { handled: false, out: null });
+  // Two cursors on one task: one toggle, not two boxes.
+  let out = null;
+  toggleTask({ state: state("- [ ] a\n", 7).update({ selection: EditorSelection.create([EditorSelection.cursor(3), EditorSelection.cursor(7)]) }).state, dispatch: (tr) => (out = tr.changes) });
+  assert.deepEqual(out, [{ from: 2, to: 5, insert: "[x]" }]);
 });
 
 test("공백이 없는 마커는 아직 글자다: 점도 없고, 건너뛰는 범위도 없다", () => {

@@ -21,15 +21,19 @@
 import { indentUnit, syntaxTree } from "@codemirror/language";
 import { type ChangeSpec, type EditorState, EditorSelection, type Line } from "@codemirror/state";
 import type { Command, EditorView } from "@codemirror/view";
-import type { SyntaxNode } from "@lezer/common";
+import type { SyntaxNode, Tree } from "@lezer/common";
 
 // ---- Reading the tree ----
 
-/** The list item whose line `pos` is on, if any: the innermost one, found past the line's indentation. */
-export function itemAt(state: EditorState, pos: number): SyntaxNode | null {
+/**
+ * The list item whose line `pos` is on, if any: the innermost one, found
+ * past the line's indentation. `tree` is the state's unless a fuller one
+ * is passed: ensureSyntaxTree returns one without putting it in the state.
+ */
+export function itemAt(state: EditorState, pos: number, tree: Tree = syntaxTree(state)): SyntaxNode | null {
 	const line = state.doc.lineAt(pos);
 	const start = line.from + /^\s*/.exec(line.text)![0].length;
-	let node: SyntaxNode | null = syntaxTree(state).resolveInner(start, 1);
+	let node: SyntaxNode | null = tree.resolveInner(start, 1);
 	while (node && node.name !== "ListItem") node = node.parent;
 	return node;
 }
@@ -44,9 +48,9 @@ function blockOf(item: SyntaxNode): SyntaxNode {
 }
 
 /** The block around `pos`, if any: found from the item there, or — on a line of the block that is no item's, such as one just emptied — from the list itself. */
-export function blockAt(state: EditorState, pos: number): SyntaxNode | null {
+export function blockAt(state: EditorState, pos: number, tree: Tree = syntaxTree(state)): SyntaxNode | null {
 	let top: SyntaxNode | null = null;
-	for (let n: SyntaxNode | null = itemAt(state, pos) ?? syntaxTree(state).resolveInner(pos, -1); n; n = n.parent) if (isList(n)) top = n;
+	for (let n: SyntaxNode | null = itemAt(state, pos, tree) ?? tree.resolveInner(pos, -1); n; n = n.parent) if (isList(n)) top = n;
 	return top;
 }
 
@@ -110,8 +114,8 @@ function unitOf(state: EditorState, block: SyntaxNode): string {
  * from what moved; the block is put in order whole, so there is no case
  * to get wrong.
  */
-export function renumbered(state: EditorState, pos: number): ChangeSpec[] {
-	const top = blockAt(state, pos);
+export function renumbered(state: EditorState, pos: number, tree: Tree = syntaxTree(state)): ChangeSpec[] {
+	const top = blockAt(state, pos, tree);
 	if (!top) return [];
 	const changes: ChangeSpec[] = [];
 	top.cursor().iterate((ref) => {

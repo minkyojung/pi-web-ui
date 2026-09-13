@@ -63,3 +63,10 @@ test("한 트랜잭션이다: 되돌리기 한 번에 번호도 돌아온다", (
   assert.equal(tr.changes.desc.toJSON !== undefined && tr.startState.doc.toString(), "9. a\n10. b\n", "one transaction from the old doc to the new");
   assert.equal(tr.annotation(Transaction.userEvent), "input.type");
 });
+
+test("아직 파싱되지 않은 뒤쪽의 리스트도 고친다", () => {
+  // A long note, parsed only at its head; the change lands in a list at its tail.
+  const doc = "x\n".repeat(5000) + "1. a\n3. b\n";
+  const s = EditorState.create({ doc, selection: EditorSelection.cursor(doc.length), extensions: [markdown({ base: markdownLanguage }), listNumbers] });
+  assert.deepEqual(typed(s, "1. c")[0].slice(-14), "1. a\n2. b\n3. c");
+});

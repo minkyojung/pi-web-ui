@@ -470,9 +470,17 @@ function taskToggle(state: EditorState, pos: number): { from: number; to: number
 	return change;
 }
 
-/** Tick or untick the task on the line of every cursor. */
+/** Tick or untick the task on the line of every cursor — each line once, however many cursors are on it. */
 export const toggleTask = (view: EditorView) => {
-	const changes = view.state.selection.ranges.map((r) => taskToggle(view.state, r.head)).filter((c) => c !== null);
+	const lines = new Set<number>();
+	const changes = [];
+	for (const r of view.state.selection.ranges) {
+		const line = view.state.doc.lineAt(r.head).number;
+		if (lines.has(line)) continue;
+		lines.add(line);
+		const change = taskToggle(view.state, r.head);
+		if (change) changes.push(change);
+	}
 	if (changes.length === 0) return false;
 	view.dispatch({ changes, userEvent: "input" });
 	return true;

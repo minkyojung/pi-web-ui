@@ -15,7 +15,7 @@
  * not while a syllable is being composed, when the editor should not be
  * rewriting the line under the input method.
  */
-import { ensureSyntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { type ChangeSpec, EditorState, type Extension, Transaction } from "@codemirror/state";
 
 import { blockAt, renumbered } from "./listEdit.ts";
@@ -26,17 +26,18 @@ export const listNumbers: Extension = EditorState.transactionFilter.of((tr) => {
 	const { state } = tr;
 	const seen = new Set<number>();
 	const changes: ChangeSpec[] = [];
+	// The whole note has to be parsed before a block can be looked for at
+	// all, let alone bounded: a change past the parsed part would find no
+	// list there. Parsing through costs once; the parse is kept and added
+	// to from then on, so the keystrokes after are cheap. The tree comes
+	// back from the call — it is not put in the state — so it is passed on.
+	const tree = ensureSyntaxTree(state, state.doc.length, 50) ?? syntaxTree(state);
 	tr.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
 		for (const pos of [fromB, toB]) {
-			if (!blockAt(state, pos)) continue;
-			// The whole block has to be parsed for its numbers to be right, and
-			// where it ends is not known until it is: the note is parsed through,
-			// which costs once, the parse being kept and added to from then on.
-			ensureSyntaxTree(state, state.doc.length, 50);
-			const block = blockAt(state, pos);
+			const block = blockAt(state, pos, tree);
 			if (!block || seen.has(block.from)) continue;
 			seen.add(block.from);
-			changes.push(...renumbered(state, pos));
+			changes.push(...renumbered(state, pos, tree));
 		}
 	});
 	return changes.length === 0 ? tr : [tr, { changes, sequential: true }];
