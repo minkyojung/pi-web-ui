@@ -550,7 +550,17 @@ const blockLayer: Extension = [
 		".cm-quote.cm-callout": { backgroundColor: "color-mix(in oklab, var(--foreground) 5%, transparent)", borderLeftColor: "var(--foreground)" },
 		".cm-line.cm-callout-title": { fontWeight: "600" },
 		".cm-line.cm-callout-title::before": { content: "attr(data-callout)", textTransform: "capitalize", marginRight: "0.4em" },
-		".cm-rule": { border: "none", borderTop: "1px solid var(--border)", margin: "0.6em 0", display: "block" },
+		// The room around the rule is padding, not margin: the editor measures a
+		// block widget by its box, so a margin is height it does not know about,
+		// and every line under the rule would sit lower on the page than in the
+		// height map — which is what made ArrowUp skip the line above the rule.
+		".cm-rule": {
+			border: "none",
+			margin: "0",
+			padding: "0.6em 0",
+			display: "block",
+			background: "linear-gradient(var(--border), var(--border)) center / 100% 1px no-repeat",
+		},
 		".cm-task": { verticalAlign: "middle", margin: "0" },
 		".cm-bullet, .cm-number": { color: "var(--muted-foreground)" },
 		".cm-line.cm-task-done": { color: "var(--muted-foreground)", textDecoration: "line-through" },
