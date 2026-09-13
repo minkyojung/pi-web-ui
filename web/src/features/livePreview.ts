@@ -9,20 +9,27 @@
  * edit them (listEdit.ts), and Mod-e shows them as written. Two halves,
  * as CodeMirror divides them:
  *
- * - Inline (`hidden`): headings, emphasis, links. Nothing spans a line
- *   break, so a view plugin builds it over the visible lines only.
- * - Block (`blocks`): fenced code lines, quotes, a rule, a checkbox, a
- *   bullet. Line decorations and widgets change the vertical layout, which
- *   the docs allow only from a state field, so this half is one, over the
- *   whole note, mapped through typing and rebuilt when the tree or the
- *   selection moves. Its widgets are atomic: the cursor steps over a
- *   checkbox, not into it. A quote is a block wrapper — one element around
- *   its lines, with the bar on it — so a quote in a quote is a bar in a bar.
+ * - In the lines (`hidden`, `inline`): headings, emphasis, links; a
+ *   quote's `>`, a bullet, a number, a task's box, an item's indentation,
+ *   and the classes a code line or a done task wears. None of it changes
+ *   which lines there are, so a view plugin builds it over the visible
+ *   lines only, and again when the selection moves — cheaply, since the
+ *   visible lines are few. Its widgets are atomic: the cursor steps over a
+ *   checkbox, not into it.
+ * - Of the lines (`blocks`): a fence line taken out whole, a rule drawn in
+ *   a line's place, and the elements around a code block's or a quote's
+ *   lines. These change the vertical layout, which the docs allow only
+ *   from a state field — a plugin's decorations are computed after the
+ *   viewport is — so this half is one, over the whole note, rebuilt when
+ *   the note or the tree changes, or the selection moves to other lines;
+ *   not when it moves along a line. A quote is a block wrapper — one
+ *   element around its lines, with the bar on it — so a quote in a quote
+ *   is a bar in a bar.
  *
- * Both are pure functions of the state and the ranges, so they are pinned
- * in node without a browser; the plugin and the field only call them. The
- * layer sits in a compartment so Mod-e takes it out and puts it back —
- * source mode and live preview, as Obsidian has them.
+ * All three are pure functions of the state and the ranges, so they are
+ * pinned in node without a browser; the plugin and the field only call
+ * them. The layer sits in a compartment so Mod-e takes it out and puts it
+ * back — source mode and live preview, as Obsidian has them.
  *
  * Mod-Enter on a task line ticks its box. The pending layer binds the same
  * key above this one and lets it through when the cursor is not on pi's
@@ -119,36 +126,36 @@ export function hidden(state: EditorState, from: number, to: number, ranges = st
 	return builder.finish();
 }
 
-function build(view: EditorView): DecorationSet {
-	const sets = view.visibleRanges.map(({ from, to }) => hidden(view.state, from, to));
-	if (sets.length === 1) return sets[0];
-	const builder = new RangeSetBuilder<Decoration>();
-	for (const set of sets) {
-		const it = set.iter();
-		while (it.value) {
-			builder.add(it.from, it.to, it.value);
-			it.next();
-		}
+/** The decorations in the visible lines, `hidden` and `inline` together, and the widgets among them for the cursor to step over. */
+function build(view: EditorView): { deco: DecorationSet; atoms: DecorationSet } {
+	const deco: Range<Decoration>[] = [];
+	const atoms: Range<Decoration>[] = [];
+	for (const { from, to } of view.visibleRanges) {
+		for (const it = hidden(view.state, from, to).iter(); it.value; it.next()) deco.push(it.value.range(it.from, it.to));
+		const part = inline(view.state, from, to);
+		for (const it = part.deco.iter(); it.value; it.next()) deco.push(it.value.range(it.from, it.to));
+		for (const it = part.atoms.iter(); it.value; it.next()) atoms.push(it.value.range(it.from, it.to));
 	}
-	return builder.finish();
+	return { deco: Decoration.set(deco, true), atoms: Decoration.set(atoms, true) };
 }
 
 const plugin = ViewPlugin.fromClass(
 	class {
-		decorations: DecorationSet;
+		deco: DecorationSet;
+		atoms: DecorationSet;
 		constructor(view: EditorView) {
-			this.decorations = build(view);
+			({ deco: this.deco, atoms: this.atoms } = build(view));
 		}
 		update(u: ViewUpdate) {
 			// A selection moved mid-composition is left alone: replacing the
 			// DOM under a half-typed syllable would end the composition.
 			const moved = u.selectionSet && !u.view.composing;
 			if (u.docChanged || u.viewportChanged || moved || syntaxTree(u.startState) !== syntaxTree(u.state)) {
-				this.decorations = build(u.view);
+				({ deco: this.deco, atoms: this.atoms } = build(u.view));
 			}
 		}
 	},
-	{ decorations: (p) => p.decorations },
+	{ decorations: (p) => p.deco, provide: (p) => EditorView.atomicRanges.of((view) => view.plugin(p)?.atoms ?? Decoration.none) },
 );
 
 // ---- The block half ----
@@ -273,93 +280,80 @@ class Checkbox extends WidgetType {
 	}
 }
 
-const rule = Decoration.replace({ widget: new Rule() });
-const box = (checked: boolean) => Decoration.replace({ widget: new Checkbox(checked) });
+/** The rule in its line's place: a block widget, since it stands where a line would. */
+const rule = Decoration.replace({ widget: new Rule(), block: true });
+const boxOn = Decoration.replace({ widget: new Checkbox(true) });
+const boxOff = Decoration.replace({ widget: new Checkbox(false) });
 
 /** Whether the selection is on any line of the block. */
 const onLines = (state: EditorState, ranges: readonly SelectionRange[], from: number, to: number) =>
 	touches(ranges, state.doc.lineAt(from).from, state.doc.lineAt(to).to);
 
-/**
- * The block decorations for the whole note: every fenced code line and
- * quote line in its class, and — where the selection is not — a quote's
- * `>` hidden, a rule drawn as one, a task's marker drawn as a box.
- * `atoms` is the widgets alone, for cursor motion to step over.
- */
-export type Blocks = { deco: DecorationSet; atoms: DecorationSet; wrappers: RangeSet<BlockWrapper> };
+/** The nearest quote around `node`. */
+function quoteOf(node: SyntaxNodeRef): SyntaxNode | null {
+	for (let n = node.node.parent; n; n = n.parent) if (n.name === "Blockquote") return n;
+	return null;
+}
 
-export function blocks(state: EditorState, ranges = state.selection.ranges): Blocks {
+/** How many quotes are around `node`, itself not counted. */
+function quoteDepth(node: SyntaxNodeRef): number {
+	let depth = 0;
+	for (let n = node.node.parent; n; n = n.parent) if (n.name === "Blockquote") depth++;
+	return depth;
+}
+
+/**
+ * The in-line decorations between `from` and `to`, given the selection:
+ * every code line and callout title in its class, a done task's line
+ * struck; and — where the selection is not — a quote's `>` and a callout's
+ * marker hidden; and, cursor or not, a bullet as a dot, a number in its
+ * box, a task's marker as a box, an item's indentation gone. `atoms` is
+ * the widgets and the hidden indentation, for cursor motion to step over.
+ */
+export type Inline = { deco: DecorationSet; atoms: DecorationSet };
+
+export function inline(state: EditorState, from: number, to: number, ranges = state.selection.ranges): Inline {
 	const { doc } = state;
-	const deco: { from: number; to: number; value: Decoration }[] = [];
-	// Collected, then sorted: the indentation ranges come last, out of order.
-	const atomRanges: Range<Decoration>[] = [];
-	const atoms = { add: (from: number, to: number, value: Decoration) => atomRanges.push(value.range(from, to)) };
-	const wrappers: Range<BlockWrapper>[] = [];
+	const deco: Range<Decoration>[] = [];
+	const atoms: Range<Decoration>[] = [];
+	const put = (from: number, to: number, value: Decoration, atom = false) => {
+		deco.push(value.range(from, to));
+		if (atom) atoms.push(value.range(from, to));
+	};
 	/** The lines of fenced code, where leading spaces are the code's own. */
 	const codeLines = new Set<number>();
-	/** The nearest quote around `node`, and how many are around that. */
-	const quoteOf = (node: SyntaxNodeRef) => {
-		let quote: SyntaxNode | null = null;
-		let depth = 0;
-		for (let n = node.node.parent; n; n = n.parent) {
-			if (n.name !== "Blockquote") continue;
-			if (!quote) quote = n;
-			depth++;
-		}
-		return { quote, depth };
-	};
-	const lines = (from: number, to: number, value: Decoration) => {
-		const first = state.doc.lineAt(from).number;
-		const last = state.doc.lineAt(to).number;
-		for (let n = first; n <= last; n++) {
-			const l = state.doc.line(n);
-			deco.push({ from: l.from, to: l.from, value });
-		}
-	};
 	syntaxTree(state).iterate({
+		from,
+		to,
 		enter: (node: SyntaxNodeRef) => {
 			switch (node.name) {
 				case "FencedCode": {
-					// The box around the block, its lines in the code face, and — off
-					// the block's lines — the fences gone from the layout, so the
-					// code sits in the box alone with the language named on it.
-					lines(node.from, node.to, codeLine);
-					for (let n = doc.lineAt(node.from).number; n <= doc.lineAt(node.to).number; n++) codeLines.add(n);
-					const info = node.node.getChild("CodeInfo");
-					const first = doc.lineAt(node.from);
-					const last = doc.lineAt(node.to);
-					wrappers.push(codeWrapper(info ? doc.sliceString(info.from, info.to).trim() : "").range(first.from, node.to));
-					if (onLines(state, ranges, node.from, node.to)) return false;
-					const marks = node.node.getChildren("CodeMark");
-					// The opening fence is the first line; the closing one, when it is there, is the last.
-					deco.push({ from: first.from, to: first.to, value: fenceGone });
-					if (marks.length > 1 && doc.lineAt(marks[marks.length - 1].from).number === last.number) deco.push({ from: last.from, to: last.to, value: fenceGone });
+					// Its lines in the code face; the box around them and the fences
+					// gone are the block half's.
+					for (let n = doc.lineAt(node.from).number; n <= doc.lineAt(node.to).number; n++) {
+						codeLines.add(n);
+						put(doc.line(n).from, doc.line(n).from, codeLine);
+					}
 					return false;
 				}
 				case "Blockquote": {
-					// The wrapper, and the callout's title line; the marks are
-					// hidden as they come, each by its own quote (QuoteMark below),
-					// so a quote in a quote, or code in a quote, is walked on into.
-					const { depth } = quoteOf(node);
+					// The callout's title line, and its marker hidden off the quote;
+					// the `>` marks are hidden as they come, each by its own quote
+					// (QuoteMark below), so a quote in a quote is walked on into.
 					const callout = calloutOf(state, node);
+					if (!callout) return;
 					const line = doc.lineAt(node.from);
-					wrappers.push(quoteWrapper(depth, callout?.type ?? null).range(line.from, node.to));
-					if (callout) deco.push({ from: line.from, to: line.from, value: calloutTitle(callout.type) });
-					if (callout && !onLines(state, ranges, node.from, node.to)) deco.push({ from: callout.from, to: callout.to, value: hide });
+					put(line.from, line.from, calloutTitle(callout.type));
+					if (!onLines(state, ranges, node.from, node.to)) put(callout.from, callout.to, hide);
 					return;
 				}
 				case "QuoteMark": {
-					const { quote } = quoteOf(node);
+					const quote = quoteOf(node);
 					if (!quote || onLines(state, ranges, quote.from, quote.to)) return false;
 					const end = doc.sliceString(node.to, node.to + 1) === " " ? node.to + 1 : node.to;
-					deco.push({ from: node.from, to: end, value: hide });
+					put(node.from, end, hide);
 					return false;
 				}
-				case "HorizontalRule":
-					if (onLines(state, ranges, node.from, node.to)) return false;
-					deco.push({ from: node.from, to: node.to, value: rule });
-					atoms.add(node.from, node.to, rule);
-					return false;
 				case "ListItem": {
 					// `-`, `*` or `+` as a dot, a number as itself, cursor or not; on
 					// a task item, nothing, since the box is the marker there. The
@@ -371,20 +365,17 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 					// do, and the caret after it stands where they start.
 					const text = doc.sliceString(mark.from, mark.to);
 					const task = mark.nextSibling?.name === "Task";
-					const value = task ? hide : /^[-*+]$/.test(text) ? bullet : number(text);
-					deco.push({ from: mark.from, to: mark.to + 1, value });
-					atoms.add(mark.from, mark.to + 1, value);
+					put(mark.from, mark.to + 1, task ? hide : /^[-*+]$/.test(text) ? bullet : number(text), true);
 					return;
 				}
 				case "Task": {
 					const marker = node.node.getChild("TaskMarker");
 					if (!marker) return false;
-					const checked = state.doc.sliceString(marker.from, marker.to).toLowerCase() === "[x]";
+					const checked = doc.sliceString(marker.from, marker.to).toLowerCase() === "[x]";
 					// A done task reads as done: the line is dimmed and struck. The box is the marker, cursor or not.
-					if (checked) deco.push({ from: doc.lineAt(node.from).from, to: doc.lineAt(node.from).from, value: doneLine });
-					const end = state.doc.sliceString(marker.to, marker.to + 1) === " " ? marker.to + 1 : marker.to;
-					deco.push({ from: marker.from, to: end, value: box(checked) });
-					atoms.add(marker.from, end, box(checked));
+					if (checked) put(doc.lineAt(node.from).from, doc.lineAt(node.from).from, doneLine);
+					const end = doc.sliceString(marker.to, marker.to + 1) === " " ? marker.to + 1 : marker.to;
+					put(marker.from, end, checked ? boxOn : boxOff, true);
 					return false;
 				}
 			}
@@ -395,19 +386,71 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 	// the words start where the padding puts them. The lines are the ones
 	// listIndent.ts pads, so a lazy line under an item, which it does not,
 	// keeps its spaces. Not in a fence, where the spaces are the code's.
-	for (const n of listItemLines(state, 0, doc.length).level.keys()) {
+	for (const n of listItemLines(state, from, to).level.keys()) {
 		if (codeLines.has(n)) continue;
 		const l = doc.line(n);
 		const indent = /^[ \t]*/.exec(l.text)![0].length;
 		if (indent === 0 || indent === l.length) continue;
-		deco.push({ from: l.from, to: l.from + indent, value: hide });
-		atoms.add(l.from, l.from + indent, hide);
+		put(l.from, l.from + indent, hide, true);
 	}
-	return {
-		deco: Decoration.set(deco.map((d) => d.value.range(d.from, d.to)), true),
-		atoms: Decoration.set(atomRanges, true),
-		wrappers: BlockWrapper.set(wrappers, true),
-	};
+	return { deco: Decoration.set(deco, true), atoms: Decoration.set(atoms, true) };
+}
+
+/**
+ * The block decorations for the whole note, the ones that change which
+ * lines there are: off the selection's lines, a fence line taken out
+ * whole and a rule drawn in its line's place; and the elements around a
+ * code block's and a quote's lines. `atoms` is the rule, for cursor motion
+ * to step over. Only the nodes that hold blocks are walked into, so the
+ * walk is shallow: a paragraph's words are not looked at.
+ */
+export type Blocks = { deco: DecorationSet; atoms: DecorationSet; wrappers: RangeSet<BlockWrapper> };
+
+const HOLDS_BLOCKS = new Set(["Document", "Blockquote", "BulletList", "OrderedList", "ListItem"]);
+
+export function blocks(state: EditorState, ranges = state.selection.ranges): Blocks {
+	const { doc } = state;
+	const deco: Range<Decoration>[] = [];
+	const atoms: Range<Decoration>[] = [];
+	const wrappers: Range<BlockWrapper>[] = [];
+	syntaxTree(state).iterate({
+		enter: (node: SyntaxNodeRef) => {
+			switch (node.name) {
+				case "FencedCode": {
+					// The box around the block, and — off the block's lines — the
+					// fences gone from the layout, so the code sits in the box alone
+					// with the language named on it.
+					const info = node.node.getChild("CodeInfo");
+					const first = doc.lineAt(node.from);
+					const last = doc.lineAt(node.to);
+					wrappers.push(codeWrapper(info ? doc.sliceString(info.from, info.to).trim() : "").range(first.from, node.to));
+					if (onLines(state, ranges, node.from, node.to)) return false;
+					const marks = node.node.getChildren("CodeMark");
+					// The opening fence is the first line; the closing one, when it is there, is the last.
+					deco.push(fenceGone.range(first.from, first.to));
+					if (marks.length > 1 && doc.lineAt(marks[marks.length - 1].from).number === last.number) deco.push(fenceGone.range(last.from, last.to));
+					return false;
+				}
+				case "Blockquote": {
+					// The wrapper; a callout is a quote with a class and its type.
+					const depth = quoteDepth(node);
+					const callout = calloutOf(state, node);
+					wrappers.push(quoteWrapper(depth, callout?.type ?? null).range(doc.lineAt(node.from).from, node.to));
+					return;
+				}
+				case "HorizontalRule": {
+					if (onLines(state, ranges, node.from, node.to)) return false;
+					const line = doc.lineAt(node.from);
+					deco.push(rule.range(line.from, line.to));
+					atoms.push(rule.range(line.from, line.to));
+					return false;
+				}
+				default:
+					return HOLDS_BLOCKS.has(node.name);
+			}
+		},
+	});
+	return { deco: Decoration.set(deco, true), atoms: Decoration.set(atoms, true), wrappers: BlockWrapper.set(wrappers, true) };
 }
 
 /** The change that ticks or unticks the task on the line at `pos`, if there is one. */
@@ -435,10 +478,15 @@ export const toggleTask = (view: EditorView) => {
 	return true;
 };
 
+/** The lines the selection is on, as a key: what the block half's hiding turns on, and all it turns on. */
+const linesOf = (state: EditorState) => state.selection.ranges.map((r) => `${state.doc.lineAt(r.from).number}-${state.doc.lineAt(r.to).number}`).join(",");
+
 const field = StateField.define<Blocks>({
 	create: (state) => blocks(state),
 	update(value, tr: Transaction) {
-		if (tr.docChanged || tr.selection || syntaxTree(tr.startState) !== syntaxTree(tr.state)) return blocks(tr.state);
+		if (tr.docChanged || syntaxTree(tr.startState) !== syntaxTree(tr.state)) return blocks(tr.state);
+		// Along a line the selection changes nothing here; to other lines it might.
+		if (tr.selection && linesOf(tr.startState) !== linesOf(tr.state)) return blocks(tr.state);
 		return value;
 	},
 	provide: (f) => [

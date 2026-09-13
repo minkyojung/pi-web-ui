@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState } from "@codemirror/state";
+import { Decoration } from "@codemirror/view";
 
 import { noteSyntax } from "../syntax.ts";
 import { hidden } from "../web/src/features/livePreview.ts";
@@ -81,7 +82,7 @@ test("범위 밖은 보지 않는다", () => {
 });
 
 import { ensureSyntaxTree } from "@codemirror/language";
-import { blocks, toggleTask } from "../web/src/features/livePreview.ts";
+import { blocks, inline, toggleTask } from "../web/src/features/livePreview.ts";
 
 const parsed = (doc, cursor) => {
   const s = state(doc, cursor);
@@ -89,10 +90,16 @@ const parsed = (doc, cursor) => {
   assert.ok(ensureSyntaxTree(s, s.doc.length, 5000), "parsed whole");
   return s;
 };
-/** Each block decoration as [line number or text, kind]. */
+/** The block half's and the in-line half's decorations, as one sorted set, as the view shows them. */
+const both = (s, part) => {
+  const ranges = [];
+  for (const set of [blocks(s)[part], inline(s, 0, s.doc.length)[part]]) for (const it = set.iter(); it.value; it.next()) ranges.push(it.value.range(it.from, it.to));
+  return Decoration.set(ranges, true);
+};
+/** Each decoration as [line number or text, kind]. */
 const drawn = (s) => {
   const out = [];
-  const it = blocks(s).deco.iter();
+  const it = both(s, "deco").iter();
   for (; it.value; it.next()) {
     const d = it.value;
     if (d.spec.class) out.push([s.doc.lineAt(it.from).number, d.spec.class]);
@@ -160,7 +167,7 @@ test("할 일 표시는 커서와 상관없이 상자이고, 그 상자는 건�
   assert.deepEqual(drawn(s), [["- ", "hidden"], ["[ ] ", "Checkbox"], [2, "cm-task-done"], ["- ", "hidden"], ["[x] ", "Checkbox"]], "on a task item the bullet goes, the box being the marker");
   assert.deepEqual(drawn(parsed("- [x] b\n", 7)), [[1, "cm-task-done"], ["- ", "hidden"], ["[x] ", "Checkbox"]], "on the line too: the box is the block's shape, not text to edit");
   const atoms = [];
-  const it = blocks(s).atoms.iter();
+  const it = both(s, "atoms").iter();
   for (; it.value; it.next()) atoms.push([it.from, it.to]);
   assert.deepEqual(atoms, [[0, 2], [2, 6], [8, 10], [10, 14]]);
 });
@@ -169,7 +176,7 @@ test("불릿은 커서와 상관없이 점이고, 번호는 제 글자대로, �
   assert.deepEqual(drawn(parsed("- a\n* b\n1. c\n", 0)), [["- ", "Bullet"], ["* ", "Bullet"], ["1. ", "Number"]]);
   assert.deepEqual(drawn(parsed("- a\n* b\n1. c\n", 9)), [["- ", "Bullet"], ["* ", "Bullet"], ["1. ", "Number"]]);
   const atoms = [];
-  const it = blocks(parsed("- a\n", 3)).atoms.iter();
+  const it = both(parsed("- a\n", 3), "atoms").iter();
   for (; it.value; it.next()) atoms.push([it.from, it.to]);
   assert.deepEqual(atoms, [[0, 2]], "cursor on the line: the dot is still a step to take");
 });
