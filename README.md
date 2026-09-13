@@ -130,46 +130,46 @@ There are three authors, and the whole design is in keeping them apart:
 | `pi` | the agent, with the session and the message it said so in |
 | `outside` | someone else's editor, a sync client, a `git checkout` |
 
-pi's words are drawn marked until they are looked at. `⌘Enter` accepts the run
-under the cursor — it stays pi's in the record and stops being drawn — and
-`⌘Backspace` puts back what pi replaced, when the run is still the whole of what
-pi wrote, and otherwise takes the run out. Accepting is itself a line in the
-log, so the marks come back from the same place everything else does.
+### Deciding about what pi wrote
 
-`web/src/features/pending.ts` is the first feature and the shape every one after
-it takes: it reads the note's history, draws one decoration, and binds two keys.
+pi's changes to a note are shown as a diff until the person decides about
+them, a chunk at a time — what pi added coloured in place, what pi removed
+drawn above it in a widget, since it is not in the file and must not be put
+there. Keep and Undo sit on each chunk; `⌘Enter` and `⌘Backspace` do the same
+to the one under the cursor. The drawing is CodeMirror's own `unifiedMergeView`,
+which is where the work of drawing a diff already is; the two texts it needs
+are the note as it is and the note as it would be with pi's undecided changes
+put back.
 
-### Looking over what a run did
+That second text is not kept anywhere. `unreviewed` in `history.ts` reads it
+off the log: it walks the changes carrying holes — pi's undecided runs, each
+with what stood there before pi did — and fills them at the end. A change of
+pi's opens a hole or widens the one it lands in. A change of the person's
+inside a hole joins it, as Cursor and Zed diff the file as it is against the
+file as it was; typing on from a hole's end is the person's, as a mark does not
+grow at its end, so putting a chunk back never takes their words with it. Words
+pi took away and replaced with nothing leave a hole of no width, and a decision
+about one is a touch of no width at that seam.
 
-Marks say which words are pi's. They cannot say what pi took away, because what
-was taken away is not in the file — and a note where pi deleted a paragraph and
-wrote nothing has no mark at all.
+So the diff is there whenever there is something to decide, however long ago
+pi wrote and whichever tab opens the note, and gone when there is not. There is
+no other marking of pi's words: a mark that says "pi wrote this, decide" is the
+diff said with less, and it was what this app had first.
 
-So when a run stops, the server sends the tab the note as it stood before that
-run's first write to it, replayed from the log, and the editor shows the two as
-a diff: CodeMirror's own `unifiedMergeView`, which colours what was added in
-place and draws what was removed above it in a widget. Keep and Undo sit on
-each chunk, and `⌘Enter` / `⌘Backspace` do the same to the one under the cursor
-— the same keys as the marks, which they fall through to when there is no chunk
-here.
+Between saves the editor keeps "before" honest itself: a change of the person's
+outside the chunks is made to it in the same transaction, so their own words
+never read as pi's for the length of an autosave.
 
 Keeping a chunk is two things, not one: the view forgets it, and the record is
-told the words have been looked at, or they would stay pi's and stay marked.
-Undoing is one thing — it puts the text back, which is an edit like any other,
-saved and logged as the person's.
-
-`⌘Z` takes back either. Undoing a chunk is a plain edit and the editor's own
-history has it already; keeping one changes no text at all, so it is put into
-the history the way CodeMirror provides for, with `invertedEffects`. The record
+told the words have been looked at. Undoing is one thing — it puts the text
+back, which is an edit like any other, saved and logged as the person's. `⌘Z`
+takes back either. Undoing a chunk is a plain edit and the editor's own history
+has it already; keeping one changes no text at all, so it is put into the
+history the way CodeMirror provides for, with `invertedEffects`, and the record
 is told again the other way round — the log is append-only, so a decision is
 unmade by writing its opposite, the way a ledger reverses an entry rather than
 rubbing one out. A touch line carries `kept`, and the last word about a range
 wins.
-
-This only holds while pi has just written. After the person has typed for a
-while "before" is no longer one text, so the diff closes and the marks are what
-is left. Cursor and Zed scope their diffs to the same moment for the same
-reason.
 
 ### The door pi writes a note by
 

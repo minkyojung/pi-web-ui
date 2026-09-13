@@ -14,7 +14,6 @@ import {
 	contextSourcesStore,
 	filesStore,
 	noteChangedStore,
-	noteReviewStore,
 	noteConflictStore,
 	noteCreatedStore,
 	noteDeletedStore,
@@ -73,7 +72,6 @@ const STATE: Record<StateMsg["type"], true> = {
 	backlinks: true,
 	tagged: true,
 	note_changed: true,
-	note_review: true,
 	note_created: true,
 	note_renamed: true,
 	note_rename_failed: true,
@@ -131,9 +129,6 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "note_changed":
 			noteChangedStore.set(msg);
-			return;
-		case "note_review":
-			noteReviewStore.set(msg);
 			return;
 		case "note_conflict":
 			noteConflictStore.set(msg);

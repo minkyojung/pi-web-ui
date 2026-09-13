@@ -30,7 +30,7 @@ import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
 import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, trashNote, writeNote, type WriteResult } from "./vault.ts";
 import { noteTools } from "./noteEdit.ts";
-import { decide, type Change, historyPath, mapThrough, moveHistory, moveLog, reconcile, record, replay, readHistory, trashHistoryPath } from "./history.ts";
+import { decide, type Change, historyPath, mapThrough, moveHistory, moveLog, reconcile, record, replay, readHistory, trashHistoryPath, unreviewed } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { type Claim, recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
@@ -47,7 +47,6 @@ import type {
 	FilesMsg,
 	NoteChangedMsg,
 	NoteMsg,
-	NoteReviewMsg,
 	PiEventMsg,
 	ServerMsg,
 	SessionsMsg,
@@ -369,9 +368,9 @@ function settleDisk(path: string, text: string, mtime: number, at: number) {
 function note(path: string): NoteMsg | null {
 	const found = readNote(CWD, path);
 	if (!found) return null;
-	const { spans } = settleDisk(path, found.text, found.modified, Date.now());
+	const { changes } = settleDisk(path, found.text, found.modified, Date.now());
 	known.set(path, found.modified);
-	return { type: "note", path, text: found.text, modified: found.modified, spans, backlinks: links.backlinks(path), tagged: links.tagged(path) };
+	return { type: "note", path, text: found.text, modified: found.modified, original: toDecide(changes), backlinks: links.backlinks(path), tagged: links.tagged(path) };
 }
 
 /** Every note's links, for "who links here" — see linkIndex.ts. */
@@ -428,13 +427,12 @@ function noticed(path: string): void {
  * other than the disk, which is not a state a change can be measured from.
  */
 function wrote(path: string, base: number | null, changes: Change[]): void {
-	if (changes[0]?.author === "pi") runWrote(path, changes.length);
 	const found = readNote(CWD, path);
 	if (found) touchedBy(links.update(path, found.text));
-	if (found && base !== null && replay(readHistory(CWD, path)).text === found.text) {
-		const { spans } = replay(readHistory(CWD, path));
+	const log = found ? readHistory(CWD, path) : [];
+	if (found && base !== null && replay(log).text === found.text) {
 		known.set(path, found.modified);
-		const msg: NoteChangedMsg = { type: "note_changed", path, base, modified: found.modified, changes, spans };
+		const msg: NoteChangedMsg = { type: "note_changed", path, base, modified: found.modified, changes, original: toDecide(log) };
 		broadcast(msg);
 	} else {
 		const msg = note(path);
@@ -444,34 +442,15 @@ function wrote(path: string, base: number | null, changes: Change[]): void {
 }
 
 /**
- * For each note the run in flight has written, where that note's log stood
- * just before it did.
- *
- * The text before is not kept, only the place in the log to replay up to. It
- * is the trick the ask uses to find its place again, and it means nothing here
- * can go stale: whatever else lands in the log afterwards, everything up to
- * that line is still the note as the run found it.
- *
- * A run the server did not see the start of leaves this empty and is offered
- * no diff, which is right — a diff whose "before" is a guess is worse than
- * none.
+ * What is left to decide about in a note, as the text it would be with pi's
+ * undecided changes put back — or nothing, when there are none. Read off the
+ * log each time it is asked, so it is never stale and nothing about a run
+ * has to be remembered: a diff is available whenever there is one to show,
+ * to whichever tab opens the note, however long ago pi wrote.
  */
-const beforeRun = new Map<string, number>();
-
-/** pi has written `count` changes to `path`, and they are the last of its log. */
-function runWrote(path: string, count: number): void {
-	// Only the first write of the run. The rest of them are the same diff.
-	if (beforeRun.has(path)) return;
-	beforeRun.set(path, Math.max(0, readHistory(CWD, path).length - count));
-}
-
-/** The run has stopped: every note it wrote, as it stood before it did. */
-function offerReview(): void {
-	for (const [path, at] of beforeRun) {
-		const msg: NoteReviewMsg = { type: "note_review", path, original: replay(readHistory(CWD, path).slice(0, at)).text };
-		broadcast(msg);
-	}
-	beforeRun.clear();
+function toDecide(log: Change[]): string | undefined {
+	const { before, holes } = unreviewed(log);
+	return holes.length ? before : undefined;
 }
 
 /** End the ask in flight, whatever came of it, and stop waiting for an answer. */
@@ -668,9 +647,6 @@ function onEvent(event: AgentSessionEvent): void {
 	if (event.type === "agent_settled") broadcast(branches());
 	// And it may have written a note, or renamed one.
 	if (event.type === "agent_settled") broadcast(files());
-	// What it wrote is offered as a diff, once, now that it has stopped writing.
-	if (event.type === "agent_start") beforeRun.clear();
-	if (event.type === "agent_settled") offerReview();
 }
 
 let unsubscribe: (() => void) | undefined;

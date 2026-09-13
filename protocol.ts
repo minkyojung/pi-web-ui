@@ -13,12 +13,12 @@
  */
 import type { Ask, AskOutcome } from "./ask";
 import type { BranchPoint } from "./branches";
-import type { Author, Change, Span } from "./history";
+import type { Author, Change } from "./history";
 import type { NoteFile } from "./vault";
 import type { Backlink, Tagged } from "./linkIndex";
 import type { SearchHit } from "./search";
 
-export type { Ask, AskOutcome, Author, Backlink, BranchPoint, Change, NoteFile, SearchHit, Span, Tagged };
+export type { Ask, AskOutcome, Author, Backlink, BranchPoint, Change, NoteFile, SearchHit, Tagged };
 
 // ---------------------------------------------------------------------------
 // Browser → server
@@ -208,7 +208,13 @@ export interface NoteMsg {
 	path: string;
 	text: string;
 	modified: number;
-	spans: Span[];
+	/**
+	 * The note as it would be with every undecided change of pi's put back,
+	 * when there are any — see unreviewed in history.ts. The editor shows the
+	 * two as a diff to be decided about a chunk at a time; absent, there is
+	 * nothing to decide and no diff.
+	 */
+	original?: string;
 	/** The notes that link to this one, from the index. */
 	backlinks: Backlink[];
 	/** The notes that share a tag with this one, from the index. */
@@ -246,24 +252,8 @@ export interface NoteChangedMsg {
 	base: number;
 	modified: number;
 	changes: Change[];
-	spans: Span[];
-}
-
-/**
- * pi has stopped, and it wrote this note: `original` is the note as it stood
- * before pi's first write of the run, so the tab can show what the run did as
- * a diff and take it a piece at a time.
- *
- * The text and not the changes, because a diff is made of two texts — the
- * editor computes its own from these, at the grain a person reads. It holds
- * only while pi has just written: once the person has typed for a while,
- * "before" is no longer one text, and the marks on the words are what is left
- * to say whose they are.
- */
-export interface NoteReviewMsg {
-	type: "note_review";
-	path: string;
-	original: string;
+	/** As on `note`: what is left to decide about, after this change. */
+	original?: string;
 }
 
 /** The note new_note made, for the tab that asked to open it. */
@@ -404,7 +394,6 @@ export type StateMsg =
 	| BacklinksMsg
 	| TaggedMsg
 	| NoteChangedMsg
-	| NoteReviewMsg
 	| NoteCreatedMsg
 	| NoteRenamedMsg
 	| NoteRenameFailedMsg

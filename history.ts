@@ -252,7 +252,11 @@ export function unreviewed(changes: Change[]): { text: string; before: string; h
 		}
 		text = apply(text, change);
 	}
-	const open = holes.filter((h) => !h.accepted);
+	// Open, and open to a difference: a hole whose words the person has put
+	// back by hand reads the same either way, and there is nothing in it to
+	// decide. It stays in the log's reading, since a later change of pi's
+	// there may widen it, but it is not offered.
+	const open = holes.filter((h) => !h.accepted && text.slice(h.from, h.to) !== h.removed);
 	let before = text;
 	for (const h of [...open].reverse()) before = before.slice(0, h.from) + h.removed + before.slice(h.to);
 	return { text, before, holes: open };

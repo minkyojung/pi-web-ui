@@ -1,25 +1,19 @@
 /**
- * Looking over what a run did to the note, a change at a time.
+ * What pi changed and the person has not decided about, as a diff.
  *
  * A diff is made of two texts, and the server has both: the note as it is, and
- * the note as it stood before pi's first write of the run, replayed from the
- * log. It sends the second when the run stops — see note_review — and this
- * puts the editor into CodeMirror's own unified merge view, which is where the
- * work of drawing a diff already is. What pi added is coloured in place; what
- * pi removed is drawn above it in a widget, because it is not in the file and
- * must not be put there.
+ * the note as it would be with pi's undecided changes put back — "before",
+ * read off the note's log (see unreviewed in history.ts) and sent with the
+ * note whenever there is anything left to decide. This puts the editor into
+ * CodeMirror's own unified merge view, which is where the work of drawing a
+ * diff already is. What pi added is coloured in place; what pi removed is
+ * drawn above it in a widget, because it is not in the file and must not be
+ * put there.
  *
- * Only while pi has just written. After the person has typed for a while
- * "before" is no longer one text, so the diff closes and the marks on the
- * words — see pending.ts — are what is left to say whose they are. Cursor and
- * Zed scope their diffs to the same moment for the same reason.
- *
- * The marks are not drawn while it is open. Both say "pi wrote this", the diff
- * says it better and says more, and drawn at once they are one wash over
- * another with a dotted line under it. They are hidden rather than taken out:
- * the marks are a state field, and a field taken out of the editor and put
- * back comes back empty — it would then say nothing at all until the server
- * next sent the note, which after a review it has no reason to do.
+ * It is there whenever there is something to decide about, however long ago
+ * pi wrote and whichever tab opens the note, and gone when there is not. There
+ * is no other marking of pi's words: a mark that says "pi wrote this, decide"
+ * is this, said with less.
  *
  * Both decisions are undone by ⌘Z, and that costs something to arrange.
  * Undoing a chunk is a plain edit and the editor's own history takes it. But
@@ -32,11 +26,12 @@
  * round: the log is append-only, so a decision is unmade by writing its
  * opposite.
  */
-import { getChunks, getOriginalDoc, rejectChunk, unifiedMergeView, updateOriginalDoc } from "@codemirror/merge";
+import { getChunks, getOriginalDoc, originalDocChangeEffect, rejectChunk, unifiedMergeView, updateOriginalDoc } from "@codemirror/merge";
 import { invertedEffects } from "@codemirror/commands";
-import { ChangeSet, Compartment, type Extension, StateEffect, type Text } from "@codemirror/state";
+import { ChangeSet, Compartment, EditorState, type Extension, StateEffect, Text } from "@codemirror/state";
 import { type Command, EditorView } from "@codemirror/view";
 import { buttonVariants } from "../components/ui/button";
+import { fromServer } from "./origin";
 import { send } from "../ws";
 
 /** Whether a diff is being looked over right now. */
@@ -45,15 +40,43 @@ export const reviewing = (view: EditorView): boolean => getChunks(view.state) !=
 const room = new Compartment();
 
 /**
- * Show the note against `original`, or close what is showing and put the marks
- * back.
- *
- * A reconfiguration rather than a state field, because what goes in is a whole
- * extension — a diff needs its own decorations, widgets and gutter, and they
- * are only wanted while there is a diff.
+ * The diff against `original`, or none, as an effect — so it can go in the
+ * same transaction as the text it is about, and a note that arrives with its
+ * "before" is never for a moment shown against the last one's.
  */
+export const diffFor = (original: string | null): StateEffect<string | null> => setOriginal.of(original);
+
+const setOriginal = StateEffect.define<string | null>();
+
+/**
+ * What `diffFor` comes to, worked out against the state it lands in.
+ *
+ * Opening and closing are a reconfiguration, because what goes in is a whole
+ * extension — a diff needs its own decorations, widgets and gutter, and they
+ * are only wanted while there is a diff. But a diff already open is given its
+ * new "before" through the merge view's own door, `updateOriginalDoc`, and
+ * not by configuring it again: a field the new configuration shares with the
+ * old keeps its value, so the view's original would stay what it was first
+ * given however many times the server said otherwise — and every place the
+ * two then disagreed would be a chunk that was not one, or a position that
+ * was not there.
+ */
+const takeOriginal = EditorState.transactionExtender.of((tr) => {
+	const effect = tr.effects.find((e): e is StateEffect<string | null> => e.is(setOriginal));
+	if (!effect) return null;
+	const original = effect.value;
+	const showing = getChunks(tr.startState) !== null;
+	if (original === null) return showing ? { effects: room.reconfigure([]) } : null;
+	if (!showing) return { effects: room.reconfigure([diff(original), open, keepUp]) };
+	const was = getOriginalDoc(tr.startState);
+	const doc = Text.of(original.split("\n"));
+	if (was.eq(doc)) return null;
+	return { effects: updateOriginalDoc.of({ doc, changes: ChangeSet.of({ from: 0, to: was.length, insert: doc }, was.length) }) };
+});
+
+/** Show the note against `original`, or close what is showing. */
 export function showDiff(view: EditorView, original: string | null): void {
-	view.dispatch({ effects: room.reconfigure(original === null ? [] : [diff(original), open]) });
+	view.dispatch({ effects: diffFor(original) });
 }
 
 /**
@@ -122,20 +145,54 @@ const record = (path: () => string) =>
 			for (const effect of tr.effects) {
 				if (!effect.is(decided)) continue;
 				const { from, to, kept } = effect.value;
-				// A chunk that only took words away covers none of the note, and the
-				// record has nothing there to be told about.
-				if (to > from) send({ type: "accept_note", path: path(), from, to, kept });
+				// Of no width when the chunk only took words away: a decision about
+				// the seam where they were, which the record knows by that place.
+				send({ type: "accept_note", path: path(), from, to, kept });
 			}
 		}
 	});
 
-/** Said on the editor while a diff is open, so the rules below can defer to it. */
+/** Said on the editor while a diff is open, for anything that wants to know. */
 const open = EditorView.editorAttributes.of({ class: "cm-reviewing" });
 
+/**
+ * Typing keeps the diff honest between saves.
+ *
+ * The merge view diffs the note against "before", and "before" comes from the
+ * server after each save. In the moments between, every word typed outside
+ * pi's chunks would read as a change of pi's — a green wash on the person's
+ * own words for as long as the autosave takes. So a change of the person's
+ * outside the chunks is made to "before" as well, in the same transaction:
+ * the merge view applies that to the original before it maps the change over
+ * the text, so the chunks come out as they will when the server's answer
+ * lands. Inside a chunk, or across its edge, the change is left to the chunk,
+ * which is what the server will say too (see unreviewed in history.ts).
+ * Typing on from a chunk's very end is outside it, as there.
+ */
+const keepUp = EditorState.transactionExtender.of((tr) => {
+	if (!tr.docChanged || tr.annotation(fromServer)) return null;
+	const found = getChunks(tr.startState);
+	if (!found) return null;
+	const chunks = found.chunks;
+	// How far a place in the text is from the same place in "before": the net
+	// length of every chunk before it.
+	const shift = (pos: number) => chunks.filter((c) => c.toB <= pos).reduce((n, c) => n + (c.toB - c.fromB) - (c.toA - c.fromA), 0);
+	const length = getOriginalDoc(tr.startState).length;
+	const specs: { from: number; to: number; insert: Text }[] = [];
+	tr.changes.iterChanges((from, to, _fromB, _toB, inserted) => {
+		const inside = chunks.some((c) => (from === to ? c.fromB < from && from < c.endB : from < c.endB && c.fromB < to));
+		if (!inside) specs.push({ from: from - shift(from), to: to - shift(to), insert: inserted });
+	});
+	if (!specs.length) return null;
+	// If the text and "before" have come apart in a way the chunks do not
+	// account for, leave "before" alone rather than guess: the server's next
+	// answer sets it right, and a diff a moment out of date is nothing beside
+	// a keystroke refused — an extender that throws is a key that does nothing.
+	if (specs.some((c) => c.from < 0 || c.to > length || c.from > c.to)) return null;
+	return { effects: originalDocChangeEffect(tr.startState, ChangeSet.of(specs, length)) };
+});
+
 const style = EditorView.baseTheme({
-	// pending.ts's marks, out of the way of the diff that is already saying it.
-	// `&` is the editor's own element, which is where the class sits.
-	"&.cm-reviewing .cm-pi": { backgroundColor: "transparent", borderBottom: "none" },
 	".cm-deletedChunk": { backgroundColor: "color-mix(in oklab, var(--destructive) 12%, transparent)" },
 	".cm-changedLine": { backgroundColor: "color-mix(in oklab, var(--primary) 8%, transparent)" },
 	".cm-changedText": { backgroundColor: "color-mix(in oklab, var(--primary) 18%, transparent)" },
@@ -187,4 +244,4 @@ export const undoChunk: Command = here(undo);
 export const closeDiff: Command = (v) => (reviewing(v) ? (showDiff(v, null), true) : false);
 
 /** The diff's room, its look, its undo and its record. The keys are bound with the editor's others (Editor.tsx), in one order. */
-export const review = (path: () => string): Extension => [room.of([]), style, undoable, record(path)];
+export const review = (path: () => string): Extension => [room.of([]), takeOriginal, style, undoable, record(path)];

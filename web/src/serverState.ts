@@ -11,7 +11,6 @@ import type {
 	ConfigMsg,
 	ContextSourcesMsg,
 	NoteChangedMsg,
-	NoteReviewMsg,
 	NoteConflictMsg,
 	NoteCreatedMsg,
 	NoteDeletedMsg,
@@ -88,13 +87,6 @@ export const noteStore = createStore<NoteMsg | null>(null);
 
 /** The last change to a note the server sent, from whichever writer. */
 export const noteChangedStore = createStore<NoteChangedMsg | null>(null);
-
-/**
- * The last run pi wrote a note in, and how that note stood before it did. The
- * editor showing that note turns it into a diff to look over; every other tab
- * ignores it. Cleared when the looking is done.
- */
-export const noteReviewStore = createStore<NoteReviewMsg | null>(null);
 
 /** A note this tab asked for and now exists, waiting to be opened. Cleared by whoever opens it. */
 export const noteCreatedStore = createStore<NoteCreatedMsg | null>(null);

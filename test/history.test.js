@@ -450,6 +450,17 @@ test("pi의 글 바로 뒤에 이어 쓴 것은 pi의 것이 아니다", () => {
   assert.equal(unreviewed(log).text.slice(unreviewed(log).holes[0].from, unreviewed(log).holes[0].to), "two");
 });
 
+test("사람이 pi의 글을 손으로 원래대로 돌려놓으면 결정할 것이 없다", () => {
+  const log = [
+    ...changesBetween("", "one two three\n", me),
+    ...changesBetween("one two three\n", "one TWO three\n", pi),
+    ...changesBetween("one TWO three\n", "one two three\n", { ...me, at: 3 }),
+  ];
+  const { text, before, holes } = unreviewed(log);
+  assert.equal(before, text, "다른 것이 없다");
+  assert.deepEqual(holes, [], "그러니 내놓을 구멍도 없다");
+});
+
 test("before는 로그가 아무리 길어도 지금 글과 홀만으로 다시 만들 수 있다", () => {
   const steps = ["", "abc", "abXc", "aXc", "aXcYZ", "YZ", "Q", "Q!", "Q!!"];
   const log = [];

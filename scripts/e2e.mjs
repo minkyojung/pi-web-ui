@@ -434,14 +434,13 @@ check("a write from elsewhere under unsaved typing is put to the person", async 
 	assert.equal(await app.evaluate("!!document.querySelector('#editor [role=alert]')"), false);
 });
 
-/** Click into the nth of pi's marks, then press a chord on it. */
-const chordOnMark = async (page, n, key) => {
-	if (!(await page.click("#editor .cm-pi", n))) return "no mark";
-	await new Promise((r) => setTimeout(r, 100));
-	await page.press(key, { meta: true });
-	return "pressed";
-};
-const piMarks = (page) => page.evaluate("[...document.querySelectorAll('#editor .cm-pi')].map((m) => m.textContent)");
+/** The chunks of the diff being decided about: one row of buttons each. */
+const chunks = (page) => page.evaluate("document.querySelectorAll('#editor .cm-chunkButtons').length");
+/** What the diff says pi took away, as drawn above the chunks. */
+const takenAway = (page) => page.evaluate("[...document.querySelectorAll('#editor .cm-deletedChunk .cm-deletedText')].map((e) => e.textContent).join('|')");
+/** Press the button on the last chunk. */
+const onLastChunk = (page, label) =>
+	page.evaluate(`[...document.querySelectorAll('#editor .cm-chunkButtons button')].filter((b) => b.textContent === ${JSON.stringify(label)}).at(-1)?.click()`);
 
 /**
  * Another tab, without a browser: a socket to the same server that opens a
@@ -584,22 +583,46 @@ check("a note deleted on disk is put to the person, and can be put back from the
 	assert.equal(await app.evaluate("!!document.querySelector('#editor [role=alert]')"), false);
 });
 
-check("what pi wrote is marked, until it is accepted or put back", async ({ app, cwd }) => {
+check("what pi changed is a diff to decide about, and ⌘Z takes a decision back", async ({ app, cwd }) => {
+	const log = () => readFileSync(join(cwd, ".pi/history/ideas/second.md.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
 	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
-	await until("pi's marks", async () => (await piMarks(app)).length === 2);
-	assert.deepEqual(await piMarks(app), ["SECOND", "pi wrote this"]);
-	await app.shot("pending");
-	// Accepting: the words stay, the mark goes, and it is in the record.
-	assert.equal(await chordOnMark(app, 1, "Enter"), "pressed");
-	await until("the mark to go", async () => (await piMarks(app)).length === 1);
+	// The note opens with its diff. pi changed a word and added a line two
+	// lines down, which the merge view shows as one chunk — the blank line
+	// between is too short to keep them apart — and the word pi replaced is
+	// drawn above it, though it is in no file.
+	await until("the diff", async () => (await chunks(app)) === 1);
+	assert.ok((await takenAway(app)).includes("second"), "what pi replaced is shown");
+	await app.shot("diff");
+	// Typing outside the chunk is the person's and not for a moment pi's:
+	// "before" is kept up with it in the same transaction, so no chunk appears
+	// while the autosave is still on its way, and none after it lands either.
+	await app.click("#editor .cm-line", 3);
+	assert.equal(await type(app, "mine"), true);
+	assert.equal(await chunks(app), 1, "still one chunk, before any save");
+	await until("the typing to be noticed", async () => (await editorStatus(app)) !== "saved");
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.equal(await chunks(app), 1, "and one after it");
+	// Keeping: the chunk goes, the words stay, and the record hears it.
+	await onLastChunk(app, "Keep");
+	await until("no chunk", async () => (await chunks(app)) === 0);
+	await until("the record", () => log().at(-1)?.kept === true);
 	assert.ok((await editorText(app)).includes("pi wrote this"));
-	assert.ok(readFileSync(join(cwd, ".pi/history/ideas/second.md.jsonl"), "utf8").split("\n").filter(Boolean).length === 4);
-	// Putting back: pi's word is replaced by the one it replaced, and that is saved as mine.
-	assert.equal(await chordOnMark(app, 0, "Backspace"), "pressed");
-	await until("the old word", async () => (await editorText(app)).includes("# second"));
+	// ⌘Z takes the keeping back — the chunk is there again, and the record is
+	// told the other way round rather than having a line rubbed out.
+	await app.click("#editor .cm-line", 0);
+	await app.press("z", { meta: true });
+	await until("the chunk again", async () => (await chunks(app)) === 1);
+	await until("the record, the other way", () => log().at(-1)?.kept === false);
+	// Undoing: what pi did is put back — the word, and the line it added —
+	// which is an edit of the person's and saved as one. Nothing is left to
+	// decide about, so the diff is gone.
+	await app.click("#editor .cm-changedLine", 0);
+	await new Promise((r) => setTimeout(r, 100));
+	await app.press("Backspace", { meta: true });
+	await until("the old word", async () => (await editorText(app)).includes("# second") && !(await editorText(app)).includes("pi wrote this"));
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 	assert.ok(readFileSync(join(cwd, "ideas/second.md"), "utf8").startsWith("# second"));
-	assert.deepEqual(await piMarks(app), []);
+	await until("no diff", async () => (await chunks(app)) === 0);
 });
 
 check("choosing words in a note shows them above the box, and the × takes them off", async ({ app }) => {

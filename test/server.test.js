@@ -94,13 +94,13 @@ it("접속하면 서버의 상태가 먼저 온다 — 설정, 목록, 스냅샷
   await want("snapshot");
 });
 
-it("노트를 열면 본문과 버전과 작성자 구간이 오고, 처음 본 노트는 통째로 바깥 것이다", async () => {
+it("노트를 열면 본문과 버전이 오고, pi가 손대지 않은 노트에는 결정할 것이 없다", async () => {
   clear();
   send({ type: "open_note", path: "a.md" });
   const note = await want("note");
   assert.equal(note.text, "# a\n\nfirst\n");
   assert.equal(typeof note.modified, "number");
-  assert.deepEqual(note.spans.map((s) => s.author), ["outside"]);
+  assert.equal(note.original, undefined, "pi의 미결정 변경이 없으면 before도 없다");
 });
 
 it("읽은 버전 위에 저장하면 그 변경이 내 것으로 모든 탭에 오고, 디스크에 닿는다", async () => {
@@ -115,11 +115,7 @@ it("읽은 버전 위에 저장하면 그 변경이 내 것으로 모든 탭에 
   assert.equal(changed.changes.length, 1);
   assert.equal(changed.changes[0].author, "me");
   assert.equal(readFileSync(join(cwd, "a.md"), "utf8"), "# a\n\nfirst, then mine\n");
-  const text = "# a\n\nfirst, then mine\n";
-  assert.deepEqual(
-    changed.spans.map((s) => [s.author, text.slice(s.from, s.to)]),
-    [["outside", "# a\n\nfirst"], ["me", ", then mine"], ["outside", "\n"]],
-  );
+  assert.equal(changed.original, undefined, "내 저장은 결정할 것을 만들지 않는다");
 });
 
 it("낡은 버전 위의 저장은 거절되고 아무것도 쓰지 않는다", async () => {
@@ -145,27 +141,28 @@ it("앱을 거치지 않은 쓰기는 바깥의 변경으로 온다", async () =
   assert.equal(history("a.md").at(-1).author, "outside");
 });
 
-it("받아들이면 글은 그대로이고 구간만 accepted가 된다", async () => {
+it("pi가 쓴 노트는 before와 함께 오고, 받아들이면 글은 그대로인 채 결정할 것이 사라진다", async () => {
   // Seed a note pi wrote in, by the log's own format.
   writeFileSync(join(cwd, "p.md"), "pi wrote this\n");
   writeFileSync(join(cwd, ".pi/history/p.md.jsonl"), JSON.stringify({ author: "pi", at: 1, sessionId: "s", entryId: "e", from: 0, to: 0, inserted: "pi wrote this\n", removed: "" }) + "\n");
   clear();
   send({ type: "open_note", path: "p.md" });
   const note = await want("note", (m) => m.path === "p.md");
-  assert.deepEqual(note.spans.map((s) => [s.author, s.accepted ?? false]), [["pi", false]]);
+  assert.equal(note.original, "", "pi가 쓰기 전에는 아무것도 없었다 — 빈 문자열이지 없음이 아니다");
   clear();
-  send({ type: "accept_note", path: "p.md", from: 0, to: 13 });
+  send({ type: "accept_note", path: "p.md", from: 0, to: 14 });
   const changed = await want("note_changed", (m) => m.path === "p.md");
   assert.deepEqual(changed.changes, []);
-  assert.deepEqual(changed.spans.map((s) => [s.author, s.accepted ?? false]), [["pi", true], ["pi", false]]);
+  assert.equal(changed.original, undefined, "결정하고 나면 before는 없다");
   assert.equal(readFileSync(join(cwd, "p.md"), "utf8"), "pi wrote this\n");
+  assert.equal(history("p.md").at(-1).kept, true);
 });
 
 it("없던 노트는 base가 null일 때 만들어져 통째로 오고, 목록에 오른다", async () => {
   clear();
   send({ type: "save_note", path: "new/one.md", text: "new\n", base: null });
   const note = await want("note", (m) => m.path === "new/one.md");
-  assert.deepEqual(note.spans.map((s) => s.author), ["me"]);
+  assert.equal(note.original, undefined);
   const files = await want("files", (m) => m.files.some((f) => f.path === "new/one.md"));
   assert.equal(files.files[0].path, "new/one.md", "새 것이 맨 위");
 });

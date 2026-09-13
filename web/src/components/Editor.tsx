@@ -17,8 +17,7 @@ import { listIndent } from "../features/listIndent";
 import { livePreview, toggleLivePreview, toggleTask } from "../features/livePreview";
 import { fromServer, serverChange } from "../features/origin";
 import { landOn, links, notesChanged } from "../features/links";
-import { acceptPending, pending, restorePending, setSpans } from "../features/pending";
-import { closeDiff, keepChunk, review, showDiff, undoChunk } from "../features/review";
+import { closeDiff, diffFor, keepChunk, review, showDiff, undoChunk } from "../features/review";
 import { toggleBold, toggleItalic } from "../features/toggleMarks";
 import { comeBack, leave, scrollBack } from "../features/viewMemory";
 import { wrapSelection } from "../features/wrapSelection";
@@ -26,7 +25,7 @@ import { highlightTag } from "../../../highlight.ts";
 import { inlineCodeTag, noteSyntax } from "../../../syntax.ts";
 import { tagTag } from "../../../tag.ts";
 import type { Place } from "../../../links.ts";
-import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteReviewStore, noteStore, taggedStore } from "../serverState";
+import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, taggedStore } from "../serverState";
 import { titleOf } from "../noteSync";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { registerSave } from "../saves";
@@ -237,8 +236,7 @@ export function Editor({
 	useEffect(() => {
 		if (!host.current) return;
 		const features = [
-			pending,
-			// What the last run did to this note, while it is still one thing.
+			// What pi changed and the person has not decided about, as a diff.
 			review(() => at.current),
 			links({
 				notes: () => filesStore.get().map((f) => f.path),
@@ -269,13 +267,10 @@ export function Editor({
 					{ key: "Mod-s", run: () => (save(), true) },
 					// Mod-Enter is a decision where there is one to make, and a tick
 					// where there is a box: the diff's chunk under the cursor first,
-					// then pi's words there, then a task on the line. Mod-Backspace
-					// takes the first two back.
+					// then a task on the line. Mod-Backspace takes the chunk back.
 					{ key: "Mod-Enter", run: keepChunk },
-					{ key: "Mod-Enter", run: acceptPending(() => at.current) },
 					{ key: "Mod-Enter", run: toggleTask },
 					{ key: "Mod-Backspace", run: undoChunk },
-					{ key: "Mod-Backspace", run: restorePending },
 					// Before the search panel's Escape, which would take it while a diff is open.
 					{ key: "Escape", run: closeDiff },
 					{ key: "Mod-e", run: toggleLivePreview },
@@ -404,7 +399,7 @@ export function Editor({
 			case "saved":
 				if (!decision.dirty) {
 					settle(note.text, note.modified);
-					v.dispatch({ effects: setSpans.of({ spans: note.spans }) });
+					v.dispatch({ effects: diffFor(note.original ?? null) });
 				} else {
 					// The echo of the save; what was typed since is still owed.
 					saved.current = note.text;
@@ -413,12 +408,12 @@ export function Editor({
 					sent.current = null;
 					dirty.current = !local.current.empty;
 					setStatus(dirty.current ? "unsaved" : "saved");
-					v.dispatch({ effects: setSpans.of({ spans: note.spans, through: local.current }) });
+					v.dispatch({ effects: diffFor(note.original ?? null) });
 				}
 				return;
 			case "same":
 				settle(note.text, note.modified);
-				v.dispatch({ effects: setSpans.of({ spans: note.spans }) });
+				v.dispatch({ effects: diffFor(note.original ?? null) });
 				return;
 			case "replace": {
 				// The first text of a note opened again: back where it was left,
@@ -430,7 +425,7 @@ export function Editor({
 					changes: { from: 0, to: v.state.doc.length, insert: note.text },
 					annotations: serverChange,
 					selection: back ?? { anchor: Math.min(v.state.selection.main.head, note.text.length) },
-					effects: setSpans.of({ spans: note.spans }),
+					effects: diffFor(note.original ?? null),
 				});
 				if (back) scrollBack(path, v);
 				settle(note.text, note.modified);
@@ -471,11 +466,11 @@ export function Editor({
 			sent.current = null;
 			dirty.current = !local.current.empty;
 			setStatus(dirty.current ? "unsaved" : "saved");
-			v.dispatch({ effects: setSpans.of({ spans: changed.spans, through: local.current }) });
+			v.dispatch({ effects: diffFor(changed.original ?? null) });
 			return;
 		}
 		if (!dirty.current) {
-			v.dispatch({ changes: theirs, annotations: serverChange, effects: setSpans.of({ spans: changed.spans }) });
+			v.dispatch({ changes: theirs, annotations: serverChange, effects: diffFor(changed.original ?? null) });
 			settle(text, changed.modified);
 			return;
 		}
@@ -485,7 +480,7 @@ export function Editor({
 			return;
 		}
 		// Their change, around the typing; the typing, over their text.
-		v.dispatch({ changes: fit.theirs, annotations: serverChange, effects: setSpans.of({ spans: changed.spans, through: fit.ours }) });
+		v.dispatch({ changes: fit.theirs, annotations: serverChange, effects: diffFor(changed.original ?? null) });
 		saved.current = text;
 		base.current = changed.modified;
 		local.current = fit.ours;
@@ -505,19 +500,8 @@ export function Editor({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [changed, path]);
 
-	// A run has stopped, and it wrote this note: what it did is offered as a
-	// diff to look over. Only for the note in front — every other tab and every
-	// other note lets it go by. Cleared here, because a review that stayed in
-	// the store would be offered again the next time this editor mounted.
-	const runWrote = useSyncExternalStore(noteReviewStore.subscribe, noteReviewStore.get);
-	useEffect(() => {
-		if (!runWrote || runWrote.path !== path) return;
-		noteReviewStore.set(null);
-		if (view.current) showDiff(view.current, runWrote.original);
-	}, [runWrote, path]);
-
-	// The diff is about one note as one run left it. Opening another note, or
-	// having this one replaced wholesale, is the end of that.
+	// The diff is about one note. Opening another closes it; the other's own
+	// `note` opens its own, if there is anything in it to decide about.
 	useEffect(() => () => { if (view.current) showDiff(view.current, null); }, [path]);
 
 	// The note is gone from the disk: deleted by pi's bash, another program,
