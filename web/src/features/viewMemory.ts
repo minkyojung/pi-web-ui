@@ -14,10 +14,20 @@ export type Left = { anchor: number; head: number; scrollTop: number };
 
 const left = new Map<string, Left>();
 
+/**
+ * What scrolls: the page the editor sits on, which holds the title and the
+ * backlinks with the text, or the editor's own scroller where there is no
+ * page around it. The page is handed in rather than looked up from the
+ * editor: by the time a note is left its editor is out of the document, and
+ * the tests' stand-in views have no document at all.
+ */
+export type Scrolls = { scrollTop: number };
+const scroller = (view: EditorView, page: Scrolls | null | undefined): Scrolls => page ?? view.scrollDOM;
+
 /** Note where `path` is being left. */
-export function leave(path: string, view: EditorView): void {
+export function leave(path: string, view: EditorView, page?: Scrolls | null): void {
 	const { anchor, head } = view.state.selection.main;
-	left.set(path, { anchor, head, scrollTop: view.scrollDOM.scrollTop });
+	left.set(path, { anchor, head, scrollTop: scroller(view, page).scrollTop });
 }
 
 /** The selection to come back to in `path`, fitted to a text of `length`; null if it was never left. */
@@ -28,13 +38,13 @@ export function comeBack(path: string, length: number): { anchor: number; head: 
 }
 
 /** Put the scroll back where it was, once the new text has been drawn. */
-export function scrollBack(path: string, view: EditorView): void {
+export function scrollBack(path: string, view: EditorView, page?: Scrolls | null): void {
 	const was = left.get(path);
 	if (!was) return;
 	view.requestMeasure({
 		read: () => null,
 		write: (_m: null, v: EditorView) => {
-			v.scrollDOM.scrollTop = was.scrollTop;
+			scroller(v, page).scrollTop = was.scrollTop;
 		},
 	});
 }

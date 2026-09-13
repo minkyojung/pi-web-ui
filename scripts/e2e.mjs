@@ -1005,6 +1005,23 @@ check("a note opens again where it was left", async ({ app, cwd }) => {
 	await until("back at the end", async () => (await editorStatus(app)) === "saved" && (await head()) === end);
 });
 
+check("the title scrolls away with the note, and the note comes back scrolled where it was left", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "tall.md"), Array.from({ length: 120 }, (_, i) => `line ${i}`).join("\n\n") + "\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="tall.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="tall.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("line 119"));
+	const titleTop = () => app.evaluate("document.querySelector('#title').getBoundingClientRect().top");
+	const pageTop = await app.evaluate("document.querySelector('#note').getBoundingClientRect().top");
+	assert.ok((await titleTop()) >= pageTop, "the title starts in view");
+	await app.evaluate("document.querySelector('#note').scrollTop = 600");
+	await until("the title to have gone up with the page", async () => (await titleTop()) < pageTop);
+	// Leave and come back: the page is where it was.
+	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await until("the other note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("second"));
+	await app.evaluate(`document.querySelector('#notes button[title="tall.md"]').click()`);
+	await until("back where it was", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.querySelector('#note').scrollTop")) === 600);
+});
+
 check("a list item's wrapped lines start where its words do", async ({ app, cwd }) => {
 	const long = "word ".repeat(40).trim();
 	// The continuation is indented to the inner item's words: short of that it would be drawn at the outer item's depth, as typed.
@@ -1112,7 +1129,7 @@ const caretLine = (page) =>
 		const line = (n?.nodeType === 1 ? n : n?.parentElement)?.closest('#editor .cm-line');
 		if (!line) return null;
 		const box = line.getBoundingClientRect();
-		const view = document.querySelector('#editor .cm-scroller').getBoundingClientRect();
+		const view = document.querySelector('#note').getBoundingClientRect();
 		return { text: line.textContent, seen: box.top >= view.top && box.bottom <= view.bottom };
 	})()`);
 

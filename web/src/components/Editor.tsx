@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { deleteMarkupBackward, insertNewlineContinueMarkup, markdown, markdownLanguage } from "@codemirror/lang-markdown";
@@ -6,7 +6,7 @@ import { languages } from "@codemirror/language-data";
 import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { ChangeSet, EditorState, type Extension, Transaction } from "@codemirror/state";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
-import { drawSelection, dropCursor, EditorView, keymap, placeholder, scrollPastEnd } from "@codemirror/view";
+import { drawSelection, dropCursor, EditorView, keymap, placeholder } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
 import { choose, chosenStore } from "../chosen";
@@ -44,8 +44,11 @@ const AUTOSAVE_MS = 600;
  * that says who wrote a word.
  */
 const theme = EditorView.theme({
-	"&": { height: "100%", backgroundColor: "var(--background)", color: "var(--foreground)", fontSize: "15px" },
+	// No height: the editor is as tall as its text, and the page (#note) scrolls.
+	"&": { backgroundColor: "var(--background)", color: "var(--foreground)", fontSize: "15px" },
 	".cm-scroller": { fontFamily: "inherit", lineHeight: "1.6", padding: "1.5rem 0" },
+	// The find panel stays in view while the page scrolls under it.
+	".cm-panels.cm-panels-top": { position: "sticky", top: 0, zIndex: 10 },
 	".cm-content": { maxWidth: "42rem", margin: "0 auto", padding: "0 1.5rem", caretColor: "var(--foreground)" },
 	".cm-line": { padding: "0" },
 	"&.cm-focused": { outline: "none" },
@@ -152,6 +155,8 @@ export function Editor({
 }) {
 	const host = useRef<HTMLDivElement>(null);
 	const view = useRef<EditorView | null>(null);
+	/** The page (#note) the editor scrolls on: the title and backlinks scroll with the text. */
+	const page = useRef<HTMLElement | null>(null);
 	/** Landed on once, when the text first arrives: after that the cursor is the person's. */
 	const landing = useRef(place);
 	// The path can change under a live editor — a rename — so what the closures
@@ -315,7 +320,6 @@ export function Editor({
 				// ⌘F, find next and previous, replace: the editor's own panel, at
 				// the top so the text does not jump, drawn in the app's tokens below.
 				search({ top: true }),
-				scrollPastEnd(),
 				placeholder("Write here"),
 				EditorView.contentAttributes.of({ spellcheck: "true", "aria-label": "Note" }),
 				theme,
@@ -334,6 +338,8 @@ export function Editor({
 		});
 		const v = new EditorView({ state, parent: host.current });
 		view.current = v;
+		// The page this editor scrolls on, found while it is still on it.
+		page.current = host.current.closest("#note");
 		base.current = null;
 		sent.current = null;
 		dirty.current = false;
@@ -349,9 +355,6 @@ export function Editor({
 		addEventListener("pagehide", onHide);
 		return () => {
 			save();
-			// Only a note whose text came is a note that was left somewhere:
-			// StrictMode runs this once right after mount, over an empty doc.
-			if (base.current !== null) leave(at.current, v);
 			removeEventListener("pagehide", onHide);
 			unregister();
 			// Nothing is chosen in a note that is not open.
@@ -362,6 +365,18 @@ export function Editor({
 		// Once: a rename changes `path` without changing which note this is.
 		// `extensions` is a stable array from the caller.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
+	// Where the note is left — cursor and scroll — is read here, in a layout
+	// effect's cleanup, which runs while the editor is still on the page. By
+	// the time the effect above is cleaned up the page has lost this editor,
+	// and with it the height that held its scroll. Only a note whose text
+	// came is a note that was left somewhere: StrictMode runs this once right
+	// after mount, over an empty doc.
+	useLayoutEffect(() => {
+		return () => {
+			if (view.current && base.current !== null) leave(at.current, view.current, page.current);
+		};
 	}, []);
 
 	// Asked for whenever there is a socket to ask on: at mount the socket may
@@ -427,7 +442,7 @@ export function Editor({
 					selection: back ?? { anchor: Math.min(v.state.selection.main.head, note.text.length) },
 					effects: diffFor(note.original ?? null),
 				});
-				if (back) scrollBack(path, v);
+				if (back) scrollBack(path, v, page.current);
 				settle(note.text, note.modified);
 				if (landing.current) {
 					landOn(v, landing.current);
@@ -559,9 +574,9 @@ export function Editor({
 	};
 
 	return (
-		<div id="editor" className="flex min-h-0 flex-1 flex-col" data-status={status}>
+		<div id="editor" data-status={status}>
 			{status === "conflict" && (
-				<div role="alert" className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs">
+				<div role="alert" className="sticky top-0 z-10 flex items-center gap-2 border-b bg-muted px-4 py-2 text-xs">
 					<span className="flex-1">This note changed on disk while you were editing it.</span>
 					<Button variant="outline" size="sm" className="h-7 text-xs" onClick={reload}>
 						Reload
@@ -572,7 +587,7 @@ export function Editor({
 				</div>
 			)}
 			{status === "gone" && (
-				<div role="alert" className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs">
+				<div role="alert" className="sticky top-0 z-10 flex items-center gap-2 border-b bg-muted px-4 py-2 text-xs">
 					<span className="flex-1">This note is no longer on disk. What is here is the only copy.</span>
 					<Button variant="outline" size="sm" className="h-7 text-xs" onClick={overwrite}>
 						Put it back
@@ -582,7 +597,7 @@ export function Editor({
 					</Button>
 				</div>
 			)}
-			<div ref={host} className="min-h-0 flex-1 overflow-hidden" />
+			<div ref={host} />
 			<Backlinks path={path} onOpen={onOpen} />
 			<TaggedWith path={path} onOpen={onOpen} />
 		</div>

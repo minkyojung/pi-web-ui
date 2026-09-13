@@ -177,8 +177,12 @@ export function App() {
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
+					{/* The note is one page — its title, its text, what links here —
+					    and the page (#note) is what scrolls, as in Obsidian: the editor
+					    grows to its text and finds this scrolling parent on its own. Room
+					    below, so the last line can be brought up to where the eyes are. */}
 					{open ? (
-						<div className="flex h-full flex-col">
+						<div id="note" className="no-scrollbar h-full overflow-y-auto pb-[40vh]">
 							<Title path={open} />
 							<Editor key={noteIdentity(open)} path={open} place={place} onOpen={setOpen} />
 						</div>
