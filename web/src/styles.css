@@ -9,7 +9,7 @@
 @source "../../node_modules/streamdown/dist";
 
 /*
- * shadcn's neutral tokens, light in :root and dark behind data-theme.
+ * shadcn's neutral tokens, light in :root, the other three behind data-theme.
  *
  * The dark set used to live in @media (prefers-color-scheme: dark), which
  * followed the system with no JS at all. It cannot any more: a window told to
@@ -20,7 +20,16 @@
  * on the element. One block, and dark: utilities in vendored components follow
  * it through the custom variant below.
  */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+/* Two themes are dark, not one, and dark: has to mean both of them: it is what
+   turns the code block over to its dark syntax colours and reaches the handful
+   of vendored components that hardcode a light and a dark. Adding a selector
+   takes nothing away from the neutral dark, which still matches first. */
+@custom-variant dark (
+  &:where(
+    [data-theme="dark"], [data-theme="dark"] *,
+    [data-theme="perplexity-dark"], [data-theme="perplexity-dark"] *
+  )
+);
 
 :root {
   color-scheme: light;
@@ -91,6 +100,134 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
+
+/*
+ * Perplexity, in two. Their brand book names the colours but not the roles a
+ * window needs, so each theme takes the named ones where the book already puts
+ * them — paper #FBFAF4 is the light window and the dark window's text, ink
+ * #091717 the light window's text, and the turquoise ramp supplies whichever
+ * rung reads as the thing to press against the page it is on: True Turquoise
+ * #20808D on paper, Turquoise 300 #35BDC8 on the dark, which is the pairing
+ * their own dark work uses.
+ *
+ * What the book leaves out is how little turquoise the product spends. Their
+ * dark window, its sidebar and its buttons are near-neutral warm greys, and
+ * the ramp is held back for the one control in a view that is the thing to
+ * press. So the dark surfaces are read off the app rather than the book, and
+ * the ramp reaches only --primary, --ring and the charts.
+ *
+ * Everything not named that way is derived rather than picked, against the
+ * neutral theme that matches: its lightness held to the digit where nothing
+ * fixes the page, and its step where something does. The muted surface sits
+ * the same step off the page, the border the same step off that, second-rank
+ * text at the same distance it keeps there. So a theme that changes the colour
+ * of the window does not quietly change what can be read on it — every pair
+ * below was measured against the neutral theme it mirrors and clears AA, which
+ * a palette dropped in whole would not have.
+ */
+:root[data-theme="perplexity-light"] {
+  color-scheme: light;
+  --background: oklch(0.984 0.008 99);
+  --foreground: oklch(0.192 0.02 196);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.192 0.02 196);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.192 0.02 196);
+  --primary: oklch(0.553 0.086 209);
+  /* White, not the paper: on True Turquoise the paper reads 4.43 and white 4.63,
+     and the difference between the two is a thing no one can see. */
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.952 0.015 95);
+  --secondary-foreground: oklch(0.192 0.02 196);
+  --muted: oklch(0.952 0.015 95);
+  --muted-foreground: oklch(0.54 0.02 200);
+  --accent: oklch(0.952 0.015 95);
+  --accent-foreground: oklch(0.192 0.02 196);
+  /* Their Warm Red #BF505C, a shade down: as drawn it reads 4.45 on this page,
+     which is under AA, and an error is the one line that has to be legible. */
+  --destructive: oklch(0.565 0.143 16);
+  --border: oklch(0.907 0.016 95);
+  --input: oklch(0.907 0.016 95);
+  --ring: oklch(0.553 0.086 209);
+  /* Turquoise 200 down to 700, light to dark, the way the neutral ramp runs. */
+  --chart-1: oklch(0.848 0.074 202);
+  --chart-2: oklch(0.733 0.113 203);
+  --chart-3: oklch(0.553 0.086 209);
+  --chart-4: oklch(0.477 0.073 208);
+  --chart-5: oklch(0.393 0.061 206);
+  --sidebar: oklch(0.966 0.013 97);
+  --sidebar-foreground: oklch(0.192 0.02 196);
+  --sidebar-primary: oklch(0.553 0.086 209);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.952 0.015 95);
+  --sidebar-accent-foreground: oklch(0.192 0.02 196);
+  --sidebar-border: oklch(0.907 0.016 95);
+  --sidebar-ring: oklch(0.553 0.086 209);
+}
+
+/* Warm grey for the window and for everything raised off it; turquoise only
+   where something has to be pressed. Two of the three greys the app draws with
+   are the same colour to a rounding — #1E1D1B and #1E1D1C sit at the same
+   lightness and 0.002 apart in chroma — so this is two surfaces, not three:
+   #171615 is the window, #1E1D1B is whatever sits on it. Both are flatter
+   against each other than the neutral dark's pair, which is the look; only the
+   rung above them is derived, at the step the neutral dark keeps there, so a
+   hover does not vanish into the card it is on. */
+:root[data-theme="perplexity-dark"] {
+  color-scheme: dark;
+  /* #171615 and #1E1D1B. Chroma this low is a warmth, not a colour — which is
+     why the hue reads as 68 on one and 85 on the other and neither is seen. */
+  --background: oklch(0.201 0.003 68);
+  --foreground: oklch(0.984 0.008 99);
+  --card: oklch(0.231 0.004 85);
+  --card-foreground: oklch(0.984 0.008 99);
+  --popover: oklch(0.231 0.004 85);
+  --popover-foreground: oklch(0.984 0.008 99);
+  /* Turquoise 300, not True Turquoise: on a page this dark it is the rung that
+     carries the page back as its own text, which is how the neutral dark
+     builds a button. The default button, a checked box and selected text are
+     the whole of it — what is merely selected or hovered takes --accent. */
+  --primary: oklch(0.733 0.113 203);
+  --primary-foreground: oklch(0.201 0.003 68);
+  /* The hover and selected surface, one step up from the card at the ratio the
+     neutral dark holds between its own two (1.186 against 1.185). The app's
+     own pair is closer than that, and at the app's step a menu row lighting up
+     inside a popover would be a change no one could see. */
+  --secondary: oklch(0.288 0.004 85);
+  --secondary-foreground: oklch(0.984 0.008 99);
+  --muted: oklch(0.288 0.004 85);
+  /* The paper, dimmed — second-rank text is the same colour as first-rank, and
+     lands where the neutral dark's does against its own three surfaces. */
+  --muted-foreground: oklch(0.708 0.008 99);
+  --accent: oklch(0.288 0.004 85);
+  --accent-foreground: oklch(0.984 0.008 99);
+  /* Their Warm Red at the lightness the neutral dark puts a red at; as drawn it
+     is a colour for paper and goes flat against a dark page. */
+  --destructive: oklch(0.704 0.143 16);
+  /* The paper at the neutral dark's own alphas, where it used to be turquoise:
+     a hairline is the last place to spend a brand colour, and every panel edge
+     in the window is one. */
+  --border: oklch(0.984 0.008 99 / 10%);
+  --input: oklch(0.984 0.008 99 / 15%);
+  /* True Turquoise, which the base layer draws at half alpha: over this window
+     that composites to 1.87 against it, the same as the neutral dark's grey
+     ring over its own. A focus ring is the other thing worth the ramp. */
+  --ring: oklch(0.553 0.086 209);
+  /* Charts keep the full ramp. Colour there is the data, not the chrome. */
+  --chart-1: oklch(0.848 0.074 202);
+  --chart-2: oklch(0.733 0.113 203);
+  --chart-3: oklch(0.553 0.086 209);
+  --chart-4: oklch(0.477 0.073 208);
+  --chart-5: oklch(0.393 0.061 206);
+  --sidebar: oklch(0.231 0.004 85);
+  --sidebar-foreground: oklch(0.984 0.008 99);
+  --sidebar-primary: oklch(0.733 0.113 203);
+  --sidebar-primary-foreground: oklch(0.201 0.003 68);
+  --sidebar-accent: oklch(0.288 0.004 85);
+  --sidebar-accent-foreground: oklch(0.984 0.008 99);
+  --sidebar-border: oklch(0.984 0.008 99 / 10%);
+  --sidebar-ring: oklch(0.553 0.086 209);
 }
 
 @theme inline {

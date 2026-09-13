@@ -185,6 +185,8 @@ const THEMES: { id: Theme; label: string }[] = [
   { id: "system", label: "System" },
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },
+  { id: "perplexity-light", label: "Perplexity Light" },
+  { id: "perplexity-dark", label: "Perplexity Dark" },
 ];
 
 /**
