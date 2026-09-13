@@ -27,8 +27,9 @@ test("맨 위의 --- 블록은 하나의 노드이고, 두 줄의 표시를 가�
   ]);
 });
 
-test("...로도 닫힌다", () => {
-  assert.deepEqual(shape("---\na: 1\n...\ntext\n")[0], ["FrontMatter", 0, 12]);
+test("...는 닫지 않는다 — Obsidian과 CommonMark 쪽 파서들이 그렇듯, 닫는 줄은 여는 줄과 같다", () => {
+  assert.deepEqual(shape("---\na: 1\n...\ntext\n---\n"), [["FrontMatter", 0, 21], ["FrontMatterMark", 0, 3], ["FrontMatterMark", 18, 21]]);
+  assert.deepEqual(shape("---\na: 1\n...\ntext\n").map(([n]) => n), ["HorizontalRule", "Paragraph"]);
 });
 
 test("맨 위가 아니면 CommonMark 그대로다 — 구분선, 그리고 ---가 밑줄이 된 제목", () => {
@@ -39,8 +40,19 @@ test("--- 뒤에 무엇이 더 붙으면 앞머리가 아니다", () => {
   assert.deepEqual(shape("--- \na: 1\n---\n").map(([n]) => n), ["HorizontalRule", "SetextHeading2"]);
 });
 
-test("닫히지 않으면 끝까지 앞머리다", () => {
-  assert.deepEqual(shape("---\na: 1\nstill\n"), [["FrontMatter", 0, 15], ["FrontMatterMark", 0, 3]]);
+test("닫히지 않으면 앞머리가 아니다 — 구분선과 글", () => {
+  assert.deepEqual(shape("---\na: 1\nstill\n").map(([n]) => n), ["HorizontalRule", "Paragraph"]);
+  // 닫는 줄에 무엇이 더 붙어도 닫지 않는다.
+  assert.deepEqual(shape("---\na: 1\n--- \nstill\n").map(([n]) => n), ["HorizontalRule", "SetextHeading2", "Paragraph"]);
+});
+
+test("빈 블록도 블록이다", () => {
+  assert.deepEqual(shape("---\n---\nbody\n"), [["FrontMatter", 0, 7], ["FrontMatterMark", 0, 3], ["FrontMatterMark", 4, 7], ["Paragraph", 8, 12]]);
+});
+
+test("CRLF 노트의 울타리도 울타리다", () => {
+  // The node ends after the closing fence's `\r`, as the line does.
+  assert.deepEqual(shape("---\r\na: 1\r\n---\r\nbody\r\n")[0], ["FrontMatter", 0, 15]);
 });
 
 test("앞머리 속 링크는 색인되지 않고, 본문의 것은 된다", () => {

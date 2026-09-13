@@ -511,7 +511,8 @@ what something means is a plain function tested directly: what a change is and
 whose it is (`history`), what a path names (`vault`), what a shell call may claim
 (`recorder`), what the guard refuses (`guard`), what an edit does to a note
 (`noteEdit`), what the markdown is (`highlight`, `tag`, `comment`, `frontmatter`,
-`links`, `livePreview`), what a session means (`conversation`, `branches`).
+`links`, `livePreview`), what a note's properties say and how they are changed
+without touching the rest (`properties`), what a session means (`conversation`, `branches`).
 
 Three recordings of real pi sessions sit in `test/fixtures/` and are committed
 verbatim rather than trimmed, so those tests can only pass on shapes pi actually

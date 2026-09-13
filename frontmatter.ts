@@ -8,25 +8,45 @@
  * block parser installed before the rule — and, like wikilink.ts, is shared
  * by both ends so the index and the editor agree on where the note's text
  * begins. Nothing inside is parsed as markdown: the block is one node with
- * its two marks, and what the properties say is not this file's business.
+ * its two marks, and what the properties say is properties.ts's business.
  *
- * Only at the very start of the note, as Obsidian has it, and closed by
- * `---` or `...`. A block never closed runs to the end of the note: a block
- * parser cannot give lines back once it has taken them, and the moment
- * between typing the first `---` and the second is short.
+ * The rule is Jekyll's, which everything since has kept: the first line of
+ * the note is exactly `---`, and the block ends at the next line that is
+ * exactly `---`. Not `...`, which YAML allows but Obsidian and the CommonMark
+ * parsers do not; not a `---` with anything after it. A block never closed
+ * is not a block: the note is a rule and prose, as it would be to Obsidian,
+ * rather than front matter to the end of the file. A block parser cannot
+ * give lines back once it has taken them, so that is settled by looking
+ * ahead before taking the first.
  */
+import type { Input } from "@lezer/common";
 import { tags } from "@lezer/highlight";
 import type { BlockContext, Line, MarkdownConfig } from "@lezer/markdown";
 
-const OPEN = "---";
+const FENCE = "---";
+
+/** Whether this line is a fence: the three dashes and nothing else, a Windows `\r` allowed. */
+const isFence = (text: string) => text === FENCE || text === FENCE + "\r";
+
+/** Whether the note, opened with a fence on its first line, has a line that closes it. */
+function closes(input: Input): boolean {
+	// The whole note, once, only for a note whose first line is a fence: a
+	// note is small, and this is the price of not swallowing it to the end.
+	const text = input.read(0, input.length);
+	return /\n---\r?(?:\n|$)/.test(text);
+}
 
 function parseFrontMatter(cx: BlockContext, line: Line): boolean {
 	// Depth 1 is the document itself: any deeper is inside a quote or a list.
-	if (cx.lineStart !== 0 || cx.depth > 1 || line.text !== OPEN) return false;
-	const marks = [cx.elt("FrontMatterMark", 0, OPEN.length)];
+	if (cx.lineStart !== 0 || cx.depth > 1 || !isFence(line.text)) return false;
+	// The context's input is the parser's own, not part of the declared
+	// surface; it has held the note since the class was written, and the
+	// test for an unclosed block would fail the day that changes.
+	if (!closes((cx as unknown as { input: Input }).input)) return false;
+	const marks = [cx.elt("FrontMatterMark", 0, FENCE.length)];
 	while (cx.nextLine()) {
-		if (line.text === OPEN || line.text === "...") {
-			marks.push(cx.elt("FrontMatterMark", cx.lineStart, cx.lineStart + line.text.length));
+		if (isFence(line.text)) {
+			marks.push(cx.elt("FrontMatterMark", cx.lineStart, cx.lineStart + FENCE.length));
 			cx.nextLine();
 			break;
 		}
