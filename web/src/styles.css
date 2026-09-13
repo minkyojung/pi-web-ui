@@ -65,6 +65,18 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /*
+   * Selected text, one pair for the whole window: the layer CodeMirror draws
+   * under a note and the ::selection everywhere else read these two, so the
+   * sidebar and the editor highlight alike. Defined once — the wash is a share
+   * of whatever --foreground the theme sets, so the neutral dark follows.
+   *
+   * Not --accent: in the light theme that is nearly the page colour, and a
+   * selection that cannot be seen is not one. The text keeps its own colour,
+   * which is what a wash this light is for.
+   */
+  --selection: color-mix(in oklab, var(--foreground) 18%, transparent);
+  --selection-foreground: currentColor;
 }
 
 :root[data-theme="dark"] {
@@ -164,6 +176,12 @@
   --sidebar-accent-foreground: oklch(0.192 0.02 196);
   --sidebar-border: oklch(0.907 0.016 95);
   --sidebar-ring: oklch(0.553 0.086 209);
+  /* Selected text is where this theme spends the ramp on prose, as their own
+     product does: True Turquoise washed over the paper, and the words on it
+     taken down to Turquoise 700 so they read darker than they did unselected
+     rather than lighter. */
+  --selection: color-mix(in oklab, var(--primary) 22%, transparent);
+  --selection-foreground: var(--chart-5);
 }
 
 /* Warm grey for the window and for everything raised off it; turquoise only
@@ -228,6 +246,12 @@
   --sidebar-accent-foreground: oklch(0.984 0.008 99);
   --sidebar-border: oklch(0.984 0.008 99 / 10%);
   --sidebar-ring: oklch(0.553 0.086 209);
+  /* The same as the light pair, the other way up: True Turquoise at a quarter
+     is all this window needs to read as marked, and the words go to Turquoise
+     300 — the rung that carries this page — so the selection is legible as
+     turquoise and not merely as a darker patch. */
+  --selection: color-mix(in oklab, var(--chart-3) 25%, transparent);
+  --selection-foreground: var(--primary);
 }
 
 @theme inline {
@@ -274,6 +298,13 @@
   }
   body {
     @apply flex h-screen flex-col bg-background text-sm/relaxed text-foreground;
+  }
+  /* CodeMirror hides the native selection inside a note and draws its own
+     background, but it does not touch the colour — so this one rule reaches
+     the selected words everywhere, the editor included. */
+  ::selection {
+    background-color: var(--selection);
+    color: var(--selection-foreground);
   }
 }
 

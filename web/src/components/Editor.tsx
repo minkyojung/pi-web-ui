@@ -54,11 +54,19 @@ const theme = EditorView.theme({
 	".cm-line": { padding: "0" },
 	"&.cm-focused": { outline: "none" },
 	".cm-cursor": { borderLeftColor: "var(--foreground)" },
-	// Not --accent: in the light theme that is nearly the page colour, and a
-	// selection that cannot be seen is not one. A share of the text colour
-	// reads in both themes.
-	".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-		backgroundColor: "color-mix(in oklab, var(--foreground) 18%, transparent)",
+	// --selection, so a note is marked the way the rest of the window is; the
+	// themes decide what that is.
+	//
+	// The selectors are the long way round on purpose. CodeMirror's base theme
+	// reaches this element through `&light.cm-focused > .cm-scroller >
+	// .cm-selectionLayer .cm-selectionBackground` — five classes — so the short
+	// `&.cm-focused .cm-selectionBackground` loses on specificity and the
+	// selection came out CodeMirror's lavender in every theme, whatever was
+	// written here. Matching its path and adding one class wins without
+	// !important.
+	"&.cm-editor .cm-selectionLayer .cm-selectionBackground": { background: "var(--selection)" },
+	"&.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
+		background: "var(--selection)",
 	},
 	".cm-placeholder": { color: "var(--muted-foreground)" },
 	// ==words==: a wash of the text colour, like the selection but lighter, so it reads in both themes.
@@ -86,7 +94,7 @@ const theme = EditorView.theme({
 	".cm-panel.cm-search [name=close]": { color: "var(--muted-foreground)", border: "none", fontSize: "16px", top: "0.3rem", right: "1rem" },
 	".cm-searchMatch": { backgroundColor: "color-mix(in oklab, var(--foreground) 14%, transparent)" },
 	".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: "color-mix(in oklab, var(--foreground) 28%, transparent)" },
-	// Drawn by the editor now, so ::selection is left to the browser's default.
+	// The other copies of the selected word, under the selection's own wash.
 	".cm-selectionMatch": { backgroundColor: "color-mix(in oklab, var(--foreground) 10%, transparent)" },
 });
 
