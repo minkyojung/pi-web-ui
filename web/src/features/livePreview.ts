@@ -357,26 +357,22 @@ export function inline(state: EditorState, from: number, to: number, ranges = st
 				}
 				case "ListItem": {
 					// `-`, `*` or `+` as a dot, a number as itself, cursor or not; on
-					// a task item, nothing, since the box is the marker there. The
-					// item's other lines and the lists inside it are walked on.
+					// a task item the box is the marker, so the bullet goes and the
+					// box stands where `[ ]` was, and a done task's line is dimmed and
+					// struck. The item's other lines and the lists inside it are
+					// walked on.
 					const marker = markerOf(state, node.node);
 					if (!marker || !marker.spaced) return;
 					// The marker and the space after it, as one widget one indent unit
 					// wide (listIndent.ts), so the words start where the wrapped rows
 					// do, and the caret after it stands where they start.
-					const { mark, text, task } = marker;
+					const { mark, text, task, line } = marker;
 					put(mark.from, marker.prefixEnd, task ? hide : /^[-*+]$/.test(text) ? bullet : number(text), true);
+					if (!task) return;
+					const checked = doc.sliceString(task.from, task.to).toLowerCase() === "[x]";
+					if (checked) put(line.from, line.from, doneLine);
+					put(task.from, marker.contentStart, checked ? boxOn : boxOff, true);
 					return;
-				}
-				case "Task": {
-					const marker = node.node.getChild("TaskMarker");
-					if (!marker) return false;
-					const checked = doc.sliceString(marker.from, marker.to).toLowerCase() === "[x]";
-					// A done task reads as done: the line is dimmed and struck. The box is the marker, cursor or not.
-					if (checked) put(doc.lineAt(node.from).from, doc.lineAt(node.from).from, doneLine);
-					const end = doc.sliceString(marker.to, marker.to + 1) === " " ? marker.to + 1 : marker.to;
-					put(marker.from, end, checked ? boxOn : boxOff, true);
-					return false;
 				}
 			}
 		},
