@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { accept, apply, appendHistory, changesBetween, historyPath, mapThrough, moveHistory, readHistory, reconcile, record, replay } from "../history.ts";
+import { apply, appendHistory, changesBetween, decide, historyPath, mapThrough, moveHistory, readHistory, reconcile, record, replay } from "../history.ts";
 
 const me = { author: "me", at: 1 };
 const pi = { author: "pi", at: 2, sessionId: "s1", entryId: "e1" };
@@ -240,11 +240,41 @@ test("기록은 쓴 쪽이 본 것부터 재고, 그 결과가 디스크와 같�
 
 test("accept는 지금 글 위의 범위를 빈 교체로 남긴다", () => {
   record(DIR, "acc.md", "", "pi wrote this\n", pi);
-  accept(DIR, "acc.md", 3, 8, 7);
+  decide(DIR, "acc.md", 3, 8, 7, true);
   const { spans } = replay(readHistory(DIR, "acc.md"));
   assert.deepEqual(spans.map((s) => [s.accepted ?? false, s.author]), [[false, "pi"], [true, "pi"], [false, "pi"]]);
-  accept(DIR, "acc.md", 5, 5, 8);
+  decide(DIR, "acc.md", 5, 5, 8, true);
   assert.equal(readHistory(DIR, "acc.md").length, 2, "빈 범위는 남기지 않는다");
+});
+
+test("수락을 되무르면 구간은 결정 전으로 정확히 돌아간다", () => {
+  record(DIR, "undo.md", "", "hello world\n", me);
+  record(DIR, "undo.md", "hello world\n", "goodbye world\n", pi);
+  const before = replay(readHistory(DIR, "undo.md")).spans;
+  assert.equal(before[0].removed, "hello", "되돌리면 hello가 된다");
+
+  decide(DIR, "undo.md", before[0].from, before[0].to, 10, true);
+  assert.equal(replay(readHistory(DIR, "undo.md")).spans[0].accepted, true);
+
+  decide(DIR, "undo.md", before[0].from, before[0].to, 11, false);
+  assert.deepEqual(replay(readHistory(DIR, "undo.md")).spans, before, "구간이 통째였으니 뺀 글까지 그대로다");
+});
+
+test("결정은 지워지지 않고 반대 줄로 무른다 — 로그는 늘기만 한다", () => {
+  record(DIR, "ledger.md", "", "one two three", pi);
+  const at = { from: 4, to: 7 };
+  decide(DIR, "ledger.md", at.from, at.to, 12, true);
+  decide(DIR, "ledger.md", at.from, at.to, 13, false);
+  const log = readHistory(DIR, "ledger.md");
+  assert.deepEqual(log.slice(-2).map((c) => c.kept), [true, false]);
+  assert.equal(replay(log).spans.some((s) => s.accepted), false, "마지막 말이 이긴다");
+});
+
+test("kept가 없는 옛 줄은 수락으로 읽는다", () => {
+  record(DIR, "old.md", "", "one two three", pi);
+  // A log written before a decision could be taken back.
+  appendHistory(DIR, "old.md", [{ author: "me", at: 14, from: 4, to: 7, inserted: "two", removed: "two" }]);
+  assert.equal(replay(readHistory(DIR, "old.md")).spans.some((s) => s.accepted), true);
 });
 
 test("같은 노트에 같은 것을 다시 기록해도 로그는 늘지 않는다", () => {

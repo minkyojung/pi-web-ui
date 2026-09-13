@@ -30,7 +30,7 @@ import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
 import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, trashNote, writeNote, type WriteResult } from "./vault.ts";
 import { noteTools } from "./noteEdit.ts";
-import { accept, type Change, historyPath, mapThrough, moveHistory, moveLog, reconcile, record, replay, readHistory, trashHistoryPath } from "./history.ts";
+import { decide, type Change, historyPath, mapThrough, moveHistory, moveLog, reconcile, record, replay, readHistory, trashHistoryPath } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { type Claim, recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
@@ -1188,7 +1188,7 @@ wss.on("connection", async (ws) => {
 				case "accept_note": {
 					if (typeof msg.path !== "string" || typeof msg.from !== "number" || typeof msg.to !== "number") return;
 					if (!readNote(CWD, msg.path)) return;
-					accept(CWD, msg.path, msg.from, msg.to, Date.now());
+					decide(CWD, msg.path, msg.from, msg.to, Date.now(), msg.kept !== false);
 					// Nothing in the text moved: the spans are the whole of the news.
 					const found = readNote(CWD, msg.path)!;
 					wrote(msg.path, found.modified, []);

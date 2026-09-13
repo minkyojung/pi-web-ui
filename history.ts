@@ -25,8 +25,17 @@ export type Author = "me" | "pi" | "outside";
 /** Where a change came from. Only pi's carry a place in a session. */
 export type Origin = { author: Author; at: number; sessionId?: string; entryId?: string };
 
-/** `removed` was at [from, to) and `inserted` is there now. Kept whole so it can be undone. */
-export type Change = Origin & { from: number; to: number; inserted: string; removed: string };
+/**
+ * `removed` was at [from, to) and `inserted` is there now. Kept whole so it can
+ * be undone.
+ *
+ * `kept` is read only on a change that changes nothing — see isTouch. Such a
+ * line is a decision about words already there rather than a write: true says
+ * they are fine as they are, false takes that back. The log is append-only, so
+ * a decision is unmade by writing its opposite, the way a ledger reverses an
+ * entry rather than rubbing one out.
+ */
+export type Change = Origin & { from: number; to: number; inserted: string; removed: string; kept?: boolean };
 
 /**
  * A run of characters in the current text with one origin.
@@ -39,7 +48,7 @@ export type Change = Origin & { from: number; to: number; inserted: string; remo
  */
 export type Span = Origin & { from: number; to: number; removed?: string; accepted?: true };
 
-/** A change that changes nothing: the person accepting the words at [from, to). */
+/** A change that changes nothing: the person deciding about the words at [from, to). */
 export const isTouch = (change: Change) => change.inserted === change.removed;
 
 /**
@@ -95,7 +104,9 @@ export function replay(changes: Change[]): { text: string; spans: Span[] } {
 	let spans: Span[] = [];
 	for (const change of changes) {
 		if (isTouch(change)) {
-			spans = merge(touch(spans, change.from, change.to));
+			// An older log has no `kept` on its touches, and every touch it holds
+			// was an acceptance; undefined has to read as true.
+			spans = merge(touch(spans, change.from, change.to, change.kept !== false));
 			continue;
 		}
 		const delta = change.inserted.length - (change.to - change.from);
@@ -143,8 +154,15 @@ export function mapThrough(changes: Change[], pos: number): number {
 	return pos;
 }
 
-/** Mark what lies in [from, to) as accepted, cutting spans at the edges. */
-function touch(spans: Span[], from: number, to: number): Span[] {
+/**
+ * Say whether what lies in [from, to) is accepted, cutting spans at the edges.
+ *
+ * A touch that covers a span whole leaves it whole, so what it replaced is
+ * still known and taking the acceptance back gives the span back exactly as it
+ * was. One that covers part of it cannot: the part is no longer the whole of
+ * what its change wrote, and that is true however the decision goes.
+ */
+function touch(spans: Span[], from: number, to: number, accepted: boolean): Span[] {
 	const out: Span[] = [];
 	for (const span of spans) {
 		if (span.to <= from || span.from >= to) {
@@ -154,7 +172,10 @@ function touch(spans: Span[], from: number, to: number): Span[] {
 		const { removed: _cut, ...rest } = span;
 		const whole = span.from >= from && span.to <= to;
 		if (span.from < from) out.push({ ...rest, to: from });
-		out.push({ ...(whole ? span : rest), from: Math.max(span.from, from), to: Math.min(span.to, to), accepted: true });
+		const middle: Span = { ...(whole ? span : rest), from: Math.max(span.from, from), to: Math.min(span.to, to) };
+		if (accepted) middle.accepted = true;
+		else delete middle.accepted;
+		out.push(middle);
 		if (span.to > to) out.push({ ...rest, from: to });
 	}
 	return out;
@@ -265,12 +286,15 @@ export function reconcile(
 	return { changes, appended, spans: replay(changes).spans };
 }
 
-/** Log that the person accepted the words at [from, to) as they are. */
-export function accept(root: string, path: string, from: number, to: number, at: number): void {
+/**
+ * Log what the person decided about the words at [from, to): `kept` for fine as
+ * they are, false for back to being looked at.
+ */
+export function decide(root: string, path: string, from: number, to: number, at: number, kept: boolean): void {
 	const { text } = replay(readHistory(root, path));
-	const kept = text.slice(from, to);
-	if (!kept) return;
-	appendHistory(root, path, [{ author: "me", at, from, to, inserted: kept, removed: kept }]);
+	const words = text.slice(from, to);
+	if (!words) return;
+	appendHistory(root, path, [{ author: "me", at, from, to, inserted: words, removed: words, kept }]);
 }
 
 /** Log a write that passed through the app, from what it replaced. */

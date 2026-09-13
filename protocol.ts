@@ -67,8 +67,13 @@ export type ClientMsg =
 	 * Answered with `note` to every tab, or `note_conflict` to this one.
 	 */
 	| { type: "save_note"; path: string; text: string; base: number | null }
-	/** The words at [from, to) are fine as they are. Answered with `note` to every tab. */
-	| { type: "accept_note"; path: string; from: number; to: number }
+	/**
+	 * What the person decided about the words at [from, to): `kept` absent or
+	 * true for fine as they are, false for back to being looked at, which is
+	 * what taking the decision back means in an append-only log. Answered with
+	 * `note` to every tab.
+	 */
+	| { type: "accept_note"; path: string; from: number; to: number; kept?: boolean }
 	/**
 	 * A new, empty note. Named by the server unless `name` is given — a title,
 	 * as the title field takes one — and refused with `note_rename_failed` if

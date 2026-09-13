@@ -153,10 +153,18 @@ each chunk, and `⌘Enter` / `⌘Backspace` do the same to the one under the cur
 — the same keys as the marks, which they fall through to when there is no chunk
 here.
 
-Keeping a chunk is two things, not one: the view forgets it, and `accept_note`
-tells the record, or the words would stay pi's and stay marked. Undoing is one
-thing — it puts the text back, which is an edit like any other, saved and
-logged as the person's.
+Keeping a chunk is two things, not one: the view forgets it, and the record is
+told the words have been looked at, or they would stay pi's and stay marked.
+Undoing is one thing — it puts the text back, which is an edit like any other,
+saved and logged as the person's.
+
+`⌘Z` takes back either. Undoing a chunk is a plain edit and the editor's own
+history has it already; keeping one changes no text at all, so it is put into
+the history the way CodeMirror provides for, with `invertedEffects`. The record
+is told again the other way round — the log is append-only, so a decision is
+unmade by writing its opposite, the way a ledger reverses an entry rather than
+rubbing one out. A touch line carries `kept`, and the last word about a range
+wins.
 
 This only holds while pi has just written. After the person has typed for a
 while "before" is no longer one text, so the diff closes and the marks are what
