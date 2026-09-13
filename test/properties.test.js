@@ -158,3 +158,7 @@ test("본문은 블록 아래에서 시작한다; 블록이 없으면 맨 위", 
   assert.equal(bodyStart("# hi\n"), 0);
   assert.equal(bodyStart("---\na: 1\nunclosed\n"), 0);
 });
+
+test("값 없이 더한 속성은 `이름:` 한 줄이다", () => {
+  assert.equal(withProperties("---\na: 1\n---\n", (doc) => doc.set("k", null)).text, "---\na: 1\nk:\n---\n");
+});

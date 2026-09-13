@@ -258,6 +258,13 @@ not there yet; a link to a `#heading` or a `^block` lands on its line. `#tag`,
 by one markdown, shared by the parser that draws the note and the one that
 indexes it.
 
+A note's front matter is its properties, shown as rows above the text rather
+than as the `---` block, which stays in the file and out of the cursor's way.
+A value changed in a row, a property added or removed, is one change to the
+block's lines and no other — the comments and quotes around it are kept — and
+⌘Z takes it back as it would typing. A block that does not parse is said so
+and left exactly as it is; ⌘E shows the block as text either way.
+
 ## Asking pi about a note
 
 Choosing words in the editor is how a person points. What is chosen shows above

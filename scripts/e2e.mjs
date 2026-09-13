@@ -978,7 +978,7 @@ check("==words== are washed with colour, their marks hidden off the cursor", asy
 	await until("the marks back under the cursor", async () => (await shownText(app)).includes("==hi=="));
 });
 
-check("a note's front matter is hidden off its lines, shown on them, and the note opens under it", async ({ app, cwd }) => {
+check("a note's front matter is hidden, out of the cursor's reach, shown by ⌘E, and the note opens under it", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "props.md"), "---\ntags: [x]\n---\n\n# body\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="props.md"]')`));
 	await app.evaluate(`document.querySelector('#notes button[title="props.md"]').click()`);
@@ -990,11 +990,10 @@ check("a note's front matter is hidden off its lines, shown on them, and the not
 	await until("the heading's mark to be hidden", async () => !(await shownText(app)).includes("# body"));
 	assert.equal(await app.evaluate("document.querySelectorAll('#editor hr.cm-rule').length"), 0);
 	assert.ok(!(await shownText(app)).includes("tags"), "the block is hidden off its lines");
-	// On its lines it is shown as written; ⌘E shows it wherever the cursor is.
+	// The cursor cannot be put on its lines; ⌘E shows it, as text.
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 0 } }); })()`);
-	await until("the block on the cursor's lines", async () => (await shownText(app)).includes("---tags: [x]---"));
-	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
-	await until("hidden again", async () => !(await shownText(app)).includes("tags"));
+	assert.equal(await head(), 18, "the cursor is kept under the block");
+	assert.ok(!(await shownText(app)).includes("tags"), "still hidden");
 	await app.press("e", { meta: true });
 	await until("the source", async () => (await shownText(app)).includes("---tags: [x]---") && (await shownText(app)).includes("# body"));
 	await app.press("e", { meta: true });
@@ -1031,6 +1030,46 @@ check("the title scrolls away with the note, and the note comes back scrolled wh
 	await until("the other note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("second"));
 	await app.evaluate(`document.querySelector('#notes button[title="tall.md"]').click()`);
 	await until("back where it was", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.querySelector('#note').scrollTop")) === 600);
+});
+
+check("the properties are rows above the note: a chip added, a property added and filled, ⌘Z, a Backspace that cannot reach them, and a broken block said so", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "rows.md"), "---\ntags: [x]\n---\n\n# body\n");
+	writeFileSync(join(cwd, "broken.md"), "---\ntags: [x\n---\nbody\n");
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="rows.md"]') && !!document.querySelector('#notes button[title="broken.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="rows.md"]').click()`);
+	await until("the row", () => app.evaluate(`!!document.querySelector('#properties [data-property="tags"] [data-chip="x"]')`));
+	const file = () => readFileSync(join(cwd, "rows.md"), "utf8");
+	// A chip added keeps the list's shape, and only that line changes.
+	await app.click('#properties [aria-label="Add to tags"]');
+	await app.keys("y");
+	await app.press("Enter");
+	await until("the chip", () => app.evaluate(`!!document.querySelector('#properties [data-chip="y"]')`));
+	await until("the file", () => file() === "---\ntags: [x, y]\n---\n\n# body\n");
+	// A property added is a line with no value, then the value typed in.
+	await app.click("#add-property");
+	await app.keys("status");
+	await app.press("Enter");
+	await until("the new row", () => app.evaluate(`!!document.querySelector('#properties [data-property="status"] input')`));
+	await until("its line", () => file() === "---\ntags: [x, y]\nstatus:\n---\n\n# body\n");
+	await app.click('#properties [data-property="status"] input');
+	await app.keys("draft");
+	await app.press("Enter");
+	await until("the value", () => file() === "---\ntags: [x, y]\nstatus: draft\n---\n\n# body\n");
+	// ⌘Z in the note takes the last of those back, as it would typing.
+	await app.evaluate("document.querySelector('#editor .cm-content').focus()");
+	await app.press("z", { meta: true });
+	await until("the value undone", () => file() === "---\ntags: [x, y]\nstatus:\n---\n\n# body\n");
+	// The cursor cannot go into the block, and a Backspace at the top of the text does not reach it.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 0 } }); })()`);
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-content').cmTile.root.view.state.selection.main.head"), "---\ntags: [x, y]\nstatus:\n---\n".length);
+	await app.press("Backspace");
+	await app.keys("z");
+	await until("the letter, and the block whole", () => file() === "---\ntags: [x, y]\nstatus:\n---\nz\n# body\n");
+	// A block that does not parse is said so, and offers the source.
+	await app.evaluate(`document.querySelector('#notes button[title="broken.md"]').click()`);
+	await until("the warning", () => app.evaluate(`document.querySelector('#properties [role=alert]')?.textContent.includes('could not be read')`));
+	assert.equal(await app.evaluate("!!document.querySelector('#add-property')"), false);
+	assert.equal(readFileSync(join(cwd, "broken.md"), "utf8"), "---\ntags: [x\n---\nbody\n", "left exactly as it was");
 });
 
 check("a list item's wrapped lines start where its words do", async ({ app, cwd }) => {

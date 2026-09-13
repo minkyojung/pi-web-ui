@@ -18,7 +18,7 @@
  * broken, and no change is written over it. Obsidian once wrote over broken
  * blocks, and lost them.
  */
-import { Document, isMap, isSeq, type Pair, parseDocument, YAMLMap, type YAMLError } from "yaml";
+import { Document, isMap, isSeq, type Pair, parseDocument, Scalar, YAMLMap, type YAMLError } from "yaml";
 import { parser } from "./syntax.ts";
 
 /** Where the block sits in the note, and where its YAML sits inside it. */
@@ -39,8 +39,8 @@ export type Properties =
 			errors: readonly YAMLError[];
 	  };
 
-/** How new YAML is written: nothing folded, `[a, b]` as written. */
-const WRITE = { lineWidth: 0, flowCollectionPadding: false } as const;
+/** How new YAML is written: nothing folded, `[a, b]` as written, an empty value as `key:`. */
+const WRITE = { lineWidth: 0, flowCollectionPadding: false, nullStr: "" } as const;
 
 function blockOf(text: string): Block | null {
 	const first = parser.parse(text).topNode.firstChild;
@@ -58,7 +58,11 @@ export function bodyStart(text: string): number {
 
 /** The note's properties, or none: a block that is there is parsed, and its errors reported rather than thrown. */
 export function propertiesOf(text: string): Properties {
-	const block = blockOf(text);
+	return propertiesIn(text, blockOf(text));
+}
+
+/** The properties in a block already found — by the editor, in its own tree — so the note is not parsed twice. */
+export function propertiesIn(text: string, block: Block | null): Properties {
 	if (!block) return { block: null };
 	const doc = parseDocument(text.slice(block.yaml.from, block.yaml.to));
 	const errors = doc.errors.length === 0 && doc.contents !== null && !isMap(doc.contents) ? [notAMap()] : doc.errors;
@@ -174,6 +178,8 @@ function fresh(pair: Pair): string {
 		key.commentBefore = null;
 		key.spaceBefore = false;
 	}
+	// A value set as nothing is a bare null, which YAML would write as an explicit key (`? k`); as a node it is `k:`.
+	if (pair.value === null || pair.value === undefined) pair.value = new Scalar(null);
 	const one = new YAMLMap();
 	one.items = [pair];
 	return new Document(one).toString(WRITE);

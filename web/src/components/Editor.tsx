@@ -15,6 +15,7 @@ import { indentListItem, listBackspace, listEnter, outdentListItem } from "../fe
 import { listNumbers } from "../features/listNumbers";
 import { listIndent } from "../features/listIndent";
 import { livePreview, toggleLivePreview, toggleTask } from "../features/livePreview";
+import { properties, propertiesField } from "../features/properties";
 import { fromServer, serverChange } from "../features/origin";
 import { landOn, links, notesChanged } from "../features/links";
 import { closeDiff, diffFor, keepChunk, review, showDiff, undoChunk } from "../features/review";
@@ -23,7 +24,7 @@ import { comeBack, leave, scrollBack } from "../features/viewMemory";
 import { wrapSelection } from "../features/wrapSelection";
 import { highlightTag } from "../../../highlight.ts";
 import { inlineCodeTag, noteSyntax } from "../../../syntax.ts";
-import { bodyStart } from "../../../properties.ts";
+import { bodyStart, type Properties as PropertiesRead } from "../../../properties.ts";
 import { tagTag } from "../../../tag.ts";
 import type { Place } from "../../../links.ts";
 import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, taggedStore } from "../serverState";
@@ -32,6 +33,7 @@ import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { registerSave } from "../saves";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
+import { Properties } from "./Properties";
 import { Button } from "./ui/button";
 
 /** How long typing has to stop before it is written down. */
@@ -187,6 +189,8 @@ export function Editor({
 	const dirty = useRef(false);
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [status, setStatus] = useState<"loading" | "saved" | "unsaved" | "conflict" | "gone">("loading");
+	/** The properties as the editor last read them, for the panel; a new value only when the block changed. */
+	const [read, setRead] = useState<PropertiesRead | null>(null);
 	/**
 	 * Work that changes the doc, held while the person is mid-composition —
 	 * a Hangul syllable half typed — since a transaction then would drop
@@ -260,6 +264,9 @@ export function Editor({
 			linkCompletion(() => filesStore.get().map((f) => f.path)),
 			// Markup hidden where the cursor is not; Mod-e shows it all again.
 			livePreview,
+			// The properties read off the tree for the panel above, and the
+			// block kept from the cursor and from typing while it is hidden.
+			properties,
 			// Wrapped list lines start where the item's words do. Outside the
 			// compartment: source mode wants this too.
 			listIndent,
@@ -334,6 +341,7 @@ export function Editor({
 				theme,
 				EditorView.updateListener.of((u) => {
 					if (held.current.length > 0 && !u.view.composing) releaseHeld();
+					if (u.state.field(propertiesField) !== u.startState.field(propertiesField)) setRead(u.state.field(propertiesField));
 					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) onChange(u.changes);
 					// What is chosen, for the box under pi's column to point with.
 					if (u.selectionSet || u.docChanged) {
@@ -349,6 +357,7 @@ export function Editor({
 		view.current = v;
 		// The page this editor scrolls on, found while it is still on it.
 		page.current = host.current.closest("#note");
+		setRead(v.state.field(propertiesField));
 		base.current = null;
 		sent.current = null;
 		dirty.current = false;
@@ -596,6 +605,8 @@ export function Editor({
 					</Button>
 				</div>
 			)}
+			{/* Above the text, on the page with it: the panel for the block the text hides. Not before the text is here — an empty note is not a note with no properties yet. */}
+			{status !== "loading" && <Properties view={view.current} read={read} />}
 			{status === "gone" && (
 				<div role="alert" className="sticky top-0 z-10 flex items-center gap-2 border-b bg-muted px-4 py-2 text-xs">
 					<span className="flex-1">This note is no longer on disk. What is here is the only copy.</span>
