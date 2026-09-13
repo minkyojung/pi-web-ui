@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { markdown, markdownKeymap, markdownLanguage } from "@codemirror/lang-markdown";
+import { deleteMarkupBackward, insertNewlineContinueMarkup, markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { Annotation, ChangeSet, EditorState, type Extension, Transaction } from "@codemirror/state";
@@ -11,6 +11,7 @@ import { tags } from "@lezer/highlight";
 
 import { choose, chosenStore } from "../chosen";
 import { linkCompletion } from "../features/linkCompletion";
+import { indentListItem, listBackspace, listEnter, outdentListItem } from "../features/listEdit";
 import { listIndent } from "../features/listIndent";
 import { livePreview } from "../features/livePreview";
 import { landOn, links, notesChanged } from "../features/links";
@@ -264,21 +265,31 @@ export function Editor({
 			doc: "",
 			extensions: [
 				history(),
-				// Order is precedence. The markdown keys go before the default ones
+				// Order is precedence. The list keys go before the default ones
 				// or Enter would never reach them: a list item continues on Enter
 				// and ends on a second, a quote likewise. closeBrackets' Backspace
 				// takes the pair out together; it too has to see the key first.
 				keymap.of([
 					{ key: "Mod-s", run: () => (save(), true) },
+					// On a list item, the item is the unit: it nests, splits and ends
+					// (listEdit.ts). Elsewhere these say no, and a quote's `>` is
+					// lang-markdown's, as is a Tab.
+					{ key: "Tab", run: indentListItem },
+					{ key: "Shift-Tab", run: outdentListItem },
+					{ key: "Enter", run: listEnter },
+					{ key: "Enter", run: insertNewlineContinueMarkup },
+					{ key: "Backspace", run: listBackspace },
+					{ key: "Backspace", run: deleteMarkupBackward },
 					indentWithTab,
-					...markdownKeymap,
 					...closeBracketsKeymap,
 					...searchKeymap,
 					...defaultKeymap,
 					...historyKeymap,
 				]),
 				// No HTML tag completion: a `<` in prose is a less-than, not a tag.
-				markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [noteSyntax], completeHTMLTags: false }),
+				// And not the language's own Enter and Backspace, which it would put
+				// above every key bound here: the list ones are above.
+				markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [noteSyntax], completeHTMLTags: false, addKeymap: false }),
 				// Four spaces, as Typora and GitHub have it and as Obsidian's tab
 				// counts: what a Tab inserts, and enough to nest under `1. ` or
 				// `10. `, which two would not be.
