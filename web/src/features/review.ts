@@ -192,11 +192,35 @@ const keepUp = EditorState.transactionExtender.of((tr) => {
 	return { effects: originalDocChangeEffect(tr.startState, ChangeSet.of(specs, length)) };
 });
 
+/**
+ * The colours of a diff, on the app's own tokens.
+ *
+ * The merge view's base theme colours these too, with rules like
+ * `&dark.cm-merge-b .cm-changedText` — two classes deep, and a `background`
+ * shorthand whose 2px gradient underline resets the colour to nothing. A
+ * plain `.cm-changedText` here never reached the screen: what was drawn was
+ * CodeMirror's faint default, a fifth of red under a deleted word and a thin
+ * green line under an added one, which on a warm grey background is nothing a
+ * person would call red or green. So these are matched a class deeper, and
+ * set with the shorthand. Removed is the destructive token; added is a green
+ * of its own, since the app's primary is neutral and a diff's "added" is
+ * green wherever it is drawn.
+ */
 const style = EditorView.baseTheme({
-	".cm-deletedChunk": { backgroundColor: "color-mix(in oklab, var(--destructive) 12%, transparent)" },
-	".cm-changedLine": { backgroundColor: "color-mix(in oklab, var(--primary) 8%, transparent)" },
-	".cm-changedText": { backgroundColor: "color-mix(in oklab, var(--primary) 18%, transparent)" },
-	".cm-deletedChunk .cm-deletedText": { backgroundColor: "color-mix(in oklab, var(--destructive) 22%, transparent)" },
+	"&.cm-reviewing.cm-merge-b .cm-changedText": { background: "rgba(80, 200, 120, 0.28)", borderRadius: "2px" },
+	"&.cm-reviewing.cm-merge-b .cm-deletedText": {
+		background: "color-mix(in oklab, var(--destructive) 30%, transparent)",
+		textDecoration: "line-through",
+		textDecorationColor: "var(--destructive)",
+		borderRadius: "2px",
+	},
+	"&.cm-reviewing.cm-merge-b .cm-changedLine, &.cm-reviewing .cm-inlineChangedLine": { backgroundColor: "rgba(80, 200, 120, 0.07)" },
+	"&.cm-reviewing .cm-deletedChunk": { backgroundColor: "color-mix(in oklab, var(--destructive) 10%, transparent)" },
+	"&.cm-reviewing .cm-deletedChunk .cm-deletedText": {
+		background: "color-mix(in oklab, var(--destructive) 30%, transparent)",
+		textDecoration: "line-through",
+		textDecorationColor: "var(--destructive)",
+	},
 	".cm-chunkButtons": { gap: "0.25rem" },
 });
 
