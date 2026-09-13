@@ -214,6 +214,36 @@ class Bullet extends WidgetType {
 }
 const bullet = Decoration.replace({ widget: new Bullet() });
 
+/** A number and its dot, drawn as they are, in a box: `2.`, `10.`, `3)`. */
+class Number extends WidgetType {
+	readonly text: string;
+	constructor(text: string) {
+		super();
+		this.text = text;
+	}
+	toDOM() {
+		const el = document.createElement("span");
+		el.className = "cm-number";
+		el.textContent = this.text + " ";
+		return el;
+	}
+	eq(other: Number) {
+		return other.text === this.text;
+	}
+	ignoreEvent() {
+		return false;
+	}
+}
+const numbers = new Map<string, Decoration>();
+const number = (text: string) => {
+	let d = numbers.get(text);
+	if (!d) {
+		d = Decoration.replace({ widget: new Number(text) });
+		numbers.set(text, d);
+	}
+	return d;
+};
+
 class Checkbox extends WidgetType {
 	readonly checked: boolean;
 	constructor(checked: boolean) {
@@ -331,16 +361,17 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 					atoms.add(node.from, node.to, rule);
 					return false;
 				case "ListItem": {
-					// `-`, `*` or `+` as a dot, cursor or not; on a task item, nothing,
-					// since the box is the marker there. The item's other lines and
-					// the lists inside it are walked on.
+					// `-`, `*` or `+` as a dot, a number as itself, cursor or not; on
+					// a task item, nothing, since the box is the marker there. The
+					// item's other lines and the lists inside it are walked on.
 					const mark = node.node.getChild("ListMark");
-					if (!mark || !spaced(state, mark) || !/^[-*+]$/.test(doc.sliceString(mark.from, mark.to))) return;
-					// The marker and the space after it, as one: the dot is made one
-					// indent unit wide (listIndent.ts), so the words start where the
-					// wrapped rows do, and nothing is left for the marker's box to wrap.
+					if (!mark || !spaced(state, mark)) return;
+					// The marker and the space after it, as one widget one indent unit
+					// wide (listIndent.ts), so the words start where the wrapped rows
+					// do, and the caret after it stands where they start.
+					const text = doc.sliceString(mark.from, mark.to);
 					const task = mark.nextSibling?.name === "Task";
-					const value = task ? hide : bullet;
+					const value = task ? hide : /^[-*+]$/.test(text) ? bullet : number(text);
 					deco.push({ from: mark.from, to: mark.to + 1, value });
 					atoms.add(mark.from, mark.to + 1, value);
 					return;
@@ -461,7 +492,7 @@ const blockLayer: Extension = [
 		".cm-line.cm-callout-title::before": { content: "attr(data-callout)", textTransform: "capitalize", marginRight: "0.4em" },
 		".cm-rule": { border: "none", borderTop: "1px solid var(--border)", margin: "0.6em 0", display: "block" },
 		".cm-task": { verticalAlign: "middle", margin: "0" },
-		".cm-bullet": { color: "var(--muted-foreground)" },
+		".cm-bullet, .cm-number": { color: "var(--muted-foreground)" },
 		".cm-line.cm-task-done": { color: "var(--muted-foreground)", textDecoration: "line-through" },
 	}),
 ];

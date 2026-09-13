@@ -146,10 +146,7 @@ export const listIndent: Extension = [
 		// Two classes: the editor's theme sets `.cm-line { padding: 0 }`, and this has to outweigh it.
 		".cm-line.cm-list-line": { paddingLeft: "var(--list-indent)" },
 		".cm-line.cm-list-marker": { textIndent: `-${UNIT}em` },
-		// The marker against the right edge of its box, its space kept, so the
-		// caret after `2. ` on an empty item stands where the words will start,
-		// not short of it by what the box has over `2. `.
-		".cm-list-prefix": { display: "inline-block", minWidth: `${UNIT}em`, textIndent: "0", textAlign: "right", whiteSpace: "pre" },
+		".cm-list-prefix": { display: "inline-block", minWidth: `${UNIT}em`, textIndent: "0" },
 		// The checkbox's span as the whole marker: one unit, box and gap together,
 		// so the caret after it is where the words start.
 		".cm-line.cm-list-marker .cm-task-box": { display: "inline-block", width: `${UNIT}em`, textIndent: "0" },
@@ -159,5 +156,10 @@ export const listIndent: Extension = [
 		// first row back one unit: without its own, the dot's box would stay put
 		// and the dot inside it would be drawn one unit out to the left.
 		".cm-line.cm-list-marker .cm-bullet": { display: "inline-block", width: `${UNIT}em`, textIndent: "0" },
+		// A number likewise, at the left of a box at least one unit wide: `10.`
+		// runs over, and the words after it start where it ends. As a widget
+		// rather than text, the caret after it stands at the box's edge, where
+		// the words start, not at the end of `2.` inside it.
+		".cm-line.cm-list-marker .cm-number": { display: "inline-block", minWidth: `${UNIT}em`, textIndent: "0", whiteSpace: "pre" },
 	}),
 ];

@@ -165,9 +165,9 @@ test("할 일 표시는 커서와 상관없이 상자이고, 그 상자는 건�
   assert.deepEqual(atoms, [[0, 2], [2, 6], [8, 10], [10, 14]]);
 });
 
-test("불릿은 커서와 상관없이 점이고, 커서는 그것을 건너뛴다; 번호는 그대로다", () => {
-  assert.deepEqual(drawn(parsed("- a\n* b\n1. c\n", 0)), [["- ", "Bullet"], ["* ", "Bullet"]]);
-  assert.deepEqual(drawn(parsed("- a\n* b\n1. c\n", 9)), [["- ", "Bullet"], ["* ", "Bullet"]]);
+test("불릿은 커서와 상관없이 점이고, 번호는 제 글자대로, 커서는 둘 다 건너뛴다", () => {
+  assert.deepEqual(drawn(parsed("- a\n* b\n1. c\n", 0)), [["- ", "Bullet"], ["* ", "Bullet"], ["1. ", "Number"]]);
+  assert.deepEqual(drawn(parsed("- a\n* b\n1. c\n", 9)), [["- ", "Bullet"], ["* ", "Bullet"], ["1. ", "Number"]]);
   const atoms = [];
   const it = blocks(parsed("- a\n", 3)).atoms.iter();
   for (; it.value; it.next()) atoms.push([it.from, it.to]);
