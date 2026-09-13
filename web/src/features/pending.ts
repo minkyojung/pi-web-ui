@@ -9,14 +9,16 @@
  * Mod-Enter accepts the run of pi's words under the cursor: it stays pi's in
  * the record and stops being drawn. Mod-Backspace puts back what pi replaced,
  * when the run is still the whole of what pi wrote, and otherwise takes the
- * run out. Either way that is the person's edit, and saved as one.
+ * run out. Either way that is the person's edit, and saved as one. The two
+ * are commands here and keys in Editor.tsx, where every key of the editor
+ * is bound in one order.
  *
  * Marks are kept as a decoration set, which CodeMirror moves along with the
  * typing around them; they are replaced whole whenever the server sends the
  * note, which it does after every write.
  */
-import { type ChangeSet, type Extension, Prec, StateEffect, StateField } from "@codemirror/state";
-import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
+import { type ChangeSet, type Extension, StateEffect, StateField } from "@codemirror/state";
+import { type Command, Decoration, type DecorationSet, EditorView } from "@codemirror/view";
 
 import type { Span } from "../types";
 import { send } from "../ws";
@@ -66,34 +68,25 @@ const style = EditorView.baseTheme({
 	},
 });
 
-export function pending(path: () => string): Extension {
-	return [
-		marks,
-		style,
-		// Above the editor's own keys: it binds Mod-Enter to a blank line and
-		// Mod-Backspace to deleting to the line's start, and would take both.
-		Prec.high(keymap.of([
-			{
-				key: "Mod-Enter",
-				run: (view) => {
-					const hit = under(view);
-					if (!hit) return false;
-					send({ type: "accept_note", path: path(), from: hit.from, to: hit.to });
-					return true;
-				},
-			},
-			{
-				key: "Mod-Backspace",
-				run: (view) => {
-					const hit = under(view);
-					if (!hit) return false;
-					view.dispatch({
-						changes: { from: hit.from, to: hit.to, insert: hit.span.removed ?? "" },
-						selection: { anchor: hit.from },
-					});
-					return true;
-				},
-			},
-		])),
-	];
-}
+/** Mod-Enter: accept the run of pi's words under the cursor; no if the cursor is not in one. */
+export const acceptPending = (path: () => string): Command => (view) => {
+	const hit = under(view);
+	if (!hit) return false;
+	send({ type: "accept_note", path: path(), from: hit.from, to: hit.to });
+	return true;
+};
+
+/** Mod-Backspace: put back what pi replaced under the cursor, or take the run out; no if the cursor is not in one. */
+export const restorePending: Command = (view) => {
+	const hit = under(view);
+	if (!hit) return false;
+	view.dispatch({
+		changes: { from: hit.from, to: hit.to, insert: hit.span.removed ?? "" },
+		selection: { anchor: hit.from },
+		userEvent: "delete",
+	});
+	return true;
+};
+
+/** The marks and their look. The keys are bound with the editor's others (Editor.tsx), in one order. */
+export const pending: Extension = [marks, style];

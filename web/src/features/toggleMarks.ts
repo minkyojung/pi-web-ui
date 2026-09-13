@@ -9,8 +9,8 @@
  * A bare cursor gets an empty pair to type into, and a second press on that
  * empty pair takes it back out. The selection stays on the same words.
  */
-import { type EditorState, EditorSelection, type Extension, Prec, type TransactionSpec } from "@codemirror/state";
-import { type EditorView, keymap } from "@codemirror/view";
+import { type EditorState, EditorSelection, type TransactionSpec } from "@codemirror/state";
+import type { Command } from "@codemirror/view";
 
 /** How many of `ch` run from `pos` in direction `dir`, within the doc. */
 function run(state: EditorState, pos: number, dir: -1 | 1, ch: string): number {
@@ -54,14 +54,11 @@ export function toggleMark(state: EditorState, mark: string): TransactionSpec {
 	});
 }
 
-const command = (mark: string) => (view: EditorView) => {
-	view.dispatch(toggleMark(view.state, mark));
+const command = (mark: string): Command => (view) => {
+	view.dispatch(toggleMark(view.state, mark), { userEvent: "input", scrollIntoView: true });
 	return true;
 };
 
-export const toggleMarks: Extension = Prec.high(
-	keymap.of([
-		{ key: "Mod-b", run: command("**") },
-		{ key: "Mod-i", run: command("*") },
-	]),
-);
+/** Mod-b and Mod-i, bound with the editor's other keys in Editor.tsx. */
+export const toggleBold = command("**");
+export const toggleItalic = command("*");

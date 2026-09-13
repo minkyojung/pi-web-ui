@@ -5,6 +5,7 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 
+import { renumbered } from "../web/src/features/listEdit.ts";
 import { listNumbers } from "../web/src/features/listNumbers.ts";
 import { fromServer } from "../web/src/features/origin.ts";
 
@@ -64,9 +65,11 @@ test("한 트랜잭션이다: 되돌리기 한 번에 번호도 돌아온다", (
   assert.equal(tr.annotation(Transaction.userEvent), "input.type");
 });
 
-test("아직 파싱되지 않은 뒤쪽의 리스트도 고친다", () => {
-  // A long note, parsed only at its head; the change lands in a list at its tail.
-  const doc = "x\n".repeat(5000) + "1. a\n3. b\n";
-  const s = EditorState.create({ doc, selection: EditorSelection.cursor(doc.length), extensions: [markdown({ base: markdownLanguage }), listNumbers] });
-  assert.deepEqual(typed(s, "1. c")[0].slice(-14), "1. a\n2. b\n3. c");
+test("헬퍼는 건네받은 트리를 본다, 상태의 것이 아니라: ensureSyntaxTree가 돌려주는 트리가 상태에 들어가지 않기 때문", () => {
+  // A state with no language at all: its own tree is empty. The parser's tree, handed in, is what finds the list.
+  const doc = "1. a\n3. b\n1. c";
+  const bare = EditorState.create({ doc, selection: EditorSelection.cursor(doc.length) });
+  const full = markdownLanguage.parser.parse(doc);
+  assert.deepEqual(renumbered(bare, doc.length), [], "the state's tree knows no list");
+  assert.deepEqual(renumbered(bare, doc.length, full), [{ from: 5, to: 6, insert: "2" }, { from: 10, to: 11, insert: "3" }]);
 });

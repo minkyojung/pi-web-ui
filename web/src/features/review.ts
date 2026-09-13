@@ -34,8 +34,8 @@
  */
 import { getChunks, getOriginalDoc, rejectChunk, unifiedMergeView, updateOriginalDoc } from "@codemirror/merge";
 import { invertedEffects } from "@codemirror/commands";
-import { ChangeSet, Compartment, type Extension, Prec, StateEffect, type Text } from "@codemirror/state";
-import { type Command, EditorView, keymap } from "@codemirror/view";
+import { ChangeSet, Compartment, type Extension, StateEffect, type Text } from "@codemirror/state";
+import { type Command, EditorView } from "@codemirror/view";
 import { buttonVariants } from "../components/ui/button";
 import { send } from "../ws";
 
@@ -178,21 +178,12 @@ const diff = (original: string): Extension =>
 
 const here = (run: (view: EditorView, pos: number) => boolean): Command => (view) => run(view, view.state.selection.main.head);
 
-export function review(path: () => string): Extension {
-	return [
-		room.of([]),
-		style,
-		undoable,
-		record(path),
-		// Above pending.ts's, which are above the editor's own: while a diff is
-		// being looked over these keys are about its chunks, and they fall
-		// through to the marks underneath when there is no chunk here.
-		Prec.highest(
-			keymap.of([
-				{ key: "Mod-Enter", run: here(keep) },
-				{ key: "Mod-Backspace", run: here(undo) },
-				{ key: "Escape", run: (v) => (reviewing(v) ? (showDiff(v, null), true) : false) },
-			]),
-		),
-	];
-}
+/** Mod-Enter while a diff is open: keep the chunk under the cursor; no when there is none there. */
+export const keepChunk: Command = here(keep);
+/** Mod-Backspace while a diff is open: put the chunk under the cursor back; no when there is none there. */
+export const undoChunk: Command = here(undo);
+/** Escape while a diff is open: put the diff away; no when none is. */
+export const closeDiff: Command = (v) => (reviewing(v) ? (showDiff(v, null), true) : false);
+
+/** The diff's room, its look, its undo and its record. The keys are bound with the editor's others (Editor.tsx), in one order. */
+export const review = (path: () => string): Extension => [room.of([]), style, undoable, record(path)];

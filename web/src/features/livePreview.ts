@@ -31,13 +31,13 @@
  * them. The layer sits in a compartment so Mod-e takes it out and puts it
  * back — source mode and live preview, as Obsidian has them.
  *
- * Mod-Enter on a task line ticks its box. The pending layer binds the same
- * key above this one and lets it through when the cursor is not on pi's
- * words, so the two do not meet.
+ * Mod-Enter on a task line ticks its box (`toggleTask`); the key is bound
+ * with the editor's others in Editor.tsx, after the diff's and pi's uses
+ * of it, in one order.
  */
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import { Compartment, type EditorState, type Extension, Prec, type Range, type RangeSet, RangeSetBuilder, type SelectionRange, StateField, type Transaction } from "@codemirror/state";
-import { BlockWrapper, Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
+import { Compartment, type EditorState, type Extension, type Range, type RangeSet, RangeSetBuilder, type SelectionRange, StateField, type Transaction } from "@codemirror/state";
+import { BlockWrapper, Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
 import { listItemLines, spaced } from "./listIndent.ts";
 
@@ -516,9 +516,6 @@ const blockLayer: Extension = [
 			return true;
 		},
 	}),
-	// Above the editor's own keys, which give Mod-Enter a blank line. The
-	// pending layer's Mod-Enter is as high and listed first, so it goes first.
-	Prec.high(keymap.of([{ key: "Mod-Enter", run: toggleTask }])),
 	EditorView.baseTheme({
 		".cm-code-line": { fontFamily: "ui-monospace, monospace", fontSize: "0.9em" },
 		// The code block's element: the box is here, the face is on the lines. The
@@ -566,7 +563,5 @@ export const toggleLivePreview = (view: EditorView) => {
 
 const layer: Extension = [plugin, blockLayer];
 
-export const livePreview: Extension = [
-	mode.of(layer),
-	Prec.high(keymap.of([{ key: "Mod-e", run: toggleLivePreview }])),
-];
+/** The layer, on. Mod-e (Editor.tsx) takes it out and puts it back. */
+export const livePreview: Extension = mode.of(layer);

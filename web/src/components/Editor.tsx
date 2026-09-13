@@ -14,12 +14,12 @@ import { linkCompletion } from "../features/linkCompletion";
 import { indentListItem, listBackspace, listEnter, outdentListItem } from "../features/listEdit";
 import { listNumbers } from "../features/listNumbers";
 import { listIndent } from "../features/listIndent";
-import { livePreview } from "../features/livePreview";
+import { livePreview, toggleLivePreview, toggleTask } from "../features/livePreview";
 import { fromServer, serverChange } from "../features/origin";
 import { landOn, links, notesChanged } from "../features/links";
-import { pending, setSpans } from "../features/pending";
-import { review, showDiff } from "../features/review";
-import { toggleMarks } from "../features/toggleMarks";
+import { acceptPending, pending, restorePending, setSpans } from "../features/pending";
+import { closeDiff, keepChunk, review, showDiff, undoChunk } from "../features/review";
+import { toggleBold, toggleItalic } from "../features/toggleMarks";
 import { comeBack, leave, scrollBack } from "../features/viewMemory";
 import { wrapSelection } from "../features/wrapSelection";
 import { highlightTag } from "../../../highlight.ts";
@@ -235,7 +235,7 @@ export function Editor({
 	useEffect(() => {
 		if (!host.current) return;
 		const features = [
-			pending(() => at.current),
+			pending,
 			// What the last run did to this note, while it is still one thing.
 			review(() => at.current),
 			links({
@@ -246,7 +246,6 @@ export function Editor({
 			linkCompletion(() => filesStore.get().map((f) => f.path)),
 			// Markup hidden where the cursor is not; Mod-e shows it all again.
 			livePreview,
-			toggleMarks,
 			// Wrapped list lines start where the item's words do. Outside the
 			// compartment: source mode wants this too.
 			listIndent,
@@ -259,12 +258,27 @@ export function Editor({
 			doc: "",
 			extensions: [
 				history(),
-				// Order is precedence. The list keys go before the default ones
-				// or Enter would never reach them: a list item continues on Enter
-				// and ends on a second, a quote likewise. closeBrackets' Backspace
-				// takes the pair out together; it too has to see the key first.
+				// Every key of the editor, in one place and one order: order is
+				// precedence, and a command that says no passes the key on. The
+				// features' keys go before the default ones, which would take
+				// them — Mod-Enter for a blank line, Enter for a plain newline,
+				// Backspace for a character.
 				keymap.of([
 					{ key: "Mod-s", run: () => (save(), true) },
+					// Mod-Enter is a decision where there is one to make, and a tick
+					// where there is a box: the diff's chunk under the cursor first,
+					// then pi's words there, then a task on the line. Mod-Backspace
+					// takes the first two back.
+					{ key: "Mod-Enter", run: keepChunk },
+					{ key: "Mod-Enter", run: acceptPending(() => at.current) },
+					{ key: "Mod-Enter", run: toggleTask },
+					{ key: "Mod-Backspace", run: undoChunk },
+					{ key: "Mod-Backspace", run: restorePending },
+					// Before the search panel's Escape, which would take it while a diff is open.
+					{ key: "Escape", run: closeDiff },
+					{ key: "Mod-e", run: toggleLivePreview },
+					{ key: "Mod-b", run: toggleBold },
+					{ key: "Mod-i", run: toggleItalic },
 					// On a list item, the item is the unit: it nests, splits and ends
 					// (listEdit.ts). Elsewhere these say no, and a quote's `>` is
 					// lang-markdown's, as is a Tab.
