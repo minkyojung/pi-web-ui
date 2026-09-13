@@ -437,6 +437,14 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 					wrappers.push(quoteWrapper(depth, callout?.type ?? null).range(doc.lineAt(node.from).from, node.to));
 					return;
 				}
+				case "FrontMatter": {
+					// The properties, taken out whole off their lines — the note's
+					// text begins under them — and shown as written when the cursor
+					// is on them, since there is nothing else yet to edit them by.
+					if (onLines(state, ranges, node.from, node.to)) return false;
+					deco.push(fenceGone.range(node.from, node.to));
+					return false;
+				}
 				case "HorizontalRule": {
 					if (onLines(state, ranges, node.from, node.to)) return false;
 					const line = doc.lineAt(node.from);

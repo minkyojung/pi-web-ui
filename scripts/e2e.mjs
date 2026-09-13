@@ -978,16 +978,27 @@ check("==words== are washed with colour, their marks hidden off the cursor", asy
 	await until("the marks back under the cursor", async () => (await shownText(app)).includes("==hi=="));
 });
 
-check("a note's front matter is one muted block, not a rule and a paragraph", async ({ app, cwd }) => {
+check("a note's front matter is hidden off its lines, shown on them, and the note opens under it", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "props.md"), "---\ntags: [x]\n---\n\n# body\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="props.md"]')`));
 	await app.evaluate(`document.querySelector('#notes button[title="props.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("# body"));
-	// Off the cursor's line a rule would be drawn as one; front matter's dashes are not rules.
+	const head = () => app.evaluate("document.querySelector('#editor .cm-content')?.cmTile?.root?.view?.state.selection.main.head");
+	assert.equal(await head(), 18, "the note opens under its properties, where its text begins");
+	// Off its lines the block is not there at all — no rule, no words — and the text begins the note.
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
 	await until("the heading's mark to be hidden", async () => !(await shownText(app)).includes("# body"));
 	assert.equal(await app.evaluate("document.querySelectorAll('#editor hr.cm-rule').length"), 0);
-	assert.ok((await shownText(app)).includes("---tags: [x]---"), "the block is shown as written");
+	assert.ok(!(await shownText(app)).includes("tags"), "the block is hidden off its lines");
+	// On its lines it is shown as written; ⌘E shows it wherever the cursor is.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 0 } }); })()`);
+	await until("the block on the cursor's lines", async () => (await shownText(app)).includes("---tags: [x]---"));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("hidden again", async () => !(await shownText(app)).includes("tags"));
+	await app.press("e", { meta: true });
+	await until("the source", async () => (await shownText(app)).includes("---tags: [x]---") && (await shownText(app)).includes("# body"));
+	await app.press("e", { meta: true });
+	assert.equal(readFileSync(join(cwd, "props.md"), "utf8"), "---\ntags: [x]\n---\n\n# body\n", "the file is untouched");
 });
 
 check("a note opens again where it was left", async ({ app, cwd }) => {

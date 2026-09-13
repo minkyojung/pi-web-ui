@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { listOf, propertiesOf, withProperties } from "../properties.ts";
+import { bodyStart, listOf, propertiesOf, withProperties } from "../properties.ts";
 
 const NOTE = `---
 # a comment on top
@@ -150,4 +150,11 @@ test("목록에 하나를 더하면 그 목록만 다시 써진다", () => {
   const note = "---\ntitle: 'kept'   # here\ntags:\n  - a\n---\n";
   const r = withProperties(note, (doc) => doc.get("tags").add("b"));
   assert.equal(r.text, "---\ntitle: 'kept'   # here\ntags:\n  - a\n  - b\n---\n");
+});
+
+test("본문은 블록 아래에서 시작한다; 블록이 없으면 맨 위", () => {
+  assert.equal(bodyStart("---\na: 1\n---\n# hi\n"), 13);
+  assert.equal(bodyStart("---\na: 1\n---"), 12);
+  assert.equal(bodyStart("# hi\n"), 0);
+  assert.equal(bodyStart("---\na: 1\nunclosed\n"), 0);
 });

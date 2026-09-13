@@ -50,6 +50,12 @@ function blockOf(text: string): Block | null {
 	return { from: first.from, to: first.to, yaml: { from: open, to: marks[1].from } };
 }
 
+/** Where the note's own text begins: under the block, or at the top when there is none. */
+export function bodyStart(text: string): number {
+	const block = blockOf(text);
+	return block ? Math.min(text.length, block.to + (text[block.to] === "\n" ? 1 : 0)) : 0;
+}
+
 /** The note's properties, or none: a block that is there is parsed, and its errors reported rather than thrown. */
 export function propertiesOf(text: string): Properties {
 	const block = blockOf(text);

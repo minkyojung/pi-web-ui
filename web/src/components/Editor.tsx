@@ -23,6 +23,7 @@ import { comeBack, leave, scrollBack } from "../features/viewMemory";
 import { wrapSelection } from "../features/wrapSelection";
 import { highlightTag } from "../../../highlight.ts";
 import { inlineCodeTag, noteSyntax } from "../../../syntax.ts";
+import { bodyStart } from "../../../properties.ts";
 import { tagTag } from "../../../tag.ts";
 import type { Place } from "../../../links.ts";
 import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, taggedStore } from "../serverState";
@@ -432,14 +433,15 @@ export function Editor({
 				return;
 			case "replace": {
 				// The first text of a note opened again: back where it was left,
-				// unless a link said where to land. Later whole texts keep the
-				// cursor where it is, if the text still reaches there.
+				// unless a link said where to land; a note never left opens under
+				// its properties, where its text begins. Later whole texts keep
+				// the cursor where it is, if the text still reaches there.
 				const first = base.current === null;
 				const back = first && !landing.current ? comeBack(path, note.text.length) : null;
 				v.dispatch({
 					changes: { from: 0, to: v.state.doc.length, insert: note.text },
 					annotations: serverChange,
-					selection: back ?? { anchor: Math.min(v.state.selection.main.head, note.text.length) },
+					selection: back ?? { anchor: first ? bodyStart(note.text) : Math.min(v.state.selection.main.head, note.text.length) },
 					effects: diffFor(note.original ?? null),
 				});
 				if (back) scrollBack(path, v, page.current);

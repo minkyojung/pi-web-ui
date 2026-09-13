@@ -209,3 +209,12 @@ test("공백이 없는 마커는 아직 글자다: 점도 없고, 건너뛰는 �
   assert.deepEqual(drawn(parsed("- a\n-\n", 0)), [["- ", "Bullet"]]);
   assert.deepEqual(drawn(parsed("- \n", 0)), [["- ", "Bullet"]]);
 });
+
+test("앞머리는 커서가 그 줄에 없으면 통째로 숨고, 그 줄에 있으면 쓰인 대로 보인다", () => {
+  const doc = "---\ntags: [x]\n---\n\nbody\n";
+  assert.deepEqual(drawn(parsed(doc)), [["---\ntags: [x]\n---", "hidden"]]);
+  assert.deepEqual(drawn(parsed(doc, 0)), []);
+  assert.deepEqual(drawn(parsed(doc, 6)), [], "inside too");
+  // Not at the top, not front matter: a rule, drawn as one.
+  assert.deepEqual(drawn(parsed("text\n\n---\n")).map(([, k]) => k), ["Rule"]);
+});
