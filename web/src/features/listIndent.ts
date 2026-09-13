@@ -24,6 +24,8 @@ import { syntaxTree } from "@codemirror/language";
 import { type EditorState, type Extension } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 
+import { indentWidth, markerOf } from "./listTree.ts";
+
 /** One level of nesting, in em. Wide enough for `10. `; a longer number just runs over. */
 const UNIT = 1.5;
 
@@ -48,7 +50,8 @@ const line = (level: number, marker: boolean) => {
 
 /**
  * The lines of list items between `from` and `to`, each with its depth,
- * and where the marker ends on the lines that carry one.
+ * and, on the lines that carry a marker, where its content starts —
+ * past a task's box, since `- [ ] ` is the prefix there, not `- `.
  *
  * A line of an item that has no marker of its own counts as the item's
  * only if it is indented to where the item's words start. Markdown lets a
@@ -65,9 +68,6 @@ const line = (level: number, marker: boolean) => {
  * dot that came and went would be noise; so, as Typora and Obsidian have
  * it, `-` is a dash and `- ` is the item.
  */
-/** Whether the space after `mark` is there: the marker is an item's, not the head of a word. */
-export const spaced = (state: EditorState, mark: { to: number }) => state.doc.sliceString(mark.to, mark.to + 1) === " ";
-
 export function listItemLines(state: EditorState, from: number, to: number): { level: Map<number, number>; markAt: Map<number, number> } {
 	const { doc } = state;
 	const level = new Map<number, number>();
@@ -77,31 +77,24 @@ export function listItemLines(state: EditorState, from: number, to: number): { l
 		from,
 		to,
 		enter: (node) => {
-			if (node.name === "ListItem") {
-				const mark = node.node.getChild("ListMark");
-				if (mark && !spaced(state, mark)) return false;
-				depth++;
-				const markLine = mark ? doc.lineAt(mark.from) : null;
-				// The column the item's words start at: past the marker and its space.
-				const content = mark ? mark.to - markLine!.from + 1 : 0;
-				const first = doc.lineAt(Math.max(node.from, from)).number;
-				const last = doc.lineAt(Math.min(node.to, to)).number;
-				for (let n = first; n <= last; n++) {
-					const l = doc.line(n);
-					if (n !== markLine?.number && /^[ \t]*/.exec(l.text)![0].length < content) continue;
-					level.set(n, depth);
-				}
-			} else if (node.name === "ListMark") {
-				// Through the task's marker, when the item is one: `- [ ] ` is the prefix, not `- `.
-				const task = node.node.nextSibling?.name === "Task" ? node.node.nextSibling.getChild("TaskMarker") : null;
-				markAt.set(doc.lineAt(node.from).number, task ? task.to : node.to);
+			if (node.name !== "ListItem") return;
+			const marker = markerOf(state, node.node);
+			if (marker && !marker.spaced) return false;
+			depth++;
+			// The column the item's words start at: past the marker and its space.
+			const content = marker ? marker.prefixEnd - marker.line.from : 0;
+			if (marker) markAt.set(marker.line.number, marker.contentStart);
+			const first = doc.lineAt(Math.max(node.from, from)).number;
+			const last = doc.lineAt(Math.min(node.to, to)).number;
+			for (let n = first; n <= last; n++) {
+				if (n !== marker?.line.number && indentWidth(doc.line(n)) < content) continue;
+				level.set(n, depth);
 			}
 		},
 		leave: (node) => {
 			if (node.name === "ListItem") depth--;
 		},
 	});
-	for (const n of markAt.keys()) if (!level.has(n)) markAt.delete(n);
 	return { level, markAt };
 }
 
@@ -112,11 +105,9 @@ export function listLines(state: EditorState, from: number, to: number): Decorat
 	const out = [];
 	for (const [n, lvl] of level) {
 		const l = doc.line(n);
-		const markEnd = markAt.get(n);
-		out.push(line(lvl, markEnd !== undefined).range(l.from));
-		if (markEnd === undefined) continue;
-		const end = doc.sliceString(markEnd, markEnd + 1) === " " ? markEnd + 1 : markEnd;
-		if (end > l.from) out.push(prefix.range(l.from, end));
+		const end = markAt.get(n);
+		out.push(line(lvl, end !== undefined).range(l.from));
+		if (end !== undefined && end > l.from) out.push(prefix.range(l.from, end));
 	}
 	return Decoration.set(out, true);
 }

@@ -39,7 +39,8 @@ import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { Compartment, type EditorState, type Extension, type Range, type RangeSet, RangeSetBuilder, type SelectionRange, StateField, type Transaction } from "@codemirror/state";
 import { BlockWrapper, Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
-import { listItemLines, spaced } from "./listIndent.ts";
+import { listItemLines } from "./listIndent.ts";
+import { markerOf } from "./listTree.ts";
 
 const hide = Decoration.replace({});
 
@@ -358,14 +359,13 @@ export function inline(state: EditorState, from: number, to: number, ranges = st
 					// `-`, `*` or `+` as a dot, a number as itself, cursor or not; on
 					// a task item, nothing, since the box is the marker there. The
 					// item's other lines and the lists inside it are walked on.
-					const mark = node.node.getChild("ListMark");
-					if (!mark || !spaced(state, mark)) return;
+					const marker = markerOf(state, node.node);
+					if (!marker || !marker.spaced) return;
 					// The marker and the space after it, as one widget one indent unit
 					// wide (listIndent.ts), so the words start where the wrapped rows
 					// do, and the caret after it stands where they start.
-					const text = doc.sliceString(mark.from, mark.to);
-					const task = mark.nextSibling?.name === "Task";
-					put(mark.from, mark.to + 1, task ? hide : /^[-*+]$/.test(text) ? bullet : number(text), true);
+					const { mark, text, task } = marker;
+					put(mark.from, marker.prefixEnd, task ? hide : /^[-*+]$/.test(text) ? bullet : number(text), true);
 					return;
 				}
 				case "Task": {
