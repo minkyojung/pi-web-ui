@@ -135,6 +135,50 @@ test("구간 하나는 언제나 글자 하나 이상이고 서로 겹치지 않
   assert.equal(last, text.length, "구간들이 본문 전체를 덮는다");
 });
 
+// --- removals: what pi took away that nothing replaced ---
+
+test("pi가 지우기만 한 글은 구간은 없지만 자리 하나로 남는다", () => {
+  const log = [...changesBetween("", "one two three", me), ...changesBetween("one two three", "one three", pi)];
+  const { text, spans, removals } = replay(log);
+  assert.equal(text, "one three");
+  assert.deepEqual(spans.map((s) => s.author), ["me"], "구간은 me 것 하나뿐");
+  assert.deepEqual(removals, [{ ...pi, pos: 4, removed: "two " }]);
+});
+
+test("사람이 지운 것과 바꿔 쓴 것은 자리로 남지 않는다 — 결정할 것이 없으니", () => {
+  const cut = [...changesBetween("", "a b c", pi), ...changesBetween("a b c", "a c", me)];
+  assert.deepEqual(replay(cut).removals, []);
+  const swapped = [...changesBetween("", "a b c", me), ...changesBetween("a b c", "a X c", pi)];
+  assert.deepEqual(replay(swapped).removals, [], "바꿔 쓴 것의 뺀 글은 구간이 들고 있다");
+  assert.equal(replay(swapped).spans.find((s) => s.author === "pi").removed, "b");
+});
+
+test("자리는 뒤의 편집을 따라 움직이고, 그 자리를 덮는 편집에는 접힌다", () => {
+  const log = [...changesBetween("", "one two three", me), ...changesBetween("one two three", "one three", pi)];
+  assert.equal(replay([...log, ...changesBetween("one three", "ZERO one three", me)]).removals[0].pos, 4 + "ZERO ".length);
+  assert.equal(replay([...log, ...changesBetween("one three", "one three four", me)]).removals[0].pos, 4, "뒤에서 일어난 편집엔 안 움직인다");
+  assert.equal(replay([...log, ...changesBetween("one three", "X", me)]).removals[0].pos, 1, "덮이면 그 자리 끝으로");
+});
+
+test("폭 없는 결정이 그 자리의 삭제를 수락하고, 반대로 무른다", () => {
+  const log = [...changesBetween("", "one two three", me), ...changesBetween("one two three", "one three", pi)];
+  const at = replay(log).removals[0].pos;
+  const kept = [...log, { ...me, at: 9, from: at, to: at, inserted: "", removed: "", kept: true }];
+  assert.equal(replay(kept).removals[0].accepted, true);
+  const back = [...kept, { ...me, at: 10, from: at, to: at, inserted: "", removed: "", kept: false }];
+  assert.equal(replay(back).removals[0].accepted, undefined);
+  assert.equal(replay(log).spans.length, replay(kept).spans.length, "구간은 건드리지 않는다");
+});
+
+test("범위 있는 결정도 그 안에 놓인 삭제를 함께 결정한다", () => {
+  const log = [...changesBetween("", "one two three", me), ...changesBetween("one two three", "one three", pi)];
+  const at = replay(log).removals[0].pos;
+  const around = [...log, { ...me, at: 9, from: at - 1, to: at + 1, inserted: "e t", removed: "e t", kept: true }];
+  assert.equal(replay(around).removals[0].accepted, true);
+  const elsewhere = [...log, { ...me, at: 9, from: 0, to: 2, inserted: "on", removed: "on", kept: true }];
+  assert.equal(replay(elsewhere).removals[0].accepted, undefined);
+});
+
 test("자리는 앞에서 일어난 변경만큼 밀리고, 뒤에서 일어난 변경에는 안 움직인다", () => {
   const text = "one two three";
   const before = changesBetween(text, "ONE one two three", me);
@@ -258,6 +302,17 @@ test("수락을 되무르면 구간은 결정 전으로 정확히 돌아간다",
 
   decide(DIR, "undo.md", before[0].from, before[0].to, 11, false);
   assert.deepEqual(replay(readHistory(DIR, "undo.md")).spans, before, "구간이 통째였으니 뺀 글까지 그대로다");
+});
+
+test("폭 없는 결정은 그 자리에 삭제가 있을 때만 남는다", () => {
+  record(DIR, "gap.md", "", "one two three", me);
+  decide(DIR, "gap.md", 4, 4, 20, true);
+  assert.equal(readHistory(DIR, "gap.md").length, 1, "지운 것이 없는 자리의 결정은 줄이 되지 않는다");
+  record(DIR, "gap.md", "one two three", "one three", pi);
+  const at = replay(readHistory(DIR, "gap.md")).removals[0].pos;
+  decide(DIR, "gap.md", at, at, 21, true);
+  assert.equal(readHistory(DIR, "gap.md").length, 3);
+  assert.equal(replay(readHistory(DIR, "gap.md")).removals[0].accepted, true);
 });
 
 test("결정은 지워지지 않고 반대 줄로 무른다 — 로그는 늘기만 한다", () => {

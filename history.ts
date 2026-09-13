@@ -48,6 +48,19 @@ export type Change = Origin & { from: number; to: number; inserted: string; remo
  */
 export type Span = Origin & { from: number; to: number; removed?: string; accepted?: true };
 
+/**
+ * Words pi took out of the note, and where they stood.
+ *
+ * A span says who wrote the words that are there. This says what pi took away
+ * that nothing replaced — words that left no span, because there is nothing
+ * in the text for one to cover. It sits at one place, the seam where they
+ * were, and moves with the text as a span does. Only pi's, since those are
+ * the ones a person is asked to decide about, and the diff that asks needs
+ * the words back to show them. A decision at that exact place, of no width,
+ * is what sets `accepted`.
+ */
+export type Removal = Origin & { pos: number; removed: string; accepted?: true };
+
 /** A change that changes nothing: the person deciding about the words at [from, to). */
 export const isTouch = (change: Change) => change.inserted === change.removed;
 
@@ -98,18 +111,28 @@ export function apply(text: string, change: Change): string {
  * Spans are cut where a change starts and ends, the middle is dropped, the
  * insertion takes its place, and what follows is shifted. Adjacent spans with
  * the same origin are merged so the answer stays as short as the text allows.
+ * Removals ride along, each at its seam, moved the way a place is moved
+ * through a change — see mapThrough.
  */
-export function replay(changes: Change[]): { text: string; spans: Span[] } {
+export function replay(changes: Change[]): { text: string; spans: Span[]; removals: Removal[] } {
 	let text = "";
 	let spans: Span[] = [];
+	let removals: Removal[] = [];
 	for (const change of changes) {
 		if (isTouch(change)) {
 			// An older log has no `kept` on its touches, and every touch it holds
 			// was an acceptance; undefined has to read as true.
-			spans = merge(touch(spans, change.from, change.to, change.kept !== false));
+			const kept = change.kept !== false;
+			spans = merge(touch(spans, change.from, change.to, kept));
+			removals = removals.map((r) => (change.from <= r.pos && r.pos <= change.to ? decideRemoval(r, kept) : r));
 			continue;
 		}
 		const delta = change.inserted.length - (change.to - change.from);
+		removals = removals.map((r) => ({ ...r, pos: mapThrough([change], r.pos) }));
+		if (!change.inserted && change.removed && change.author === "pi") {
+			const { from, to: _t, inserted: _i, removed, ...origin } = change;
+			removals.push({ ...origin, pos: from, removed });
+		}
 		const next: Span[] = [];
 		for (const span of spans) {
 			if (span.to <= change.from) next.push(span);
@@ -130,7 +153,12 @@ export function replay(changes: Change[]): { text: string; spans: Span[] } {
 		spans = merge(next);
 		text = apply(text, change);
 	}
-	return { text, spans };
+	return { text, spans, removals };
+}
+
+function decideRemoval(removal: Removal, accepted: boolean): Removal {
+	const { accepted: _was, ...rest } = removal;
+	return accepted ? { ...rest, accepted: true } : rest;
 }
 
 /**
@@ -289,11 +317,15 @@ export function reconcile(
 /**
  * Log what the person decided about the words at [from, to): `kept` for fine as
  * they are, false for back to being looked at.
+ *
+ * A range of no width is a decision about words that are not there — the
+ * removal at that place — and is written only if there is one, so a decision
+ * about nothing leaves no line.
  */
 export function decide(root: string, path: string, from: number, to: number, at: number, kept: boolean): void {
-	const { text } = replay(readHistory(root, path));
+	const { text, removals } = replay(readHistory(root, path));
 	const words = text.slice(from, to);
-	if (!words) return;
+	if (!words && !removals.some((r) => r.pos === from)) return;
 	appendHistory(root, path, [{ author: "me", at, from, to, inserted: words, removed: words, kept }]);
 }
 
