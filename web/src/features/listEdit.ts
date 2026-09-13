@@ -8,8 +8,8 @@
  * on as the item's paragraph. Nobody typing a note means either, and it
  * has no Tab at all. So the keys are written here, over the syntax tree,
  * with the item — its marker line, the lines that go on under it, and the
- * lists nested in it — as the unit that moves, and the block's numbers
- * put right after every change, in the one transaction.
+ * lists nested in it — as the unit that moves. The block's numbers are
+ * put right by listNumbers.ts, in the same transaction as any change.
  *
  * The unit of nesting is read off the block itself, from any item already
  * nested in it, so a note written in two spaces stays in two; only a block
@@ -18,7 +18,7 @@
  * A quote's `>` is left to lang-markdown: the commands here say no outside
  * a list item, and the keymap goes on to its.
  */
-import { ensureSyntaxTree, indentUnit, syntaxTree } from "@codemirror/language";
+import { indentUnit, syntaxTree } from "@codemirror/language";
 import { type ChangeSpec, type EditorState, EditorSelection, type Line } from "@codemirror/state";
 import type { Command, EditorView } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
@@ -44,7 +44,7 @@ function blockOf(item: SyntaxNode): SyntaxNode {
 }
 
 /** The block around `pos`, if any: found from the item there, or — on a line of the block that is no item's, such as one just emptied — from the list itself. */
-function blockAt(state: EditorState, pos: number): SyntaxNode | null {
+export function blockAt(state: EditorState, pos: number): SyntaxNode | null {
 	let top: SyntaxNode | null = null;
 	for (let n: SyntaxNode | null = itemAt(state, pos) ?? syntaxTree(state).resolveInner(pos, -1); n; n = n.parent) if (isList(n)) top = n;
 	return top;
@@ -135,23 +135,9 @@ export function renumbered(state: EditorState, pos: number): ChangeSpec[] {
 	return changes;
 }
 
-/**
- * Apply `changes`, then number the block again, as one transaction. The
- * cursor goes to `cursor`, in the changed document's coordinates.
- */
+/** Apply `changes`, the cursor going to `cursor` in the changed document's coordinates. The numbers follow (listNumbers.ts). */
 function dispatchInBlock(view: EditorView, changes: ChangeSpec, cursor: number, userEvent: string) {
-	const { state } = view;
-	const set = state.changes(changes);
-	const s1 = state.update({ changes: set, selection: EditorSelection.cursor(cursor) }).state;
-	// The whole block has to be parsed for the numbers to be right; a note's lists are short.
-	ensureSyntaxTree(s1, blockAt(s1, cursor)?.to ?? cursor, 100);
-	const second = s1.changes(renumbered(s1, cursor));
-	view.dispatch({
-		changes: set.compose(second),
-		selection: EditorSelection.cursor(second.mapPos(cursor, 1)),
-		scrollIntoView: true,
-		userEvent,
-	});
+	view.dispatch({ changes, selection: EditorSelection.cursor(cursor), scrollIntoView: true, userEvent });
 }
 
 // ---- Moving an item ----

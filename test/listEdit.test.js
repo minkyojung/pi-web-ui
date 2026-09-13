@@ -6,10 +6,11 @@ import { ensureSyntaxTree, indentUnit } from "@codemirror/language";
 import { EditorSelection, EditorState } from "@codemirror/state";
 
 import { indentListItem, listBackspace, listEnter, outdentListItem, renumbered } from "../web/src/features/listEdit.ts";
+import { listNumbers } from "../web/src/features/listNumbers.ts";
 
-/** A state with the cursor at `cursor`, the whole tree parsed, four-space indent as the editor has it. */
+/** A state with the cursor at `cursor`, the whole tree parsed, four-space indent as the editor has it, and the numbers kept as the editor keeps them. */
 const at = (doc, cursor) => {
-  const s = EditorState.create({ doc, selection: EditorSelection.cursor(cursor), extensions: [markdown({ base: markdownLanguage }), indentUnit.of("    ")] });
+  const s = EditorState.create({ doc, selection: EditorSelection.cursor(cursor), extensions: [markdown({ base: markdownLanguage }), indentUnit.of("    "), listNumbers] });
   assert.ok(ensureSyntaxTree(s, s.doc.length, 5000), "parsed whole");
   return s;
 };

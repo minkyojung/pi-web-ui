@@ -4,7 +4,7 @@ import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { deleteMarkupBackward, insertNewlineContinueMarkup, markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
-import { Annotation, ChangeSet, EditorState, type Extension, Transaction } from "@codemirror/state";
+import { ChangeSet, EditorState, type Extension, Transaction } from "@codemirror/state";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { drawSelection, dropCursor, EditorView, keymap, placeholder, scrollPastEnd } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
@@ -12,8 +12,10 @@ import { tags } from "@lezer/highlight";
 import { choose, chosenStore } from "../chosen";
 import { linkCompletion } from "../features/linkCompletion";
 import { indentListItem, listBackspace, listEnter, outdentListItem } from "../features/listEdit";
+import { listNumbers } from "../features/listNumbers";
 import { listIndent } from "../features/listIndent";
 import { livePreview } from "../features/livePreview";
+import { fromServer, serverChange } from "../features/origin";
 import { landOn, links, notesChanged } from "../features/links";
 import { pending, setSpans } from "../features/pending";
 import { review, showDiff } from "../features/review";
@@ -34,16 +36,6 @@ import { Button } from "./ui/button";
 
 /** How long typing has to stop before it is written down. */
 const AUTOSAVE_MS = 600;
-
-/** Marks a change the server made, so it is not taken for typing and saved back. */
-const fromServer = Annotation.define<boolean>();
-/**
- * On every change the server makes: not typing, and not undoable. ⌘Z undoes
- * what the person typed; what pi or another editor wrote is not theirs to
- * take back that way, and an undo that reached it would then be saved as a
- * change of theirs.
- */
-const serverChange = [fromServer.of(true), Transaction.addToHistory.of(false)];
 
 /**
  * The editor in the app's own colours, both themes, since the tokens switch
@@ -258,6 +250,8 @@ export function Editor({
 			// Wrapped list lines start where the item's words do. Outside the
 			// compartment: source mode wants this too.
 			listIndent,
+			// A numbered list's numbers put right on every edit of it.
+			listNumbers,
 			// A mark typed over chosen words wraps them.
 			wrapSelection,
 		];
