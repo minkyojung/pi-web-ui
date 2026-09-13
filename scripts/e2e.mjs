@@ -696,17 +696,17 @@ check("an empty note says so, and a code block is drawn in a monospace", async (
 	await app.shot("code-box");
 });
 
-check("a task is a box off the cursor's line, ticked by a click or ⌘Enter, and a rule is a line", async ({ app, cwd }) => {
+check("a task is a box, cursor or not, ticked by a click or ⌘Enter, and a rule is a line", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "tasks.md"), "- [ ] one\n- [x] two\n\n---\n\nend\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="tasks.md"]')`));
 	await app.evaluate(`document.querySelector('#notes button[title="tasks.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("- [ ] one"));
-	// The cursor lands on the first line, so that task stays as text and the other is a box; the rule is a line.
-	await until("one box and a rule", () => app.evaluate("document.querySelectorAll('#editor input.cm-task').length === 1 && document.querySelectorAll('#editor hr.cm-rule').length === 1"));
-	assert.ok((await shownText(app)).includes("[ ] one"));
+	// The cursor lands on the first line; its task is a box all the same, as the other is; the rule is a line.
+	await until("two boxes and a rule", () => app.evaluate("document.querySelectorAll('#editor input.cm-task').length === 2 && document.querySelectorAll('#editor hr.cm-rule').length === 1"));
+	assert.ok(!(await shownText(app)).includes("[ ] one"));
 	assert.ok(!(await shownText(app)).includes("[x] two"));
-	// Clicking the box ticks it off in the text.
-	assert.equal(await app.click("#editor input.cm-task", 0), true);
+	// Clicking the second box ticks it off in the text.
+	assert.equal(await app.click("#editor input.cm-task", 1), true);
 	await until("two unticked", async () => (await editorText(app)).includes("- [ ] two"));
 	// ⌘Enter on the cursor's line ticks that one.
 	await app.press("Enter", { meta: true });
@@ -828,7 +828,7 @@ check("a quote is one element around its lines; a quote in a quote is a bar in a
 	await app.shot("quotes");
 });
 
-check("a bullet is a dot off its line, and a task shows its box alone", async ({ app, cwd }) => {
+check("a bullet is a dot, cursor or not, and a task shows its box alone", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "bullets.md"), "- one\n- [ ] two\n\nend\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="bullets.md"]')`));
 	await app.evaluate(`document.querySelector('#notes button[title="bullets.md"]').click()`);
@@ -836,8 +836,13 @@ check("a bullet is a dot off its line, and a task shows its box alone", async ({
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
 	await until("a dot, and a box without a dash", async () => (await shownText(app)).includes("•one") && (await shownText(app)).includes("two") && !(await shownText(app)).includes("- "));
 	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-bullet').length"), 1);
+	// Under the cursor the dot stays: the list's shape is not text to edit, and the caret steps over it.
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 2 } }); })()`);
-	await until("the dash back under the cursor", async () => (await shownText(app)).includes("- one"));
+	await new Promise((r) => setTimeout(r, 100));
+	assert.ok((await shownText(app)).includes("•one"), "the dot under the cursor");
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-bullet').length"), 1);
+	await app.press("ArrowLeft");
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-content').cmTile.root.view.state.selection.main.head"), 0, "the caret steps over the dot to the line's start");
 });
 
 check("Tab nests a numbered item and the numbers follow; Shift-Tab brings it back", async ({ app, cwd }) => {
@@ -959,13 +964,14 @@ check("a note opens again where it was left", async ({ app, cwd }) => {
 
 check("a list item's wrapped lines start where its words do", async ({ app, cwd }) => {
 	const long = "word ".repeat(40).trim();
-	writeFileSync(join(cwd, "list.md"), `- ${long}\n    - inner ${long}\n  continued\n- [ ] task ${long}\n\n> - quoted\n`);
+	// The continuation is indented to the inner item's words: short of that it would be drawn at the outer item's depth, as typed.
+	writeFileSync(join(cwd, "list.md"), `- ${long}\n    - inner ${long}\n      continued\n- [ ] task ${long}\n\n> - quoted\n`);
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="list.md"]')`));
 	await app.evaluate(`document.querySelector('#notes button[title="list.md"]').click()`);
 	await until("the list lines", () => app.evaluate("document.querySelectorAll('#editor .cm-list-line').length === 5"));
 	// The cursor lands on the first line; every other list line hides its indentation.
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
-	await until("the indentation hidden", async () => !(await shownText(app)).includes("  continued") && (await shownText(app)).includes("continued"));
+	await until("the indentation hidden", async () => !(await shownText(app)).includes(" continued") && (await shownText(app)).includes("continued"));
 	// The second row of the outer item sits under its words, not under the bullet; the inner item's, one unit further.
 	const rows = await app.evaluate(`(() => {
 		const px = (el) => parseFloat(getComputedStyle(el).paddingLeft);
@@ -977,7 +983,7 @@ check("a list item's wrapped lines start where its words do", async ({ app, cwd 
 		// The glyph, not its box: an inherited text-indent once drew the dot a unit out of a box that measured fine.
 		const glyphOf = (el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect(); };
 		const glyph = glyphOf(outer.querySelector('.cm-bullet'));
-		const box = task.querySelector('.cm-task');
+		const box = task.querySelector('.cm-task-box');
 		const taskPrefix = { width: box.getBoundingClientRect().width + parseFloat(getComputedStyle(box).marginRight) };
 		const quotedDot = quoted.querySelector('.cm-bullet').getBoundingClientRect();
 		return { outer: px(outer), inner: px(inner), continued: px(continued), quoted: quoted.getBoundingClientRect().left - outer.getBoundingClientRect().left, quotedDotLeft: quotedDot.left - quoted.getBoundingClientRect().left, quotedPad: px(quoted), prefixWidth: dot.width, innerPrefixWidth: innerDot.width, taskPrefixWidth: taskPrefix.width, prefixLeft: dot.left - outer.getBoundingClientRect().left, glyphIn: glyph.left - dot.left, tall: outer.getBoundingClientRect().height > 2 * innerDot.height };

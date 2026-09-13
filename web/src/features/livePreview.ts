@@ -220,12 +220,19 @@ class Checkbox extends WidgetType {
 		super();
 		this.checked = checked;
 	}
+	// The box in a span one indent unit wide (listIndent.ts): the caret after
+	// the widget sits at the widget's edge, and were that the input's, with
+	// the gap a margin, the caret on an empty task would sit short of where
+	// its words land.
 	toDOM() {
+		const box = document.createElement("span");
+		box.className = "cm-task-box";
 		const el = document.createElement("input");
 		el.type = "checkbox";
 		el.className = "cm-task";
 		el.checked = this.checked;
-		return el;
+		box.appendChild(el);
+		return box;
 	}
 	eq(other: Checkbox) {
 		return other.checked === this.checked;
@@ -453,7 +460,7 @@ const blockLayer: Extension = [
 		".cm-line.cm-callout-title": { fontWeight: "600" },
 		".cm-line.cm-callout-title::before": { content: "attr(data-callout)", textTransform: "capitalize", marginRight: "0.4em" },
 		".cm-rule": { border: "none", borderTop: "1px solid var(--border)", margin: "0.6em 0", display: "block" },
-		".cm-task": { verticalAlign: "middle", margin: "0 0.4em 0 0" },
+		".cm-task": { verticalAlign: "middle", margin: "0" },
 		".cm-bullet": { color: "var(--muted-foreground)" },
 		".cm-line.cm-task-done": { color: "var(--muted-foreground)", textDecoration: "line-through" },
 	}),

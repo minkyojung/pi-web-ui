@@ -146,11 +146,14 @@ export const listIndent: Extension = [
 		// Two classes: the editor's theme sets `.cm-line { padding: 0 }`, and this has to outweigh it.
 		".cm-line.cm-list-line": { paddingLeft: "var(--list-indent)" },
 		".cm-line.cm-list-marker": { textIndent: `-${UNIT}em` },
-		".cm-list-prefix": { display: "inline-block", minWidth: `${UNIT}em`, textIndent: "0" },
-		// The checkbox as the whole marker: one unit, box and gap together. On
-		// the line, not the prefix box: off the cursor the whole prefix is
-		// hidden or widget, so there is no text for the box to wrap.
-		".cm-line.cm-list-marker .cm-task": { width: "1em", height: "1em", margin: `0 ${UNIT - 1}em 0 0`, boxSizing: "border-box" },
+		// The marker against the right edge of its box, its space kept, so the
+		// caret after `2. ` on an empty item stands where the words will start,
+		// not short of it by what the box has over `2. `.
+		".cm-list-prefix": { display: "inline-block", minWidth: `${UNIT}em`, textIndent: "0", textAlign: "right", whiteSpace: "pre" },
+		// The checkbox's span as the whole marker: one unit, box and gap together,
+		// so the caret after it is where the words start.
+		".cm-line.cm-list-marker .cm-task-box": { display: "inline-block", width: `${UNIT}em`, textIndent: "0" },
+		".cm-line.cm-list-marker .cm-task": { width: "1em", height: "1em", boxSizing: "border-box" },
 		// Likewise the dot a bullet is drawn as (livePreview.ts): the marker and
 		// its space, one unit. `text-indent` inherits, and the line's pulls a
 		// first row back one unit: without its own, the dot's box would stay put
