@@ -77,3 +77,11 @@ test("항목 밑에 붙여 쓴 글은 들여쓰지 않았으면 밀리지 않고
     [3, "--list-indent:1.5em"],
   ]);
 });
+
+test("마커는 뒤의 공백이 있어야 항목이다: -는 대시, - 부터 항목", () => {
+  assert.deepEqual(drawn(parsed("-\n")), []);
+  assert.deepEqual(drawn(parsed("1.\n")), []);
+  assert.deepEqual(drawn(parsed("- \n")), [[1, "--list-indent:1.5em marker"], ["- "]]);
+  // Between items of a list, the same: the line is not padded until its space is typed.
+  assert.deepEqual(drawn(parsed("- a\n-\n")), [[1, "--list-indent:1.5em marker"], ["- "]]);
+});

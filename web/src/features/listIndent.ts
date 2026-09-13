@@ -58,7 +58,16 @@ const line = (level: number, marker: boolean) => {
  * the words, indented, while the note has it at the margin; so such a
  * line takes the depth of the outermost item it is indented for, and none
  * when it is not indented at all.
+ *
+ * A marker counts once the space after it is typed. Markdown has a bare
+ * `-` or `1.` on a line as an empty item already, but to someone typing
+ * it is the first character of `-1` or `--` as often as of an item, and a
+ * dot that came and went would be noise; so, as Typora and Obsidian have
+ * it, `-` is a dash and `- ` is the item.
  */
+/** Whether the space after `mark` is there: the marker is an item's, not the head of a word. */
+export const spaced = (state: EditorState, mark: { to: number }) => state.doc.sliceString(mark.to, mark.to + 1) === " ";
+
 export function listItemLines(state: EditorState, from: number, to: number): { level: Map<number, number>; markAt: Map<number, number> } {
 	const { doc } = state;
 	const level = new Map<number, number>();
@@ -69,11 +78,12 @@ export function listItemLines(state: EditorState, from: number, to: number): { l
 		to,
 		enter: (node) => {
 			if (node.name === "ListItem") {
-				depth++;
 				const mark = node.node.getChild("ListMark");
+				if (mark && !spaced(state, mark)) return false;
+				depth++;
 				const markLine = mark ? doc.lineAt(mark.from) : null;
 				// The column the item's words start at: past the marker and its space.
-				const content = mark ? mark.to - markLine!.from + (doc.sliceString(mark.to, mark.to + 1) === " " ? 1 : 0) : 0;
+				const content = mark ? mark.to - markLine!.from + 1 : 0;
 				const first = doc.lineAt(Math.max(node.from, from)).number;
 				const last = doc.lineAt(Math.min(node.to, to)).number;
 				for (let n = first; n <= last; n++) {
@@ -91,6 +101,7 @@ export function listItemLines(state: EditorState, from: number, to: number): { l
 			if (node.name === "ListItem") depth--;
 		},
 	});
+	for (const n of markAt.keys()) if (!level.has(n)) markAt.delete(n);
 	return { level, markAt };
 }
 

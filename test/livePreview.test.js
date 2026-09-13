@@ -192,3 +192,9 @@ test("Mod-Enter는 커서 줄의 할 일을 켜고 끈다, 없으면 손대지 �
   assert.deepEqual(run("- [X] a\n", 7), { handled: true, out: [{ from: 2, to: 5, insert: "[ ]" }] });
   assert.deepEqual(run("- a\n", 3), { handled: false, out: null });
 });
+
+test("공백이 없는 마커는 아직 글자다: 점도 없고, 건너뛰는 범위도 없다", () => {
+  assert.deepEqual(drawn(parsed("-\n", 0)), []);
+  assert.deepEqual(drawn(parsed("- a\n-\n", 0)), [["- ", "Bullet"]]);
+  assert.deepEqual(drawn(parsed("- \n", 0)), [["- ", "Bullet"]]);
+});

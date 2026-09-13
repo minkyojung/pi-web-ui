@@ -32,7 +32,7 @@ import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { Compartment, type EditorState, type Extension, Prec, type Range, type RangeSet, RangeSetBuilder, type SelectionRange, StateField, type Transaction } from "@codemirror/state";
 import { BlockWrapper, Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
-import { listItemLines } from "./listIndent.ts";
+import { listItemLines, spaced } from "./listIndent.ts";
 
 const hide = Decoration.replace({});
 
@@ -328,15 +328,14 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 					// since the box is the marker there. The item's other lines and
 					// the lists inside it are walked on.
 					const mark = node.node.getChild("ListMark");
-					if (!mark || !/^[-*+]$/.test(doc.sliceString(mark.from, mark.to))) return;
+					if (!mark || !spaced(state, mark) || !/^[-*+]$/.test(doc.sliceString(mark.from, mark.to))) return;
 					// The marker and the space after it, as one: the dot is made one
 					// indent unit wide (listIndent.ts), so the words start where the
 					// wrapped rows do, and nothing is left for the marker's box to wrap.
 					const task = mark.nextSibling?.name === "Task";
-					const end = doc.sliceString(mark.to, mark.to + 1) === " " ? mark.to + 1 : mark.to;
 					const value = task ? hide : bullet;
-					deco.push({ from: mark.from, to: end, value });
-					atoms.add(mark.from, end, value);
+					deco.push({ from: mark.from, to: mark.to + 1, value });
+					atoms.add(mark.from, mark.to + 1, value);
 					return;
 				}
 				case "Task": {
