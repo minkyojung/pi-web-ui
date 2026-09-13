@@ -217,7 +217,9 @@ async function openPage(devtoolsPort, url) {
 		}
 		await call("Input.insertText", { text: committed });
 	};
-	return { evaluate, shot, errors, click, drag, press, keys, ime, close: () => socket.close() };
+	/** A syllable half typed and left so: the composition is open, nothing committed. */
+	const compose = (text) => call("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length });
+	return { evaluate, shot, errors, click, drag, press, keys, ime, compose, close: () => socket.close() };
 }
 
 /**
@@ -550,6 +552,24 @@ check("a write that did not pass through the app arrives as outside's change", a
 	assert.equal(await type(app, "AFTER "), true);
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 	assert.ok(readFileSync(join(cwd, "first.md"), "utf8").includes("AFTER"));
+});
+
+check("a write from outside mid-syllable waits for the syllable, then lands", async ({ app, cwd }) => {
+	await until("a clean editor", async () => (await editorStatus(app)) === "saved");
+	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await app.compose("ㅎ");
+	await until("the composition to be open", () => app.evaluate("document.querySelector('#editor .cm-content').cmTile.root.view.composing"));
+	const before = readFileSync(join(cwd, "first.md"), "utf8");
+	writeFileSync(join(cwd, "first.md"), "MID-SYLLABLE\n" + before);
+	// The change is at the server and on the socket; the editor holds it while the syllable is open.
+	await new Promise((r) => setTimeout(r, 700));
+	assert.ok(!(await editorText(app)).includes("MID-SYLLABLE"), "held while composing");
+	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); })()`);
+	await app.ime("ㅎㅏ", "하");
+	await until("the change to land once the syllable is done", async () => (await editorText(app)).includes("MID-SYLLABLE"));
+	assert.ok((await editorText(app)).includes("하"), "and the syllable is there");
+	assert.deepEqual(app.errors, [], "nothing thrown");
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 });
 
 check("a note deleted on disk is put to the person, and can be put back from the screen", async ({ app, cwd }) => {

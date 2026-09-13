@@ -176,24 +176,26 @@ export function Editor({
 	const [status, setStatus] = useState<"loading" | "saved" | "unsaved" | "conflict" | "gone">("loading");
 	/**
 	 * Work that changes the doc, held while the person is mid-composition —
-	 * a Hangul syllable half typed — since a transaction then would cut the
-	 * composition short. Run in order once it ends.
+	 * a Hangul syllable half typed — since a transaction then would drop
+	 * what the input method has put in the DOM and not yet handed over.
+	 * Run in order once the composition is over: the editor's next update
+	 * after it, which the composition's own commit brings (the listener
+	 * below), on a microtask, since nothing may be dispatched inside one.
 	 */
 	const held = useRef<(() => void)[]>([]);
 	const whenNotComposing = (fn: () => void) => {
 		const v = view.current;
 		if (!v) return;
-		held.current.push(fn);
-		if (held.current.length > 1) return; // A tick is already waiting.
-		const tick = () => {
-			const view_ = view.current;
-			if (!view_) return void (held.current = []);
-			if (view_.composing) return void setTimeout(tick, 40);
-			const jobs = held.current;
-			held.current = [];
+		if (v.composing) held.current.push(fn);
+		else fn();
+	};
+	const releaseHeld = () => {
+		const jobs = held.current;
+		held.current = [];
+		queueMicrotask(() => {
+			if (!view.current) return;
 			for (const job of jobs) job();
-		};
-		tick();
+		});
 	};
 
 	const save = () => {
@@ -323,6 +325,7 @@ export function Editor({
 				EditorView.contentAttributes.of({ spellcheck: "true", "aria-label": "Note" }),
 				theme,
 				EditorView.updateListener.of((u) => {
+					if (held.current.length > 0 && !u.view.composing) releaseHeld();
 					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) onChange(u.changes);
 					// What is chosen, for the box under pi's column to point with.
 					if (u.selectionSet || u.docChanged) {
