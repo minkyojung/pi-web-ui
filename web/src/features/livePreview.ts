@@ -2,7 +2,12 @@
  * Markup hidden where the cursor is not — Obsidian's Live Preview.
  *
  * One rule: a node keeps its markup while any selection range touches it,
- * and hides it otherwise. Two halves, as CodeMirror divides them:
+ * and hides it otherwise — except a list's, which is the block's shape
+ * rather than a word's dress: a bullet, a task's box and an item's
+ * indentation stay drawn with the cursor on the line, as Obsidian has
+ * them, since shown as text they would move the whole line. The keys
+ * edit them (listEdit.ts), and Mod-e shows them as written. Two halves,
+ * as CodeMirror divides them:
  *
  * - Inline (`hidden`): headings, emphasis, links. Nothing spans a line
  *   break, so a view plugin builds it over the visible lines only.
@@ -319,12 +324,11 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 					atoms.add(node.from, node.to, rule);
 					return false;
 				case "ListItem": {
-					// `-`, `*` or `+` as a dot, off its line; on a task item, nothing,
+					// `-`, `*` or `+` as a dot, cursor or not; on a task item, nothing,
 					// since the box is the marker there. The item's other lines and
 					// the lists inside it are walked on.
 					const mark = node.node.getChild("ListMark");
 					if (!mark || !/^[-*+]$/.test(doc.sliceString(mark.from, mark.to))) return;
-					if (onLines(state, ranges, mark.from, mark.from)) return;
 					// The marker and the space after it, as one: the dot is made one
 					// indent unit wide (listIndent.ts), so the words start where the
 					// wrapped rows do, and nothing is left for the marker's box to wrap.
@@ -339,9 +343,8 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 					const marker = node.node.getChild("TaskMarker");
 					if (!marker) return false;
 					const checked = state.doc.sliceString(marker.from, marker.to).toLowerCase() === "[x]";
-					// A done task reads as done, cursor or not: the line is dimmed and struck.
+					// A done task reads as done: the line is dimmed and struck. The box is the marker, cursor or not.
 					if (checked) deco.push({ from: doc.lineAt(node.from).from, to: doc.lineAt(node.from).from, value: doneLine });
-					if (onLines(state, ranges, node.from, node.to)) return false;
 					const end = state.doc.sliceString(marker.to, marker.to + 1) === " " ? marker.to + 1 : marker.to;
 					deco.push({ from: marker.from, to: end, value: box(checked) });
 					atoms.add(marker.from, end, box(checked));
@@ -351,16 +354,15 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 		},
 	});
 	// A list line's leading spaces are markup — they say how deep the item
-	// is, which the padding already shows — so off the cursor's line they go,
-	// and the words start where the padding puts them. The lines are the
-	// ones listIndent.ts pads, so a lazy line under an item, which it does
-	// not, keeps its spaces. Not in a fence, where the spaces are the code's;
-	// and on the cursor's line, the text, to edit.
+	// is, which the padding already shows — so they go, cursor or not, and
+	// the words start where the padding puts them. The lines are the ones
+	// listIndent.ts pads, so a lazy line under an item, which it does not,
+	// keeps its spaces. Not in a fence, where the spaces are the code's.
 	for (const n of listItemLines(state, 0, doc.length).level.keys()) {
 		if (codeLines.has(n)) continue;
 		const l = doc.line(n);
 		const indent = /^[ \t]*/.exec(l.text)![0].length;
-		if (indent === 0 || indent === l.length || onLines(state, ranges, l.from, l.from)) continue;
+		if (indent === 0 || indent === l.length) continue;
 		deco.push({ from: l.from, to: l.from + indent, value: hide });
 		atoms.add(l.from, l.from + indent, hide);
 	}
