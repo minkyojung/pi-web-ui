@@ -360,3 +360,108 @@ test("기록한 변경은 로그의 맨 뒤에 온다 — 먼저 정산한 것�
   // Which is what lets a caller say where the log stood just before this write.
   assert.equal(replay(log.slice(0, log.length - changes.length)).text, "mine, theirs\n");
 });
+
+// --- before: the note with pi's undecided changes put back ---
+
+import { unreviewed } from "../history.ts";
+
+/** What a diff would be against: `before` plus pi's undecided changes is the text. */
+const beforeOf = (log) => unreviewed(log).before;
+
+test("pi가 아무것도 안 했으면 before는 지금 글이다", () => {
+  const log = [...changesBetween("", "mine\n", me), ...changesBetween("mine\n", "mine, more\n", me)];
+  assert.equal(beforeOf(log), "mine, more\n");
+  assert.deepEqual(unreviewed(log).holes, []);
+});
+
+test("pi가 바꾼 것은 before에서 원래대로다 — 넣은 것, 바꾼 것, 지운 것 모두", () => {
+  const base = changesBetween("", "one two three\n", me);
+  assert.equal(beforeOf([...base, ...changesBetween("one two three\n", "one two three four\n", pi)]), "one two three\n", "넣은 것");
+  assert.equal(beforeOf([...base, ...changesBetween("one two three\n", "one TWO three\n", pi)]), "one two three\n", "바꾼 것");
+  assert.equal(beforeOf([...base, ...changesBetween("one two three\n", "one three\n", pi)]), "one two three\n", "지운 것");
+});
+
+test("수락하면 before에 들어가고, 무르면 다시 빠진다", () => {
+  const log = [...changesBetween("", "one two three\n", me), ...changesBetween("one two three\n", "one TWO three\n", pi)];
+  const [hole] = unreviewed(log).holes;
+  const kept = [...log, { ...me, at: 9, from: hole.from, to: hole.to, inserted: "TWO", removed: "TWO", kept: true }];
+  assert.equal(beforeOf(kept), "one TWO three\n");
+  assert.deepEqual(unreviewed(kept).holes, []);
+  const back = [...kept, { ...me, at: 10, from: hole.from, to: hole.to, inserted: "TWO", removed: "TWO", kept: false }];
+  assert.equal(beforeOf(back), "one two three\n");
+});
+
+test("지운 것은 폭 없는 결정으로 수락된다", () => {
+  const log = [...changesBetween("", "one two three\n", me), ...changesBetween("one two three\n", "one three\n", pi)];
+  const [hole] = unreviewed(log).holes;
+  assert.equal(hole.from, hole.to, "폭이 없다");
+  assert.equal(hole.removed, "two ");
+  const kept = [...log, { ...me, at: 9, from: hole.from, to: hole.from, inserted: "", removed: "", kept: true }];
+  assert.equal(beforeOf(kept), "one three\n");
+});
+
+test("pi가 같은 곳을 두 번 고치면 구멍은 하나고, before는 맨 처음 것이다", () => {
+  const log = [
+    ...changesBetween("", "one two three\n", me),
+    ...changesBetween("one two three\n", "one TWO three\n", pi),
+    ...changesBetween("one TWO three\n", "one TWO! three\n", { ...pi, at: 3 }),
+  ];
+  assert.equal(unreviewed(log).holes.length, 1);
+  assert.equal(beforeOf(log), "one two three\n");
+});
+
+test("사람이 pi의 미결정 글 안에서 고친 것은 그 덩어리의 것이다", () => {
+  const log = [
+    ...changesBetween("", "one two three\n", me),
+    ...changesBetween("one two three\n", "one TWO three\n", pi),
+    ...changesBetween("one TWO three\n", "one TwO three\n", { ...me, at: 3 }),
+  ];
+  assert.equal(beforeOf(log), "one two three\n", "사람의 w도 pi의 덩어리 안에 있다");
+  const { text, holes } = unreviewed(log);
+  assert.equal(text.slice(holes[0].from, holes[0].to), "TwO");
+});
+
+test("pi 단어 끝에 사람이 이어 붙인 것은 사람의 것이다 — 되돌려도 남아야 하니", () => {
+  const log = [
+    ...changesBetween("", "one two three\n", me),
+    ...changesBetween("one two three\n", "one TWO three\n", pi),
+    ...changesBetween("one TWO three\n", "one TWO? three\n", { ...me, at: 3 }),
+  ];
+  assert.equal(beforeOf(log), "one two? three\n", "?는 before에도 있다");
+  const { text, holes } = unreviewed(log);
+  assert.equal(text.slice(holes[0].from, holes[0].to), "TWO");
+});
+
+test("사람이 pi의 미결정 글 밖에서 고친 것은 before에도 있다", () => {
+  const log = [
+    ...changesBetween("", "one two three\n", me),
+    ...changesBetween("one two three\n", "one TWO three\n", pi),
+    ...changesBetween("one TWO three\n", "ZERO one TWO three\n", { ...me, at: 3 }),
+    ...changesBetween("ZERO one TWO three\n", "ZERO one TWO three four\n", { ...me, at: 4 }),
+  ];
+  assert.equal(beforeOf(log), "ZERO one two three four\n");
+  const { text, holes } = unreviewed(log);
+  assert.equal(text.slice(holes[0].from, holes[0].to), "TWO", "구멍은 앞의 편집만큼 밀렸다");
+});
+
+test("pi의 글 바로 뒤에 이어 쓴 것은 pi의 것이 아니다", () => {
+  const log = [...changesBetween("", "one ", me), ...changesBetween("one ", "one two", pi), ...changesBetween("one two", "one two three", { ...me, at: 3 })];
+  assert.equal(beforeOf(log), "one  three", "before에는 pi의 two만 없다 — 두 공백 사이에 있던 것");
+  assert.equal(unreviewed(log).text.slice(unreviewed(log).holes[0].from, unreviewed(log).holes[0].to), "two");
+});
+
+test("before는 로그가 아무리 길어도 지금 글과 홀만으로 다시 만들 수 있다", () => {
+  const steps = ["", "abc", "abXc", "aXc", "aXcYZ", "YZ", "Q", "Q!", "Q!!"];
+  const log = [];
+  for (let i = 1; i < steps.length; i++) log.push(...changesBetween(steps[i - 1], steps[i], i % 2 ? me : pi));
+  const { text, before, holes } = unreviewed(log);
+  assert.equal(text, "Q!!");
+  let rebuilt = text;
+  for (const h of [...holes].reverse()) rebuilt = rebuilt.slice(0, h.from) + h.removed + rebuilt.slice(h.to);
+  assert.equal(rebuilt, before);
+  let last = 0;
+  for (const h of holes) {
+    assert.ok(h.from >= last && h.to >= h.from, "홀은 겹치지 않고 순서대로다");
+    last = h.to;
+  }
+});

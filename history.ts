@@ -162,6 +162,103 @@ function decideRemoval(removal: Removal, accepted: boolean): Removal {
 }
 
 /**
+ * A run of the note that pi changed and the person has not decided about,
+ * with what stood there before pi did.
+ *
+ * In the coordinates of the text as it is. Of no width when pi took words
+ * away and put none back. `removed` is not what pi's one change replaced but
+ * what the note had there before any of pi's undecided changes: two of pi's
+ * changes to the same words are one hole, and so is a change of the person's
+ * inside one — see unreviewed.
+ */
+export type Hole = { from: number; to: number; removed: string; accepted?: true };
+
+/**
+ * The note as it would be with every undecided change of pi's put back —
+ * "before", for a diff against the note as it is.
+ *
+ * Not kept anywhere: a second reading of the same log, beside replay's. It
+ * walks the changes carrying the holes — pi's undecided runs — and at the end
+ * fills each with what it displaced. Two rules decide what a hole is:
+ *
+ * - A change of pi's opens one, or widens the one it lands in. Two changes
+ *   to the same words are one thing to decide about.
+ * - A change of the person's inside a hole joins it. Cursor and Zed diff the
+ *   file as it is against the file as it was and get the same answer; the
+ *   alternative, telling the person's words from pi's inside one chunk, would
+ *   need a chunk to have more than one author, and a decision to be about
+ *   less than a chunk. The chunk is the unit, and what is in it is the chunk's.
+ *   Inside, not at the edge: typing on from the end of pi's words is the
+ *   person's, as a mark in the editor does not grow at its end — and putting
+ *   the chunk back must not take their words with it.
+ *
+ * A decision (isTouch) covering a hole whole closes it, and its opposite opens
+ * it again; a decision of no width is about the hole of no width at that
+ * place. A decision covering part of a hole leaves it open — a chunk is
+ * decided about whole, and one from before that was possible waits for a
+ * decision that covers it.
+ */
+export function unreviewed(changes: Change[]): { text: string; before: string; holes: Hole[] } {
+	let text = "";
+	let holes: Hole[] = [];
+	for (const change of changes) {
+		if (isTouch(change)) {
+			const kept = change.kept !== false;
+			holes = holes.map((h) => {
+				const covered = h.from === h.to ? change.from <= h.from && h.from <= change.to : change.from <= h.from && h.to <= change.to;
+				if (!covered) return h;
+				const { accepted: _was, ...rest } = h;
+				return kept ? { ...rest, accepted: true } : rest;
+			});
+			continue;
+		}
+		const delta = change.inserted.length - (change.to - change.from);
+		// The holes this change lands in. Overlap, not adjacency: typing on from
+		// the end of pi's words is not a change to them, as a mark in the editor
+		// does not grow at its end. A hole of no width is a seam, and a change
+		// at either edge of it is at it — so a deletion and an insertion at one
+		// place become one hole.
+		const touched = holes.filter((h) =>
+			h.from === h.to ? change.from <= h.from && h.from <= change.to : change.from < h.to && h.from < change.to,
+		);
+		if (change.author === "pi" || touched.length) {
+			const from = Math.min(change.from, ...touched.map((h) => h.from));
+			const to = Math.max(change.to, ...touched.map((h) => h.to));
+			// What the note had across [from, to) before pi: the text there, with
+			// each hole's own displaced words in place of what fills it now.
+			let removed = "";
+			let at = from;
+			for (const h of touched) {
+				removed += text.slice(at, h.from) + h.removed;
+				at = h.to;
+			}
+			removed += text.slice(at, to);
+			// pi's words are new and undecided; the person's inside a hole leave
+			// its standing as it was.
+			const accepted = change.author !== "pi" && touched.every((h) => h.accepted);
+			const merged: Hole = { from, to: to + delta, removed, ...(accepted ? { accepted: true } : {}) };
+			holes = [...holes.filter((h) => !touched.includes(h)).map((h) => (h.from >= change.to ? { ...h, from: h.from + delta, to: h.to + delta } : h)), merged];
+			holes.sort((a, b) => a.from - b.from);
+			// Two holes end to end, standing the same way, are one: what each
+			// displaced sits end to end in "before" just as they do in the text.
+			holes = holes.reduce<Hole[]>((out, h) => {
+				const last = out[out.length - 1];
+				if (last && last.to === h.from && !!last.accepted === !!h.accepted) last.to = h.to, (last.removed += h.removed);
+				else out.push({ ...h });
+				return out;
+			}, []);
+		} else {
+			holes = holes.map((h) => (h.from >= change.to ? { ...h, from: h.from + delta, to: h.to + delta } : h));
+		}
+		text = apply(text, change);
+	}
+	const open = holes.filter((h) => !h.accepted);
+	let before = text;
+	for (const h of [...open].reverse()) before = before.slice(0, h.from) + h.removed + before.slice(h.to);
+	return { text, before, holes: open };
+}
+
+/**
  * Where a place in a note has moved to, after the changes since.
  *
  * A change lies before the place, after it, or around it: before, the place
