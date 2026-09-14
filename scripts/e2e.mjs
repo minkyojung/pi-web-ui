@@ -1237,12 +1237,18 @@ check("⌘+click on a markdown link opens the note at its path, and a web addres
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {
-	const scenarios = await until("the gallery", () =>
-		bench.evaluate("[...document.querySelectorAll('select option')].map((o) => o.value).join(',')"),
+	// The list is drawn only while the picker is open, and each entry carries
+	// its id: what is read is the scenario's name, and the name is not the id.
+	await until("the gallery", () => bench.evaluate("!!document.getElementById('scenario')"));
+	await bench.click("#scenario");
+	const scenarios = await until("the scenarios", () =>
+		bench.evaluate("[...document.querySelectorAll('[role=option]')].map((o) => o.dataset.scenario).join(',')"),
 	);
 	for (const id of ["tool-headers", "branches", "thinking", "recorded:turn-with-tools"]) {
 		assert.ok(scenarios.includes(id), `the bench is missing ${id}`);
 	}
+	// Away again, so the check after this one does not read a page with a menu over it.
+	await bench.press("Escape");
 });
 
 check("nothing was written to the console", async ({ app, bench }) => {

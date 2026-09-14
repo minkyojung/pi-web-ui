@@ -4,7 +4,7 @@ import { ChevronRightIcon, PauseIcon, PlayIcon, RotateCcwIcon, SkipForwardIcon }
 import { ConversationView } from "../components/ConversationView";
 import { ToolSummaries } from "../components/ToolRow";
 import { Button } from "../components/ui/button";
-import { NativeSelect } from "../components/ui/native-select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { useReplay } from "./replay";
 import { scenarios } from "./scenarios";
 
@@ -44,13 +44,19 @@ export function GalleryPage() {
 		<div className="flex h-screen flex-col bg-background text-foreground">
 			<header className="flex flex-col gap-2 border-b px-3 py-2">
 				<div className="flex flex-wrap items-center gap-2">
-					<NativeSelect className="w-64" value={id} onChange={(e) => setId(e.target.value)}>
-						{scenarios.map((s) => (
-							<option key={s.id} value={s.id}>
-								{s.name}
-							</option>
-						))}
-					</NativeSelect>
+					<Select value={id} onValueChange={setId}>
+						<SelectTrigger id="scenario" size="sm" className="w-64">
+							<SelectValue />
+						</SelectTrigger>
+						{/* The name is what is read; the id is what the bench check asks for. */}
+						<SelectContent>
+							{scenarios.map((s) => (
+								<SelectItem key={s.id} value={s.id} data-scenario={s.id}>
+									{s.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
 
 					<div className="flex items-center gap-0.5">
 						<Button size="icon-sm" variant="ghost" title="Start" onClick={() => replay.seek(0)}>
@@ -107,18 +113,19 @@ export function GalleryPage() {
 						{replay.cursor}/{replay.total}
 					</span>
 
-					<NativeSelect
-						className="w-16"
-						value={replay.speed}
-						aria-label="Speed"
-						onChange={(e) => replay.setSpeed(Number(e.target.value))}
-					>
-						{SPEEDS.map((s) => (
-							<option key={s} value={s}>
-								{s}×
-							</option>
-						))}
-					</NativeSelect>
+					{/* Radix speaks in strings; the speed is a number. */}
+					<Select value={String(replay.speed)} onValueChange={(v) => replay.setSpeed(Number(v))}>
+						<SelectTrigger size="sm" aria-label="Speed" className="w-16">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{SPEEDS.map((s) => (
+								<SelectItem key={s} value={String(s)}>
+									{s}×
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
 
 					{/* The frame's width, because it is half of what makes a run hard to read. */}
 					<label className="flex items-center gap-2 text-xs text-muted-foreground">
