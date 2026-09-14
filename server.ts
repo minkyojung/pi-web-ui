@@ -28,6 +28,7 @@ import { modeToolNames } from "./toolModes.ts";
 import { clampLevel, loadoutOf, lostProviders, modelsNotice as modelsNotice_, supportedLevels } from "./models.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { askForName } from "./sessionName.ts";
+import { askUser } from "./askUser.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
 import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, trashNote, writeNote, type WriteResult } from "./vault.ts";
@@ -221,7 +222,16 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 				// A turn that answers about a chosen part of a note says it rather
 				// than writing it; the answer is put in here — see ask.ts.
 				{ name: "answering", factory: answering(() => asking !== null, answered) },
+				// pi asking the person, answered in the browser — see askUser.ts.
+				// The bridge is reached when a question is asked, not now: it is
+				// made further down, after this first session is.
+				{ name: "ask", factory: askUser(() => prompts.ask) },
 			],
+			// The dashboard packages in the person's pi are for its terminal
+			// and its own app. Here they cost a second on every new session —
+			// a registration with a gateway that answers slowly for a real
+			// folder — and the one tool of theirs this app needed is now above.
+			extensionsOverride: (loaded) => ({ ...loaded, extensions: loaded.extensions.filter((e) => !e.path.includes("dashboard")) }),
 		},
 	});
 	return {
@@ -771,12 +781,7 @@ async function bind(): Promise<void> {
 	// The extension's hook is registered inside bindExtensions (its session_start
 	// runs there), so this is the earliest point it can hear us — and it has to
 	// be repeated per bind, because a replaced session rebuilds the bus.
-	const hooked = prompts.register(eventBus);
-	if (!hooked && session().getAllTools().some((tool) => tool.name === "ask_user")) {
-		console.warn(
-			"ask_user is loaded but its prompt:register-adapter hook did not answer; questions will time out instead of showing in the UI",
-		);
-	}
+	prompts.register(eventBus);
 	unsubscribe = session().subscribe(onEvent);
 }
 

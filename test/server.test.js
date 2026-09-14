@@ -87,6 +87,18 @@ const it = (name, fn) => test(name, async (t) => {
   await fn(t);
 });
 
+it("묻는 도구는 우리 것이고, 대시보드의 것은 실리지 않는다", async () => {
+  const config = await want("config");
+  const names = config.tools.map((t) => t.name);
+  assert.ok(names.includes("ask_user"), `ask_user among ${names.join(", ")}`);
+  // The dashboard's other tools would come with its extension; none is here.
+  assert.deepEqual(names.filter((n) => /canvas|role/.test(n)), []);
+  // Its module still prints where its gateway would be as it is read; what
+  // never happens is the session start that would register with it.
+  assert.ok(!log.includes("sendFlowsList"), "the dashboard bridge never started");
+  assert.ok(!log.includes("did not answer"), "nothing warned about a missing hook");
+});
+
 it("접속하면 서버의 상태가 먼저 온다 — 설정, 목록, 스냅샷", async () => {
   await want("config");
   const files = await want("files");
@@ -172,7 +184,8 @@ it("새 노트를 청하면 Untitled로 만들어져 이 탭에 이름이 오고
   send({ type: "new_note" });
   const first = await want("note_created");
   assert.equal(first.path, "Untitled.md");
-  assert.equal(readFileSync(join(cwd, first.path), "utf8"), "");
+  // A note made here says when it was made, and nothing else — see withCreated in vault.ts.
+  assert.match(readFileSync(join(cwd, first.path), "utf8"), /^---\ncreated: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}\n---\n$/);
   await want("note", (m) => m.path === first.path);
   await want("files", (m) => m.files.some((f) => f.path === first.path));
   clear();
@@ -271,7 +284,7 @@ it("이름을 주고 새 노트를 청하면 그 이름이 되고, 있는 이름
   clear();
   send({ type: "new_note", name: "wanted" });
   assert.equal((await want("note_created")).path, "wanted.md");
-  assert.equal(readFileSync(join(cwd, "wanted.md"), "utf8"), "");
+  assert.match(readFileSync(join(cwd, "wanted.md"), "utf8"), /^---\ncreated: /);
   clear();
   send({ type: "new_note", name: "wanted" });
   assert.equal((await want("note_rename_failed")).reason, "exists");

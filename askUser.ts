@@ -119,11 +119,12 @@ export function normalize(args: unknown): unknown {
 			// Left for the schema.
 		}
 	}
-	if (Array.isArray(q.questions)) {
-		q.questions = q.questions.map(normalizeOne);
-		if (q.method === undefined && q.questions.length > 0) q.method = "batch";
+	const questions = q.questions;
+	if (Array.isArray(questions)) {
+		q.questions = questions.map(normalizeOne);
+		if (q.method === undefined && questions.length > 0) q.method = "batch";
 		if (q.method === "batch" && q.title === undefined) {
-			const first = q.questions[0];
+			const first = normalizeOne(questions[0]);
 			q.title = isObject(first) && typeof first.title === "string" ? first.title : "Questions";
 		}
 	}
