@@ -382,7 +382,7 @@
  * on; it has to be an explicit list because "is interactive" is not a selector.
  */
 .drag-region { -webkit-app-region: drag; app-region: drag; }
-.drag-region :is(a, button, input, select, textarea, label, [role="button"]) {
+.drag-region :is(a, button, input, select, textarea, label, [role="button"], [role="tab"]) {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }

@@ -168,7 +168,9 @@ function buildMenu(workdir) {
 			},
 			{ role: "editMenu" },
 			{ role: "viewMenu" },
-			{ role: "windowMenu" },
+			// The standard window menu less Close: ⌘W is the page's, for the tab in
+			// front, and a menu accelerator would take it before the page heard it.
+			{ role: "window", submenu: [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { role: "front" }] },
 		]),
 	);
 }
