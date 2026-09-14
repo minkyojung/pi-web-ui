@@ -304,6 +304,11 @@ export function Editor({
 					// At the top of the text there is nothing above to move to, and
 					// the note's page goes on above: the properties, the title.
 					{ key: "ArrowUp", run: leaveTextUp },
+					// ⌘[ and ⌘] are the window's back and forward (App.tsx), as in
+					// Obsidian. Taken here so the default keymap does not indent with
+					// them, which is Tab's work and done above.
+					{ key: "Mod-[", run: () => true },
+					{ key: "Mod-]", run: () => true },
 					{ key: "Mod-e", run: toggleLivePreview },
 					{ key: "Mod-b", run: toggleBold },
 					{ key: "Mod-i", run: toggleItalic },

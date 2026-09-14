@@ -16,7 +16,7 @@ import { hashForNote, noteFromHash } from "./noteSync";
 import { NoteTabs } from "./components/NoteTabs";
 import { layoutStore, shown } from "./piLayout";
 import { bump, forget, readRecent, writeRecent } from "./recent";
-import { empty, forget as forgetStep, go, here, type Nav, replace } from "./nav";
+import { back as stepBack, canBack, canForward, empty, forget as forgetStep, forward as stepForward, go, here, type Nav, replace } from "./nav";
 import { type Closed, add as addTab, close as closeTabIn, move, neighbour, readTabs, reopen, writeTabs } from "./tabs";
 import { filesStore, noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
 import { Button } from "./components/ui/button";
@@ -45,6 +45,11 @@ type Opened = {
 	setOpen: (path: string | null, place?: Place) => void;
 	/** The note in front went away and another stands there now: not a step. */
 	showInstead: (path: string | null) => void;
+	/** A step back along the list, and one forward again. Neither adds to it. */
+	back: () => void;
+	forward: () => void;
+	canBack: boolean;
+	canForward: boolean;
 };
 function useOpenNote(): Opened {
 	const [nav, setNav] = useState<Nav>(() => {
@@ -84,6 +89,21 @@ function useOpenNote(): Opened {
 		if (next) setNav((nav) => replace(nav, next));
 	}, []);
 
+	// Going back from a window showing nothing — the last tab was closed —
+	// leaves the step it was standing on behind, as closing a tab and going
+	// back would anywhere else. With nowhere to go, nothing happens at all:
+	// forward is not a way to reopen what you have just closed.
+	const goBack = useCallback(() => {
+		if (!canBack(nav)) return;
+		setBlank(false);
+		setNav(stepBack);
+	}, [nav]);
+	const goForward = useCallback(() => {
+		if (!canForward(nav)) return;
+		setBlank(false);
+		setNav(stepForward);
+	}, [nav]);
+
 	// A rename moves the address under the open note, and under every step
 	// that named it. The editor is the same one — same undo history, same
 	// cursor — so it is told rather than replaced.
@@ -92,7 +112,7 @@ function useOpenNote(): Opened {
 		if (renamed) setNav((nav) => forgetStep(nav, renamed.from, renamed.to));
 	}, [renamed]);
 
-	return { open, place: entry?.place ?? null, setOpen, showInstead };
+	return { open, place: entry?.place ?? null, setOpen, showInstead, back: goBack, forward: goForward, canBack: canBack(nav), canForward: canForward(nav) };
 }
 
 /**
@@ -126,7 +146,7 @@ noteRenamedStore.subscribe(() => {
  * seat. It collapses with ⌘\ so it can be ignored.
  */
 export function App() {
-	const { open, place, setOpen, showInstead } = useOpenNote();
+	const { open, place, setOpen, showInstead, back, forward } = useOpenNote();
 	// A debug view, so it is behind a shortcut rather than a permanent control in
 	// the best seat on screen. RawView says how to leave, since nothing says it
 	// is there in the first place.
@@ -284,6 +304,14 @@ export function App() {
 				e.preventDefault();
 				reopenTab();
 			}
+			// Back and forward through the notes you have been in, as in a browser
+			// and in Obsidian. The editor leaves these two alone (Editor.tsx); its
+			// default would indent with them, which Tab already does.
+			if (mod && !e.shiftKey && (e.code === "BracketLeft" || e.code === "BracketRight")) {
+				e.preventDefault();
+				if (e.code === "BracketLeft") back();
+				else forward();
+			}
 			// Along the row: ⌃Tab as everywhere, ⌘⇧[ and ⌘⇧] as on a Mac. By code,
 			// since with Shift the key on a Mac is } rather than ].
 			const along = e.key === "Tab" && e.ctrlKey ? (e.shiftKey ? -1 : 1)
@@ -298,7 +326,20 @@ export function App() {
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [online, open, tabs, closeTab, reopenTab, setOpen, togglePi]);
+	}, [online, open, tabs, closeTab, reopenTab, setOpen, togglePi, back, forward]);
+
+	// The side buttons of a mouse, which are back and forward everywhere else.
+	// On mousedown, before the browser makes its own move with them.
+	useEffect(() => {
+		const onMouse = (e: MouseEvent) => {
+			if (e.button !== 3 && e.button !== 4) return;
+			e.preventDefault();
+			if (e.button === 3) back();
+			else forward();
+		};
+		window.addEventListener("mousedown", onMouse);
+		return () => window.removeEventListener("mousedown", onMouse);
+	}, [back, forward]);
 
 	return (
 		<TooltipProvider delayDuration={300}>

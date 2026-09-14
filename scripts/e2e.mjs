@@ -1235,6 +1235,37 @@ check("⌘⇧T puts a closed tab back where it was, and ⌘⇧] and ⌘⇧[ go a
 	await until("and back to the last", async () => (await editorText(app)) === "F\n");
 });
 
+check("⌘[ goes back through the notes you have been in and ⌘] forward again, and opening one after going back throws away the way forward", async ({ app, cwd }) => {
+	for (const [name, text] of [["back-a", "A\n"], ["back-b", "B\n"], ["back-c", "C\n"], ["back-d", "D\n"]]) writeFileSync(join(cwd, `${name}.md`), text);
+	await until("all four listed", () => app.evaluate(`["back-a.md","back-b.md","back-c.md","back-d.md"].every((p) => !!document.querySelector('#notes button[data-path="' + p + '"]'))`));
+	const open = async (path, text) => {
+		await app.evaluate(`document.querySelector('#notes button[data-path="${path}"]').click()`);
+		await until(path, async () => (await editorText(app)) === text);
+	};
+	await open("back-a.md", "A\n");
+	await open("back-b.md", "B\n");
+	await open("back-c.md", "C\n");
+	await app.press("[", { meta: true });
+	await until("back to b", async () => (await editorText(app)) === "B\n");
+	// Where you are is the tab in front and the address, not only the text.
+	await until("b's tab in front", () => app.evaluate(`document.querySelector('[role=tab][data-state=active]')?.dataset.path === "back-b.md"`));
+	assert.equal(await app.evaluate("location.hash"), "#back-b.md");
+	await app.press("[", { meta: true });
+	await until("and back to a", async () => (await editorText(app)) === "A\n");
+	await app.press("]", { meta: true });
+	await until("forward to b again", async () => (await editorText(app)) === "B\n");
+	// c was ahead; opening d from here throws it away, and forward has nowhere to go.
+	await open("back-d.md", "D\n");
+	await app.press("]", { meta: true });
+	await until("still d", async () => (await editorText(app)) === "D\n");
+	assert.equal(await app.evaluate("location.hash"), "#back-d.md");
+	await app.press("[", { meta: true });
+	await until("back past b", async () => (await editorText(app)) === "B\n");
+	await app.press("[", { meta: true });
+	await until("to a", async () => (await editorText(app)) === "A\n");
+	assert.equal(await app.evaluate("location.hash"), "#back-a.md");
+});
+
 check("a tab dragged onto another takes its place, and a press without a move is still a pick", async ({ app }) => {
 	const row = () => app.evaluate("[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.path)");
 	const before = await row();
@@ -1621,7 +1652,9 @@ check("⌘+click on a link to a heading or a block opens its note at that line",
 		await until("the links", async () => (await app.evaluate("location.hash")) === "#jump.md" && (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink').length")) === 2);
 		await app.click("#editor .cm-wikilink", n, { meta: true });
 		await until(`the cursor on "${line}"`, async () => (await app.evaluate("location.hash")) === "#long.md" && (await caretLine(app))?.text === line);
-		assert.equal((await caretLine(app)).seen, true, "and the line is in view");
+		// The editor scrolls a frame after it moves the cursor, so the line is
+		// waited for rather than asked about the moment the cursor arrives.
+		await until(`"${line}" in view`, async () => (await caretLine(app))?.seen === true, 5_000);
 	}
 });
 
