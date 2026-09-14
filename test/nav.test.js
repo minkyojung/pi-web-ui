@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { back, canBack, canForward, empty, forget, forward, go, here, replace } from "../web/src/nav.ts";
+import { back, canBack, canForward, empty, forget, forward, go, here, replace, restored } from "../web/src/nav.ts";
 
 /** 경로만 늘어놓아 보기 위한 것: 서 있는 자리는 ▸로 표시한다. */
 const shown = (nav) => nav.entries.map((e, i) => (i === nav.at ? `▸${e.path}` : e.path));
@@ -88,4 +88,23 @@ test("지워진 노트를 사이에 두고 같은 노트가 붙으면 한 걸음
   assert.deepEqual(shown(forget(nav, "b")), ["a", "▸c"]);
   assert.deepEqual(shown(forget(back(back(nav)), "b")), ["▸a", "c"], "접힌 두 걸음 위에 서 있었다면 남은 하나 위에 선다");
   assert.deepEqual(shown(forget(opened("a", "b", "c"), "c", "a")), ["a", "b", "▸a"], "이름이 바뀌어 옆과 같아진 것도 마찬가지다");
+});
+
+test("걸음은 이 브라우저에 남고, 돌아올 때 서 있던 자리만 링크가 가리키던 곳을 잊는다", () => {
+  const place = { heading: "둘째 장", block: null };
+  const nav = go(go(go(empty, "a", place), "b"), "c", place);
+  const again = restored(JSON.parse(JSON.stringify(nav)));
+  assert.deepEqual(shown(again), ["a", "b", "▸c"]);
+  assert.deepEqual(again.entries[0].place, place, "지나온 걸음의 자리는 남는다 — 되돌아가는 것은 그 링크를 다시 따라가는 것이므로");
+  assert.equal(again.entries[2].place, undefined, "다시 열리는 노트는 커서를 옮기지 않는다");
+});
+
+test("남은 것이 이 목록이 아니면 없던 것으로 한다", () => {
+  assert.deepEqual(restored(null), empty);
+  assert.deepEqual(restored("[]"), empty);
+  assert.deepEqual(restored({ entries: [], at: 0 }), empty);
+  assert.deepEqual(restored({ entries: [{ path: "a" }], at: "1" }), empty);
+  assert.deepEqual(restored({ entries: [{ path: "a" }, { no: "path" }], at: 0 }), empty);
+  assert.deepEqual(shown(restored({ entries: [{ path: "a" }, { path: "b" }], at: 9 })), ["a", "▸b"], "자리가 목록 밖이면 마지막 걸음에 선다");
+  assert.deepEqual(restored({ entries: [{ path: "a" }, { path: "b", place: { heading: 7 } }], at: 0 }).entries[1], { path: "b" }, "자리라 할 수 없는 것은 자리가 아니다");
 });

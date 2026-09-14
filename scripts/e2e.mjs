@@ -1271,6 +1271,32 @@ check("⌘[ goes back through the notes you have been in and ⌘] forward again,
 	assert.equal(await app.evaluate("location.hash"), "#back-a.md");
 	await app.click("#forward");
 	await until("and the forward arrow forward", async () => (await editorText(app)) === "B\n");
+	// The way back outlives the window, as the row of tabs does.
+	await app.evaluate("location.reload()");
+	await until("b after a reload", async () => (await editorStatus(app)) === "saved" && (await editorText(app)) === "B\n");
+	await app.press("[", { meta: true });
+	await until("a step back still reaches a", async () => (await editorText(app)) === "A\n");
+	await app.press("]", { meta: true });
+	await until("and forward to b again", async () => (await editorText(app)) === "B\n");
+});
+
+check("a note in the trash keeps its step while it is in front, and is off the way back once it is not", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "gone-note.md"), "G\n");
+	await until("it is listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="gone-note.md"]')`));
+	const open = async (path, text) => {
+		await app.evaluate(`document.querySelector('#notes button[data-path="${path}"]').click()`);
+		await until(path, async () => (await editorText(app)) === text);
+	};
+	await open("back-a.md", "A\n");
+	await open("gone-note.md", "G\n");
+	await app.evaluate(`document.querySelector('button[aria-label="Delete note"]').click()`);
+	await until("the offer to bring it back", () => app.evaluate("document.body.textContent.includes('Deleted gone-note')"));
+	// It is still the step we stand on: there is nowhere else to offer it from.
+	assert.equal(await app.evaluate("location.hash"), "#gone-note.md");
+	await open("back-c.md", "C\n");
+	await app.press("[", { meta: true });
+	await until("straight past the trashed one to a", async () => (await editorText(app)) === "A\n");
+	assert.equal(await app.evaluate("location.hash"), "#back-a.md");
 });
 
 check("a tab dragged onto another takes its place, and a press without a move is still a pick", async ({ app }) => {

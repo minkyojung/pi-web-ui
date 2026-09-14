@@ -16,7 +16,7 @@ import { hashForNote, noteFromHash } from "./noteSync";
 import { NoteTabs } from "./components/NoteTabs";
 import { layoutStore, shown } from "./piLayout";
 import { bump, forget, readRecent, writeRecent } from "./recent";
-import { back as stepBack, canBack, canForward, empty, forget as forgetStep, forward as stepForward, go, here, type Nav, replace } from "./nav";
+import { back as stepBack, canBack, canForward, forget as forgetStep, forward as stepForward, go, here, type Nav, read as readNav, replace, write as writeNav } from "./nav";
 import { type Closed, add as addTab, close as closeTabIn, move, neighbour, readTabs, reopen, writeTabs } from "./tabs";
 import { filesStore, noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
 import { Button } from "./components/ui/button";
@@ -52,9 +52,15 @@ type Opened = {
 	canForward: boolean;
 };
 function useOpenNote(): Opened {
+	// The list outlives the window, as the row of tabs does. The address wins
+	// where the two disagree — a link followed into a new window names a note
+	// the last one never had — and agrees with it far more often, which is how
+	// a reload keeps the way back.
 	const [nav, setNav] = useState<Nav>(() => {
+		const saved = readNav();
 		const path = noteFromHash(location.hash);
-		return path ? go(empty, path) : empty;
+		if (!path) return saved;
+		return here(saved)?.path === path ? saved : go(saved, path);
 	});
 	// Nothing in the middle column, with the list left standing where it is:
 	// the last tab closed, or a window opened at no address. Opening anything
@@ -82,7 +88,15 @@ function useOpenNote(): Opened {
 
 	const setOpen = useCallback((next: string | null, place?: Place) => {
 		setBlank(next === null);
-		if (next) setNav((nav) => go(nav, next, place));
+		if (!next) return;
+		setNav((nav) => {
+			// Stepping off a note that has gone to the trash: it kept its step while
+			// it was in front and the column under it offered it back, and now that
+			// it is not, it is not a step to come back to either.
+			const leaving = here(nav)?.path;
+			const gone = leaving !== undefined && noteDeletedStore.get()?.path === leaving;
+			return go(gone ? forgetStep(nav, leaving) : nav, next, place);
+		});
 	}, []);
 	const showInstead = useCallback((next: string | null) => {
 		setBlank(next === null);
@@ -111,6 +125,19 @@ function useOpenNote(): Opened {
 	useEffect(() => {
 		if (renamed) setNav((nav) => forgetStep(nav, renamed.from, renamed.to));
 	}, [renamed]);
+
+	// A note in the trash is no longer somewhere to go, so it goes from the
+	// list — every step but the one we are standing on, which keeps it while
+	// the column under it offers it back. Stepping off is what forgets that
+	// one, above.
+	const deleted = useSyncExternalStore(noteDeletedStore.subscribe, noteDeletedStore.get);
+	useEffect(() => {
+		if (deleted) setNav((nav) => (here(nav)?.path === deleted.path ? nav : forgetStep(nav, deleted.path)));
+	}, [deleted]);
+
+	useEffect(() => {
+		writeNav(nav);
+	}, [nav]);
 
 	return { open, place: entry?.place ?? null, setOpen, showInstead, back: goBack, forward: goForward, canBack: canBack(nav), canForward: canForward(nav) };
 }

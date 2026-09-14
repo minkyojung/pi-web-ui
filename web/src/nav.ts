@@ -30,6 +30,8 @@ export const empty: Nav = { entries: [], at: -1 };
 /** How far back it is worth being able to go. Chrome keeps 50 a tab; so does VS Code. */
 const KEEP = 50;
 
+const KEY = "nav-history";
+
 /** A place is only its heading or its block: a link carries more, and none of the rest is somewhere to land. */
 const entryOf = (path: string, place?: Place | null): Entry =>
 	place && (place.heading || place.block) ? { path, place: { heading: place.heading, block: place.block } } : { path };
@@ -105,4 +107,51 @@ export function forget(nav: Nav, path: string, replacement?: string): Nav {
 		if (i <= nav.at) at = entries.length - 1;
 	}
 	return { entries, at: entries.length === 0 ? -1 : Math.max(at, 0) };
+}
+
+/** A place as it comes back from storage, with anything that is not a name in it dropped. */
+function placeOf(raw: unknown): Place | null {
+	if (typeof raw !== "object" || raw === null) return null;
+	const { heading, block } = raw as Place;
+	return { heading: typeof heading === "string" ? heading : null, block: typeof block === "string" ? block : null };
+}
+
+/**
+ * The list read back from what was kept, or an empty one if that is not a
+ * list this wrote — it is a convenience, and losing it costs nothing.
+ *
+ * The step landed on comes back without its place: a reload should not jump
+ * the cursor to where a link once pointed. Where the note was left is what
+ * the editor puts back on its own, and the steps around it keep their places,
+ * since going back to one is following that link again.
+ */
+export function restored(raw: unknown): Nav {
+	if (typeof raw !== "object" || raw === null) return empty;
+	const { entries, at } = raw as { entries?: unknown; at?: unknown };
+	if (!Array.isArray(entries) || entries.length === 0 || !Number.isInteger(at)) return empty;
+	const kept: Entry[] = [];
+	for (const was of entries) {
+		const path = (was as Entry)?.path;
+		if (typeof path !== "string") return empty;
+		kept.push(entryOf(path, placeOf((was as Entry).place)));
+	}
+	const where = (at as number) >= 0 && (at as number) < kept.length ? (at as number) : kept.length - 1;
+	kept[where] = { path: kept[where].path };
+	return { entries: kept, at: where };
+}
+
+export function read(): Nav {
+	try {
+		return restored(JSON.parse(localStorage.getItem(KEY) ?? "null"));
+	} catch {
+		return empty;
+	}
+}
+
+export function write(nav: Nav): void {
+	try {
+		localStorage.setItem(KEY, JSON.stringify(nav));
+	} catch {
+		// A window with storage blocked opens with no way back, which is all that is lost.
+	}
 }
