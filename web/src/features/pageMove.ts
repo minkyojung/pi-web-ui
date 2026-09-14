@@ -51,7 +51,13 @@ export const atTextTop = (state: EditorState, at: number) => at <= textStart(sta
 // ---------------------------------------------------------------------------
 // The parts, as the page holds them
 
-const ROWS = "#properties [data-property] input, #properties [data-property] [role=checkbox], #properties-summary";
+/**
+ * One place to stop in each row: its value. The name beside it is a box too
+ * now, and ↓ that went through both would be walking half-rows — down the
+ * page it is properties that follow one another, not boxes. ← and → are how
+ * a row is crossed (Obsidian has them the same way).
+ */
+const ROWS = "#properties [data-property] input:not([data-name]), #properties [data-property] [role=checkbox], #properties-summary";
 const ADD = "#add-property";
 
 /**
@@ -94,8 +100,7 @@ export function enter(part: Part, way: 1 | -1): boolean {
 		view.dispatch({ selection: { anchor: textStart(view.state) }, scrollIntoView: true });
 		return true;
 	}
-	box.focus();
-	if (box instanceof HTMLInputElement && box.type === "text") box.setSelectionRange(box.value.length, box.value.length);
+	take(box, -1);
 	return true;
 }
 
@@ -115,9 +120,42 @@ export function stepInProperties(from: EventTarget | null, way: 1 | -1): boolean
 	if (at < 0) return false;
 	const next = boxes[at + way];
 	if (!next) return step("properties", way);
-	next.focus();
-	if (next instanceof HTMLInputElement && next.type === "text") next.setSelectionRange(next.value.length, next.value.length);
+	take(next, -1);
 	return true;
+}
+
+/** Put the cursor in a box, at the end it is being entered from. */
+function take(box: HTMLElement, way: 1 | -1): void {
+	box.focus();
+	if (box instanceof HTMLInputElement && box.type === "text") {
+		const at = way === 1 ? 0 : box.value.length;
+		box.setSelectionRange(at, at);
+	}
+}
+
+/**
+ * Across a row: the name and the value it holds. ← and → cross between them,
+ * as Obsidian has it, and only from the edge of the box they start in —
+ * inside one they are the caret's, and a key taken from the caret is a key
+ * the person cannot type with.
+ */
+export function stepAcross(from: EventTarget | null, way: 1 | -1): boolean {
+	const box = from as HTMLElement | null;
+	const row = box?.closest?.("#properties [data-property]");
+	if (!row) return false;
+	const boxes = [...row.querySelectorAll<HTMLElement>("input, [role=checkbox]")];
+	const next = boxes[boxes.indexOf(box as HTMLElement) + way];
+	if (!next) return false;
+	take(next, way);
+	return true;
+}
+
+/** Whether the caret is at the end of a box it could leave by — and not merely somewhere in the middle of it. */
+export function atBoxEdge(box: EventTarget | null, forward: boolean): boolean {
+	if (!(box instanceof HTMLInputElement)) return true;
+	// A number or a date counts with these keys; its caret is not ours to read.
+	if (box.type !== "text") return false;
+	return box.selectionStart === box.selectionEnd && box.selectionStart === (forward ? box.value.length : 0);
 }
 
 // ---------------------------------------------------------------------------

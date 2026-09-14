@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { bodyStart, listOf, propertiesOf, suits, withProperties, writtenIn } from "../properties.ts";
+import { bodyStart, listOf, propertiesOf, renameProperty, suits, withProperties, writtenIn } from "../properties.ts";
 
 const NOTE = `---
 # a comment on top
@@ -200,4 +200,35 @@ test("친 글자와 꼭 같은 것이 먼저, 앞자리가 맞는 것이 다음,
   assert.equal(suits("tags", "date"), 0);
   assert.ok(suits("Status", "st") > 0, "대소문자는 가리지 않는다");
   assert.ok(suits("아무거나", "") > 0, "아무것도 치지 않았으면 다 나온다");
+});
+
+test("이름을 바꾸면 그 줄만 다시 써지고, 값과 자리와 나머지 줄은 그대로다", () => {
+  const note = "---\n# why\ntitle: 'kept'   # here\nstatus: draft\nother: 1\n---\nbody\n";
+  const r = withProperties(note, (doc) => renameProperty(doc, "status", "state"));
+  assert.equal(r.text, "---\n# why\ntitle: 'kept'   # here\nstate: draft\nother: 1\n---\nbody\n");
+});
+
+test("목록 값도 그대로 따라간다", () => {
+  assert.equal(withProperties("---\ntags: [a, b]\n---\n", (doc) => renameProperty(doc, "tags", "topics")).text, "---\ntopics: [a, b]\n---\n");
+});
+
+test("새 이름에 따옴표가 필요하면 붙는다 — 무엇에 필요한지는 라이브러리가 정한다", () => {
+  const r = withProperties("---\na: 1\n---\n", (doc) => renameProperty(doc, "a", "to do: today"));
+  assert.equal(propertiesOf(r.text).errors.length, 0, "블록은 여전히 읽힌다");
+  assert.deepEqual(propertiesOf(r.text).doc.toJS(), { "to do: today": 1 });
+});
+
+test("이미 있는 이름으로는 바꾸지 않는다 — 같은 키가 둘이면 블록이 깨지므로", () => {
+  const note = "---\na: 1\nb: 2\n---\n";
+  assert.equal(withProperties(note, (doc) => renameProperty(doc, "a", "b")).text, note, "아무것도 바뀌지 않는다");
+  assert.equal(withProperties(note, (doc) => renameProperty(doc, "a", "  ")).text, note, "빈 이름도 마찬가지");
+});
+
+test("대소문자만 고치는 것은 자기 자신이므로 허용한다", () => {
+  assert.equal(withProperties("---\nStatus: draft\n---\n", (doc) => renameProperty(doc, "Status", "status")).text, "---\nstatus: draft\n---\n");
+});
+
+test("없는 이름을 바꾸라면 아무 일도 없다", () => {
+  const note = "---\na: 1\n---\n";
+  assert.equal(withProperties(note, (doc) => renameProperty(doc, "nope", "x")).text, note);
 });

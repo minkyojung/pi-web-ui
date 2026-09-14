@@ -235,6 +235,34 @@ export function setProperty(doc: Document, name: string, value: unknown): void {
 	else doc.set(key, value);
 }
 
+/**
+ * Give a property another name, keeping what it holds and where it sits.
+ *
+ * The key is replaced rather than the property: taken out and put back it
+ * would land at the end of the block, and what was being changed is its name
+ * and not its place. The new key is made by the document, so that a name
+ * needing quotes gets them — `to do: today` written plain would end the key
+ * at the colon and take the block with it, and what needs quoting is the
+ * library's to decide, here as everywhere.
+ *
+ * Nothing happens without a name to give, for a property the note does not
+ * have, or where the note already has one by that name: two keys alike are
+ * not a rename but a block that no longer parses. A name that differs only in
+ * its case is the property itself, and is allowed — that is a respelling.
+ *
+ * The type is not carried over. A type belongs to a name and to the whole
+ * vault (propertyTypes.ts), so the old name keeps the one that was chosen for
+ * it — other notes still use it — and the new name has its own.
+ */
+export function renameProperty(doc: Document, from: string, to: string): void {
+	const pair = pairFor(doc, from);
+	const name = to.trim();
+	if (!pair || !name) return;
+	const taken = pairFor(doc, name);
+	if (taken && taken !== pair) return;
+	pair.key = doc.createNode(name);
+}
+
 /** Take a property away, by the note's own spelling of its name. */
 export function removeProperty(doc: Document, name: string): void {
 	const pair = pairFor(doc, name);

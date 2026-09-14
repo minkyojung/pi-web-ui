@@ -1168,9 +1168,9 @@ check("the properties are rows above the note: a chip added, a property added an
 	await app.click("#add-property");
 	await app.keys("status");
 	await app.press("Enter");
-	await until("the new row", () => app.evaluate(`!!document.querySelector('#properties [data-property="status"] input')`));
+	await until("the new row", () => app.evaluate(`!!document.querySelector('#properties [data-property="status"] input:not([data-name])')`));
 	await until("its line", () => file() === "---\ntags: [x, y]\nstatus:\n---\n\n# body\n");
-	await app.click('#properties [data-property="status"] input');
+	await app.click('#properties [data-property="status"] input:not([data-name])');
 	await app.keys("draft");
 	await app.press("Enter");
 	await until("the value", () => file() === "---\ntags: [x, y]\nstatus: draft\n---\n\n# body\n");
@@ -1208,7 +1208,7 @@ check("a property box offers what the vault already says: the name, then the val
 	await app.press("Enter");
 	await until("the line", () => file() === "---\ntags: []\nstatus:\n---\nbody\n");
 	// The value box offers what that name holds elsewhere, most used first, and nothing that does not answer.
-	await app.click('#properties [data-property="status"] input');
+	await app.click('#properties [data-property="status"] input:not([data-name])');
 	assert.deepEqual(await offering(), [], "a box arrived at says nothing until it is asked");
 	// ⌥↓ asks; a bare ↓ is the page's, and would carry the cursor to the next row.
 	await app.press("ArrowDown", { alt: true });
@@ -1282,6 +1282,38 @@ check("↑ and ↓ carry the cursor from the title down through the properties i
 	await until("straight into the text", async () => (await where()) === "text");
 });
 
+check("a property is given another name from its row, keeping what it holds and where it sits", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "renamed.md"), "---\n# why\ntitle: 'kept'   # here\nstatus: draft\nother: 1\n---\nbody\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="renamed.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="renamed.md"]').click()`);
+	await showProperties(app);
+	await until("the rows", () => app.evaluate(`!!document.querySelector('#properties [data-property="status"]')`));
+	const file = () => readFileSync(join(cwd, "renamed.md"), "utf8");
+	// The name is a box: what is typed into it renames the property in place.
+	await app.click('#properties [data-property="status"] [data-name]');
+	await app.evaluate(`(() => { const b = document.activeElement; b.select(); document.execCommand("insertText", false, "state"); })()`);
+	await app.press("Enter");
+	await until("the note", () => file() === "---\n# why\ntitle: 'kept'   # here\nstate: draft\nother: 1\n---\nbody\n");
+	// ← and → cross a row, but only from the edge of the box: in the middle of a value the arrow is the caret's.
+	await app.click('#properties [data-property="state"] input:not([data-name])');
+	await app.evaluate(`document.activeElement.setSelectionRange(2, 2)`);
+	await app.press("ArrowLeft");
+	assert.equal(await app.evaluate(`document.activeElement?.dataset.name`), undefined, "the caret moved and the cursor stayed");
+	await app.evaluate(`document.activeElement.setSelectionRange(0, 0)`);
+	await app.press("ArrowLeft");
+	await until("the name has the cursor", () => app.evaluate(`document.activeElement?.dataset.name === ""`));
+	await app.press("ArrowRight");
+	await until("the value again", () => app.evaluate(`document.activeElement?.dataset.name === undefined && !!document.activeElement?.closest('[data-property="state"]')`));
+	await app.press("ArrowDown");
+	await until("the next property", () => app.evaluate(`!!document.activeElement?.closest('[data-property="other"]')`));
+	// A name the note already has is refused, and the box puts back what was there.
+	await app.click('#properties [data-property="state"] [data-name]');
+	await app.evaluate(`(() => { const b = document.activeElement; b.select(); document.execCommand("insertText", false, "other"); })()`);
+	await app.press("Enter");
+	await until("nothing moved", () => file() === "---\n# why\ntitle: 'kept'   # here\nstate: draft\nother: 1\n---\nbody\n");
+	assert.ok(await app.evaluate(`!!document.querySelector('#properties [data-property="state"]')`), "the property is still called what it was");
+});
+
 check("a row is drawn by its type — a box, a date, a number — the type is chosen for the name from the row's icon, and a value that does not fit is said so", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "typed.md"), "---\ndone: true\nwhen: 2024-01-01\ncount: 3\nodd: nope\n---\nbody\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="typed.md"]')`));
@@ -1291,8 +1323,8 @@ check("a row is drawn by its type — a box, a date, a number — the type is ch
 	const file = () => readFileSync(join(cwd, "typed.md"), "utf8");
 	// Guessed from the values.
 	assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('#properties [data-property]')].map((r) => r.dataset.type)`), ["checkbox", "date", "number", "text"]);
-	assert.equal(await app.evaluate(`document.querySelector('#properties [data-property="when"] input').type`), "date");
-	assert.equal(await app.evaluate(`document.querySelector('#properties [data-property="count"] input').type`), "number");
+	assert.equal(await app.evaluate(`document.querySelector('#properties [data-property="when"] input:not([data-name])').type`), "date");
+	assert.equal(await app.evaluate(`document.querySelector('#properties [data-property="count"] input:not([data-name])').type`), "number");
 	// The box is the value: unticked, the file says false.
 	await app.click('#properties [data-property="done"] [role=checkbox]');
 	await until("the file", () => file() === "---\ndone: false\nwhen: 2024-01-01\ncount: 3\nodd: nope\n---\nbody\n");

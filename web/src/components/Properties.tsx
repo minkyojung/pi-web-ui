@@ -4,9 +4,9 @@ import { Command as CommandPrimitive } from "cmdk";
 import { AlignLeft, Calendar, CalendarClock, ChevronDown, ChevronUp, Hash, List, Plus, SquareCheck, Tags, TriangleAlert, X } from "lucide-react";
 import { type Document, isScalar, isSeq, type Pair } from "yaml";
 
-import { bodyStart, type Properties as Read, removeProperty, setProperty, suits, withProperties } from "../../../properties.ts";
+import { bodyStart, type Properties as Read, removeProperty, renameProperty, setProperty, suits, withProperties } from "../../../properties.ts";
 import { fits, fromInput, isReserved, keyOf, PROPERTY_TYPES, type PropertyType, typeOf } from "../../../propertyTypes.ts";
-import { enter, stepInProperties } from "../features/pageMove";
+import { atBoxEdge, enter, stepAcross, stepInProperties } from "../features/pageMove";
 import { propertiesEdit } from "../features/properties";
 import { toggleLivePreview } from "../features/livePreview";
 import { propertyNamesStore, propertyTypesStore } from "../serverState";
@@ -110,7 +110,15 @@ export function Properties({ view, read }: { view: EditorView | null; read: Read
 				const name = nameOf(pair);
 				const type = typeOf(name, toPlain(pair.value), chosen);
 				return (
-					<Row key={name} name={name} type={type} chosen={name.toLowerCase() in chosen} onRemove={() => apply((doc) => removeProperty(doc, name))}>
+					<Row
+						key={name}
+						name={name}
+						type={type}
+						chosen={name.toLowerCase() in chosen}
+						names={used.names}
+						onRename={(to) => apply((doc) => renameProperty(doc, name, to))}
+						onRemove={() => apply((doc) => removeProperty(doc, name))}
+					>
 						<Value name={name} type={type} node={pair.value} said={used.values[keyOf(name)] ?? []} apply={apply} />
 					</Row>
 				);
@@ -217,11 +225,19 @@ const Frame = ({ children }: { children: React.ReactNode }) => (
 		className="mx-auto flex w-full max-w-[42rem] flex-col gap-1 px-6 pt-4 text-sm"
 		onKeyDownCapture={(e) => {
 			if (e.nativeEvent.isComposing || e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
-			if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
 			const box = e.target as HTMLElement;
 			if (box.closest("[data-suggesting]")) return;
-			if (box instanceof HTMLInputElement && box.type !== "text") return;
-			if (stepInProperties(box, e.key === "ArrowDown" ? 1 : -1)) e.preventDefault();
+			if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+				if (box instanceof HTMLInputElement && box.type !== "text") return;
+				if (stepInProperties(box, e.key === "ArrowDown" ? 1 : -1)) e.preventDefault();
+				return;
+			}
+			// ← and → cross from the name to the value and back, but only from the
+			// edge of the box they start in: inside one they belong to the caret.
+			if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+			const forward = e.key === "ArrowRight";
+			if (!atBoxEdge(box, forward) || !stepAcross(box, forward ? 1 : -1)) return;
+			e.preventDefault();
 		}}
 	>
 		{children}
@@ -241,13 +257,11 @@ const TYPES: Record<PropertyType, { label: string; Icon: typeof Hash }> = {
 	tags: { label: "Tags", Icon: Tags },
 };
 
-function Row({ name, type, chosen, children, onRemove }: { name: string; type: PropertyType; chosen: boolean; children: React.ReactNode; onRemove: () => void }) {
+function Row({ name, type, chosen, names, children, onRename, onRemove }: { name: string; type: PropertyType; chosen: boolean; names: string[]; children: React.ReactNode; onRename: (to: string) => void; onRemove: () => void }) {
 	return (
 		<div className="group flex min-h-7 items-center gap-2" data-property={name} data-type={type}>
 			<TypeMenu name={name} type={type} chosen={chosen} />
-			<span className="w-28 shrink-0 truncate text-muted-foreground" title={name}>
-				{name}
-			</span>
+			<NameValue name={name} names={names} onRename={onRename} />
 			<div className="min-w-0 flex-1">{children}</div>
 			<Button
 				variant="ghost"
@@ -258,6 +272,60 @@ function Row({ name, type, chosen, children, onRemove }: { name: string; type: P
 			>
 				<X />
 			</Button>
+		</div>
+	);
+}
+
+/**
+ * The row's name, which is a box like the value beside it: a property can be
+ * called something else without being taken out and made again, which would
+ * lose what it holds and put it at the end of the block.
+ *
+ * Offered the names the vault already uses, as the box for a new property is
+ * — naming a property is naming a property, whether it is the first time or
+ * not. A name the note already has is refused, since two alike would leave a
+ * block that does not parse; the box puts back what was there.
+ */
+function NameValue({ name, names, onRename }: { name: string; names: string[]; onRename: (to: string) => void }) {
+	const [typed, setTyped] = useState(name);
+	const [shown, setShown] = useState(name);
+	if (shown !== name) {
+		setShown(name);
+		setTyped(name);
+	}
+	const commit = (to: string) => {
+		if (to.trim() && to !== name) onRename(to.trim());
+		else setTyped(name);
+	};
+	return (
+		<div className="w-28 shrink-0">
+			<Suggest options={names.filter((option) => keyOf(option) !== keyOf(name))} value={typed} onChange={setTyped} onPick={commit}>
+				{(offered) => (
+					<Input
+						value={typed}
+						onChange={(e) => setTyped(e.target.value)}
+						spellCheck={false}
+						aria-label={`Name of ${name}`}
+						title={name}
+						// Not a stop for ↓, which goes property to property (pageMove.ts).
+						data-name=""
+						className={`${FLAT} text-muted-foreground`}
+						onKeyDown={(e) => {
+							if (e.nativeEvent.isComposing || offered(e)) return;
+							if (e.key === "Enter") {
+								e.preventDefault();
+								commit(typed);
+								e.currentTarget.blur();
+							} else if (e.key === "Escape") {
+								e.preventDefault();
+								setTyped(name);
+								e.currentTarget.blur();
+							}
+						}}
+						onBlur={() => commit(typed)}
+					/>
+				)}
+			</Suggest>
 		</div>
 	);
 }
@@ -533,7 +601,13 @@ function Suggest({
 				<PopoverAnchor asChild>
 					<CommandPrimitive.Input
 						asChild
-						value={value}
+						// The box's text is the box's own, and is not given to the list.
+						// Told it, the list answers by putting the cursor in its own box —
+						// which is nothing while there is one box, and a row of boxes
+						// fighting over the cursor once a row has a name box beside its
+						// value. What is offered is narrowed here anyway (`suits`), so
+						// the list never needed to be told.
+						//
 						// Typed into, the list comes up; merely arrived at, it does not.
 						// A list up the moment a box is reached would take the ↓ that
 						// carries the cursor to the next row, and the WAI-ARIA combobox
