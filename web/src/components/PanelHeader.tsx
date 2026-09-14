@@ -21,7 +21,7 @@ function ago(iso: string, now = Date.now()): string {
 }
 
 /** A session with nothing in it has no first message to be named by; the server sends a placeholder, and the name is chosen here. */
-const nameOf = (s: SessionInfo) => s.name ?? (s.messageCount === 0 ? "New session" : s.firstMessage);
+export const nameOf = (s: SessionInfo) => s.name ?? (s.messageCount === 0 ? "New session" : s.firstMessage);
 
 /**
  * Every saved session for this folder, newest first, typed over to find one.

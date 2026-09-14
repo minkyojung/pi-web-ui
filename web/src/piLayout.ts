@@ -48,3 +48,15 @@ export type DockEvent = "toggle" | "pick" | "arrive";
 export function shown(open: boolean, event: DockEvent): boolean {
 	return event === "toggle" ? !open : true;
 }
+
+/**
+ * The sessions the dock's row shows: the newest few, and the current one
+ * whatever its age. The rest are in the history list, as Linear keeps them.
+ * The list arrives newest first, and stays in that order.
+ */
+export function inRow<S extends { current: boolean }>(sessions: S[], n = 5): S[] {
+	const row = sessions.slice(0, n);
+	const current = sessions.find((s) => s.current);
+	if (current && !row.includes(current)) row.push(current);
+	return row;
+}
