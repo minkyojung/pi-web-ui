@@ -34,25 +34,8 @@ interface PromptAdapter {
 
 const SOURCE = "pi-web-ui";
 
-/** How a question of ours ended without an answer: the person closed it, or the session went. */
-export class Cancelled extends Error {
-	constructor() {
-		super("The question was not answered.");
-		this.name = "Cancelled";
-	}
-}
-
-/** A question of ours, waiting on a browser. */
-interface Waiting {
-	resolve: (answer: string) => void;
-	reject: (reason: Cancelled) => void;
-}
-
 export function createPromptBridge(broadcast: (payload: ServerMsg) => void) {
 	const pending = new Map<string, PromptRequest>();
-	// Our own questions, by id — as opposed to the dashboard's, which are
-	// settled through its bus. One or the other has an entry, never both.
-	const waiting = new Map<string, Waiting>();
 	let respond: ((response: PromptResponse) => void) | null = null;
 	let cancel: ((id: string) => void) | null = null;
 
@@ -60,22 +43,6 @@ export function createPromptBridge(broadcast: (payload: ServerMsg) => void) {
 	// adapter did, or the bus timed it out, every browser hears the same thing.
 	const dismiss = (id: string, extra: { answer?: string; cancelled: boolean }) => {
 		if (pending.delete(id)) broadcast({ type: "prompt_dismiss", id, ...extra });
-	};
-
-	// A question of ours is settled here and nowhere else: the browser's reply,
-	// a cancel from the browser, or everything at once before an abort.
-	const settle = (id: string, answer: string | null) => {
-		const waits = waiting.get(id);
-		if (!waits) return false;
-		waiting.delete(id);
-		if (answer === null) {
-			dismiss(id, { cancelled: true });
-			waits.reject(new Cancelled());
-		} else {
-			dismiss(id, { answer, cancelled: false });
-			waits.resolve(answer);
-		}
-		return true;
 	};
 
 	const adapter: PromptAdapter = {
@@ -105,19 +72,6 @@ export function createPromptBridge(broadcast: (payload: ServerMsg) => void) {
 
 	return {
 		/**
-		 * Ask the browser, and wait. The answer is a string in the shape the
-		 * card sends — see promptAnswer.ts in the client — or a Cancelled
-		 * rejection when the person closed it or the session went. No timeout:
-		 * the card stays on screen, and an abort or a switch clears it.
-		 */
-		ask(question: Omit<PromptRequest, "id" | "pipeline">): Promise<string> {
-			const prompt: PromptRequest = { ...question, id: crypto.randomUUID(), pipeline: SOURCE };
-			pending.set(prompt.id, prompt);
-			broadcast({ type: "prompt_request", prompt });
-			return new Promise<string>((resolve, reject) => waiting.set(prompt.id, { resolve, reject }));
-		},
-
-		/**
 		 * Call after every bindExtensions(): a replaced session reloads the
 		 * extension, which builds a new bus with a new hook. Returns false when
 		 * the hook never injected a responder — the extension is absent or has
@@ -139,20 +93,13 @@ export function createPromptBridge(broadcast: (payload: ServerMsg) => void) {
 		 */
 		answer(id: string, answer: string | undefined, cancelled: boolean): void {
 			if (!pending.has(id)) return;
-			if (waiting.has(id)) {
-				if (cancelled) settle(id, null);
-				else if (answer !== undefined) settle(id, answer);
-				return;
-			}
 			if (cancelled) cancel?.(id);
 			else if (answer !== undefined) respond?.({ id, answer, source: SOURCE });
 		},
 
 		/** Before an abort: a tool waiting on a question cannot be aborted around. */
 		cancelAll(): void {
-			for (const id of [...pending.keys()]) {
-				if (!settle(id, null)) cancel?.(id);
-			}
+			for (const id of [...pending.keys()]) cancel?.(id);
 		},
 
 		/** For a tab that connects while questions are open. */

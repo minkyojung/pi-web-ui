@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { EditorView } from "@codemirror/view";
 import { Command as CommandPrimitive } from "cmdk";
-import { AlignLeft, Calendar, CalendarClock, Hash, List, Plus, SquareCheck, Tags, TriangleAlert, X } from "lucide-react";
+import { AlignLeft, Calendar, CalendarClock, ChevronDown, ChevronUp, Hash, List, Plus, SquareCheck, Tags, TriangleAlert, X } from "lucide-react";
 import { type Document, isScalar, isSeq, type Pair } from "yaml";
 
 import { bodyStart, type Properties as Read, removeProperty, setProperty, suits, withProperties } from "../../../properties.ts";
 import { fits, fromInput, isReserved, keyOf, PROPERTY_TYPES, type PropertyType, typeOf } from "../../../propertyTypes.ts";
-import { stepInProperties } from "../features/pageMove";
+import { enter, stepInProperties } from "../features/pageMove";
 import { propertiesEdit } from "../features/properties";
 import { toggleLivePreview } from "../features/livePreview";
 import { propertyNamesStore, propertyTypesStore } from "../serverState";
@@ -45,6 +45,12 @@ const FLAT = "h-7 rounded-none border-0 px-0 shadow-none focus-visible:ring-0 da
  */
 export function Properties({ view, read }: { view: EditorView | null; read: Read | null }) {
 	const [adding, setAdding] = useState(false);
+	const [open, setOpen] = useState(false);
+	// Opened, the rows are what the panel is for: the cursor goes to the first
+	// of them, whether the line was clicked or reached with ↓.
+	useEffect(() => {
+		if (open) enter("properties", 1);
+	}, [open]);
 	const chosen = useSyncExternalStore(propertyTypesStore.subscribe, propertyTypesStore.get);
 	const used = useSyncExternalStore(propertyNamesStore.subscribe, propertyNamesStore.get);
 	if (!view || !read) return null;
@@ -88,6 +94,16 @@ export function Properties({ view, read }: { view: EditorView | null; read: Read
 	const items: Pair[] = read.block && read.doc.contents && "items" in read.doc.contents ? (read.doc.contents as { items: Pair[] }).items : [];
 	// By the lower-case name, as a property is known by (propertyTypes.ts): a note with `status` is not offered `Status`.
 	const taken = new Set(items.map((p) => keyOf(nameOf(p))));
+	// Folded, the panel is one line and one place for the cursor to be; opened,
+	// it is rows. A note with no properties has nothing to fold: the button to
+	// make the first one is the whole of it.
+	if (items.length > 0 && !open && !adding) {
+		return (
+			<Frame>
+				<Summary items={items} onOpen={() => setOpen(true)} />
+			</Frame>
+		);
+	}
 	return (
 		<Frame>
 			{items.map((pair) => {
@@ -105,16 +121,82 @@ export function Properties({ view, read }: { view: EditorView | null; read: Read
 					names={used.names}
 					onDone={(name) => {
 						setAdding(false);
-						if (name) apply((doc) => setProperty(doc, name, null));
+						// A property just made is one to fill in, so the rows stay.
+						if (name && apply((doc) => setProperty(doc, name, null))) setOpen(true);
 					}}
 				/>
 			) : (
-				<Button id="add-property" variant="ghost" size="xs" className="w-fit text-muted-foreground" onClick={() => setAdding(true)}>
-					<Plus />
-					Add property
-				</Button>
+				<div className="flex items-center gap-1">
+					<Button id="add-property" variant="ghost" size="xs" className="w-fit text-muted-foreground" onClick={() => setAdding(true)}>
+						<Plus />
+						Add property
+					</Button>
+					{items.length > 0 && (
+						<Button variant="ghost" size="icon-xs" aria-label="Fold properties" title="Fold properties" className="text-muted-foreground" onClick={() => setOpen(false)}>
+							<ChevronUp />
+						</Button>
+					)}
+				</div>
 			)}
 		</Frame>
+	);
+}
+
+/**
+ * The properties in one quiet line, which is how a note that is not being
+ * filed shows them: the names and what they say, a list as its chips, in the
+ * order the note writes them.
+ *
+ * A note keeps its properties for the sake of a few of them — its tags, the
+ * day it was made — and a row each turns three words of filing into half a
+ * screen above every note. Folded, they cost one line and are still there to
+ * read; opened, they are the rows that change them. SilverBullet folds its
+ * front matter the same way and leaves the tags showing.
+ *
+ * One button, not a line of them: it is the panel's single place for the
+ * cursor while it is folded (pageMove.ts), and → or Enter opens the rows.
+ */
+function Summary({ items, onOpen }: { items: Pair[]; onOpen: () => void }) {
+	return (
+		<button
+			type="button"
+			id="properties-summary"
+			onClick={onOpen}
+			// → opens what is folded, as it does anywhere a row hides something
+			// (WAI-ARIA); Enter is what a button is for, taken here rather than
+			// left to the browser so that both go through the one door.
+			onKeyDown={(e) => {
+				if (e.nativeEvent.isComposing) return;
+				if (e.key === "ArrowRight" || e.key === "Enter") {
+					e.preventDefault();
+					onOpen();
+				}
+			}}
+			title="Show the properties"
+			className="group flex min-h-7 w-full items-center gap-2 overflow-hidden rounded-sm text-left text-muted-foreground hover:text-foreground"
+		>
+			<ChevronDown className="size-3.5 shrink-0 opacity-60" />
+			<span className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden whitespace-nowrap">
+				{items.map((pair) => {
+					const name = nameOf(pair);
+					const value = toPlain(pair.value);
+					return (
+						<span key={name} className="flex shrink-0 items-center gap-1.5" data-said={name}>
+							<span className="text-xs opacity-60">{name}</span>
+							{Array.isArray(value) ? (
+								value.map((item, i) => (
+									<Badge key={`${String(item)}-${i}`} variant="secondary" className="font-normal">
+										{String(item)}
+									</Badge>
+								))
+							) : (
+								<span className="text-foreground/70">{asText(value) || "—"}</span>
+							)}
+						</span>
+					);
+				})}
+			</span>
+		</button>
 	);
 }
 

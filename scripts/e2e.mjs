@@ -1115,11 +1115,24 @@ check("the title scrolls away with the note, and the note comes back scrolled wh
 	await until("back where it was", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.querySelector('#note').scrollTop")) === 600);
 });
 
+/**
+ * The panel opened to its rows. A note shows its properties as one folded
+ * line until it is asked; the line is clicked whenever it is there, since it
+ * arrives with the note rather than with the click before it.
+ */
+const showProperties = async (page) => {
+	await until("the property rows", async () => {
+		if (await page.evaluate("!!document.querySelector('#properties-summary')")) await page.click("#properties-summary");
+		return page.evaluate("!!document.querySelector('#properties [data-property], #add-property')");
+	});
+};
 check("the properties are rows above the note: a chip added, a property added and filled, ⌘Z, a Backspace that cannot reach them, and a broken block said so", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "rows.md"), "---\ntags: [x]\n---\n\n# body\n");
 	writeFileSync(join(cwd, "broken.md"), "---\ntags: [x\n---\nbody\n");
 	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="rows.md"]') && !!document.querySelector('#notes button[data-path="broken.md"]')`));
 	await app.evaluate(`document.querySelector('#notes button[data-path="rows.md"]').click()`);
+	await until("the folded line", () => app.evaluate(`document.querySelector('#properties-summary [data-said="tags"]')?.textContent.includes("x")`));
+	await showProperties(app);
 	await until("the row", () => app.evaluate(`!!document.querySelector('#properties [data-property="tags"] [data-chip="x"]')`));
 	const file = () => readFileSync(join(cwd, "rows.md"), "utf8");
 	// A chip added keeps the list's shape, and only that line changes.
@@ -1161,6 +1174,7 @@ check("a property box offers what the vault already says: the name, then the val
 	writeFileSync(join(cwd, "offered.md"), "---\ntags: []\n---\nbody\n");
 	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="offered.md"]') && !!document.querySelector('#notes button[data-path="said-b.md"]')`));
 	await app.evaluate(`document.querySelector('#notes button[data-path="offered.md"]').click()`);
+	await showProperties(app);
 	await until("the rows", () => app.evaluate(`!!document.querySelector('#properties [data-property="tags"]')`));
 	const file = () => readFileSync(join(cwd, "offered.md"), "utf8");
 	const offering = () => app.evaluate(`[...document.querySelectorAll('[data-suggestion]')].map((i) => i.dataset.suggestion)`);
@@ -1193,7 +1207,7 @@ check("↑ and ↓ carry the cursor from the title down through the properties i
 	writeFileSync(join(cwd, "bare.md"), "# nothing above\n");
 	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="steps.md"]') && !!document.querySelector('#notes button[data-path="bare.md"]')`));
 	await app.evaluate(`document.querySelector('#notes button[data-path="steps.md"]').click()`);
-	await until("the rows", () => app.evaluate(`!!document.querySelector('#properties [data-property="done"]')`));
+	await until("the folded line", () => app.evaluate(`!!document.querySelector('#properties-summary')`));
 	/** What has the cursor, named the way the page names it. */
 	const where = () =>
 		app.evaluate(`(() => {
@@ -1205,9 +1219,14 @@ check("↑ and ↓ carry the cursor from the title down through the properties i
 		})()`);
 	const line = () => app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; return v.state.doc.lineAt(v.state.selection.main.head).text; })()`);
 
-	// Down: the title, each row, the button that ends them, then the text — at its first line, not where it was left.
+	// Folded, the panel is one line and one stop: ↓ reaches it and Enter opens it onto the first row.
 	await app.evaluate(`document.getElementById("title").focus()`);
-	for (const stop of ["owner", "done", "#add-property", "text"]) {
+	await app.press("ArrowDown");
+	await until("the folded line has the cursor", async () => (await where()) === "#properties-summary");
+	await app.press("ArrowRight");
+	await until("the first row has it", async () => (await where()) === "owner");
+	// Down: each row, the button that ends them, then the text — at its first line, not where it was left.
+	for (const stop of ["done", "#add-property", "text"]) {
 		await app.press("ArrowDown");
 		await until(`the cursor at ${stop}`, async () => (await where()) === stop);
 	}
@@ -1244,6 +1263,7 @@ check("a row is drawn by its type — a box, a date, a number — the type is ch
 	writeFileSync(join(cwd, "typed.md"), "---\ndone: true\nwhen: 2024-01-01\ncount: 3\nodd: nope\n---\nbody\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="typed.md"]')`));
 	await app.evaluate(`document.querySelector('#notes button[data-path="typed.md"]').click()`);
+	await showProperties(app);
 	await until("the rows", () => app.evaluate(`!!document.querySelector('#properties [data-property="odd"]')`));
 	const file = () => readFileSync(join(cwd, "typed.md"), "utf8");
 	// Guessed from the values.

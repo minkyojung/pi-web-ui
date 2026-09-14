@@ -51,7 +51,7 @@ export const atTextTop = (state: EditorState, at: number) => at <= textStart(sta
 // ---------------------------------------------------------------------------
 // The parts, as the page holds them
 
-const ROWS = "#properties [data-property] input, #properties [data-property] [role=checkbox]";
+const ROWS = "#properties [data-property] input, #properties [data-property] [role=checkbox], #properties-summary";
 const ADD = "#add-property";
 
 /**
@@ -65,6 +65,9 @@ const ADD = "#add-property";
  * the last step before the text — but it is not somewhere the page lands.
  * Obsidian, whose panel is not there at all until there is a property,
  * reads the same way.
+ *
+ * Folded, the panel is one line and so one place to be: the line itself is
+ * where the cursor stops, and opening it is what makes the rows to stop at.
  */
 const boxesIn = (part: Part): HTMLElement[] => {
 	if (part === "title") return [...document.querySelectorAll<HTMLElement>("#title")];
@@ -78,7 +81,7 @@ const panelBoxes = () => [...document.querySelectorAll<HTMLElement>(`${ROWS}, ${
 const has = (part: Part) => boxesIn(part).length > 0;
 
 /** Put the cursor in `part`, at the edge the cursor is coming from: the first of its boxes going down, the last going up. */
-function enter(part: Part, way: 1 | -1): boolean {
+export function enter(part: Part, way: 1 | -1): boolean {
 	const boxes = boxesIn(part);
 	const box = way === 1 ? boxes[0] : boxes[boxes.length - 1];
 	if (!box) return false;
