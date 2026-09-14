@@ -11,7 +11,7 @@ import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { ContextPopover } from "./ContextPopover";
+import { ContextCard } from "./ContextCard";
 import { ModelPicker } from "./ModelPicker";
 import { QueuedMessages } from "./QueuedMessages";
 import { ToolModes } from "./ToolModes";
@@ -229,7 +229,7 @@ export function Composer({ note }: { note: string | null }) {
 						)}
 					</PromptInputTools>
 					<span className="flex items-center gap-1">
-						<ContextPopover />
+						<ContextCard />
 						{/* Becomes a stop button while a run streams, which is where the
 						    settings bar's own stop button went. */}
 						<PromptInputSubmit

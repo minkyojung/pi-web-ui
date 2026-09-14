@@ -24,13 +24,15 @@ const pct = (n: number) => `${n < 10 ? n.toFixed(1) : Math.round(n)}%`;
 
 /**
  * What the ring is showing, in full: how much of the window is used and by
- * what, what this session has cost, and which account is paying. Opens from
- * the ring itself.
+ * what, what this session has cost, and which account is paying. It comes up
+ * from the ring itself, under the pointer — a card and not a popover, which
+ * is a difference in how it is opened and so in what it may hold: there is
+ * nothing in here to click.
  *
  * Only the total is counted, by the model; the fixed parts are estimated at
  * four characters a token, and say so with a ≈. Messages are the remainder.
  */
-export function ContextPopover() {
+export function ContextCard() {
 	const usage = useSyncExternalStore(usageStore.subscribe, usageStore.get);
 	const sources = useSyncExternalStore(contextSourcesStore.subscribe, contextSourcesStore.get);
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
