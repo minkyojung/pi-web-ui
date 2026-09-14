@@ -50,10 +50,15 @@ const AUTOSAVE_MS = 600;
 const theme = EditorView.theme({
 	// No height: the editor is as tall as its text, and the page (#note) scrolls.
 	"&": { backgroundColor: "var(--background)", color: "var(--foreground)", fontSize: "15px" },
-	".cm-scroller": { fontFamily: "inherit", lineHeight: "1.6", padding: "1.5rem 0" },
+	// The margin around the text is the scroller's, and the column is the
+	// content element with no padding of its own: the selection is drawn as
+	// wide as .cm-content, so any padding on it is painted as selected past
+	// the words. This is how Obsidian has it. 39rem is the title's 42rem box
+	// less its own 1.5rem sides, so the two start on one line.
+	".cm-scroller": { fontFamily: "inherit", lineHeight: "1.6", padding: "1.5rem" },
 	// The find panel stays in view while the page scrolls under it.
 	".cm-panels.cm-panels-top": { position: "sticky", top: 0, zIndex: 10 },
-	".cm-content": { maxWidth: "42rem", margin: "0 auto", padding: "0 1.5rem", caretColor: "var(--foreground)" },
+	".cm-content": { maxWidth: "39rem", margin: "0 auto", padding: "0", caretColor: "var(--foreground)" },
 	".cm-line": { padding: "0" },
 	"&.cm-focused": { outline: "none" },
 	".cm-cursor": { borderLeftColor: "var(--foreground)" },

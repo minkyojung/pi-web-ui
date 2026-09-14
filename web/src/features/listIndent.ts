@@ -2,19 +2,26 @@
  * A list item's wrapped lines start where its words do, not under its
  * marker.
  *
- * Done the way Obsidian does it, without measuring anything: the indent is
- * a fixed unit per level of nesting, every line of an item gets that much
- * padding, and the line that carries the marker pulls its first row back by
- * one unit and draws the marker — indentation, bullet or number, and the
- * space after — in a box exactly one unit wide. The words then start at the
- * same place on every row. Nothing here depends on the font, or on whether
- * live preview has hidden the marker, and nothing spans a line break, so a
- * view plugin builds it over the visible lines from the tree.
+ * A hanging indent, as Obsidian has it and as CSS has always had it: the
+ * indent is a fixed unit per level of nesting, every line of an item is
+ * padded by that much, and its first row is pulled back by exactly as much
+ * with a negative text-indent. The two come from one variable, so they
+ * cannot differ — and they must not: the editor draws a selection from the
+ * content's edge plus the first line's padding less its text-indent, so a
+ * line whose two are not equal and opposite shifts the whole band when it
+ * is the first on screen. That is also why the indent is not on a wrapper
+ * around the item: the marker has to be pulled into it from the line.
  *
- * A line of an item that has no marker of its own — a second paragraph, or
- * a lazy continuation — gets the padding only. Live preview hides the
- * leading spaces of every list line off the cursor (livePreview.ts), so
- * there the box holds the marker alone and the words start on the padding.
+ * The pulled-back row is filled by boxes, not by padding: the leading
+ * spaces in one box as wide as the levels above the item, and the marker —
+ * bullet or number and the space after, or a task's checkbox — in a box one
+ * unit wide. The words then start at the same place on every row. A line
+ * of an item that has no marker of its own — a second paragraph, or a lazy
+ * continuation — has its spaces in a box as wide as the whole indent. The
+ * boxes are widths, not measurements: nothing here depends on the font,
+ * and nothing spans a line break, so a view plugin builds it over the
+ * visible lines from the tree. The space boxes are atomic — the cursor
+ * steps over an indent, as over a bullet.
  *
  * A task's box holds the checkbox too — the bullet is hidden there, the
  * box being the marker — and the checkbox is made one unit wide, so the
@@ -30,6 +37,16 @@ import { indentWidth, markerOf } from "./listTree.ts";
 const UNIT = 1.5;
 
 const prefix = Decoration.mark({ class: "cm-list-prefix" });
+const indentFor = new Map<number, Decoration>();
+/** The box the leading spaces sit in, `width` units wide; a width of zero still takes the spaces out of the row. */
+const indentBox = (width: number) => {
+	let d = indentFor.get(width);
+	if (!d) {
+		d = Decoration.mark({ class: "cm-list-indent", attributes: { style: `--indent-width:${width * UNIT}em` } });
+		indentFor.set(width, d);
+	}
+	return d;
+};
 const lineFor = new Map<string, Decoration>();
 /**
  * The line's indent as a CSS variable rather than a padding, so a quote's
@@ -98,45 +115,66 @@ export function listItemLines(state: EditorState, from: number, to: number): { l
 	return { level, markAt };
 }
 
-/** The list lines between `from` and `to`: padding per level, and the marker's box on the line that has one. */
-export function listLines(state: EditorState, from: number, to: number): DecorationSet {
+/**
+ * The list lines between `from` and `to`: the indent per level on the line,
+ * the leading spaces in their box, and the marker's box on the line that
+ * has one. `atoms` is the space boxes, for cursor motion to step over. In a
+ * quote the line opens with `>`, not spaces, so there is no space box and
+ * the quote's mark sits in the marker's box, hidden with it off the cursor.
+ */
+export function listLines(state: EditorState, from: number, to: number): { deco: DecorationSet; atoms: DecorationSet } {
 	const { doc } = state;
 	const { level, markAt } = listItemLines(state, from, to);
-	const out = [];
+	const deco = [];
+	const atoms = [];
 	for (const [n, lvl] of level) {
 		const l = doc.line(n);
 		const end = markAt.get(n);
-		out.push(line(lvl, end !== undefined).range(l.from));
-		if (end !== undefined && end > l.from) out.push(prefix.range(l.from, end));
+		const marker = end !== undefined;
+		deco.push(line(lvl, marker).range(l.from));
+		const indent = indentWidth(l);
+		if (indent > 0) {
+			const box = indentBox(marker ? lvl - 1 : lvl).range(l.from, l.from + indent);
+			deco.push(box);
+			atoms.push(box);
+		}
+		if (marker && end > l.from + indent) deco.push(prefix.range(l.from + indent, end));
 	}
-	return Decoration.set(out, true);
+	return { deco: Decoration.set(deco, true), atoms: Decoration.set(atoms, true) };
 }
 
 export const listIndent: Extension = [
 	ViewPlugin.fromClass(
 		class {
 			decorations: DecorationSet;
+			atoms: DecorationSet;
 			constructor(view: EditorView) {
-				this.decorations = this.build(view);
+				({ deco: this.decorations, atoms: this.atoms } = this.build(view));
 			}
 			update(u: ViewUpdate) {
-				if (u.docChanged || u.viewportChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) this.decorations = this.build(u.view);
+				if (u.docChanged || u.viewportChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) ({ deco: this.decorations, atoms: this.atoms } = this.build(u.view));
 			}
 			build(view: EditorView) {
-				const out = [];
+				const deco = [];
+				const atoms = [];
 				for (const { from, to } of view.visibleRanges) {
-					const it = listLines(view.state, from, to).iter();
-					for (; it.value; it.next()) out.push(it.value.range(it.from, it.to));
+					const part = listLines(view.state, from, to);
+					for (const it = part.deco.iter(); it.value; it.next()) deco.push(it.value.range(it.from, it.to));
+					for (const it = part.atoms.iter(); it.value; it.next()) atoms.push(it.value.range(it.from, it.to));
 				}
-				return Decoration.set(out, true);
+				return { deco: Decoration.set(deco, true), atoms: Decoration.set(atoms, true) };
 			}
 		},
-		{ decorations: (p) => p.decorations },
+		{ decorations: (p) => p.decorations, provide: (p) => EditorView.atomicRanges.of((view) => view.plugin(p)?.atoms ?? Decoration.none) },
 	),
 	EditorView.baseTheme({
-		// Two classes: the editor's theme sets `.cm-line { padding: 0 }`, and this has to outweigh it.
-		".cm-line.cm-list-line": { paddingLeft: "var(--list-indent)" },
-		".cm-line.cm-list-marker": { textIndent: `-${UNIT}em` },
+		// Two classes: the editor's theme sets `.cm-line { padding: 0 }`, and this
+		// has to outweigh it. The padding and the text-indent are one value with
+		// opposite signs, from one variable, on every list line: see the top.
+		".cm-line.cm-list-line": { paddingLeft: "var(--list-indent)", textIndent: "calc(-1 * var(--list-indent))" },
+		// The spaces' box is a width, not a minimum: eight spaces are as wide as
+		// two levels. The spaces overflow it unseen, being spaces.
+		".cm-list-indent": { display: "inline-block", width: "var(--indent-width)", whiteSpace: "pre", textIndent: "0" },
 		".cm-list-prefix": { display: "inline-block", minWidth: `${UNIT}em`, textIndent: "0" },
 		// The checkbox's span as the whole marker: one unit, box and gap together,
 		// so the caret after it is where the words start.

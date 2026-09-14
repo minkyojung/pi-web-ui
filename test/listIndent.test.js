@@ -13,14 +13,22 @@ const parsed = (doc) => {
   assert.ok(ensureSyntaxTree(s, s.doc.length, 5000), "parsed whole");
   return s;
 };
-/** Each decoration as [line, style] for a line, or [prefix text] for the marker's box. */
+/** Each decoration as [line, style] for a line, [spaces, width] for the indent's box, or [prefix text] for the marker's box. */
 const drawn = (s, from = 0, to = s.doc.length) => {
   const out = [];
-  const it = listLines(s, from, to).iter();
+  const it = listLines(s, from, to).deco.iter();
   for (; it.value; it.next()) {
     if (it.value.spec.class?.startsWith("cm-list-line")) out.push([s.doc.lineAt(it.from).number, it.value.spec.attributes.style + (it.value.spec.class.includes("marker") ? " marker" : "")]);
+    else if (it.value.spec.class === "cm-list-indent") out.push([s.doc.sliceString(it.from, it.to), it.value.spec.attributes.style]);
     else out.push([s.doc.sliceString(it.from, it.to)]);
   }
+  return out;
+};
+/** The atomic ranges, as their text. */
+const atoms = (s) => {
+  const out = [];
+  const it = listLines(s, 0, s.doc.length).atoms.iter();
+  for (; it.value; it.next()) out.push(s.doc.sliceString(it.from, it.to));
   return out;
 };
 
@@ -31,18 +39,26 @@ test("항목 줄은 단계만큼의 들여쓰기를 받고 마커 줄로 표시�
   ]);
 });
 
-test("안긴 항목은 한 단계 더 밀리고, 들여쓴 공백은 마커의 상자에 든다", () => {
+test("안긴 항목은 한 단계 더 밀리고, 들여쓴 공백은 위 단계만큼의 상자에, 마커는 제 상자에 든다", () => {
   assert.deepEqual(drawn(parsed("- a\n  - b\n")), [
     [1, "--list-indent:1.5em marker"], ["- "],
-    [2, "--list-indent:3em marker"], ["  - "],
+    [2, "--list-indent:3em marker"], ["  ", "--indent-width:1.5em"], ["- "],
   ]);
 });
 
-test("마커가 없는 이어지는 줄은 밀리기만 한다", () => {
+test("마커가 없는 이어지는 줄은 밀리고, 공백은 들여쓰기 전체 폭의 상자에 든다", () => {
   assert.deepEqual(drawn(parsed("- a\n  more\n")), [
     [1, "--list-indent:1.5em marker"], ["- "],
-    [2, "--list-indent:1.5em"],
+    [2, "--list-indent:1.5em"], ["  ", "--indent-width:1.5em"],
   ]);
+});
+
+test("공백의 상자는 커서가 건너뛰는 한 걸음이고, 마커의 상자는 아니다", () => {
+  assert.deepEqual(atoms(parsed("- a\n  - b\n  more\n")), ["  ", "  "]);
+});
+
+test("들여쓴 첫 단계 항목의 공백은 폭 0의 상자에 들어 행에서 빠진다", () => {
+  assert.deepEqual(drawn(parsed("  - a\n")), [[1, "--list-indent:1.5em marker"], ["  ", "--indent-width:0em"], ["- "]]);
 });
 
 test("번호와 인용 속 항목도 같다", () => {
@@ -68,13 +84,13 @@ test("항목 밑에 붙여 쓴 글은 들여쓰지 않았으면 밀리지 않고
   ]);
   assert.deepEqual(drawn(parsed("- a\n  more\n")), [
     [1, "--list-indent:1.5em marker"], ["- "],
-    [2, "--list-indent:1.5em"],
+    [2, "--list-indent:1.5em"], ["  ", "--indent-width:1.5em"],
   ]);
   // Under a nested item, a line indented for the outer item alone is the outer item's.
   assert.deepEqual(drawn(parsed("- a\n    - b\n  text\n")), [
     [1, "--list-indent:1.5em marker"], ["- "],
-    [2, "--list-indent:3em marker"], ["    - "],
-    [3, "--list-indent:1.5em"],
+    [2, "--list-indent:3em marker"], ["    ", "--indent-width:1.5em"], ["- "],
+    [3, "--list-indent:1.5em"], ["  ", "--indent-width:1.5em"],
   ]);
 });
 

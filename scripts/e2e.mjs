@@ -418,6 +418,29 @@ check("typing just before the page goes is not lost", async ({ app, cwd }) => {
 	await app.evaluate("location.reload()");
 	await until("the note after the reload", async () => (await editorStatus(app)) === "saved");
 	assert.ok(readFileSync(join(cwd, "first.md"), "utf8").includes("LATE"), "the last keystrokes reached the disk");
+check("a selection is drawn as wide as the words, and shows marks only while the editor has focus", async ({ app }) => {
+	// Everything selected: the band is the text column, not the margin around it.
+	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: 0, head: v.state.doc.length } }); })()`);
+	await until("the # to show under the selection", async () => (await shownText(app)).includes("# first"));
+	await until("the band to be drawn", () => app.evaluate("document.querySelectorAll('#editor .cm-selectionBackground').length > 0"));
+	const band = await app.evaluate(`(() => {
+		const content = document.querySelector('#editor .cm-content').getBoundingClientRect();
+		const pieces = [...document.querySelectorAll('#editor .cm-selectionBackground')].map((el) => el.getBoundingClientRect());
+		return { pad: getComputedStyle(document.querySelector('#editor .cm-content')).paddingLeft, count: pieces.length,
+			within: pieces.every((r) => r.left >= content.left - 1 && r.right <= content.right + 1) };
+	})()`);
+	assert.equal(band.pad, "0px", "the content has no padding for the band to paint");
+	assert.ok(band.count > 0 && band.within, "every piece of the band lies within the text column");
+	// The focus goes to the composer: the selection stays, the marks go.
+	await app.evaluate("document.querySelector('textarea').focus()");
+	await until("the # to hide with the focus gone", async () => !(await shownText(app)).includes("# first") && (await shownText(app)).includes("first"));
+	// And back: the same selection shows them again.
+	await app.evaluate("document.querySelector('#editor .cm-content').focus()");
+	await until("the # to be back with the focus", async () => (await shownText(app)).includes("# first"));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("hidden again off the heading", async () => !(await shownText(app)).includes("# first"));
+});
+
 	assert.ok((await editorText(app)).includes("LATE"));
 });
 
@@ -903,6 +926,30 @@ check("Tab nests a numbered item and the numbers follow; Shift-Tab brings it bac
 
 check("the smaller marks hide too, and a done task reads as done", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "small.md"), "- [x] done ~~gone~~ `code`\n\nend\n");
+check("every list line's padding and text-indent cancel, so the selection band never moves with the first line on screen", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "hang.md"), "- one\n  - two\n    - three\n    still two\n- [ ] task\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="hang.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="hang.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("still two"));
+	await until("the list lines", () => app.evaluate("document.querySelectorAll('#editor .cm-list-line').length === 5"));
+	const lines = await app.evaluate(`[...document.querySelectorAll('#editor .cm-list-line')].map((el) => { const s = getComputedStyle(el); return [parseFloat(s.paddingLeft), parseFloat(s.textIndent)]; })`);
+	assert.equal(lines.length, 5);
+	for (const [pad, indent] of lines) {
+		assert.ok(pad > 0, "each list line is padded");
+		assert.ok(Math.abs(pad + indent) < 0.5, `padding ${pad} and text-indent ${indent} cancel`);
+	}
+	// The nested lines are padded more than the outer, and the continuation line as its item.
+	assert.ok(lines[1][0] > lines[0][0] && lines[2][0] > lines[1][0] && lines[3][0] === lines[1][0]);
+	// Everything selected, with the nested item scrolled to be the first line on screen or not: the band stays in the column.
+	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: 0, head: v.state.doc.length } }); })()`);
+	await until("the band to be drawn", () => app.evaluate("document.querySelectorAll('#editor .cm-selectionBackground').length > 0"));
+	const within = await app.evaluate(`(() => {
+		const content = document.querySelector('#editor .cm-content').getBoundingClientRect();
+		return [...document.querySelectorAll('#editor .cm-selectionBackground')].every((el) => { const r = el.getBoundingClientRect(); return r.left >= content.left - 1 && r.right <= content.right + 1; });
+	})()`);
+	assert.ok(within, "every piece of the band lies within the text column");
+});
+
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="small.md"]')`));
 	await app.evaluate(`document.querySelector('#notes button[data-path="small.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("~~gone~~"));
@@ -974,7 +1021,8 @@ check("==words== are washed with colour, their marks hidden off the cursor", asy
 	await until("the highlight, as one span", () => app.evaluate("[...document.querySelectorAll('#editor .cm-highlight')].map((s) => s.textContent).join('|')").then((t) => t.includes("hi")));
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
 	await until("the marks to be hidden", async () => (await shownText(app)).includes("say hi now"));
-	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 6 } }); })()`);
+	// Under the cursor, with the focus: without it the marks stay hidden.
+	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: 6 } }); })()`);
 	await until("the marks back under the cursor", async () => (await shownText(app)).includes("==hi=="));
 });
 
@@ -1131,9 +1179,9 @@ check("a list item's wrapped lines start where its words do", async ({ app, cwd 
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="list.md"]')`));
 	await app.evaluate(`document.querySelector('#notes button[data-path="list.md"]').click()`);
 	await until("the list lines", () => app.evaluate("document.querySelectorAll('#editor .cm-list-line').length === 5"));
-	// The cursor lands on the first line; every other list line hides its indentation.
+	// The cursor lands on the first line; the indented lines hold their spaces in a box, cursor or not.
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
-	await until("the indentation hidden", async () => !(await shownText(app)).includes(" continued") && (await shownText(app)).includes("continued"));
+	await until("the indentation boxed", () => app.evaluate("[...document.querySelectorAll('#editor .cm-list-indent')].map((el) => el.textContent.length).join() === '4,6'"));
 	// The second row of the outer item sits under its words, not under the bullet; the inner item's, one unit further.
 	const rows = await app.evaluate(`(() => {
 		const px = (el) => parseFloat(getComputedStyle(el).paddingLeft);

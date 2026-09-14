@@ -4,7 +4,7 @@
  * One rule: a node keeps its markup while any selection range touches it,
  * and hides it otherwise — except a list's, which is the block's shape
  * rather than a word's dress: a bullet, a task's box and an item's
- * indentation stay drawn with the cursor on the line, as Obsidian has
+ * indentation (listIndent.ts) stay drawn with the cursor on the line, as Obsidian has
  * them, since shown as text they would move the whole line. The keys
  * edit them (listEdit.ts), and Mod-e shows them as written. Two halves,
  * as CodeMirror divides them:
@@ -43,10 +43,9 @@
  * of it, in one order.
  */
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import { Compartment, type EditorState, type Extension, type Range, type RangeSet, RangeSetBuilder, type SelectionRange, StateField, type Transaction } from "@codemirror/state";
+import { Compartment, type EditorState, type Extension, type Range, type RangeSet, RangeSetBuilder, type SelectionRange, StateEffect, StateField, type Transaction } from "@codemirror/state";
 import { BlockWrapper, Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
-import { listItemLines } from "./listIndent.ts";
 import { markerOf } from "./listTree.ts";
 
 const hide = Decoration.replace({});
@@ -143,13 +142,49 @@ export function hidden(state: EditorState, from: number, to: number, ranges = st
 	return builder.finish();
 }
 
+/**
+ * Whether the editor has focus, as a field, so both halves read one answer.
+ * The cursor only shows markup while the editor is focused — Obsidian's
+ * rule: a selection left behind when the focus goes to the pi column is not
+ * being edited, and the note reads as a note again.
+ *
+ * The truth is `view.hasFocus`; the field mirrors it because the block half
+ * is a state field and cannot see the view. The mirror is kept by the view
+ * plugin, not by `EditorView.focusChangeEffect`: the editor drops that
+ * effect's transaction whenever another lands during the same update, and
+ * then remembers the focus as told — so a field fed by it can be left
+ * saying "not focused" under a focused editor. The plugin compares the two
+ * on every update and dispatches the difference once the update is over.
+ * The field lives outside the mode compartment so Mod-e does not reset it.
+ */
+const focusChanged = StateEffect.define<boolean>();
+const focused = StateField.define<boolean>({
+	create: () => false,
+	update(value, tr) {
+		for (const e of tr.effects) if (e.is(focusChanged)) value = e.value;
+		return value;
+	},
+});
+
+/** Brings the field to what the view says, after the update it was noticed in; `alive` says the plugin is still on the view. */
+function mirrorFocus(view: EditorView, alive: () => boolean) {
+	if (view.state.field(focused, false) === view.hasFocus) return;
+	queueMicrotask(() => {
+		if (alive() && view.state.field(focused, false) !== view.hasFocus) view.dispatch({ effects: focusChanged.of(view.hasFocus) });
+	});
+}
+
+/** The selection ranges the markup answers to: none while the editor is not focused. */
+const editing = (state: EditorState): readonly SelectionRange[] => (state.field(focused, false) ?? true ? state.selection.ranges : []);
+
 /** The decorations in the visible lines, `hidden` and `inline` together, and the widgets among them for the cursor to step over. */
 function build(view: EditorView): { deco: DecorationSet; atoms: DecorationSet } {
 	const deco: Range<Decoration>[] = [];
 	const atoms: Range<Decoration>[] = [];
+	const ranges = editing(view.state);
 	for (const { from, to } of view.visibleRanges) {
-		for (const it = hidden(view.state, from, to).iter(); it.value; it.next()) deco.push(it.value.range(it.from, it.to));
-		const part = inline(view.state, from, to);
+		for (const it = hidden(view.state, from, to, ranges).iter(); it.value; it.next()) deco.push(it.value.range(it.from, it.to));
+		const part = inline(view.state, from, to, ranges);
 		for (const it = part.deco.iter(); it.value; it.next()) deco.push(it.value.range(it.from, it.to));
 		for (const it = part.atoms.iter(); it.value; it.next()) atoms.push(it.value.range(it.from, it.to));
 	}
@@ -160,14 +195,21 @@ const plugin = ViewPlugin.fromClass(
 	class {
 		deco: DecorationSet;
 		atoms: DecorationSet;
+		alive = true;
 		constructor(view: EditorView) {
 			({ deco: this.deco, atoms: this.atoms } = build(view));
+			mirrorFocus(view, () => this.alive);
+		}
+		destroy() {
+			this.alive = false;
 		}
 		update(u: ViewUpdate) {
 			// A selection moved mid-composition is left alone: replacing the
 			// DOM under a half-typed syllable would end the composition.
 			const moved = u.selectionSet && !u.view.composing;
-			if (u.docChanged || u.viewportChanged || moved || syntaxTree(u.startState) !== syntaxTree(u.state)) {
+			const refocused = u.state.field(focused, false) !== u.startState.field(focused, false);
+			mirrorFocus(u.view, () => this.alive);
+			if (u.docChanged || u.viewportChanged || moved || refocused || syntaxTree(u.startState) !== syntaxTree(u.state)) {
 				({ deco: this.deco, atoms: this.atoms } = build(u.view));
 			}
 		}
@@ -321,8 +363,8 @@ function quoteDepth(node: SyntaxNodeRef): number {
  * every code line and callout title in its class, a done task's line
  * struck; and — where the selection is not — a quote's `>` and a callout's
  * marker hidden; and, cursor or not, a bullet as a dot, a number in its
- * box, a task's marker as a box, an item's indentation gone. `atoms` is
- * the widgets and the hidden indentation, for cursor motion to step over.
+ * box, a task's marker as a box. `atoms` is the widgets, for cursor
+ * motion to step over.
  */
 export type Inline = { deco: DecorationSet; atoms: DecorationSet };
 
@@ -334,8 +376,6 @@ export function inline(state: EditorState, from: number, to: number, ranges = st
 		deco.push(value.range(from, to));
 		if (atom) atoms.push(value.range(from, to));
 	};
-	/** The lines of fenced code, where leading spaces are the code's own. */
-	const codeLines = new Set<number>();
 	syntaxTree(state).iterate({
 		from,
 		to,
@@ -350,7 +390,6 @@ export function inline(state: EditorState, from: number, to: number, ranges = st
 					const last = doc.lineAt(node.to).number;
 					const closed = marks.length > 1 && doc.lineAt(marks[marks.length - 1].from).number === last;
 					for (let n = first; n <= last; n++) {
-						codeLines.add(n);
 						put(doc.line(n).from, doc.line(n).from, n === first || (closed && n === last) ? fenceLine : codeLine);
 					}
 					return false;
@@ -395,18 +434,8 @@ export function inline(state: EditorState, from: number, to: number, ranges = st
 			}
 		},
 	});
-	// A list line's leading spaces are markup — they say how deep the item
-	// is, which the padding already shows — so they go, cursor or not, and
-	// the words start where the padding puts them. The lines are the ones
-	// listIndent.ts pads, so a lazy line under an item, which it does not,
-	// keeps its spaces. Not in a fence, where the spaces are the code's.
-	for (const n of listItemLines(state, from, to).level.keys()) {
-		if (codeLines.has(n)) continue;
-		const l = doc.line(n);
-		const indent = /^[ \t]*/.exec(l.text)![0].length;
-		if (indent === 0 || indent === l.length) continue;
-		put(l.from, l.from + indent, hide, true);
-	}
+	// A list line's leading spaces are not hidden here: they are the item's
+	// indentation, boxed to its width by listIndent.ts, cursor or not.
 	return { deco: Decoration.set(deco, true), atoms: Decoration.set(atoms, true) };
 }
 
@@ -501,14 +530,15 @@ export const toggleTask = (view: EditorView) => {
 };
 
 /** The lines the selection is on, as a key: what the block half's hiding turns on, and all it turns on. */
-const linesOf = (state: EditorState) => state.selection.ranges.map((r) => `${state.doc.lineAt(r.from).number}-${state.doc.lineAt(r.to).number}`).join(",");
+const linesOf = (state: EditorState) => editing(state).map((r) => `${state.doc.lineAt(r.from).number}-${state.doc.lineAt(r.to).number}`).join(",");
 
 const field = StateField.define<Blocks>({
-	create: (state) => blocks(state),
+	create: (state) => blocks(state, editing(state)),
 	update(value, tr: Transaction) {
-		if (tr.docChanged || syntaxTree(tr.startState) !== syntaxTree(tr.state)) return blocks(tr.state);
-		// Along a line the selection changes nothing here; to other lines it might.
-		if (tr.selection && linesOf(tr.startState) !== linesOf(tr.state)) return blocks(tr.state);
+		if (tr.docChanged || syntaxTree(tr.startState) !== syntaxTree(tr.state)) return blocks(tr.state, editing(tr.state));
+		// Along a line the selection changes nothing here; to other lines it
+		// might, and so might the focus going or coming.
+		if (linesOf(tr.startState) !== linesOf(tr.state)) return blocks(tr.state, editing(tr.state));
 		return value;
 	},
 	provide: (f) => [
@@ -587,5 +617,5 @@ export const toggleLivePreview = (view: EditorView) => {
 
 const layer: Extension = [plugin, blockLayer];
 
-/** The layer, on. Mod-e (Editor.tsx) takes it out and puts it back. */
-export const livePreview: Extension = mode.of(layer);
+/** The layer, on. Mod-e (Editor.tsx) takes it out and puts it back; the focus field stays. */
+export const livePreview: Extension = [focused, mode.of(layer)];

@@ -29,6 +29,13 @@ test("커서가 닿은 헤딩은 그대로 보인다", () => {
   assert.deepEqual(gone(state("## Hi\n\ntext", 5)), [], "at the end too");
 });
 
+test("범위가 없으면 — 에디터에 포커스가 없을 때 — 커서가 닿은 헤딩도 숨긴다", () => {
+  const s = state("## Hi\n\ntext", 3);
+  const out = [];
+  for (const it = hidden(s, 0, s.doc.length, []).iter(); it.value; it.next()) out.push(s.doc.sliceString(it.from, it.to));
+  assert.deepEqual(out, ["## "]);
+});
+
 test("강조는 별표를 숨기고 글은 남긴다", () => {
   assert.deepEqual(gone(state("*a* and **b**\n")), ["*", "*", "**", "**"]);
 });
@@ -192,12 +199,10 @@ test("불릿은 커서와 상관없이 점이고, 번호는 제 글자대로, �
   assert.deepEqual(atoms, [[0, 2]], "cursor on the line: the dot is still a step to take");
 });
 
-test("리스트 줄의 앞 공백은 커서와 상관없이 숨고, 코드 펜스 안에서는 남는다", () => {
+test("리스트 줄의 앞 공백은 여기서 숨기지 않는다: 들여쓰기 상자는 listIndent의 것이다", () => {
   const doc = "- a\n  more\n    - b\n\n    ```\n    code\n    ```\n";
   const off = drawn(parsed(doc, 0)).filter(([, k]) => k === "hidden").map(([t]) => t);
-  assert.deepEqual(off, ["  ", "    "], "the continuation line's and the nested item's indentation; the fences stay, and the code's own spaces are not touched");
-  const on = drawn(parsed(doc, 6)).filter(([, k]) => k === "hidden").map(([t]) => t);
-  assert.deepEqual(on, off, "the cursor on the continuation line changes nothing");
+  assert.deepEqual(off, [], "nothing hidden on a list line but by its marker; the code's own spaces are not touched");
 });
 
 test("Mod-Enter는 커서 줄의 할 일을 켜고 끈다, 없으면 손대지 않는다", () => {
