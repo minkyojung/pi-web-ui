@@ -16,6 +16,7 @@ import { hashForNote, noteFromHash } from "./noteSync";
 import { NoteTabs } from "./components/NoteTabs";
 import { layoutStore, shown } from "./piLayout";
 import { bump, forget, readRecent, writeRecent } from "./recent";
+import { empty, forget as forgetStep, go, here, type Nav, replace } from "./nav";
 import { type Closed, add as addTab, close as closeTabIn, move, neighbour, readTabs, reopen, writeTabs } from "./tabs";
 import { filesStore, noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
 import { Button } from "./components/ui/button";
@@ -23,40 +24,75 @@ import { getConnection, subscribe } from "./store";
 import { send } from "./ws";
 
 /**
- * The address carries which note is open, so a reload lands where you left
- * off and a row in the sidebar is a link rather than a call.
+ * Which note is in the middle column, and the way back to the ones before it.
  *
- * A followed link can also say where in the note to land. That is not in the
- * address — a reload should not jump the cursor back — so it is held until the
- * address it changed arrives, and goes out with that path and no other.
+ * Where you have been is the list (nav.ts) and it is what is asked; the
+ * address is written from it rather than read into it, so that a reload lands
+ * where you left off and a row in the sidebar is a link rather than a call.
+ * It is written with replaceState, which adds nothing to the browser's own
+ * list: the two would otherwise be stepped through at once, each a step
+ * behind the other. An address typed by hand still arrives, as a step like
+ * any other.
+ *
+ * A followed link can also say where in the note to land. That is part of the
+ * step — going back to it should land there again — and is handed to the
+ * editor for as long as it is the step we stand on.
  */
-function useOpenNote(): [string | null, Place | null, (path: string | null, place?: Place) => void] {
-	const [at, setAt] = useState<{ path: string | null; place: Place | null }>(() => ({ path: noteFromHash(location.hash), place: null }));
-	const landing = useRef<{ path: string; place: Place } | null>(null);
+type Opened = {
+	open: string | null;
+	place: Place | null;
+	/** Somewhere was opened: a step. */
+	setOpen: (path: string | null, place?: Place) => void;
+	/** The note in front went away and another stands there now: not a step. */
+	showInstead: (path: string | null) => void;
+};
+function useOpenNote(): Opened {
+	const [nav, setNav] = useState<Nav>(() => {
+		const path = noteFromHash(location.hash);
+		return path ? go(empty, path) : empty;
+	});
+	// Nothing in the middle column, with the list left standing where it is:
+	// the last tab closed, or a window opened at no address. Opening anything
+	// fills it again, and the way back is still there.
+	const [blank, setBlank] = useState(() => noteFromHash(location.hash) === null);
+	const entry = blank ? null : here(nav);
+	const open = entry?.path ?? null;
+
+	useEffect(() => {
+		const want = open ? hashForNote(open) : "";
+		if (location.hash !== want) history.replaceState(null, "", want || location.pathname + location.search);
+	}, [open]);
+
+	// Only ever from outside — another window's link, an address typed in —
+	// since what this writes is written silently.
 	useEffect(() => {
 		const onHash = () => {
 			const path = noteFromHash(location.hash);
-			const place = landing.current?.path === path ? landing.current.place : null;
-			landing.current = null;
-			setAt({ path, place });
+			setBlank(path === null);
+			if (path) setNav((nav) => go(nav, path));
 		};
 		addEventListener("hashchange", onHash);
 		return () => removeEventListener("hashchange", onHash);
 	}, []);
-	const open = useCallback((next: string | null, place?: Place) => {
-		landing.current = next && place ? { path: next, place } : null;
-		location.hash = next ? hashForNote(next) : "";
+
+	const setOpen = useCallback((next: string | null, place?: Place) => {
+		setBlank(next === null);
+		if (next) setNav((nav) => go(nav, next, place));
 	}, []);
-	// A rename moves the address under the open note. The editor is the same
-	// one — same undo history, same cursor — so it is told rather than replaced.
+	const showInstead = useCallback((next: string | null) => {
+		setBlank(next === null);
+		if (next) setNav((nav) => replace(nav, next));
+	}, []);
+
+	// A rename moves the address under the open note, and under every step
+	// that named it. The editor is the same one — same undo history, same
+	// cursor — so it is told rather than replaced.
 	const renamed = useSyncExternalStore(noteRenamedStore.subscribe, noteRenamedStore.get);
 	useEffect(() => {
-		if (renamed && renamed.from === noteFromHash(location.hash)) {
-			history.replaceState(null, "", hashForNote(renamed.to));
-			setAt({ path: renamed.to, place: null });
-		}
+		if (renamed) setNav((nav) => forgetStep(nav, renamed.from, renamed.to));
 	}, [renamed]);
-	return [at.path, at.place, open];
+
+	return { open, place: entry?.place ?? null, setOpen, showInstead };
 }
 
 /**
@@ -90,7 +126,7 @@ noteRenamedStore.subscribe(() => {
  * seat. It collapses with ⌘\ so it can be ignored.
  */
 export function App() {
-	const [open, place, setOpen] = useOpenNote();
+	const { open, place, setOpen, showInstead } = useOpenNote();
 	// A debug view, so it is behind a shortcut rather than a permanent control in
 	// the best seat on screen. RawView says how to leave, since nothing says it
 	// is there in the first place.
@@ -172,9 +208,9 @@ export function App() {
 			}
 			setTabs(next.tabs);
 			if (gone.length) setClosed((stack) => [...stack, ...gone]);
-			if (next.active !== open) setOpen(next.active);
+			if (next.active !== open) showInstead(next.active);
 		},
-		[tabs, open, setOpen],
+		[tabs, open, showInstead],
 	);
 	const closeTab = useCallback((path: string) => closeTabs([path]), [closeTabs]);
 	const reopenTab = useCallback(() => {
