@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { PencilIcon, TextQuoteIcon, X } from "lucide-react";
 
 import { type Chosen as ChosenWords, chosenStore } from "../chosen";
+import { draftStore } from "../draft";
 import { appendRestored } from "../queue";
 import { flushSaves } from "../saves";
 import { askingAgainStore, configStore, promptsStore, restoredStore } from "../serverState";
@@ -61,6 +62,7 @@ function submit(
 	});
 	askingAgainStore.set(null);
 	form.reset();
+	draftStore.set("");
 }
 
 /**
@@ -144,10 +146,17 @@ export function Composer({ note }: { note: string | null }) {
 	// reads it out of the form on submit — so it is written directly, appended
 	// rather than assigned so it cannot overwrite something half-typed.
 	const box = useRef<HTMLTextAreaElement>(null);
+	// What was typed before this box was made, if it was made again elsewhere
+	// — see draft.ts. Written in, not given as a default: a form reset goes
+	// back to the default, and a sent message must leave the box empty.
+	useEffect(() => {
+		if (box.current) box.current.value = draftStore.get();
+	}, []);
 	const restored = useSyncExternalStore(restoredStore.subscribe, restoredStore.get);
 	useEffect(() => {
 		if (!restored || !box.current) return;
 		box.current.value = appendRestored(box.current.value, restored);
+		draftStore.set(box.current.value);
 		box.current.focus();
 		restoredStore.set(null);
 	}, [restored]);
@@ -168,6 +177,7 @@ export function Composer({ note }: { note: string | null }) {
 						className="min-h-9"
 						placeholder="Message pi"
 						disabled={!online}
+						onChange={(e) => draftStore.set(e.currentTarget.value)}
 						onKeyDown={(e) => {
 							// Steering is delivered at the next turn boundary — after the
 							// current turn's tool calls, before the next model call — so it
