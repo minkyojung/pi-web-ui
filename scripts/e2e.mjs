@@ -292,11 +292,13 @@ check("the app renders a conversation", async ({ app }) => {
 	await until("the conversation", () => app.evaluate("!!document.getElementById('chat')"));
 });
 
-check("the sidebar lists the folder's notes and nothing else", async ({ app }) => {
-	const listed = await until("the notes", () =>
-		app.evaluate("[...document.querySelectorAll('#notes button')].map((b) => b.dataset.path).join(',')"),
-	);
-	assert.deepEqual(listed.split(",").sort(), ["first.md", "ideas/second.md"]);
+check("the sidebar is the folder's tree: its notes and folders, a folder's notes once it is opened, and nothing else", async ({ app }) => {
+	const rows = () => app.evaluate("[...document.querySelectorAll('#notes button')].map((b) => b.dataset.folder ?? b.dataset.path).join(',')");
+	const listed = await until("the notes", rows);
+	assert.deepEqual(listed.split(",").sort(), ["first.md", "ideas"]);
+	await app.evaluate(`document.querySelector('#notes button[data-folder="ideas"]').click()`);
+	await until("the folder's notes", async () => (await rows()).includes("ideas/second.md"));
+	assert.deepEqual((await rows()).split(",").sort(), ["first.md", "ideas", "ideas/second.md"]);
 });
 
 check("a branched session opens on its newest branch", async ({ app }) => {
@@ -365,6 +367,19 @@ const editorText = (page) => page.evaluate("document.querySelector('#editor .cm-
 /** What is drawn, as text: the doc less whatever live preview hides. */
 const shownText = (page) => page.evaluate("document.querySelector('#editor .cm-content')?.textContent ?? ''");
 const editorStatus = (page) => page.evaluate("document.getElementById('editor')?.dataset.status ?? ''");
+
+/**
+ * A note picked from the sidebar's tree: the folders around it opened first,
+ * as a person would, then its row clicked once it is there.
+ */
+const pickNote = async (page, path) => {
+	const folders = path.split("/").slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join("/"));
+	for (const folder of folders) {
+		await page.evaluate(`(() => { const b = document.querySelector('#notes button[data-folder="${folder}"]'); if (b && b.getAttribute("aria-expanded") !== "true") b.click(); })()`);
+	}
+	await until(`the row for ${path}`, () => page.evaluate(`!!document.querySelector('#notes button[data-path="${path}"]')`));
+	await page.evaluate(`document.querySelector('#notes button[data-path="${path}"]').click()`);
+};
 /**
  * Typing, as the browser sees it: focus the box and insert text the way an
  * input method does, so it goes through CodeMirror's DOM observer rather than
@@ -608,7 +623,7 @@ check("a note deleted on disk is put to the person, and can be put back from the
 
 check("what pi changed is a diff to decide about, and ⌘Z takes a decision back", async ({ app, cwd }) => {
 	const log = () => readFileSync(join(cwd, ".pi/history/ideas/second.md.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
-	await app.evaluate(`document.querySelector('#notes button[data-path="ideas/second.md"]').click()`);
+	await pickNote(app, "ideas/second.md");
 	// The note opens with its diff. pi changed a word and added a line two
 	// lines down, which the merge view shows as one chunk — the blank line
 	// between is too short to keep them apart — and the word pi replaced is
@@ -743,7 +758,7 @@ check("a slash in the title moves the note to that folder, and a leading one bac
 });
 
 check("a list item continues on Enter and ends on a second, and a bracket closes as it opens", async ({ app, cwd }) => {
-	await app.evaluate(`document.querySelector('#notes button[data-path="ideas/second.md"]').click()`);
+	await pickNote(app, "ideas/second.md");
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	// Start a list at the end of the note.
 	await app.press("End", { meta: true });
@@ -834,7 +849,7 @@ check("⌘P finds a note by a few letters, and makes one that is not there", asy
 });
 
 check("⌘F finds in the note, and Escape puts the panel away", async ({ app }) => {
-	await app.evaluate(`document.querySelector('#notes button[data-path="ideas/second.md"]').click()`);
+	await pickNote(app, "ideas/second.md");
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	await app.press("f", { meta: true });
 	await until("the panel", () => app.evaluate("document.activeElement?.name === 'search'"));
@@ -1100,7 +1115,7 @@ check("a note opens again where it was left", async ({ app, cwd }) => {
 	assert.equal(await head(), 0, "a note never left opens at the top");
 	const end = (await editorText(app)).length;
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: ${end} } }); })()`);
-	await app.evaluate(`document.querySelector('#notes button[data-path="ideas/second.md"]').click()`);
+	await pickNote(app, "ideas/second.md");
 	await until("the other note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("second"));
 	await app.evaluate(`document.querySelector('#notes button[data-path="left.md"]').click()`);
 	await until("back at the end", async () => (await editorStatus(app)) === "saved" && (await head()) === end);
@@ -1117,7 +1132,7 @@ check("the title scrolls away with the note, and the note comes back scrolled wh
 	await app.evaluate("document.querySelector('#note').scrollTop = 600");
 	await until("the title to have gone up with the page", async () => (await titleTop()) < pageTop);
 	// Leave and come back: the page is where it was.
-	await app.evaluate(`document.querySelector('#notes button[data-path="ideas/second.md"]').click()`);
+	await pickNote(app, "ideas/second.md");
 	await until("the other note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("second"));
 	await app.evaluate(`document.querySelector('#notes button[data-path="tall.md"]').click()`);
 	await until("back where it was", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.querySelector('#note').scrollTop")) === 600);
@@ -1366,7 +1381,7 @@ check("⌘B and ⌘I put a mark around the chosen words and take it off again", 
 });
 
 check("a < in prose offers no HTML tags", async ({ app }) => {
-	await app.evaluate(`document.querySelector('#notes button[data-path="ideas/second.md"]').click()`);
+	await pickNote(app, "ideas/second.md");
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	await app.press("End", { meta: true });
 	await app.keys(" <di");
@@ -1419,8 +1434,7 @@ check("⌘+click on a link to a heading or a block opens its note at that line",
 check("⌘+click on a markdown link opens the note at its path, and a web address in a new window", async ({ app, cwd, api, devtools }) => {
 	const site = `http://127.0.0.1:${api}/?from=markdown-link`;
 	writeFileSync(join(cwd, "ideas", "plain.md"), `[up to jump](../jump.md)\n\n[the site](${site})\n`);
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="ideas/plain.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[data-path="ideas/plain.md"]').click()`);
+	await pickNote(app, "ideas/plain.md");
 	await until("the note", async () => (await app.evaluate("location.hash")) === "#ideas/plain.md" && (await editorStatus(app)) === "saved");
 	// A markdown link is drawn as `[`, the words, `](`, the address, `)`: the fourth is the address.
 	const address = (line) => `#editor .cm-line:nth-child(${line}) > span:nth-child(4)`;
