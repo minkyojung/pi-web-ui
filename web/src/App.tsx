@@ -5,7 +5,7 @@ import { Composer } from "./components/Composer";
 import { Conversation } from "./components/Conversation";
 import { Editor } from "./components/Editor";
 import { RawView } from "./components/RawView";
-import { SettingsBar } from "./components/SettingsBar";
+import { PanelHeader } from "./components/PanelHeader";
 import { Sidebar } from "./components/Sidebar";
 import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
@@ -223,7 +223,7 @@ export function App() {
 					collapsedSize="0%"
 					className="flex min-w-0 flex-col border-l"
 				>
-					<SettingsBar />
+					<PanelHeader />
 					{/* The two views used to be swapped by a body.raw class, which has no
 					    home in a utility stylesheet — and only one was ever read. */}
 					{raw ? <RawView /> : <Conversation items={items} />}

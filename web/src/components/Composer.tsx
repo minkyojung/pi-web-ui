@@ -128,7 +128,8 @@ function Chosen({ chosen, onDrop }: { chosen: ChosenWords | null; onDrop: () => 
  * press. So it is one here too, and only while a run is going.
  */
 export function Composer({ note }: { note: string | null }) {
-	const online = useSyncExternalStore(subscribe, getConnection) === "open";
+	const connection = useSyncExternalStore(subscribe, getConnection);
+	const online = connection === "open";
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const streaming = config?.isStreaming ?? false;
 	const asking = useSyncExternalStore(promptsStore.subscribe, promptsStore.get).length > 0;
@@ -192,7 +193,15 @@ export function Composer({ note }: { note: string | null }) {
 								/>
 							</>
 						)}
-						{asking ? (
+						{/* Reconnection is automatic and unattended — a backoff of at most
+						    five seconds, skipped when the network returns or the tab is looked
+						    at again. So this reports, beside the box it disables, and is
+						    careful not to look like it is asking for something. */}
+						{!online ? (
+							<span id="status" className="px-1 text-xs text-amber-600 dark:text-amber-500">
+								{connection === "connecting" ? "Connecting…" : "Offline — reconnecting automatically"}
+							</span>
+						) : asking ? (
 							<span className="px-1 text-xs text-amber-600 dark:text-amber-500">
 								pi is waiting for your answer above
 							</span>
