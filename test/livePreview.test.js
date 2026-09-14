@@ -109,16 +109,16 @@ const drawn = (s) => {
   return out;
 };
 
-test("펜스 코드는 요소 하나에 언어가 붙고, 줄마다 코드 급이며, 커서가 없으면 펜스 줄이 사라진다", () => {
+test("펜스 코드는 요소 하나 안에 줄마다 코드 급이고, 펜스 줄은 커서와 상관없이 흐리게 남는다", () => {
   const s = parsed("a\n\n```js\nx\n```\n", 0);
   assert.deepEqual(wrapped(s), [[3, 14, "cm-code", 50]], "to the node's end; the default rank");
-  // A block replace sorts before the line decoration at the same position.
-  assert.deepEqual(drawn(s), [["```js", "hidden"], [3, "cm-code-line"], [4, "cm-code-line"], ["```", "hidden"], [5, "cm-code-line"]]);
-  assert.deepEqual(drawn(parsed("a\n\n```js\nx\n```\n", 9)), [[3, "cm-code-line"], [4, "cm-code-line"], [5, "cm-code-line"]], "on any of its lines both fences show");
+  const fences = [[3, "cm-code-line cm-code-fence"], [4, "cm-code-line"], [5, "cm-code-line cm-code-fence"]];
+  assert.deepEqual(drawn(s), fences, "cursor off the block");
+  assert.deepEqual(drawn(parsed("a\n\n```js\nx\n```\n", 9)), fences, "cursor on it: the same, so nothing moves on arrival");
 });
 
-test("닫히지 않은 펜스는 여는 줄만 사라진다", () => {
-  assert.deepEqual(drawn(parsed("before\n\n```\nx\ny\n", 0)).filter(([, k]) => k === "hidden"), [["```", "hidden"]]);
+test("닫히지 않은 펜스는 여는 줄만 펜스다", () => {
+  assert.deepEqual(drawn(parsed("before\n\n```\nx\ny\n", 0)), [[3, "cm-code-line cm-code-fence"], [4, "cm-code-line"], [5, "cm-code-line"], [6, "cm-code-line"]], "to the end of the note, the last line no fence");
 });
 
 /** Each block wrapper as [from, to, class, rank]. */
@@ -141,7 +141,7 @@ test("인용 속 인용은 요소 속 요소이고, 안쪽이 낮은 rank라 안
 });
 
 test("인용 속 코드 블록의 줄은 여전히 코드 줄이다", () => {
-  assert.deepEqual(drawn(parsed("> ```\n> x\n> ```\n")).filter(([, k]) => k === "cm-code-line").length, 3);
+  assert.deepEqual(drawn(parsed("> ```\n> x\n> ```\n")).filter(([, k]) => k.startsWith("cm-code-line")).length, 3);
 });
 
 test("[!type]으로 여는 인용은 콜아웃이다: 줄마다 종류가 붙고, 첫 줄은 제목이며, 표시는 커서가 없을 때 숨는다", () => {
@@ -184,7 +184,7 @@ test("불릿은 커서와 상관없이 점이고, 번호는 제 글자대로, �
 test("리스트 줄의 앞 공백은 커서와 상관없이 숨고, 코드 펜스 안에서는 남는다", () => {
   const doc = "- a\n  more\n    - b\n\n    ```\n    code\n    ```\n";
   const off = drawn(parsed(doc, 0)).filter(([, k]) => k === "hidden").map(([t]) => t);
-  assert.deepEqual(off, ["  ", "    ", "    ```", "    ```"], "the continuation line's and the nested item's indentation, and the fences by the code chrome; the code's own spaces are not touched");
+  assert.deepEqual(off, ["  ", "    "], "the continuation line's and the nested item's indentation; the fences stay, and the code's own spaces are not touched");
   const on = drawn(parsed(doc, 6)).filter(([, k]) => k === "hidden").map(([t]) => t);
   assert.deepEqual(on, off, "the cursor on the continuation line changes nothing");
 });

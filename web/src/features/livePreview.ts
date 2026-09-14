@@ -16,15 +16,22 @@
  *   lines only, and again when the selection moves — cheaply, since the
  *   visible lines are few. Its widgets are atomic: the cursor steps over a
  *   checkbox, not into it.
- * - Of the lines (`blocks`): a fence line taken out whole, a rule drawn in
- *   a line's place, and the elements around a code block's or a quote's
- *   lines. These change the vertical layout, which the docs allow only
- *   from a state field — a plugin's decorations are computed after the
- *   viewport is — so this half is one, over the whole note, rebuilt when
- *   the note or the tree changes, or the selection moves to other lines;
- *   not when it moves along a line. A quote is a block wrapper — one
- *   element around its lines, with the bar on it — so a quote in a quote
- *   is a bar in a bar.
+ * - Of the lines (`blocks`): a rule drawn in a line's place, and the
+ *   elements around a code block's or a quote's lines. These change the
+ *   vertical layout, which the docs allow only from a state field — a
+ *   plugin's decorations are computed after the viewport is — so this half
+ *   is one, over the whole note, rebuilt when the note or the tree changes,
+ *   or the selection moves to other lines; not when it moves along a line.
+ *   A quote is a block wrapper — one element around its lines, with the bar
+ *   on it — so a quote in a quote is a bar in a bar.
+ *
+ * And one rule across the halves: what the cursor shows and hides never
+ * changes the height of anything. Vertical motion is measured on the
+ * layout before the move; what the arrival reveals is laid out after it,
+ * so a mark that appears beside a word only nudges the word along, but a
+ * line that appears above the cursor moves the whole page under it. So a
+ * code block's fences stay in the layout, dimmed, as Obsidian has them,
+ * and a rule is one line tall as a line and as `---`.
  *
  * All three are pure functions of the state and the ranges, so they are
  * pinned in node without a browser; the plugin and the field only call
@@ -162,18 +169,12 @@ const plugin = ViewPlugin.fromClass(
 // ---- The block half ----
 
 const codeLine = Decoration.line({ class: "cm-code-line" });
-/** A fence line taken out of the layout whole, off the block's lines: a block replace, drawing nothing. */
+/** A fence line: in the code face like the rest, and dimmed — it stays in the layout, cursor or not. */
+const fenceLine = Decoration.line({ class: "cm-code-line cm-code-fence" });
+/** The properties taken out of the layout whole, off their lines: a block replace, drawing nothing. */
 const fenceGone = Decoration.replace({ block: true });
-const codeWrappers = new Map<string, BlockWrapper>();
-/** The element around a code block's lines, carrying the language for the CSS to show. */
-const codeWrapper = (lang: string) => {
-	let w = codeWrappers.get(lang);
-	if (!w) {
-		w = BlockWrapper.create({ tagName: "div", attributes: lang ? { class: "cm-code", "data-lang": lang } : { class: "cm-code" } });
-		codeWrappers.set(lang, w);
-	}
-	return w;
-};
+/** The element around a code block's lines. */
+const codeWrapper = BlockWrapper.create({ tagName: "div", attributes: { class: "cm-code" } });
 const doneLine = Decoration.line({ class: "cm-task-done" });
 const calloutTitles = new Map<string, Decoration>();
 /** A callout's first line, which carries the type for the CSS to show before the title. */
@@ -332,11 +333,16 @@ export function inline(state: EditorState, from: number, to: number, ranges = st
 		enter: (node: SyntaxNodeRef) => {
 			switch (node.name) {
 				case "FencedCode": {
-					// Its lines in the code face; the box around them and the fences
-					// gone are the block half's.
-					for (let n = doc.lineAt(node.from).number; n <= doc.lineAt(node.to).number; n++) {
+					// Its lines in the code face, the fences dimmed; the box around
+					// them is the block half's. The opening fence is the first line;
+					// the closing one, when it is there, is the last.
+					const marks = node.node.getChildren("CodeMark");
+					const first = doc.lineAt(node.from).number;
+					const last = doc.lineAt(node.to).number;
+					const closed = marks.length > 1 && doc.lineAt(marks[marks.length - 1].from).number === last;
+					for (let n = first; n <= last; n++) {
 						codeLines.add(n);
-						put(doc.line(n).from, doc.line(n).from, codeLine);
+						put(doc.line(n).from, doc.line(n).from, n === first || (closed && n === last) ? fenceLine : codeLine);
 					}
 					return false;
 				}
@@ -416,18 +422,10 @@ export function blocks(state: EditorState, ranges = state.selection.ranges): Blo
 		enter: (node: SyntaxNodeRef) => {
 			switch (node.name) {
 				case "FencedCode": {
-					// The box around the block, and — off the block's lines — the
-					// fences gone from the layout, so the code sits in the box alone
-					// with the language named on it.
-					const info = node.node.getChild("CodeInfo");
-					const first = doc.lineAt(node.from);
-					const last = doc.lineAt(node.to);
-					wrappers.push(codeWrapper(info ? doc.sliceString(info.from, info.to).trim() : "").range(first.from, node.to));
-					if (onLines(state, ranges, node.from, node.to)) return false;
-					const marks = node.node.getChildren("CodeMark");
-					// The opening fence is the first line; the closing one, when it is there, is the last.
-					deco.push(fenceGone.range(first.from, first.to));
-					if (marks.length > 1 && doc.lineAt(marks[marks.length - 1].from).number === last.number) deco.push(fenceGone.range(last.from, last.to));
+					// The box around the block, fences and all: the fences name the
+					// language and close the block, and taken out they would come
+					// back with the cursor and move the page.
+					wrappers.push(codeWrapper.range(doc.lineAt(node.from).from, node.to));
 					return false;
 				}
 				case "Blockquote": {
@@ -525,22 +523,12 @@ const blockLayer: Extension = [
 	}),
 	EditorView.baseTheme({
 		".cm-code-line": { fontFamily: "ui-monospace, monospace", fontSize: "0.9em" },
-		// The code block's element: the box is here, the face is on the lines. The
-		// language sits in the corner, from the attribute, so no widget is needed.
+		".cm-code-fence": { color: "var(--muted-foreground)" },
+		// The code block's element: the box is here, the face is on the lines.
 		".cm-code": {
-			position: "relative",
 			backgroundColor: "color-mix(in oklab, var(--foreground) 5%, transparent)",
 			borderRadius: "6px",
 			padding: "0.5em 0.75em",
-		},
-		".cm-code[data-lang]::before": {
-			content: "attr(data-lang)",
-			position: "absolute",
-			top: "0.3em",
-			right: "0.75em",
-			fontSize: "0.75em",
-			color: "var(--muted-foreground)",
-			fontFamily: "ui-monospace, monospace",
 		},
 		// The quote's element: the bar and the room for it are here, not on
 		// its lines, so a quote inside a quote is a bar inside a bar, and a
@@ -554,10 +542,14 @@ const blockLayer: Extension = [
 		// block widget by its box, so a margin is height it does not know about,
 		// and every line under the rule would sit lower on the page than in the
 		// height map — which is what made ArrowUp skip the line above the rule.
+		// And the box is one line tall — half the line-height above, half
+		// below, the line drawn on the background between — so the rule and the
+		// `---` it becomes under the cursor are the same height, and nothing
+		// moves when one turns into the other.
 		".cm-rule": {
 			border: "none",
 			margin: "0",
-			padding: "0.6em 0",
+			padding: "0.8em 0",
 			display: "block",
 			background: "linear-gradient(var(--border), var(--border)) center / 100% 1px no-repeat",
 		},
