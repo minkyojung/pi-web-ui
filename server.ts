@@ -23,10 +23,11 @@ import {
 	type AgentSessionEvent,
 	type CreateAgentSessionRuntimeFactory,
 } from "@earendil-works/pi-coding-agent";
-import { itemsFromMessages } from "./conversation.js";
+import { itemsFromMessages, textOf } from "./conversation.js";
 import { modeToolNames } from "./toolModes.ts";
 import { clampLevel, loadoutOf, lostProviders, modelsNotice as modelsNotice_, supportedLevels } from "./models.ts";
 import { readSettings, writeSettings } from "./settings.ts";
+import { askForName } from "./sessionName.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
 import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, trashNote, writeNote, type WriteResult } from "./vault.ts";
@@ -712,6 +713,53 @@ function onEvent(event: AgentSessionEvent): void {
 	if (event.type === "agent_settled") broadcast(branches());
 	// And it may have written a note, or renamed one.
 	if (event.type === "agent_settled") broadcast(files());
+	// The first exchange is the first thing there is to name the session by.
+	if (event.type === "agent_settled") void nameSession();
+}
+
+/**
+ * The session a name has already been asked for. Once per conversation: a
+ * model that gave nothing back for this exchange will not give something back
+ * for the same one, and a second try would only spend again to say so.
+ */
+let namedFor: string | null = null;
+
+/**
+ * Give a name to a conversation nobody has named — see sessionName.ts. Run
+ * when a turn ends, which is the first moment there is anything to go on.
+ *
+ * A name already there is never replaced. pi keeps one name, so a name put
+ * there by a person and a name put there by this are the same field; leaving
+ * whatever is there alone is what keeps this from talking over anybody.
+ */
+async function nameSession(): Promise<void> {
+	const named = session();
+	if (named.sessionName || namedFor === named.sessionId) return;
+	const messages = named.messages;
+	const question = messages.find((m) => m.role === "user");
+	const answer = messages.find((m) => m.role === "assistant");
+	if (!question || !answer) return;
+	namedFor = named.sessionId;
+	try {
+		const name = await askForName({
+			cwd: CWD,
+			agentDir: getAgentDir(),
+			modelRuntime,
+			models: availableModels(),
+			question: textOf(question.content),
+			answer: textOf(answer.content),
+		});
+		// Thinking of a name takes a moment, and in that moment the session can
+		// be replaced or named. Either way this answer is about a conversation
+		// that is no longer the one being named.
+		if (!name || session().sessionId !== named.sessionId || session().sessionName) return;
+		session().setSessionName(name);
+		broadcast(config());
+		broadcast(await sessions());
+	} catch {
+		// A courtesy. Without it the first message stands in for a name, which
+		// is what it did before there was anything to name a conversation with.
+	}
 }
 
 let unsubscribe: (() => void) | undefined;
