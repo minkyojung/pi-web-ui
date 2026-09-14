@@ -1256,14 +1256,21 @@ check("⌘[ goes back through the notes you have been in and ⌘] forward again,
 	await until("forward to b again", async () => (await editorText(app)) === "B\n");
 	// c was ahead; opening d from here throws it away, and forward has nowhere to go.
 	await open("back-d.md", "D\n");
+	assert.equal(await app.evaluate("document.querySelector('#forward').disabled"), true, "the forward arrow went out with the way forward");
+	assert.equal(await app.evaluate("document.querySelector('#back').disabled"), false);
+	await app.shot("back-forward");
 	await app.press("]", { meta: true });
 	await until("still d", async () => (await editorText(app)) === "D\n");
 	assert.equal(await app.evaluate("location.hash"), "#back-d.md");
-	await app.press("[", { meta: true });
+	// The arrows do what the keys do.
+	await app.click("#back");
 	await until("back past b", async () => (await editorText(app)) === "B\n");
+	assert.equal(await app.evaluate("document.querySelector('#forward').disabled"), false, "d is ahead now");
 	await app.press("[", { meta: true });
 	await until("to a", async () => (await editorText(app)) === "A\n");
 	assert.equal(await app.evaluate("location.hash"), "#back-a.md");
+	await app.click("#forward");
+	await until("and the forward arrow forward", async () => (await editorText(app)) === "B\n");
 });
 
 check("a tab dragged onto another takes its place, and a press without a move is still a pick", async ({ app }) => {

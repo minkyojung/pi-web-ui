@@ -45,7 +45,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  *
  * At the row's end, past the tabs: every open tab as a list, for when the row
  * is longer than the column — Chrome's ∨ — and a + for a new note, which is
- * ⌘N for the mouse.
+ * ⌘N for the mouse. At its start, before them, whatever is handed in: the way
+ * back and forward, which the row itself knows nothing about.
  */
 export function NoteTabs({
 	tabs,
@@ -55,6 +56,7 @@ export function NoteTabs({
 	onCloseMany,
 	onReorder,
 	onNew,
+	leading,
 	trailing,
 }: {
 	tabs: string[];
@@ -65,6 +67,8 @@ export function NoteTabs({
 	onReorder: (from: number, to: number) => void;
 	/** Asks for a new note; absent while there is no server to ask. */
 	onNew?: () => void;
+	/** Drawn at the row's near end, before the tabs. */
+	leading?: React.ReactNode;
 	/** Drawn at the row's far end, after the tabs' own controls. */
 	trailing?: React.ReactNode;
 }) {
@@ -98,6 +102,7 @@ export function NoteTabs({
 		<DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToHorizontalAxis]} onDragEnd={onDragEnd}>
 			<SortableContext items={tabs} strategy={horizontalListSortingStrategy}>
 				<Tabs value={open ?? ""} onValueChange={onOpen} className="drag-region h-11 shrink-0 items-center gap-0 border-b px-2 data-[orientation=horizontal]:flex-row">
+					{leading}
 					<TabsList ref={row} variant="line" className="group-data-[orientation=horizontal]/tabs:h-full no-scrollbar min-w-0 flex-1 justify-start gap-0 overflow-x-auto">
 						{tabs.map((path) => (
 							<NoteTab

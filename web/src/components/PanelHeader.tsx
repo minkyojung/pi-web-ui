@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
-import { Check, History, PanelRight, PanelRightOpen, Pencil, Plus } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, History, PanelRight, PanelRightOpen, Pencil, Plus } from "lucide-react";
 
 import type { SessionInfo } from "../types";
 import { sessionsStore } from "../serverState";
@@ -67,6 +67,37 @@ function SessionHistory({ sessions, disabled }: { sessions: SessionInfo[]; disab
 				</Command>
 			</PopoverContent>
 		</Popover>
+	);
+}
+
+/**
+ * The way back through the notes you have been in, and forward again.
+ *
+ * At the near end of the row of tabs, where a browser keeps them and where
+ * Obsidian does. Lit only while there is somewhere to go — which is the one
+ * thing the browser's own list cannot be asked, and half the reason the app
+ * keeps its own (nav.ts).
+ */
+export function Steps({ back, forward, canBack, canForward }: { back: () => void; forward: () => void; canBack: boolean; canForward: boolean }) {
+	return (
+		<>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button id="back" variant="ghost" size="icon-xs" aria-label="Back" className="shrink-0 text-muted-foreground" disabled={!canBack} onClick={back}>
+						<ChevronLeft />
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent side="bottom">Back ⌘[</TooltipContent>
+			</Tooltip>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button id="forward" variant="ghost" size="icon-xs" aria-label="Forward" className="mr-1 shrink-0 text-muted-foreground" disabled={!canForward} onClick={forward}>
+						<ChevronRight />
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent side="bottom">Forward ⌘]</TooltipContent>
+			</Tooltip>
+		</>
 	);
 }
 

@@ -4,7 +4,7 @@ import { type PanelImperativeHandle, useDefaultLayout } from "react-resizable-pa
 import { Editor } from "./components/Editor";
 import { DockBar, DockWindow } from "./components/Dock";
 import { Pi } from "./components/Pi";
-import { PiToggle } from "./components/PanelHeader";
+import { PiToggle, Steps } from "./components/PanelHeader";
 import { Sidebar } from "./components/Sidebar";
 import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
@@ -146,7 +146,7 @@ noteRenamedStore.subscribe(() => {
  * seat. It collapses with ⌘\ so it can be ignored.
  */
 export function App() {
-	const { open, place, setOpen, showInstead, back, forward } = useOpenNote();
+	const { open, place, setOpen, showInstead, back, forward, canBack, canForward } = useOpenNote();
 	// A debug view, so it is behind a shortcut rather than a permanent control in
 	// the best seat on screen. RawView says how to leave, since nothing says it
 	// is there in the first place.
@@ -365,6 +365,7 @@ export function App() {
 						onCloseMany={closeTabs}
 						onReorder={(from, to) => setTabs((list) => move(list, from, to))}
 						onNew={online ? () => send({ type: "new_note" }) : undefined}
+						leading={<Steps back={back} forward={forward} canBack={canBack} canForward={canForward} />}
 						trailing={<PiToggle open={layout === "dock" ? dockOpen : piOpen} onToggle={togglePi} />}
 					/>
 					{/* The note is one page — its title, its text, what links here —
