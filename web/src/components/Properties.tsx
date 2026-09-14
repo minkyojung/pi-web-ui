@@ -1,14 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { EditorView } from "@codemirror/view";
-import { Plus, X } from "lucide-react";
+import { AlignLeft, Calendar, CalendarClock, Hash, List, Plus, SquareCheck, Tags, TriangleAlert, X } from "lucide-react";
 import { type Document, isScalar, isSeq, type Pair } from "yaml";
 
 import { bodyStart, type Properties as Read, withProperties } from "../../../properties.ts";
+import { fits, fromInput, isReserved, PROPERTY_TYPES, type PropertyType, typeOf } from "../../../propertyTypes.ts";
 import { propertiesEdit } from "../features/properties";
 import { toggleLivePreview } from "../features/livePreview";
+import { propertyTypesStore } from "../serverState";
+import { send } from "../ws";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Input } from "./ui/input";
 
 /** The app's input, flat: a row is a line of a table, not a form field with a box around it. */
@@ -26,13 +31,17 @@ const FLAT = "h-7 rounded-none border-0 px-0 shadow-none focus-visible:ring-0 da
  * inside one where the focus's are. The rows are the projection of the
  * text; ⌘E shows the text itself.
  *
- * A value is a line of text, or a list of them as chips — `tags` and
- * `aliases` are lists whichever way they were written. Anything else, a
- * nested mapping, is shown and not edited: the source is one key away.
- * A block that does not parse is said so, and left exactly as it is.
+ * Each row is drawn by its type (propertyTypes.ts): a box for a checkbox,
+ * a date picker for a date, chips for a list — `tags` and `aliases` are
+ * lists whichever way they were written. The type is the name's, chosen
+ * from the row's icon and kept for the whole vault, or guessed from the
+ * value. A value that does not fit is shown as text with a warning, never
+ * corrected. A nested mapping is shown and not edited: the source is one
+ * key away. A block that does not parse is said so, and left as it is.
  */
 export function Properties({ view, read }: { view: EditorView | null; read: Read | null }) {
 	const [adding, setAdding] = useState(false);
+	const chosen = useSyncExternalStore(propertyTypesStore.subscribe, propertyTypesStore.get);
 	if (!view || !read) return null;
 
 	/** Put a change to the document's properties into the editor as one change over the block's lines. */
@@ -77,9 +86,10 @@ export function Properties({ view, read }: { view: EditorView | null; read: Read
 		<Frame>
 			{items.map((pair) => {
 				const name = nameOf(pair);
+				const type = typeOf(name, toPlain(pair.value), chosen);
 				return (
-					<Row key={name} name={name} onRemove={() => apply((doc) => doc.delete(name))}>
-						<Value name={name} node={pair.value} apply={apply} />
+					<Row key={name} name={name} type={type} chosen={name.toLowerCase() in chosen} onRemove={() => apply((doc) => doc.delete(name))}>
+						<Value name={name} type={type} node={pair.value} apply={apply} />
 					</Row>
 				);
 			})}
@@ -109,10 +119,22 @@ const Frame = ({ children }: { children: React.ReactNode }) => (
 
 const nameOf = (pair: Pair) => String(isScalar(pair.key) ? pair.key.value : pair.key);
 
-function Row({ name, children, onRemove }: { name: string; children: React.ReactNode; onRemove: () => void }) {
+/** What each type is called and drawn as. */
+const TYPES: Record<PropertyType, { label: string; Icon: typeof Hash }> = {
+	text: { label: "Text", Icon: AlignLeft },
+	list: { label: "List", Icon: List },
+	number: { label: "Number", Icon: Hash },
+	checkbox: { label: "Checkbox", Icon: SquareCheck },
+	date: { label: "Date", Icon: Calendar },
+	datetime: { label: "Date & time", Icon: CalendarClock },
+	tags: { label: "Tags", Icon: Tags },
+};
+
+function Row({ name, type, chosen, children, onRemove }: { name: string; type: PropertyType; chosen: boolean; children: React.ReactNode; onRemove: () => void }) {
 	return (
-		<div className="group flex min-h-7 items-center gap-2" data-property={name}>
-			<span className="w-32 shrink-0 truncate text-muted-foreground" title={name}>
+		<div className="group flex min-h-7 items-center gap-2" data-property={name} data-type={type}>
+			<TypeMenu name={name} type={type} chosen={chosen} />
+			<span className="w-28 shrink-0 truncate text-muted-foreground" title={name}>
 				{name}
 			</span>
 			<div className="min-w-0 flex-1">{children}</div>
@@ -129,40 +151,89 @@ function Row({ name, children, onRemove }: { name: string; children: React.React
 	);
 }
 
-/** `tags` and `aliases` are lists however they were written; anything written as a list is one. */
-const LISTS = new Set(["tags", "aliases"]);
-
-function Value({ name, node, apply }: { name: string; node: unknown; apply: (edit: (doc: Document) => void) => boolean }) {
-	if (isSeq(node) || LISTS.has(name)) return <ListValue name={name} node={node} apply={apply} />;
-	if (node === null || node === undefined || isScalar(node)) {
-		const value = isScalar(node) ? node.value : null;
-		return <TextValue text={value === null || value === undefined ? "" : String(value)} onCommit={(text) => apply((doc) => doc.set(name, typed(value, text)))} />;
-	}
-	// A mapping, or something else YAML can say and a row cannot: shown, and edited in the source.
+/**
+ * The row's icon is its type, and a menu to choose another for the name —
+ * for every note, since the type is the name's. "As the value says" takes
+ * the choice back. `tags` and `aliases` are not for choosing.
+ */
+function TypeMenu({ name, type, chosen }: { name: string; type: PropertyType; chosen: boolean }) {
+	const { label, Icon } = TYPES[type];
+	const reserved = isReserved(name);
 	return (
-		<span className="text-muted-foreground" title="Edit this one in the source (⌘E)">
-			{JSON.stringify(toPlain(node))}
-		</span>
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild disabled={reserved}>
+				<Button variant="ghost" size="icon-xs" aria-label={`Type of ${name}`} title={`${label}${reserved ? "" : " — click to change"}`} className="shrink-0 text-muted-foreground">
+					<Icon />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="start">
+				<DropdownMenuRadioGroup value={type} onValueChange={(t) => send({ type: "set_property_type", name, propertyType: t as PropertyType })}>
+					{PROPERTY_TYPES.filter((t) => t !== "tags").map((t) => {
+						const T = TYPES[t];
+						return (
+							<DropdownMenuRadioItem key={t} value={t}>
+								<T.Icon className="size-3.5 text-muted-foreground" />
+								{T.label}
+							</DropdownMenuRadioItem>
+						);
+					})}
+				</DropdownMenuRadioGroup>
+				{chosen && (
+					<>
+						<DropdownMenuSeparator />
+						<DropdownMenuRadioGroup value="" onValueChange={() => send({ type: "set_property_type", name, propertyType: null })}>
+							<DropdownMenuRadioItem value="guess">As the value says</DropdownMenuRadioItem>
+						</DropdownMenuRadioGroup>
+					</>
+				)}
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }
 
-const toPlain = (node: unknown) => (node && typeof node === "object" && "toJSON" in node ? (node as { toJSON(): unknown }).toJSON() : node);
-
-/**
- * What a typed value means: a number where a number was, true or false
- * where one was, nothing where the field was emptied, and text otherwise.
- * The property's own type, when there is one, will decide this instead.
- */
-function typed(was: unknown, text: string): unknown {
-	const t = text.trim();
-	if (t === "") return null;
-	if (typeof was === "number" && t !== "" && Number.isFinite(Number(t))) return Number(t);
-	if (typeof was === "boolean" && (t === "true" || t === "false")) return t === "true";
-	return text;
+function Value({ name, type, node, apply }: { name: string; type: PropertyType; node: unknown; apply: (edit: (doc: Document) => void) => boolean }) {
+	const value = toPlain(node);
+	const set = (v: unknown) => apply((doc) => doc.set(name, v));
+	// Not what the type says: shown as it is, in text, with a word about it; never corrected.
+	if (!fits(type, value)) {
+		if (value !== null && typeof value === "object" && !Array.isArray(value)) return <Unshown value={value} />;
+		return (
+			<div className="flex items-center gap-2">
+				<TextValue text={asText(value)} onCommit={(text) => set(fromInput("text", text))} />
+				<TriangleAlert className="size-3.5 shrink-0 text-destructive" aria-label={`Not a ${TYPES[type].label.toLowerCase()}`} />
+			</div>
+		);
+	}
+	switch (type) {
+		case "list":
+		case "tags":
+			return <ListValue name={name} node={node} apply={apply} />;
+		case "checkbox":
+			return <Checkbox checked={value === true} aria-label={name} onCheckedChange={(on) => set(on === true)} />;
+		case "number":
+			return <TextValue kind="number" text={asText(value)} onCommit={(text) => set(fromInput("number", text))} />;
+		case "date":
+			return <TextValue kind="date" text={asText(value)} onCommit={(text) => set(fromInput("date", text))} />;
+		case "datetime":
+			return <TextValue kind="datetime-local" text={asText(value)} onCommit={(text) => set(fromInput("datetime", text))} />;
+		default:
+			if (value !== null && typeof value === "object" && !Array.isArray(value)) return <Unshown value={value} />;
+			return <TextValue text={asText(Array.isArray(value) ? value[0] : value)} onCommit={(text) => set(fromInput("text", text))} />;
+	}
 }
 
-/** A line of text: Enter or leaving commits what changed, Escape puts back what was. */
-function TextValue({ text, onCommit }: { text: string; onCommit: (text: string) => void }) {
+/** A mapping, or something else YAML can say and a row cannot: shown, and edited in the source. */
+const Unshown = ({ value }: { value: unknown }) => (
+	<span className="text-muted-foreground" title="Edit this one in the source (⌘E)">
+		{JSON.stringify(value)}
+	</span>
+);
+
+const toPlain = (node: unknown) => (node && typeof node === "object" && "toJSON" in node ? (node as { toJSON(): unknown }).toJSON() : node);
+const asText = (value: unknown) => (value === null || value === undefined ? "" : typeof value === "object" ? JSON.stringify(value) : String(value));
+
+/** A line of text — or a number, a date, a time, by `kind` — Enter or leaving commits what changed, Escape puts back what was. */
+function TextValue({ text, kind = "text", onCommit }: { text: string; kind?: "text" | "number" | "date" | "datetime-local"; onCommit: (text: string) => void }) {
 	const box = useRef<HTMLInputElement>(null);
 	const commit = () => {
 		const now = box.current?.value ?? "";
@@ -172,9 +243,10 @@ function TextValue({ text, onCommit }: { text: string; onCommit: (text: string) 
 		<Input
 			key={text}
 			ref={box}
+			type={kind}
 			defaultValue={text}
 			spellCheck={false}
-			className={FLAT}
+			className={`${FLAT} ${kind === "text" ? "" : "w-auto"}`}
 			placeholder="Empty"
 			onKeyDown={(e) => {
 				if (e.nativeEvent.isComposing) return;

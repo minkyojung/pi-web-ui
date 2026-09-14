@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "nod
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { coerceRegistry, fits, inferType, isReserved, typeOf } from "../propertyTypes.ts";
+import { coerceRegistry, fits, fromInput, inferType, isReserved, typeOf } from "../propertyTypes.ts";
 import { PropertyRegistry, REGISTRY_PATH } from "../propertyRegistry.ts";
 
 test("값의 생김새로 짐작한다: 참거짓, 숫자, 목록, 날짜, 날짜와 시간, 나머지는 글자", () => {
@@ -70,4 +70,13 @@ test("등록부는 .pi/properties.json에 고른 것만 Obsidian의 모양으로
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("위젯에 친 것이 무엇으로 써지는가: 숫자는 숫자, 아니면 친 그대로; 날짜는 다듬어서; 비면 없음", () => {
+  assert.equal(fromInput("number", "12"), 12);
+  assert.equal(fromInput("number", "twelve"), "twelve");
+  assert.equal(fromInput("date", " 2024-01-01 "), "2024-01-01");
+  assert.equal(fromInput("datetime", "2024-01-01T10:30"), "2024-01-01T10:30");
+  assert.equal(fromInput("text", " a "), " a ");
+  assert.equal(fromInput("text", "  "), null);
 });

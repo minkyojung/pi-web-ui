@@ -99,3 +99,17 @@ export function coerceRegistry(raw: unknown): Registry {
 	}
 	return out;
 }
+
+/**
+ * What a value typed into a widget of `type` means, as it will be written:
+ * a number for number when it is one (and the text as it was when not, so
+ * nothing is lost), the date or time as the widget gives it — `YYYY-MM-DD`,
+ * `YYYY-MM-DDTHH:mm` — and text otherwise. Emptied is nothing.
+ */
+export function fromInput(type: PropertyType, text: string): unknown {
+	const t = text.trim();
+	if (t === "") return null;
+	if (type === "number") return Number.isFinite(Number(t)) ? Number(t) : text;
+	if (type === "date" || type === "datetime") return t;
+	return text;
+}

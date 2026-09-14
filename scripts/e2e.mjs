@@ -1072,6 +1072,28 @@ check("the properties are rows above the note: a chip added, a property added an
 	assert.equal(readFileSync(join(cwd, "broken.md"), "utf8"), "---\ntags: [x\n---\nbody\n", "left exactly as it was");
 });
 
+check("a row is drawn by its type — a box, a date, a number — the type is chosen for the name from the row's icon, and a value that does not fit is said so", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "typed.md"), "---\ndone: true\nwhen: 2024-01-01\ncount: 3\nodd: nope\n---\nbody\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="typed.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[title="typed.md"]').click()`);
+	await until("the rows", () => app.evaluate(`!!document.querySelector('#properties [data-property="odd"]')`));
+	const file = () => readFileSync(join(cwd, "typed.md"), "utf8");
+	// Guessed from the values.
+	assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('#properties [data-property]')].map((r) => r.dataset.type)`), ["checkbox", "date", "number", "text"]);
+	assert.equal(await app.evaluate(`document.querySelector('#properties [data-property="when"] input').type`), "date");
+	assert.equal(await app.evaluate(`document.querySelector('#properties [data-property="count"] input').type`), "number");
+	// The box is the value: unticked, the file says false.
+	await app.click('#properties [data-property="done"] [role=checkbox]');
+	await until("the file", () => file() === "---\ndone: false\nwhen: 2024-01-01\ncount: 3\nodd: nope\n---\nbody\n");
+	// A type chosen for the name is kept beside the notes, and the row is drawn by it.
+	await app.click('#properties [data-property="odd"] [aria-label="Type of odd"]');
+	await until("the menu", () => app.evaluate(`document.querySelectorAll('[role=menuitemradio]').length > 0`));
+	await app.evaluate(`[...document.querySelectorAll('[role=menuitemradio]')].find((i) => i.textContent.trim() === "Date").click()`);
+	await until("the choice kept", () => existsSync(join(cwd, ".pi/properties.json")) && JSON.parse(readFileSync(join(cwd, ".pi/properties.json"), "utf8")).types.odd === "date");
+	await until("the row a date, and the value not one", () => app.evaluate(`document.querySelector('#properties [data-property="odd"]')?.dataset.type === "date" && !!document.querySelector('#properties [data-property="odd"] [aria-label="Not a date"]')`));
+	assert.equal(file(), "---\ndone: false\nwhen: 2024-01-01\ncount: 3\nodd: nope\n---\nbody\n", "the value is not corrected");
+});
+
 check("a list item's wrapped lines start where its words do", async ({ app, cwd }) => {
 	const long = "word ".repeat(40).trim();
 	// The continuation is indented to the inner item's words: short of that it would be drawn at the outer item's depth, as typed.

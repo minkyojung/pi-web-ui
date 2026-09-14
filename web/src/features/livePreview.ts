@@ -531,7 +531,13 @@ const blockLayer: Extension = [
 		},
 	}),
 	EditorView.baseTheme({
-		".cm-code-line": { fontFamily: "ui-monospace, monospace", fontSize: "0.9em" },
+		// The face is smaller, the line is not: at the editor's line-height a
+		// code row would be 90% of a prose row, and the editor takes its idea of
+		// a line's height from whichever short plain line it measures first — a
+		// code line as readily as any — and then guesses every unmeasured line
+		// in the note at that. Rows the same height everywhere keep the guess
+		// right, and keep a block's rhythm the page's.
+		".cm-code-line": { fontFamily: "ui-monospace, monospace", fontSize: "0.9em", lineHeight: "calc(1.6 / 0.9)" },
 		".cm-code-fence": { color: "var(--muted-foreground)" },
 		// The code block's element: the box is here, the face is on the lines.
 		".cm-code": {
