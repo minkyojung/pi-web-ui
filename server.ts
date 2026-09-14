@@ -38,6 +38,7 @@ import { watchNotes } from "./watcher.ts";
 import { guard, VAULT_PROMPT } from "./guard.ts";
 import { renameTarget } from "./naming.ts";
 import { LinkStore, type Touched } from "./linkIndex.ts";
+import { PropertyStore } from "./propertyIndex.ts";
 import { PropertyRegistry } from "./propertyRegistry.ts";
 import { isPropertyType } from "./propertyTypes.ts";
 import { backlinksOf, retarget } from "./links.ts";
@@ -379,6 +380,19 @@ links.load();
 const propertyTypes = new PropertyRegistry(CWD);
 propertyTypes.load();
 
+/** What the vault's notes call their properties, for the boxes that offer them — see propertyIndex.ts. */
+const propertyNames = new PropertyStore(CWD);
+propertyNames.load();
+
+/**
+ * The vault has something else to offer, or one thing less: every tab hears
+ * the names again. Only when they differ — a write that changed a body alone
+ * leaves the boxes saying what they said.
+ */
+function offered(changed: boolean): void {
+	if (changed) broadcast({ type: "property_names", ...propertyNames.all() });
+}
+
 /** After a change to what links where: the notes whose backlinks may differ hear theirs again. */
 function backlinksFor(paths: string[]): void {
 	for (const path of paths) broadcast({ type: "backlinks", path, notes: links.backlinks(path) });
@@ -412,6 +426,7 @@ function noticed(path: string): void {
 		// it first.
 		if (known.delete(path)) broadcast({ type: "note_gone", path });
 		touchedBy(links.remove(path));
+		offered(propertyNames.remove(path));
 		broadcast(files());
 		return;
 	}
@@ -430,7 +445,10 @@ function noticed(path: string): void {
  */
 function wrote(path: string, base: number | null, changes: Change[]): void {
 	const found = readNote(CWD, path);
-	if (found) touchedBy(links.update(path, found.text));
+	if (found) {
+		touchedBy(links.update(path, found.text));
+		offered(propertyNames.update(path, found.text));
+	}
 	const log = found ? readHistory(CWD, path) : [];
 	if (found && base !== null && replay(log).text === found.text) {
 		known.set(path, found.modified);
@@ -885,6 +903,7 @@ wss.on("connection", async (ws) => {
 	reply(branches());
 	reply(files());
 	reply({ type: "property_types", types: propertyTypes.all() });
+	reply({ type: "property_names", ...propertyNames.all() });
 	// A tab opened while a question is waiting should see it too.
 	for (const prompt of prompts.open()) reply({ type: "prompt_request", prompt });
 
@@ -1190,6 +1209,7 @@ wss.on("connection", async (ws) => {
 						const before = links.paths();
 						const linking = backlinksOf(Object.fromEntries(before.map((p) => [p, links.linksOf(p)])), msg.path, before);
 						links.rename(msg.path, msg.to);
+						propertyNames.rename(msg.path, msg.to);
 						for (const { path: other } of linking) {
 							const had = readNote(CWD, other);
 							if (!had) continue;
@@ -1220,6 +1240,7 @@ wss.on("connection", async (ws) => {
 					broadcast({ type: "note_deleted", path: msg.path, trashed: gone.trashed });
 					broadcast(files());
 					touchedBy(links.remove(msg.path));
+					offered(propertyNames.remove(msg.path));
 					break;
 				}
 

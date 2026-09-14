@@ -11,6 +11,7 @@
  * Shared at the repo root like toolModes.ts. Types only: the client bundles
  * this, so nothing here may run.
  */
+import type { Suggestions } from "./properties.ts";
 import type { PropertyType, Registry } from "./propertyTypes.ts";
 import type { Ask, AskOutcome } from "./ask";
 import type { BranchPoint } from "./branches";
@@ -247,6 +248,15 @@ export interface PropertyTypesMsg {
 	types: Registry;
 }
 
+/**
+ * What the vault's notes call their properties and what they put in them,
+ * whole: on connect, and again whenever a write changes what is on offer.
+ * What the panel's boxes suggest — see propertyIndex.ts.
+ */
+export interface PropertyNamesMsg extends Suggestions {
+	type: "property_names";
+}
+
 /** The notes sharing a tag with `path`, again: sent the same way, whenever a note's tags changed. */
 export interface TaggedMsg {
 	type: "tagged";
@@ -409,6 +419,7 @@ export type StateMsg =
 	| BacklinksMsg
 	| TaggedMsg
 	| PropertyTypesMsg
+	| PropertyNamesMsg
 	| NoteChangedMsg
 	| NoteCreatedMsg
 	| NoteRenamedMsg

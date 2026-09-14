@@ -1072,6 +1072,36 @@ check("the properties are rows above the note: a chip added, a property added an
 	assert.equal(readFileSync(join(cwd, "broken.md"), "utf8"), "---\ntags: [x\n---\nbody\n", "left exactly as it was");
 });
 
+check("a property box offers what the vault already says: the name, then the values that name holds, and Shift-Enter keeps what was typed", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "said-a.md"), "---\nstatus: draft\ntags: [reading]\n---\nbody\n");
+	writeFileSync(join(cwd, "said-b.md"), "---\nstatus: shipped\n---\nbody\n");
+	writeFileSync(join(cwd, "offered.md"), "---\ntags: []\n---\nbody\n");
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="offered.md"]') && !!document.querySelector('#notes button[data-path="said-b.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="offered.md"]').click()`);
+	await until("the rows", () => app.evaluate(`!!document.querySelector('#properties [data-property="tags"]')`));
+	const file = () => readFileSync(join(cwd, "offered.md"), "utf8");
+	const offering = () => app.evaluate(`[...document.querySelectorAll('[data-suggestion]')].map((i) => i.dataset.suggestion)`);
+	// A name the vault already uses, narrowed by what is typed, and Enter takes it.
+	await app.click("#add-property");
+	await app.keys("st");
+	await until("status offered", async () => (await offering()).join() === "status");
+	await app.press("Enter");
+	await until("the line", () => file() === "---\ntags: []\nstatus:\n---\nbody\n");
+	// The value box offers what that name holds elsewhere, most used first, and nothing that does not answer.
+	await app.click('#properties [data-property="status"] input');
+	await until("both values", async () => (await offering()).join() === "draft,shipped");
+	await app.keys("sh");
+	await until("only the one", async () => (await offering()).join() === "shipped");
+	await app.press("Enter");
+	await until("the value taken", () => file() === "---\ntags: []\nstatus: shipped\n---\nbody\n");
+	// Shift-Enter keeps what was typed, offer or no offer, as Obsidian has it.
+	await app.click('#properties [aria-label="Add to tags"]');
+	await app.keys("read");
+	await until("the tag offered", async () => (await offering()).join() === "reading");
+	await app.press("Enter", { shift: true });
+	await until("what was typed", () => file() === "---\ntags: [read]\nstatus: shipped\n---\nbody\n");
+});
+
 check("a row is drawn by its type — a box, a date, a number — the type is chosen for the name from the row's icon, and a value that does not fit is said so", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "typed.md"), "---\ndone: true\nwhen: 2024-01-01\ncount: 3\nodd: nope\n---\nbody\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="typed.md"]')`));

@@ -22,6 +22,7 @@ import {
 	noteRenamedStore,
 	noteStore,
 	promptsStore,
+	propertyNamesStore,
 	propertyTypesStore,
 	pushRaw,
 	removePrompt,
@@ -73,6 +74,7 @@ const STATE: Record<StateMsg["type"], true> = {
 	backlinks: true,
 	tagged: true,
 	property_types: true,
+	property_names: true,
 	note_changed: true,
 	note_created: true,
 	note_renamed: true,
@@ -131,6 +133,9 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "property_types":
 			propertyTypesStore.set(msg.types);
+			return;
+		case "property_names":
+			propertyNamesStore.set({ names: msg.names, values: msg.values });
 			return;
 		case "note_changed":
 			noteChangedStore.set(msg);

@@ -1,20 +1,23 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { EditorView } from "@codemirror/view";
+import { Command as CommandPrimitive } from "cmdk";
 import { AlignLeft, Calendar, CalendarClock, Hash, List, Plus, SquareCheck, Tags, TriangleAlert, X } from "lucide-react";
 import { type Document, isScalar, isSeq, type Pair } from "yaml";
 
-import { bodyStart, type Properties as Read, withProperties } from "../../../properties.ts";
-import { fits, fromInput, isReserved, PROPERTY_TYPES, type PropertyType, typeOf } from "../../../propertyTypes.ts";
+import { bodyStart, type Properties as Read, suits, withProperties } from "../../../properties.ts";
+import { fits, fromInput, isReserved, keyOf, PROPERTY_TYPES, type PropertyType, typeOf } from "../../../propertyTypes.ts";
 import { propertiesEdit } from "../features/properties";
 import { toggleLivePreview } from "../features/livePreview";
-import { propertyTypesStore } from "../serverState";
+import { propertyNamesStore, propertyTypesStore } from "../serverState";
 import { send } from "../ws";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
+import { Command, CommandItem, CommandList } from "./ui/command";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Input } from "./ui/input";
+import { Popover, PopoverAnchor, PopoverContent } from "./ui/popover";
 
 /** The app's input, flat: a row is a line of a table, not a form field with a box around it. */
 const FLAT = "h-7 rounded-none border-0 px-0 shadow-none focus-visible:ring-0 dark:bg-transparent";
@@ -42,6 +45,7 @@ const FLAT = "h-7 rounded-none border-0 px-0 shadow-none focus-visible:ring-0 da
 export function Properties({ view, read }: { view: EditorView | null; read: Read | null }) {
 	const [adding, setAdding] = useState(false);
 	const chosen = useSyncExternalStore(propertyTypesStore.subscribe, propertyTypesStore.get);
+	const used = useSyncExternalStore(propertyNamesStore.subscribe, propertyNamesStore.get);
 	if (!view || !read) return null;
 
 	/** Put a change to the document's properties into the editor as one change over the block's lines. */
@@ -81,7 +85,8 @@ export function Properties({ view, read }: { view: EditorView | null; read: Read
 	}
 
 	const items: Pair[] = read.block && read.doc.contents && "items" in read.doc.contents ? (read.doc.contents as { items: Pair[] }).items : [];
-	const names = new Set(items.map((p) => nameOf(p)));
+	// By the lower-case name, as a property is known by (propertyTypes.ts): a note with `status` is not offered `Status`.
+	const taken = new Set(items.map((p) => keyOf(nameOf(p))));
 	return (
 		<Frame>
 			{items.map((pair) => {
@@ -89,13 +94,14 @@ export function Properties({ view, read }: { view: EditorView | null; read: Read
 				const type = typeOf(name, toPlain(pair.value), chosen);
 				return (
 					<Row key={name} name={name} type={type} chosen={name.toLowerCase() in chosen} onRemove={() => apply((doc) => doc.delete(name))}>
-						<Value name={name} type={type} node={pair.value} apply={apply} />
+						<Value name={name} type={type} node={pair.value} said={used.values[keyOf(name)] ?? []} apply={apply} />
 					</Row>
 				);
 			})}
 			{adding ? (
 				<NameInput
-					taken={names}
+					taken={taken}
+					names={used.names}
 					onDone={(name) => {
 						setAdding(false);
 						if (name) apply((doc) => doc.set(name, null));
@@ -191,7 +197,7 @@ function TypeMenu({ name, type, chosen }: { name: string; type: PropertyType; ch
 	);
 }
 
-function Value({ name, type, node, apply }: { name: string; type: PropertyType; node: unknown; apply: (edit: (doc: Document) => void) => boolean }) {
+function Value({ name, type, node, said, apply }: { name: string; type: PropertyType; node: unknown; said: string[]; apply: (edit: (doc: Document) => void) => boolean }) {
 	const value = toPlain(node);
 	const set = (v: unknown) => apply((doc) => doc.set(name, v));
 	// Not what the type says: shown as it is, in text, with a word about it; never corrected.
@@ -199,7 +205,7 @@ function Value({ name, type, node, apply }: { name: string; type: PropertyType; 
 		if (value !== null && typeof value === "object" && !Array.isArray(value)) return <Unshown value={value} />;
 		return (
 			<div className="flex items-center gap-2">
-				<TextValue text={asText(value)} onCommit={(text) => set(fromInput("text", text))} />
+				<TextValue text={asText(value)} options={said} onCommit={(text) => set(fromInput("text", text))} />
 				<TriangleAlert className="size-3.5 shrink-0 text-destructive" aria-label={`Not a ${TYPES[type].label.toLowerCase()}`} />
 			</div>
 		);
@@ -207,9 +213,11 @@ function Value({ name, type, node, apply }: { name: string; type: PropertyType; 
 	switch (type) {
 		case "list":
 		case "tags":
-			return <ListValue name={name} node={node} apply={apply} />;
+			return <ListValue name={name} node={node} options={said} apply={apply} />;
 		case "checkbox":
 			return <Checkbox checked={value === true} aria-label={name} onCheckedChange={(on) => set(on === true)} />;
+		// A number, a date and a time have a box of their own: what to put in
+		// them is a picker's to say, not a list of what other notes hold.
 		case "number":
 			return <TextValue kind="number" text={asText(value)} onCommit={(text) => set(fromInput("number", text))} />;
 		case "date":
@@ -218,7 +226,7 @@ function Value({ name, type, node, apply }: { name: string; type: PropertyType; 
 			return <TextValue kind="datetime-local" text={asText(value)} onCommit={(text) => set(fromInput("datetime", text))} />;
 		default:
 			if (value !== null && typeof value === "object" && !Array.isArray(value)) return <Unshown value={value} />;
-			return <TextValue text={asText(Array.isArray(value) ? value[0] : value)} onCommit={(text) => set(fromInput("text", text))} />;
+			return <TextValue text={asText(Array.isArray(value) ? value[0] : value)} options={said} onCommit={(text) => set(fromInput("text", text))} />;
 	}
 }
 
@@ -232,43 +240,71 @@ const Unshown = ({ value }: { value: unknown }) => (
 const toPlain = (node: unknown) => (node && typeof node === "object" && "toJSON" in node ? (node as { toJSON(): unknown }).toJSON() : node);
 const asText = (value: unknown) => (value === null || value === undefined ? "" : typeof value === "object" ? JSON.stringify(value) : String(value));
 
-/** A line of text — or a number, a date, a time, by `kind` — Enter or leaving commits what changed, Escape puts back what was. */
-function TextValue({ text, kind = "text", onCommit }: { text: string; kind?: "text" | "number" | "date" | "datetime-local"; onCommit: (text: string) => void }) {
-	const box = useRef<HTMLInputElement>(null);
-	const commit = () => {
-		const now = box.current?.value ?? "";
+/**
+ * A line of text — or a number, a date, a time, by `kind` — Enter or leaving
+ * commits what changed, Escape puts back what was. A text box is offered the
+ * values the same name holds elsewhere in the vault.
+ */
+function TextValue({ text, kind = "text", options = [], onCommit }: { text: string; kind?: "text" | "number" | "date" | "datetime-local"; options?: string[]; onCommit: (text: string) => void }) {
+	const [typed, setTyped] = useState(text);
+	const [shown, setShown] = useState(text);
+	// The document said something else while the box was open — pi wrote, or ⌘Z — so the box says it too.
+	if (shown !== text) {
+		setShown(text);
+		setTyped(text);
+	}
+	const commit = (now: string) => {
 		if (now !== text) onCommit(now);
 	};
-	return (
+	const box = (offered: (e: React.KeyboardEvent) => boolean) => (
 		<Input
-			key={text}
-			ref={box}
 			type={kind}
-			defaultValue={text}
+			value={typed}
+			onChange={(e) => setTyped(e.target.value)}
 			spellCheck={false}
 			className={`${FLAT} ${kind === "text" ? "" : "w-auto"}`}
 			placeholder="Empty"
 			onKeyDown={(e) => {
-				if (e.nativeEvent.isComposing) return;
+				if (e.nativeEvent.isComposing || offered(e)) return;
 				if (e.key === "Enter") {
 					e.preventDefault();
-					commit();
+					commit(typed);
 					e.currentTarget.blur();
 				} else if (e.key === "Escape") {
 					e.preventDefault();
-					if (box.current) box.current.value = text;
+					setTyped(text);
 					e.currentTarget.blur();
 				}
 			}}
-			onBlur={commit}
+			onBlur={() => commit(typed)}
 		/>
+	);
+	// A number, a date and a time have a picker of their own and nothing to
+	// offer, so they are not made into a combobox at all. The box a list hangs
+	// from is decided by the kind, not by whether there is anything to say: one
+	// that changed shape when the vault learnt a value would take the focus
+	// with it, mid-word.
+	return kind === "text" ? (
+		<Suggest
+			options={options}
+			value={typed}
+			onChange={setTyped}
+			onPick={(option) => {
+				setTyped(option);
+				commit(option);
+			}}
+		>
+			{box}
+		</Suggest>
+	) : (
+		box(() => false)
 	);
 }
 
-/** Names as chips, and a box to add one; Backspace in the empty box takes the last chip. */
-function ListValue({ name, node, apply }: { name: string; node: unknown; apply: (edit: (doc: Document) => void) => boolean }) {
+/** Names as chips, and a box to add one — offered the ones this name already holds elsewhere; Backspace in the empty box takes the last chip. */
+function ListValue({ name, node, options, apply }: { name: string; node: unknown; options: string[]; apply: (edit: (doc: Document) => void) => boolean }) {
 	const items: string[] = isSeq(node) ? node.items.map((i) => String(toPlain(i) ?? "")).filter((s) => s !== "") : isScalar(node) && node.value != null && node.value !== "" ? [String(node.value)] : [];
-	const box = useRef<HTMLInputElement>(null);
+	const [typed, setTyped] = useState("");
 	// The list as it was written — `[a, b]` or one per line — keeps its shape: its items are replaced, not the list.
 	const set = (list: string[]) =>
 		apply((doc) => {
@@ -277,11 +313,10 @@ function ListValue({ name, node, apply }: { name: string; node: unknown; apply: 
 			else if (isSeq(was)) was.items = list.map((v) => doc.createNode(v));
 			else doc.set(name, list);
 		});
-	const add = () => {
-		const value = (box.current?.value ?? "").trim().replace(/^#/, "");
-		if (!value) return;
-		if (box.current) box.current.value = "";
-		if (!items.includes(value)) set([...items, value]);
+	const add = (what: string) => {
+		const value = what.trim().replace(/^#/, "");
+		setTyped("");
+		if (value && !items.includes(value)) set([...items, value]);
 	};
 	return (
 		<div className="flex flex-wrap items-center gap-1">
@@ -298,56 +333,175 @@ function ListValue({ name, node, apply }: { name: string; node: unknown; apply: 
 					</button>
 				</Badge>
 			))}
-			<Input
-				ref={box}
-				spellCheck={false}
-				aria-label={`Add to ${name}`}
-				className={`${FLAT} w-auto min-w-16 flex-1`}
-				placeholder={items.length === 0 ? "Empty" : ""}
-				onKeyDown={(e) => {
-					if (e.nativeEvent.isComposing) return;
-					if (e.key === "Enter" || e.key === ",") {
-						e.preventDefault();
-						add();
-					} else if (e.key === "Backspace" && box.current?.value === "" && items.length > 0) {
-						e.preventDefault();
-						set(items.slice(0, -1));
-					}
-				}}
-				onBlur={add}
-			/>
+			<Suggest options={options.filter((option) => !items.includes(option))} value={typed} onChange={setTyped} onPick={add}>
+				{(offered) => (
+					<Input
+						value={typed}
+						onChange={(e) => setTyped(e.target.value)}
+						spellCheck={false}
+						aria-label={`Add to ${name}`}
+						className={`${FLAT} w-auto min-w-16 flex-1`}
+						placeholder={items.length === 0 ? "Empty" : ""}
+						onKeyDown={(e) => {
+							if (e.nativeEvent.isComposing || offered(e)) return;
+							if (e.key === "Enter" || e.key === ",") {
+								e.preventDefault();
+								add(typed);
+							} else if (e.key === "Backspace" && typed === "" && items.length > 0) {
+								e.preventDefault();
+								set(items.slice(0, -1));
+							}
+						}}
+						onBlur={() => add(typed)}
+					/>
+				)}
+			</Suggest>
 		</div>
 	);
 }
 
-/** The name of a property being added: Enter with a name not yet taken adds it; Escape, or leaving, adds nothing. */
-function NameInput({ taken, onDone }: { taken: Set<string>; onDone: (name: string | null) => void }) {
+/**
+ * A box offered what the vault already says — the names its notes give their
+ * properties, or the values one name has held (propertyIndex.ts).
+ *
+ * The list is cmdk's, under a popover anchored to the box: the box stays in
+ * its row and keeps the focus, so typing is typing, while ↑ ↓ and Enter go
+ * to the list. Obsidian's keys — Enter takes what is offered, Shift-Enter
+ * keeps what was typed, Escape puts the list away — and the caller is told
+ * which keys the list took so its own Enter does not fire twice.
+ *
+ * The narrowing is `suits` (properties.ts), not a fuzzy match: a box that
+ * offers `updated` for `dat` and takes it on Enter writes the wrong
+ * property name.
+ */
+function Suggest({
+	options,
+	value,
+	onChange,
+	onPick,
+	children,
+}: {
+	options: string[];
+	value: string;
+	onChange: (text: string) => void;
+	onPick: (option: string) => void;
+	/** The box itself, told which keys the list has already dealt with. */
+	children: (taken: (e: React.KeyboardEvent) => boolean) => React.ReactElement;
+}) {
+	const [wanted, setWanted] = useState(false);
+	const [chosen, setChosen] = useState("");
+	// Sorted by how well each answers, which is a stable sort, so alike answers stay in the order the vault uses them.
+	const showing = options
+		.map((option) => [option, suits(option, value)] as const)
+		.filter(([, score]) => score > 0)
+		.sort((a, b) => b[1] - a[1])
+		.map(([option]) => option);
+	const open = wanted && showing.length > 0;
+	// The choice is held here rather than in cmdk, so that one no longer
+	// offered — the list narrowed, or what was picked left it — cannot stay
+	// chosen and leave Enter falling on nothing.
+	const highlighted = showing.includes(chosen) ? chosen : (showing[0] ?? "");
+
+	const taken = (e: React.KeyboardEvent): boolean => {
+		if (e.nativeEvent.isComposing) return false;
+		if (e.key === "Escape" && open) {
+			e.preventDefault();
+			setWanted(false);
+			return true;
+		}
+		// Closed, and there is something to say: ↓ asks for it, as a combobox does.
+		if (e.key === "ArrowDown" && !open && showing.length > 0) {
+			e.preventDefault();
+			setWanted(true);
+			return true;
+		}
+		if (!open) return false;
+		// cmdk moves the choice and takes it. Shift-Enter is not offered to it: it means "what I typed".
+		return e.key === "ArrowDown" || e.key === "ArrowUp" || (e.key === "Enter" && !e.shiftKey && highlighted !== "");
+	};
+
+	const pick = (option: string) => {
+		setWanted(false);
+		onPick(option);
+	};
+
+	return (
+		// `contents`: the list's box is a box in the DOM, for the keys to reach it, and nothing in the layout.
+		<Command className="contents" shouldFilter={false} loop value={highlighted} onValueChange={setChosen}>
+			<Popover open={open} onOpenChange={setWanted}>
+				<PopoverAnchor asChild>
+					<CommandPrimitive.Input asChild value={value} onValueChange={onChange} onFocus={() => setWanted(true)} onBlur={() => setWanted(false)}>
+						{children(taken)}
+					</CommandPrimitive.Input>
+				</PopoverAnchor>
+				<PopoverContent
+					align="start"
+					sideOffset={2}
+					className="w-auto min-w-(--radix-popover-trigger-width) max-w-80 p-1"
+					// The box keeps the focus: it is where the typing is, and a list that
+					// took it would commit the box on the way out and lose the click.
+					onOpenAutoFocus={(e) => e.preventDefault()}
+					onCloseAutoFocus={(e) => e.preventDefault()}
+					onMouseDown={(e) => e.preventDefault()}
+					// A popover with the focus outside it takes itself away — which
+					// here is every moment it is up, since the focus belongs to the
+					// box it hangs under. Radix's own modal popover prevents this the
+					// same way. A click elsewhere still closes it: the box loses the
+					// focus, and that is what closes it.
+					onFocusOutside={(e) => e.preventDefault()}
+				>
+					<CommandList>
+						{showing.map((option) => (
+							<CommandItem key={option} value={option} onSelect={() => pick(option)} data-suggestion={option}>
+								{option}
+							</CommandItem>
+						))}
+					</CommandList>
+				</PopoverContent>
+			</Popover>
+		</Command>
+	);
+}
+
+/**
+ * The name of a property being added: Enter with a name not yet taken adds
+ * it; Escape, or leaving, adds nothing. The names the vault already uses are
+ * offered — a name reused is a type reused, since a type belongs to a name.
+ */
+function NameInput({ taken, names, onDone }: { taken: Set<string>; names: string[]; onDone: (name: string | null) => void }) {
+	const [typed, setTyped] = useState("");
 	const box = useRef<HTMLInputElement>(null);
 	useEffect(() => box.current?.focus(), []);
-	const finish = (commit: boolean) => {
-		const name = (box.current?.value ?? "").trim();
-		onDone(commit && name && !taken.has(name) ? name : null);
+	const finish = (name: string | null) => {
+		const want = (name ?? "").trim();
+		onDone(want && !taken.has(keyOf(want)) ? want : null);
 	};
 	return (
 		<div className="flex min-h-7 items-center gap-2">
-			<Input
-				ref={box}
-				spellCheck={false}
-				aria-label="Property name"
-				placeholder="Name"
-				className={`${FLAT} w-32`}
-				onKeyDown={(e) => {
-					if (e.nativeEvent.isComposing) return;
-					if (e.key === "Enter") {
-						e.preventDefault();
-						finish(true);
-					} else if (e.key === "Escape") {
-						e.preventDefault();
-						finish(false);
-					}
-				}}
-				onBlur={() => finish(true)}
-			/>
+			<Suggest options={names.filter((name) => !taken.has(keyOf(name)))} value={typed} onChange={setTyped} onPick={finish}>
+				{(offered) => (
+					<Input
+						ref={box}
+						value={typed}
+						onChange={(e) => setTyped(e.target.value)}
+						spellCheck={false}
+						aria-label="Property name"
+						placeholder="Name"
+						className={`${FLAT} w-32`}
+						onKeyDown={(e) => {
+							if (e.nativeEvent.isComposing || offered(e)) return;
+							if (e.key === "Enter") {
+								e.preventDefault();
+								finish(typed);
+							} else if (e.key === "Escape") {
+								e.preventDefault();
+								finish(null);
+							}
+						}}
+						onBlur={() => finish(typed)}
+					/>
+				)}
+			</Suggest>
 		</div>
 	);
 }

@@ -199,3 +199,61 @@ export function listOf(doc: Document, key: string): string[] {
 		.map((v) => String(v).replace(/^#/, "").trim())
 		.filter((v) => v !== "");
 }
+
+/**
+ * What a whole vault has to offer a box that completes a property: made by
+ * the server from every note (propertyIndex.ts), and read by the panel.
+ */
+export type Suggestions = {
+	/** Every property name in the vault, most used first, in the spelling most notes use. */
+	names: string[];
+	/** The values each name has held, by the name lower-cased (propertyTypes.keyOf), most used first. */
+	values: Record<string, string[]>;
+};
+
+/** A property as a note writes it: its name, and what stands under it, each value as the text it was written as. */
+export type Written = { name: string; values: string[] };
+
+/**
+ * Every property a note writes, in the order it writes them — what a vault
+ * index is made of, and so what a box can offer.
+ *
+ * Only what a one-line box could put back is a value: a string or a number,
+ * one for a scalar and one for each item of a list. True and false, nothing,
+ * a mapping, and anything running over more than one line are left out — the
+ * name is still a name, but there is nothing there to suggest. A block that
+ * does not parse says nothing at all, as everywhere else here.
+ */
+export function writtenIn(text: string): Written[] {
+	const read = propertiesOf(text);
+	if (!read.block || read.errors.length > 0 || !isMap(read.doc.contents)) return [];
+	return read.doc.contents.items.map((pair) => ({ name: String(toPlain(pair.key)).trim(), values: valuesOf(pair.value) }));
+}
+
+function valuesOf(node: unknown): string[] {
+	const items = isSeq(node) ? node.items.map(toPlain) : [toPlain(node)];
+	return items
+		.filter((v): v is string | number => typeof v === "string" || typeof v === "number")
+		.map((v) => String(v).trim())
+		.filter((v) => v !== "" && !v.includes("\n"));
+}
+
+/**
+ * How well something the vault already says answers what is being typed:
+ * the same thing first, then what begins with it, then what holds it
+ * anywhere, and 0 for what does not — which is not offered at all. Case is
+ * not part of it, as a property name's case is not (propertyTypes.ts).
+ *
+ * A score rather than a yes, because the box offers the best answer first
+ * and Enter takes it (Obsidian: Shift-Enter is how you keep what you typed).
+ * Fuzzy matching is not used: it would offer `updated` for `dat` and Enter
+ * would then make the wrong property.
+ */
+export function suits(option: string, typed: string): number {
+	const want = typed.trim().toLowerCase();
+	if (want === "") return 1;
+	const has = option.toLowerCase();
+	if (has === want) return 3;
+	if (has.startsWith(want)) return 2;
+	return has.includes(want) ? 1 : 0;
+}

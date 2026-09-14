@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { bodyStart, listOf, propertiesOf, withProperties } from "../properties.ts";
+import { bodyStart, listOf, propertiesOf, suits, withProperties, writtenIn } from "../properties.ts";
 
 const NOTE = `---
 # a comment on top
@@ -161,4 +161,43 @@ test("본문은 블록 아래에서 시작한다; 블록이 없으면 맨 위", 
 
 test("값 없이 더한 속성은 `이름:` 한 줄이다", () => {
   assert.equal(withProperties("---\na: 1\n---\n", (doc) => doc.set("k", null)).text, "---\na: 1\nk:\n---\n");
+});
+
+test("노트가 쓴 속성의 이름과, 그 아래 값들", () => {
+  assert.deepEqual(writtenIn(NOTE), [
+    { name: "title", values: ["Quoted title"] },
+    { name: "date", values: ["2024-01-01"] },
+    { name: "version", values: ["1.10"] },
+    { name: "answer", values: ["no"] },
+    { name: "tags", values: ["work", "weekly"] },
+    { name: "aliases", values: ["meeting"] },
+    { name: "related", values: ["[[other]]"] },
+    { name: "한글 키", values: ["값"] },
+    // 여러 줄에 걸친 값은 한 줄짜리 칸이 제안할 것이 아니다. 이름은 그래도 이름이다.
+    { name: "body", values: [] },
+  ]);
+});
+
+test("깨진 블록과 블록 없는 노트는 아무 이름도 말하지 않는다", () => {
+  assert.deepEqual(writtenIn("---\ntags: [x\n---\nbody\n"), []);
+  assert.deepEqual(writtenIn("# hi\n"), []);
+  assert.deepEqual(writtenIn("---\n- a\n- b\n---\n"), []);
+});
+
+test("숫자는 글자로, 참거짓·빈 값·중첩은 제안할 값이 아니다", () => {
+  assert.deepEqual(writtenIn("---\ncount: 3\ndone: true\nempty:\nnested:\n  a: 1\n---\n"), [
+    { name: "count", values: ["3"] },
+    { name: "done", values: [] },
+    { name: "empty", values: [] },
+    { name: "nested", values: [] },
+  ]);
+});
+
+test("친 글자와 꼭 같은 것이 먼저, 앞자리가 맞는 것이 다음, 안에 든 것이 그다음", () => {
+  assert.ok(suits("date", "date") > suits("dateline", "date"));
+  assert.ok(suits("dateline", "date") > suits("updated", "date"));
+  assert.ok(suits("updated", "date") > 0);
+  assert.equal(suits("tags", "date"), 0);
+  assert.ok(suits("Status", "st") > 0, "대소문자는 가리지 않는다");
+  assert.ok(suits("아무거나", "") > 0, "아무것도 치지 않았으면 다 나온다");
 });

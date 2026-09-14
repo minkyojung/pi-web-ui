@@ -5,6 +5,7 @@
  * opening config/usage/snapshot/sessions would otherwise land with nobody
  * listening and the settings bar would stay empty until something changed.
  */
+import type { Suggestions } from "../../properties.ts";
 import type { Registry } from "../../propertyTypes.ts";
 import type {
 	Backlink,
@@ -78,6 +79,9 @@ export const taggedStore = createStore<Record<string, Tagged[]>>({});
 
 /** The property types chosen for the vault, by name; a name not here is guessed from its value. */
 export const propertyTypesStore = createStore<Registry>({});
+
+/** What the vault's notes call their properties and what they put in them, for the boxes that offer them. */
+export const propertyNamesStore = createStore<Suggestions>({ names: [], values: {} });
 
 export function setTagged(path: string, notes: Tagged[]): void {
 	taggedStore.set({ ...taggedStore.get(), [path]: notes });
