@@ -21,13 +21,14 @@ import { fromServer, serverChange } from "../features/origin";
 import { landOn, links, notesChanged } from "../features/links";
 import { closeDiff, diffFor, keepChunk, review, showDiff, undoChunk } from "../features/review";
 import { toggleBold, toggleItalic } from "../features/toggleMarks";
-import { comeBack, leave, scrollBack } from "../features/viewMemory";
+import { fitted, leaving, scrollBack } from "../features/viewPlace";
 import { wrapSelection } from "../features/wrapSelection";
 import { highlightTag } from "../../../highlight.ts";
 import { inlineCodeTag, noteSyntax } from "../../../syntax.ts";
 import { bodyStart, type Properties as PropertiesRead } from "../../../properties.ts";
 import { tagTag } from "../../../tag.ts";
 import type { Place } from "../../../links.ts";
+import type { Left } from "../nav";
 import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, taggedStore } from "../serverState";
 import { titleOf } from "../noteSync";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
@@ -161,12 +162,18 @@ const markup = HighlightStyle.define([
 export function Editor({
 	path,
 	place = null,
+	left = null,
+	onLeave,
 	extensions = [],
 	onOpen,
 }: {
 	path: string;
 	/** Where the link that opened this note pointed inside it, if anywhere. */
 	place?: Place | null;
+	/** Where this step of the way back was being read, if it was read before. */
+	left?: Left | null;
+	/** Where it is being read now: called as the note is stepped off, for the step to keep. */
+	onLeave?: (left: Left) => void;
 	extensions?: Extension[];
 	/** Follow a link: open another note, at a place in it. */
 	onOpen?: (path: string, place?: Place) => void;
@@ -177,6 +184,16 @@ export function Editor({
 	const page = useRef<HTMLElement | null>(null);
 	/** Landed on once, when the text first arrives: after that the cursor is the person's. */
 	const landing = useRef(place);
+	/** Where this step was read before, for the same one arrival. */
+	const was = useRef(left);
+	/**
+	 * Told as the note is stepped off, from a cleanup that runs while the step
+	 * this editor was drawn for is still the one in front: a component being
+	 * taken off the page is not rendered again, so this is its own step's and
+	 * not the one being opened.
+	 */
+	const report = useRef(onLeave);
+	report.current = onLeave;
 	// The path can change under a live editor — a rename — so what the closures
 	// below send is read from here, not captured at mount.
 	const at = useRef(path);
@@ -408,7 +425,7 @@ export function Editor({
 	// after mount, over an empty doc.
 	useLayoutEffect(() => {
 		return () => {
-			if (view.current && base.current !== null) leave(at.current, view.current, page.current);
+			if (view.current && base.current !== null) report.current?.(leaving(view.current, page.current));
 		};
 	}, []);
 
@@ -469,14 +486,14 @@ export function Editor({
 				// its properties, where its text begins. Later whole texts keep
 				// the cursor where it is, if the text still reaches there.
 				const first = base.current === null;
-				const back = first && !landing.current ? comeBack(path, note.text.length) : null;
+				const back = first && !landing.current && was.current ? fitted(was.current, note.text.length) : null;
 				v.dispatch({
 					changes: { from: 0, to: v.state.doc.length, insert: note.text },
 					annotations: serverChange,
 					selection: back ?? { anchor: first ? bodyStart(note.text) : Math.min(v.state.selection.main.head, note.text.length) },
 					effects: diffFor(note.original ?? null),
 				});
-				if (back) scrollBack(path, v, page.current);
+				if (back) scrollBack(was.current!, v, page.current);
 				settle(note.text, note.modified);
 				if (landing.current) {
 					landOn(v, landing.current);

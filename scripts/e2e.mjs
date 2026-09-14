@@ -1153,6 +1153,37 @@ check("the title scrolls away with the note, and the note comes back scrolled wh
 	await until("back where it was", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.querySelector('#note').scrollTop")) === 600);
 });
 
+check("a note stood in twice comes back to each step where that step was read", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "twice.md"), Array.from({ length: 120 }, (_, i) => `twice ${i}`).join("\n\n") + "\n");
+	writeFileSync(join(cwd, "between.md"), "between\n");
+	await until("both listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="twice.md"]') && !!document.querySelector('#notes button[data-path="between.md"]')`));
+	const page = () => app.evaluate("document.querySelector('#note').scrollTop");
+	const openNote = async (path, seen) => {
+		await app.evaluate(`document.querySelector('#notes button[data-path="${path}"]').click()`);
+		await until(path, async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes(seen));
+	};
+	const scrollTo = async (top) => {
+		await app.evaluate(`(document.querySelector('#note').scrollTop = ${top})`);
+		await until(`the page at ${top}`, async () => (await page()) === top);
+	};
+	// Read near the top, left for another note, and read far down on the way back.
+	await openNote("twice.md", "twice 119");
+	await scrollTo(200);
+	await openNote("between.md", "between");
+	await openNote("twice.md", "twice 119");
+	await until("open where it was last read", async () => (await page()) === 200);
+	await scrollTo(900);
+	await pickNote(app, "ideas/second.md");
+	await until("the other note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("second"));
+	await app.press("[", { meta: true });
+	await until("the step read far down", async () => (await editorText(app)).includes("twice 119") && (await page()) === 900);
+	await app.press("[", { meta: true });
+	await until("the note between them", async () => (await editorText(app)).includes("between"));
+	// The same note, the other step: where that one was read, not where the other was.
+	await app.press("[", { meta: true });
+	await until("the step read near the top", async () => (await editorText(app)).includes("twice 119") && (await page()) === 200);
+});
+
 check("open notes are tabs in the title bar; a click picks one, its × closes it to the neighbour, and a reload keeps the row", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "tab-a.md"), "A\n");
 	writeFileSync(join(cwd, "tab-b.md"), "B\n");

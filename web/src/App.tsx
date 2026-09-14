@@ -4,8 +4,8 @@ import { type PanelImperativeHandle, useDefaultLayout } from "react-resizable-pa
 import { Editor } from "./components/Editor";
 import { DockBar, DockWindow } from "./components/Dock";
 import { Pi } from "./components/Pi";
-import { PiToggle, Steps } from "./components/PanelHeader";
-import { Sidebar } from "./components/Sidebar";
+import { PiToggle } from "./components/PanelHeader";
+import { Sidebar, Steps } from "./components/Sidebar";
 import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
 import { Title } from "./components/Title";
@@ -16,7 +16,7 @@ import { hashForNote, noteFromHash } from "./noteSync";
 import { NoteTabs } from "./components/NoteTabs";
 import { layoutStore, shown } from "./piLayout";
 import { bump, forget, readRecent, writeRecent } from "./recent";
-import { back as stepBack, canBack, canForward, forget as forgetStep, forward as stepForward, go, here, type Nav, read as readNav, replace, write as writeNav } from "./nav";
+import { back as stepBack, canBack, canForward, forget as forgetStep, forward as stepForward, go, here, type Left, type Nav, read as readNav, remember, replace, write as writeNav } from "./nav";
 import { type Closed, add as addTab, close as closeTabIn, move, neighbour, readTabs, reopen, writeTabs } from "./tabs";
 import { filesStore, noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
 import { Button } from "./components/ui/button";
@@ -41,6 +41,10 @@ import { send } from "./ws";
 type Opened = {
 	open: string | null;
 	place: Place | null;
+	/** Where this step was being read when it was last stepped off. */
+	left: Left | null;
+	/** Where it is being read now, for the step to keep. */
+	onLeave: (left: Left) => void;
 	/** Somewhere was opened: a step. */
 	setOpen: (path: string | null, place?: Place) => void;
 	/** The note in front went away and another stands there now: not a step. */
@@ -103,6 +107,18 @@ function useOpenNote(): Opened {
 		if (next) setNav((nav) => replace(nav, next));
 	}, []);
 
+	// Where the note is being read is the step's, not the note's: a note stood
+	// in twice, read at the top in one step and at its end in another, comes
+	// back to each as it was. The step is named in the callback the editor
+	// holds, so what it reports goes to the one it was drawn for.
+	const step = entry?.id;
+	const onLeave = useCallback(
+		(left: Left) => {
+			if (step !== undefined) setNav((nav) => remember(nav, step, left));
+		},
+		[step],
+	);
+
 	// Going back from a window showing nothing — the last tab was closed —
 	// leaves the step it was standing on behind, as closing a tab and going
 	// back would anywhere else. With nowhere to go, nothing happens at all:
@@ -139,7 +155,7 @@ function useOpenNote(): Opened {
 		writeNav(nav);
 	}, [nav]);
 
-	return { open, place: entry?.place ?? null, setOpen, showInstead, back: goBack, forward: goForward, canBack: canBack(nav), canForward: canForward(nav) };
+	return { open, place: entry?.place ?? null, left: entry?.left ?? null, onLeave, setOpen, showInstead, back: goBack, forward: goForward, canBack: canBack(nav), canForward: canForward(nav) };
 }
 
 /**
@@ -173,7 +189,7 @@ noteRenamedStore.subscribe(() => {
  * seat. It collapses with ⌘\ so it can be ignored.
  */
 export function App() {
-	const { open, place, setOpen, showInstead, back, forward, canBack, canForward } = useOpenNote();
+	const { open, place, left, onLeave, setOpen, showInstead, back, forward, canBack, canForward } = useOpenNote();
 	// A debug view, so it is behind a shortcut rather than a permanent control in
 	// the best seat on screen. RawView says how to leave, since nothing says it
 	// is there in the first place.
@@ -375,7 +391,7 @@ export function App() {
 			<div className="flex h-screen flex-col">
 			<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1" defaultLayout={columns.defaultLayout} onLayoutChanged={columns.onLayoutChanged}>
 				<ResizablePanel id="sidebar" defaultSize="22%" minSize="16%" className="min-w-0">
-					<Sidebar open={open} onOpen={setOpen} />
+					<Sidebar open={open} onOpen={setOpen} steps={<Steps back={back} forward={forward} canBack={canBack} canForward={canForward} />} />
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
@@ -392,7 +408,6 @@ export function App() {
 						onCloseMany={closeTabs}
 						onReorder={(from, to) => setTabs((list) => move(list, from, to))}
 						onNew={online ? () => send({ type: "new_note" }) : undefined}
-						leading={<Steps back={back} forward={forward} canBack={canBack} canForward={canForward} />}
 						trailing={<PiToggle open={layout === "dock" ? dockOpen : piOpen} onToggle={togglePi} />}
 					/>
 					{/* The note is one page — its title, its text, what links here —
@@ -402,7 +417,7 @@ export function App() {
 					{open && deleted?.path !== open ? (
 						<div id="note" className="no-scrollbar min-h-0 flex-1 overflow-y-auto pb-[40vh]">
 							<Title path={open} />
-							<Editor key={noteIdentity(open)} path={open} place={place} onOpen={setOpen} />
+							<Editor key={noteIdentity(open)} path={open} place={place} left={left} onLeave={onLeave} onOpen={setOpen} />
 						</div>
 					) : (
 						<div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
