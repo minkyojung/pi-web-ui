@@ -1,10 +1,10 @@
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import { breakdown, compact } from "../contextBreakdown";
 import { configStore, contextSourcesStore, usageStore } from "../serverState";
 import { ContextGauge } from "./ContextGauge";
 import { Button } from "./ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
 
 const Row = ({ label, value, muted = true }: { label: string; value: string; muted?: boolean }) => (
 	<div className="flex items-baseline justify-between gap-4 text-xs">
@@ -31,20 +31,6 @@ const pct = (n: number) => `${n < 10 ? n.toFixed(1) : Math.round(n)}%`;
  * four characters a token, and say so with a ≈. Messages are the remainder.
  */
 export function ContextPopover() {
-	// Opens on hover and closes on leave; a click pins it until the next click,
-	// Escape, or a click elsewhere. Everything shown is already in memory, so
-	// there is nothing to wait for on open.
-	const [open, setOpen] = useState(false);
-	const [pinned, setPinned] = useState(false);
-	const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const enter = () => {
-		if (leaveTimer.current) clearTimeout(leaveTimer.current);
-		setOpen(true);
-	};
-	const leave = () => {
-		if (pinned) return;
-		leaveTimer.current = setTimeout(() => setOpen(false), 150);
-	};
 	const usage = useSyncExternalStore(usageStore.subscribe, usageStore.get);
 	const sources = useSyncExternalStore(contextSourcesStore.subscribe, contextSourcesStore.get);
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
@@ -53,43 +39,16 @@ export function ContextPopover() {
 	const login = !sources ? "—" : sources.login.subscription ? "Subscription (OAuth)" : sources.login.oauth ? "OAuth" : "API key";
 
 	return (
-		<Popover
-			open={open}
-			onOpenChange={(next) => {
-				// Escape and outside clicks: close and unpin. The trigger's own click
-				// is handled below, since Radix would only toggle it.
-				if (!next) {
-					setOpen(false);
-					setPinned(false);
-				}
-			}}
-		>
-			<PopoverTrigger asChild>
-				<Button
-					variant="ghost"
-					size="icon-sm"
-					className="size-7"
-					aria-label="Context usage"
-					onPointerEnter={enter}
-					onPointerLeave={leave}
-					onClick={(e) => {
-						// preventDefault keeps Radix from toggling; a click pins, a second unpins.
-						e.preventDefault();
-						setPinned(!pinned);
-						setOpen(!pinned);
-					}}
-				>
+		// Everything shown is already in memory, so there is nothing to wait for:
+		// it comes up with the pointer and takes a moment to go, which is enough
+		// to cross the gap between the ring and the card.
+		<HoverCard openDelay={0} closeDelay={150}>
+			<HoverCardTrigger asChild>
+				<Button variant="ghost" size="icon-sm" className="size-7" aria-label="Context usage">
 					<ContextGauge />
 				</Button>
-			</PopoverTrigger>
-			<PopoverContent
-				align="end"
-				side="top"
-				className="flex w-80 flex-col gap-3"
-				onPointerEnter={enter}
-				onPointerLeave={leave}
-				onOpenAutoFocus={(e) => e.preventDefault()}
-			>
+			</HoverCardTrigger>
+			<HoverCardContent align="end" side="top" className="flex w-80 flex-col gap-3">
 				<Section>
 					<div className="flex items-baseline justify-between">
 						<span className="text-sm font-semibold">Context</span>
@@ -128,7 +87,7 @@ export function ContextPopover() {
 					<Row label="Provider" value={provider} />
 					<Row label="Login" value={login} />
 				</Section>
-			</PopoverContent>
-		</Popover>
+			</HoverCardContent>
+		</HoverCard>
 	);
 }
