@@ -6,7 +6,13 @@ import { type Document, isScalar, isSeq, type Pair } from "yaml";
 import { bodyStart, type Properties as Read, withProperties } from "../../../properties.ts";
 import { propertiesEdit } from "../features/properties";
 import { toggleLivePreview } from "../features/livePreview";
+import { Alert, AlertDescription } from "./ui/alert";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+
+/** The app's input, flat: a row is a line of a table, not a form field with a box around it. */
+const FLAT = "h-7 rounded-none border-0 px-0 shadow-none focus-visible:ring-0 dark:bg-transparent";
 
 /**
  * The note's properties, as rows above its text: a name, a value, and a way
@@ -47,12 +53,11 @@ export function Properties({ view, read }: { view: EditorView | null; read: Read
 	if (read.block && read.errors.length > 0) {
 		return (
 			<Frame>
-				<div role="alert" className="flex items-center gap-3 text-xs text-muted-foreground">
-					<span className="flex-1">The properties could not be read: {read.errors[0].message.split("\n")[0]}</span>
+				<Alert className="flex items-center gap-3 py-2">
+					<AlertDescription className="flex-1">The properties could not be read: {read.errors[0].message.split("\n")[0]}</AlertDescription>
 					<Button
 						variant="outline"
-						size="sm"
-						className="h-7 text-xs"
+						size="xs"
 						onClick={() => {
 							toggleLivePreview(view);
 							view.dispatch({ selection: { anchor: 0 } });
@@ -61,7 +66,7 @@ export function Properties({ view, read }: { view: EditorView | null; read: Read
 					>
 						Edit the source
 					</Button>
-				</div>
+				</Alert>
 			</Frame>
 		);
 	}
@@ -87,15 +92,10 @@ export function Properties({ view, read }: { view: EditorView | null; read: Read
 					}}
 				/>
 			) : (
-				<button
-					type="button"
-					id="add-property"
-					onClick={() => setAdding(true)}
-					className="flex cursor-default items-center gap-1 rounded-sm px-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-				>
-					<Plus className="size-3" />
+				<Button id="add-property" variant="ghost" size="xs" className="w-fit text-muted-foreground" onClick={() => setAdding(true)}>
+					<Plus />
 					Add property
-				</button>
+				</Button>
 			)}
 		</Frame>
 	);
@@ -116,14 +116,15 @@ function Row({ name, children, onRemove }: { name: string; children: React.React
 				{name}
 			</span>
 			<div className="min-w-0 flex-1">{children}</div>
-			<button
-				type="button"
+			<Button
+				variant="ghost"
+				size="icon-xs"
 				aria-label={`Remove ${name}`}
 				onClick={onRemove}
-				className="shrink-0 cursor-default rounded-sm p-0.5 text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+				className="shrink-0 text-muted-foreground opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
 			>
-				<X className="size-3" />
-			</button>
+				<X />
+			</Button>
 		</div>
 	);
 }
@@ -168,13 +169,12 @@ function TextValue({ text, onCommit }: { text: string; onCommit: (text: string) 
 		if (now !== text) onCommit(now);
 	};
 	return (
-		<input
+		<Input
 			key={text}
 			ref={box}
-			type="text"
 			defaultValue={text}
 			spellCheck={false}
-			className="w-full bg-transparent outline-none placeholder:text-muted-foreground"
+			className={FLAT}
 			placeholder="Empty"
 			onKeyDown={(e) => {
 				if (e.nativeEvent.isComposing) return;
@@ -214,24 +214,23 @@ function ListValue({ name, node, apply }: { name: string; node: unknown; apply: 
 	return (
 		<div className="flex flex-wrap items-center gap-1">
 			{items.map((item, i) => (
-				<span key={`${item}-${i}`} className="flex items-center gap-0.5 rounded-sm bg-muted px-1.5 text-xs" data-chip={item}>
+				<Badge key={`${item}-${i}`} variant="secondary" className="gap-0.5 pr-1 font-normal" data-chip={item}>
 					{item}
 					<button
 						type="button"
 						aria-label={`Remove ${item}`}
 						onClick={() => set(items.filter((_, j) => j !== i))}
-						className="cursor-default rounded-sm text-muted-foreground hover:text-foreground"
+						className="cursor-default rounded-full text-muted-foreground hover:text-foreground"
 					>
-						<X className="size-3" />
+						<X />
 					</button>
-				</span>
+				</Badge>
 			))}
-			<input
+			<Input
 				ref={box}
-				type="text"
 				spellCheck={false}
 				aria-label={`Add to ${name}`}
-				className="min-w-16 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+				className={`${FLAT} w-auto min-w-16 flex-1`}
 				placeholder={items.length === 0 ? "Empty" : ""}
 				onKeyDown={(e) => {
 					if (e.nativeEvent.isComposing) return;
@@ -259,13 +258,12 @@ function NameInput({ taken, onDone }: { taken: Set<string>; onDone: (name: strin
 	};
 	return (
 		<div className="flex min-h-7 items-center gap-2">
-			<input
+			<Input
 				ref={box}
-				type="text"
 				spellCheck={false}
 				aria-label="Property name"
 				placeholder="Name"
-				className="w-32 bg-transparent outline-none placeholder:text-muted-foreground"
+				className={`${FLAT} w-32`}
 				onKeyDown={(e) => {
 					if (e.nativeEvent.isComposing) return;
 					if (e.key === "Enter") {
