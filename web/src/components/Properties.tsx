@@ -4,7 +4,7 @@ import { Command as CommandPrimitive } from "cmdk";
 import { AlignLeft, Calendar, CalendarClock, Hash, List, Plus, SquareCheck, Tags, TriangleAlert, X } from "lucide-react";
 import { type Document, isScalar, isSeq, type Pair } from "yaml";
 
-import { bodyStart, type Properties as Read, suits, withProperties } from "../../../properties.ts";
+import { bodyStart, type Properties as Read, removeProperty, setProperty, suits, withProperties } from "../../../properties.ts";
 import { fits, fromInput, isReserved, keyOf, PROPERTY_TYPES, type PropertyType, typeOf } from "../../../propertyTypes.ts";
 import { stepInProperties } from "../features/pageMove";
 import { propertiesEdit } from "../features/properties";
@@ -94,7 +94,7 @@ export function Properties({ view, read }: { view: EditorView | null; read: Read
 				const name = nameOf(pair);
 				const type = typeOf(name, toPlain(pair.value), chosen);
 				return (
-					<Row key={name} name={name} type={type} chosen={name.toLowerCase() in chosen} onRemove={() => apply((doc) => doc.delete(name))}>
+					<Row key={name} name={name} type={type} chosen={name.toLowerCase() in chosen} onRemove={() => apply((doc) => removeProperty(doc, name))}>
 						<Value name={name} type={type} node={pair.value} said={used.values[keyOf(name)] ?? []} apply={apply} />
 					</Row>
 				);
@@ -105,7 +105,7 @@ export function Properties({ view, read }: { view: EditorView | null; read: Read
 					names={used.names}
 					onDone={(name) => {
 						setAdding(false);
-						if (name) apply((doc) => doc.set(name, null));
+						if (name) apply((doc) => setProperty(doc, name, null));
 					}}
 				/>
 			) : (
@@ -222,7 +222,7 @@ function TypeMenu({ name, type, chosen }: { name: string; type: PropertyType; ch
 
 function Value({ name, type, node, said, apply }: { name: string; type: PropertyType; node: unknown; said: string[]; apply: (edit: (doc: Document) => void) => boolean }) {
 	const value = toPlain(node);
-	const set = (v: unknown) => apply((doc) => doc.set(name, v));
+	const set = (v: unknown) => apply((doc) => setProperty(doc, name, v));
 	// Not what the type says: shown as it is, in text, with a word about it; never corrected.
 	if (!fits(type, value)) {
 		if (value !== null && typeof value === "object" && !Array.isArray(value)) return <Unshown value={value} />;
@@ -328,14 +328,8 @@ function TextValue({ text, kind = "text", options = [], onCommit }: { text: stri
 function ListValue({ name, node, options, apply }: { name: string; node: unknown; options: string[]; apply: (edit: (doc: Document) => void) => boolean }) {
 	const items: string[] = isSeq(node) ? node.items.map((i) => String(toPlain(i) ?? "")).filter((s) => s !== "") : isScalar(node) && node.value != null && node.value !== "" ? [String(node.value)] : [];
 	const [typed, setTyped] = useState("");
-	// The list as it was written — `[a, b]` or one per line — keeps its shape: its items are replaced, not the list.
-	const set = (list: string[]) =>
-		apply((doc) => {
-			const was = doc.get(name, true);
-			if (list.length === 0) doc.set(name, null);
-			else if (isSeq(was)) was.items = list.map((v) => doc.createNode(v));
-			else doc.set(name, list);
-		});
+	// A list emptied is an empty property, not a property gone: the × on the row is what takes it away.
+	const set = (list: string[]) => apply((doc) => setProperty(doc, name, list.length === 0 ? null : list));
 	const add = (what: string) => {
 		const value = what.trim().replace(/^#/, "");
 		setTyped("");

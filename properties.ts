@@ -192,10 +192,7 @@ function fresh(pair: Pair): string {
  * part of it, as Obsidian has it.
  */
 export function listOf(doc: Document, key: string): string[] {
-	// By the name lower-cased, as a property is known by (propertyTypes.ts): `Tags` and `tags` are one.
-	const want = key.trim().toLowerCase();
-	const pair = isMap(doc.contents) ? doc.contents.items.find((p) => String(toPlain(p.key)).trim().toLowerCase() === want) : undefined;
-	const node = pair?.value;
+	const node = pairFor(doc, key)?.value;
 	const items = isSeq(node) ? node.items.map(toPlain) : [toPlain(node)];
 	return items
 		.filter((v): v is string | number => typeof v === "string" || typeof v === "number")
@@ -213,6 +210,36 @@ export type Suggestions = {
 	/** The values each name has held, by the name lower-cased (propertyTypes.keyOf), most used first. */
 	values: Record<string, string[]>;
 };
+
+/** The property the note already has by this name, whatever case it wrote it in — a property is known by its name lower-cased (propertyTypes.ts). */
+function pairFor(doc: Document, name: string): Pair | undefined {
+	const want = name.trim().toLowerCase();
+	return isMap(doc.contents) ? doc.contents.items.find((p) => String(toPlain(p.key)).trim().toLowerCase() === want) : undefined;
+}
+
+/**
+ * Put a value under `name` — the one way a property is set, whoever is
+ * setting it: the panel's rows, pi's tool, a rename passing through.
+ *
+ * Under the note's own spelling of the name when it has one, so that a note
+ * with `Status` does not end up with a second `status` beside it. A list
+ * already written keeps its shape — `[a, b]` stays on its line, one per line
+ * stays one per line — because its items are replaced rather than the list
+ * itself, which is the difference between changing a value and reformatting
+ * someone's note.
+ */
+export function setProperty(doc: Document, name: string, value: unknown): void {
+	const pair = pairFor(doc, name);
+	const key = pair ? String(toPlain(pair.key)) : name.trim();
+	if (Array.isArray(value) && isSeq(pair?.value)) pair.value.items = value.map((v) => doc.createNode(v));
+	else doc.set(key, value);
+}
+
+/** Take a property away, by the note's own spelling of its name. */
+export function removeProperty(doc: Document, name: string): void {
+	const pair = pairFor(doc, name);
+	if (pair) doc.delete(String(toPlain(pair.key)));
+}
 
 /** A text value of a property: what it says, where the document holds it, and where it is written in the note. */
 export type TextValue = {

@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { applyEdits, noteTools, prepareEdits } from "../noteEdit.ts";
+import { applyEdits, applyProperties, noteTools, prepareEdits } from "../noteEdit.ts";
 import { readNote } from "../vault.ts";
 
 // --- applying edits ---
@@ -72,7 +72,7 @@ function vault(t, result = { ok: true, modified: 2 }) {
 
 test("두 도구가 pi의 이름으로 등록된다", (t) => {
   const { tools } = vault(t);
-  assert.deepEqual([...tools.keys()].sort(), ["note_edit", "note_write"]);
+  assert.deepEqual([...tools.keys()].sort(), ["note_edit", "note_properties", "note_write"]);
   assert.equal(tools.get("note_edit").parameters.properties.edits.type, "array", "pi의 edit과 같은 모양");
   assert.equal(tools.get("note_write").parameters.properties.content.type, "string", "pi의 write와 같은 모양");
 });
@@ -126,4 +126,97 @@ test("사람이 그 사이 타이핑했으면 거절되고, 다시 읽으라고 
   const { run, note } = vault(t, { ok: false, reason: "conflict", modified: 9 });
   note("a.md", "mine\n");
   await assert.rejects(run("note_edit", { path: "a.md", edits: [edit("mine", "pi's")] }), /Read it again/);
+});
+
+// --- changing properties ---
+
+const changed = (text, set = [], remove = []) => applyProperties(text, { set, remove });
+
+test("바꾼 속성 줄만 다시 써지고, 나머지는 한 글자도 바뀌지 않는다", () => {
+  const note = "---\n# why\ntitle: 'kept'   # here\nstatus: draft\n---\nbody\n";
+  assert.deepEqual(changed(note, [{ name: "status", value: "done" }]), { ok: true, text: "---\n# why\ntitle: 'kept'   # here\nstatus: done\n---\nbody\n" });
+});
+
+test("여러 속성을 한 번에 바꾸고 지운다", () => {
+  const out = changed("---\na: 1\nb: 2\nc: 3\n---\n", [{ name: "a", value: "one" }, { name: "d", value: true }], ["b"]);
+  assert.equal(out.text, "---\na: one\nc: 3\nd: true\n---\n");
+});
+
+test("빈 값과 삭제는 다르다", () => {
+  const note = "---\na: 1\nb: 2\n---\n";
+  assert.equal(changed(note, [{ name: "b", value: null }]).text, "---\na: 1\nb:\n---\n");
+  assert.equal(changed(note, [], ["b"]).text, "---\na: 1\n---\n");
+});
+
+test("목록은 쓰여 있던 모양을 지킨다", () => {
+  assert.equal(changed("---\ntags: [a, b]\n---\n", [{ name: "tags", value: ["a", "b", "c"] }]).text, "---\ntags: [a, b, c]\n---\n");
+  assert.equal(changed("---\ntags:\n  - a\n---\n", [{ name: "tags", value: ["a", "b"] }]).text, "---\ntags:\n  - a\n  - b\n---\n");
+});
+
+test("이름의 대소문자는 가리지 않는다 — 같은 속성이 둘이 되지 않는다", () => {
+  assert.equal(changed("---\nStatus: draft\n---\nbody\n", [{ name: "status", value: "done" }]).text, "---\nStatus: done\n---\nbody\n");
+  assert.equal(changed("---\nStatus: draft\n---\nbody\n", [], ["status"]).text, "body\n");
+});
+
+test("블록이 없으면 첫 줄에 만들고, 본문은 그대로다", () => {
+  assert.equal(changed("# hi\n", [{ name: "status", value: "draft" }]).text, "---\nstatus: draft\n---\n# hi\n");
+});
+
+test("깨진 블록에는 쓰지 않고, 왜인지 말한다", () => {
+  const out = changed("---\ntags: [x\n---\nbody\n", [{ name: "status", value: "draft" }]);
+  assert.equal(out.ok, false);
+  assert.match(out.reason, /could not be read/);
+});
+
+test("한 번의 호출에서 같은 이름을 두 번 말할 수 없다", () => {
+  assert.match(changed("---\na: 1\n---\n", [{ name: "a", value: 2 }], ["a"]).reason, /both/);
+  assert.match(changed("---\na: 1\n---\n", [{ name: "a", value: 2 }, { name: "A", value: 3 }]).reason, /more than once/);
+});
+
+test("중첩된 값과 빈 이름은 거절한다", () => {
+  assert.match(changed("---\na: 1\n---\n", [{ name: "a", value: { b: 1 } }]).reason, /nested/);
+  assert.match(changed("---\na: 1\n---\n", [{ name: " ", value: 1 }]).reason, /name/);
+});
+
+test("바꿀 것이 없으면 거절한다", () => {
+  assert.match(changed("---\na: 1\n---\n").reason, /nothing/);
+});
+
+test("note_properties는 여러 속성을 한 번에, 한 번의 쓰기로", async (t) => {
+  const { writes, run, note } = vault(t);
+  note("a.md", "---\nstatus: draft\ntags: [x]\n---\nbody\n");
+  await run("note_properties", { path: "a.md", set: [{ name: "status", value: "done" }, { name: "tags", value: ["x", "y"] }] });
+  assert.equal(writes.length, 1, "속성마다가 아니라 한 번");
+  assert.equal(writes[0].text, "---\nstatus: done\ntags: [x, y]\n---\nbody\n");
+});
+
+test("note_properties는 없는 노트를 거절하고 아무것도 쓰지 않는다", async (t) => {
+  const { writes, run } = vault(t);
+  await assert.rejects(run("note_properties", { path: "gone.md", set: [{ name: "a", value: 1 }] }), /note_write/);
+  assert.deepEqual(writes, []);
+});
+
+test("note_properties는 깨진 블록을 거절하고 note_edit으로 보낸다", async (t) => {
+  const { dir, writes, run, note } = vault(t);
+  note("a.md", "---\ntags: [x\n---\nbody\n");
+  await assert.rejects(run("note_properties", { path: "a.md", set: [{ name: "a", value: 1 }] }), /note_edit/);
+  assert.deepEqual(writes, []);
+  assert.equal(readNote(dir, "a.md").text, "---\ntags: [x\n---\nbody\n");
+});
+
+test("블록이 읽히는 동안 note_edit은 그 안에 닿지 못한다", async (t) => {
+  const { writes, run, note } = vault(t);
+  note("a.md", "---\nstatus: draft\n---\nbody\n");
+  await assert.rejects(run("note_edit", { path: "a.md", edits: [edit("draft", "done")] }), /note_properties/);
+  assert.deepEqual(writes, []);
+  // 본문은 여전히 note_edit의 것이다.
+  await run("note_edit", { path: "a.md", edits: [edit("body", "text")] });
+  assert.equal(writes[0].text, "---\nstatus: draft\n---\ntext\n");
+});
+
+test("깨진 블록은 글이므로 note_edit으로 고친다", async (t) => {
+  const { writes, run, note } = vault(t);
+  note("a.md", "---\ntags: [x\n---\nbody\n");
+  await run("note_edit", { path: "a.md", edits: [edit("[x", "[x]")] });
+  assert.equal(writes[0].text, "---\ntags: [x]\n---\nbody\n");
 });

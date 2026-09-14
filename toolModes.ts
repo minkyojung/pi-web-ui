@@ -10,8 +10,9 @@
  * no new protocol: `set_tools` already exists.
  *
  * The ladder tools are pi's own eight built-ins (core/tools/index.js), plus
- * the pair a note is written by — those are ours, but they are writing all the
- * same, and a Plan mode that let the agent rewrite a note would not be one.
+ * the three a note is written by — those are ours, but they are writing all
+ * the same, and a Plan mode that let the agent rewrite a note, or refile it
+ * by its properties, would not be one.
  * Anything else in the registry is an extension tool; it sits outside the
  * ladder and stays on in every mode, because `ask_user` is what makes
  * read-only planning conversational in the first place.
@@ -33,7 +34,7 @@ export type ToolModeId = "plan" | "coding" | "full";
  */
 const RUNGS: { id: ToolModeId; name: string; tools: string[]; grant: string }[] = [
 	{ id: "plan", name: "Plan", tools: ["read", "grep", "find", "ls"], grant: "Read, search and list files" },
-	{ id: "coding", name: "Coding", tools: ["edit", "write", "note_edit", "note_write"], grant: "Edit and create files" },
+	{ id: "coding", name: "Coding", tools: ["edit", "write", "note_edit", "note_write", "note_properties"], grant: "Edit and create files" },
 	{ id: "full", name: "Full access", tools: ["bash", "powershell"], grant: "Run shell commands" },
 ];
 
