@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { Check, History, PanelRight, PanelRightOpen, Plus } from "lucide-react";
 
 import type { SessionInfo } from "../types";
@@ -97,6 +97,69 @@ export function PiToggle({ open, onToggle }: { open: boolean; onToggle: () => vo
 }
 
 /**
+ * The conversation's name: the one thing in this header that is not a button.
+ * A line of text until it is clicked, and a field after — the name belongs to
+ * the conversation, so it is changed where it is shown rather than behind a
+ * dialog, the way a note's title is in Title.tsx.
+ *
+ * A conversation nobody has named still reads by its first message, but that
+ * is the placeholder and not the value: a name nobody typed should not become
+ * one just because the field was focused and left. It is drawn in the same ink
+ * as a real name, because to the person reading it there is no difference.
+ *
+ * Uncontrolled, and keyed on what pi kept: pi trims the name and takes the
+ * line breaks out of it, so what is stored can differ from what was typed, and
+ * remounting on the way back is what makes the box say what was kept.
+ */
+function SessionTitle({ current, online }: { current: SessionInfo | undefined; online: boolean }) {
+	const box = useRef<HTMLInputElement>(null);
+	const name = current?.name ?? "";
+	const commit = () => {
+		const typed = (box.current?.value ?? "").trim();
+		// pi would store what is already stored; the round trip would buy nothing,
+		// and nothing would come back to put the trimmed text in the box.
+		if (typed === name) {
+			if (box.current) box.current.value = name;
+			return;
+		}
+		// Emptied on purpose: pi reads an empty name as the name being taken off,
+		// and the first message is shown again.
+		send({ type: "set_session_name", name: typed });
+	};
+
+	return (
+		<input
+			key={`${current?.id ?? "none"}:${name}`}
+			ref={box}
+			id="sessionTitle"
+			type="text"
+			defaultValue={name}
+			placeholder={current ? nameOf(current) : "New session"}
+			aria-label="Conversation name"
+			spellCheck={false}
+			// Read-only rather than disabled while the socket is down: the name is
+			// something to read as much as something to change, and a disabled box
+			// greys out what it is showing.
+			readOnly={!online}
+			className="min-w-0 flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-foreground"
+			onKeyDown={(e) => {
+				if (e.nativeEvent.isComposing) return;
+				if (e.key === "Enter") {
+					e.preventDefault();
+					commit();
+					e.currentTarget.blur();
+				} else if (e.key === "Escape") {
+					e.preventDefault();
+					if (box.current) box.current.value = name;
+					e.currentTarget.blur();
+				}
+			}}
+			onBlur={commit}
+		/>
+	);
+}
+
+/**
  * The pi column's header: the conversation's name on the left, what can be
  * done about it on the right. One height with the other two column headers,
  * so the top of the window reads as a single row.
@@ -113,9 +176,7 @@ export function PanelHeader() {
 
 	return (
 		<div id="settings" className="drag-region flex h-11 shrink-0 items-center gap-1 border-b pr-2 pl-3">
-			<span id="sessionTitle" className="min-w-0 flex-1 truncate text-sm font-medium" title={current ? nameOf(current) : undefined}>
-				{current ? nameOf(current) : "New session"}
-			</span>
+			<SessionTitle current={current} online={online} />
 			<Tooltip>
 				<TooltipTrigger asChild>
 					<Button

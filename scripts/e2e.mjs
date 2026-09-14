@@ -677,6 +677,16 @@ check("⌘N makes an untitled note and opens it", async ({ app, cwd }) => {
 	assert.equal(readFileSync(join(cwd, path), "utf8"), "# today");
 });
 
+/** Type a name into the conversation's header, the way a person would, and commit it. */
+const rename = async (page, name) => {
+	await page.click("#sessionTitle");
+	await page.evaluate(`document.getElementById('sessionTitle').select()`);
+	// insertText with nothing to insert does nothing; taking the chosen text out is a Backspace.
+	if (name) await page.evaluate(`document.execCommand("insertText", false, ${JSON.stringify(name)})`);
+	else await page.press("Backspace");
+	await page.press("Enter");
+};
+
 /** Type a name into the title field, the way a person would, and press a key. */
 const retitle = async (page, name, key = "Enter") => {
 	await page.click("#title");
@@ -1391,6 +1401,30 @@ check("⌘+click on a markdown link opens the note at its path, and a web addres
 	assert.equal(await app.evaluate("location.hash"), "#ideas/plain.md", "the note stayed where it was");
 	await app.click(address(1), 0, { meta: true });
 	await until("the note the path names", async () => (await app.evaluate("location.hash")) === "#jump.md" && (await editorStatus(app)) === "saved");
+});
+
+check("the conversation is named in its header, and emptying the name gives the first message back", async ({ app }) => {
+	const shown = () => app.evaluate("document.getElementById('sessionTitle').value");
+	const placeholder = () => app.evaluate("document.getElementById('sessionTitle').placeholder");
+	// Unnamed, the header reads by the first message — as the placeholder, so
+	// that focusing and leaving the field cannot turn it into a name.
+	assert.equal(await shown(), "");
+	const first = await placeholder();
+	assert.ok(first && first !== "New session", "the first message stands in for a name");
+
+	// pi takes the spaces off, so what comes back is not what was typed.
+	await rename(app, "  Reading list  ");
+	await until("the name pi kept", async () => (await shown()) === "Reading list");
+	// And the session list says the same thing the header does.
+	await app.click("#sessions");
+	await until("the named session", () =>
+		app.evaluate("[...document.querySelectorAll('[cmdk-item]')].some((i) => i.textContent.includes('Reading list'))"),
+	);
+	await app.press("Escape");
+
+	// Emptied, the name is taken off rather than set to nothing.
+	await rename(app, "");
+	await until("the name to come off", async () => (await shown()) === "" && (await placeholder()) === first);
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {
