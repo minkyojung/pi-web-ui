@@ -173,20 +173,46 @@ async function openPage(devtoolsPort, url) {
 	 * the editor reads the caret from the DOM only after the browser says the
 	 * selection changed, and an untrusted key event does not get there first.
 	 */
-	const click = async (selector, nth = 0, { meta = false } = {}) => {
+	const click = async (selector, nth = 0, { meta = false, button = "left" } = {}) => {
 		const box = await evaluate(`(() => { const el = document.querySelectorAll(${JSON.stringify(selector)})[${nth}]; if (!el) return null; const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
 		if (!box) return false;
 		const [x, y] = box;
 		const modifiers = meta ? 4 : 0;
 		await call("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, modifiers });
-		await call("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1, modifiers });
-		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1, modifiers });
+		await call("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button, clickCount: 1, modifiers });
+		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button, clickCount: 1, modifiers });
 		return true;
 	};
-	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, b: 66, e: 69, f: 70, i: 73, k: 75, n: 78, p: 80, z: 90 };
-	const press = async (key, { meta = false, shift = false } = {}) => {
-		const modifiers = (meta ? 4 : 0) | (shift ? 8 : 0);
-		const code = key.length === 1 ? `Key${key.toUpperCase()}` : key;
+	/** Choosing words with the mouse: press at one end of an element and let go at the other. */
+	const drag = async (selector, nth = 0) => {
+		const box = await evaluate(`(() => { const el = document.querySelectorAll(${JSON.stringify(selector)})[${nth}]; if (!el) return null; const r = el.getBoundingClientRect(); return [r.left + 1, r.top + r.height / 2, r.right - 1]; })()`);
+		if (!box) return false;
+		const [x, y, end] = box;
+		await call("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1 });
+		await call("Input.dispatchMouseEvent", { type: "mouseMoved", x: (x + end) / 2, y, button: "left", buttons: 1 });
+		await call("Input.dispatchMouseEvent", { type: "mouseMoved", x: end, y, button: "left", buttons: 1 });
+		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x: end, y, button: "left", buttons: 0, clickCount: 1 });
+		return true;
+	};
+	/** Carrying one element onto another: press on the first, move over in steps, let go on the second. */
+	const dragTo = async (from, to) => {
+		const at = (selector) => evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+		const a = await at(from);
+		const b = await at(to);
+		if (!a || !b) return false;
+		await call("Input.dispatchMouseEvent", { type: "mouseMoved", x: a[0], y: a[1] });
+		await call("Input.dispatchMouseEvent", { type: "mousePressed", x: a[0], y: a[1], button: "left", buttons: 1, clickCount: 1 });
+		for (let i = 1; i <= 8; i++) {
+			await call("Input.dispatchMouseEvent", { type: "mouseMoved", x: a[0] + ((b[0] - a[0]) * i) / 8, y: a[1] + ((b[1] - a[1]) * i) / 8, button: "left", buttons: 1 });
+		}
+		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x: b[0], y: b[1], button: "left", buttons: 0, clickCount: 1 });
+		return true;
+	};
+	const CODES = { Enter: 13, Backspace: 8, Delete: 46, Escape: 27, End: 35, Tab: 9, "[": 219, "]": 221, b: 66, e: 69, f: 70, i: 73, k: 75, n: 78, p: 80, t: 84, z: 90 };
+	const NAMES = { "[": "BracketLeft", "]": "BracketRight" };
+	const press = async (key, { meta = false, shift = false, alt = false } = {}) => {
+		const modifiers = (meta ? 4 : 0) | (shift ? 8 : 0) | (alt ? 1 : 0);
+		const code = key.length === 1 ? (NAMES[key] ?? `Key${key.toUpperCase()}`) : key;
 		const base = { key, code, windowsVirtualKeyCode: CODES[key], nativeVirtualKeyCode: CODES[key], modifiers };
 		await call("Input.dispatchKeyEvent", { type: "keyDown", ...base });
 		await call("Input.dispatchKeyEvent", { type: "keyUp", ...base });
@@ -198,7 +224,17 @@ async function openPage(devtoolsPort, url) {
 			await call("Input.dispatchKeyEvent", { type: "keyUp", key: ch });
 		}
 	};
-	return { evaluate, shot, errors, click, press, keys, close: () => socket.close() };
+	/** A syllable typed through an input method: composed as it is built, then committed as one. */
+	const ime = async (composing, committed) => {
+		for (let i = 1; i <= composing.length; i++) {
+			const text = composing.slice(0, i);
+			await call("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length });
+		}
+		await call("Input.insertText", { text: committed });
+	};
+	/** A syllable half typed and left so: the composition is open, nothing committed. */
+	const compose = (text) => call("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length });
+	return { evaluate, shot, errors, click, drag, dragTo, press, keys, ime, compose, close: () => socket.close() };
 }
 
 /**
@@ -260,22 +296,24 @@ const marks = async (page) => {
 };
 const press = (page, title) =>
 	page.evaluate(
-		`(() => { const b = [...document.querySelectorAll('#chat button[title=${JSON.stringify(title)}]')].find((x) => !x.disabled); if (!b) return false; b.click(); return true; })()`,
+		`(() => { const b = [...document.querySelectorAll('#chat button[aria-label=${JSON.stringify(title)}]')].find((x) => !x.disabled); if (!b) return false; b.click(); return true; })()`,
 	);
 const allDisabled = (page, title) =>
 	page.evaluate(
-		`[...document.querySelectorAll('#chat button[title=${JSON.stringify(title)}]')].every((b) => b.disabled)`,
+		`[...document.querySelectorAll('#chat button[aria-label=${JSON.stringify(title)}]')].every((b) => b.disabled)`,
 	);
 
 check("the app renders a conversation", async ({ app }) => {
 	await until("the conversation", () => app.evaluate("!!document.getElementById('chat')"));
 });
 
-check("the sidebar lists the folder's notes and nothing else", async ({ app }) => {
-	const listed = await until("the notes", () =>
-		app.evaluate("[...document.querySelectorAll('#notes button')].map((b) => b.title).join(',')"),
-	);
-	assert.deepEqual(listed.split(",").sort(), ["first.md", "ideas/second.md"]);
+check("the sidebar is the folder's tree: its notes and folders, a folder's notes once it is opened, and nothing else", async ({ app }) => {
+	const rows = () => app.evaluate("[...document.querySelectorAll('#notes button')].map((b) => b.dataset.folder ?? b.dataset.path).join(',')");
+	const listed = await until("the notes", rows);
+	assert.deepEqual(listed.split(",").sort(), ["first.md", "ideas"]);
+	await app.evaluate(`document.querySelector('#notes button[data-folder="ideas"]').click()`);
+	await until("the folder's notes", async () => (await rows()).includes("ideas/second.md"));
+	assert.deepEqual((await rows()).split(",").sort(), ["first.md", "ideas", "ideas/second.md"]);
 });
 
 check("a branched session opens on its newest branch", async ({ app }) => {
@@ -308,7 +346,7 @@ check("and forward again", async ({ app }) => {
 check("asking a question again fills the box without moving anything", async ({ app }) => {
 	const before = await marks(app);
 	assert.equal(await app.evaluate(`(() => {
-		const b = [...document.querySelectorAll('#chat button[title="Ask this again, differently"]')].pop();
+		const b = [...document.querySelectorAll('#chat button[aria-label="Ask this again, differently"]')].pop();
 		if (!b) return false;
 		b.click();
 		return true;
@@ -344,6 +382,19 @@ const editorText = (page) => page.evaluate("document.querySelector('#editor .cm-
 /** What is drawn, as text: the doc less whatever live preview hides. */
 const shownText = (page) => page.evaluate("document.querySelector('#editor .cm-content')?.textContent ?? ''");
 const editorStatus = (page) => page.evaluate("document.getElementById('editor')?.dataset.status ?? ''");
+
+/**
+ * A note picked from the sidebar's tree: the folders around it opened first,
+ * as a person would, then its row clicked once it is there.
+ */
+const pickNote = async (page, path) => {
+	const folders = path.split("/").slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join("/"));
+	for (const folder of folders) {
+		await page.evaluate(`(() => { const b = document.querySelector('#notes button[data-folder="${folder}"]'); if (b && b.getAttribute("aria-expanded") !== "true") b.click(); })()`);
+	}
+	await until(`the row for ${path}`, () => page.evaluate(`!!document.querySelector('#notes button[data-path="${path}"]')`));
+	await page.evaluate(`document.querySelector('#notes button[data-path="${path}"]').click()`);
+};
 /**
  * Typing, as the browser sees it: focus the box and insert text the way an
  * input method does, so it goes through CodeMirror's DOM observer rather than
@@ -359,7 +410,7 @@ const type = (page, text) =>
 
 check("a row in the sidebar opens its note in the middle", async ({ app }) => {
 	assert.equal(
-		await app.evaluate(`(() => { const b = document.querySelector('#notes button[title="first.md"]'); if (!b) return false; b.click(); return true; })()`),
+		await app.evaluate(`(() => { const b = document.querySelector('#notes button[data-path="first.md"]'); if (!b) return false; b.click(); return true; })()`),
 		true,
 	);
 	await until("the note to load", async () => (await editorStatus(app)) === "saved");
@@ -380,6 +431,29 @@ check("a heading's marks are hidden until the cursor is on it, and ⌘E shows th
 	await until("source mode", async () => (await shownText(app)).includes("# first"));
 	await app.press("e", { meta: true });
 	await until("live preview again", async () => !(await shownText(app)).includes("# first"));
+});
+
+check("a selection is drawn as wide as the words, and shows marks only while the editor has focus", async ({ app }) => {
+	// Everything selected: the band is the text column, not the margin around it.
+	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: 0, head: v.state.doc.length } }); })()`);
+	await until("the # to show under the selection", async () => (await shownText(app)).includes("# first"));
+	await until("the band to be drawn", () => app.evaluate("document.querySelectorAll('#editor .cm-selectionBackground').length > 0"));
+	const band = await app.evaluate(`(() => {
+		const content = document.querySelector('#editor .cm-content').getBoundingClientRect();
+		const pieces = [...document.querySelectorAll('#editor .cm-selectionBackground')].map((el) => el.getBoundingClientRect());
+		return { pad: getComputedStyle(document.querySelector('#editor .cm-content')).paddingLeft, count: pieces.length,
+			within: pieces.every((r) => r.left >= content.left - 1 && r.right <= content.right + 1) };
+	})()`);
+	assert.equal(band.pad, "0px", "the content has no padding for the band to paint");
+	assert.ok(band.count > 0 && band.within, "every piece of the band lies within the text column");
+	// The focus goes to the composer: the selection stays, the marks go.
+	await app.evaluate("document.querySelector('textarea').focus()");
+	await until("the # to hide with the focus gone", async () => !(await shownText(app)).includes("# first") && (await shownText(app)).includes("first"));
+	// And back: the same selection shows them again.
+	await app.evaluate("document.querySelector('#editor .cm-content').focus()");
+	await until("the # to be back with the focus", async () => (await shownText(app)).includes("# first"));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("hidden again off the heading", async () => !(await shownText(app)).includes("# first"));
 });
 
 check("typing is written down on its own, and a reload finds it", async ({ app, cwd }) => {
@@ -413,14 +487,13 @@ check("a write from elsewhere under unsaved typing is put to the person", async 
 	assert.equal(await app.evaluate("!!document.querySelector('#editor [role=alert]')"), false);
 });
 
-/** Click into the nth of pi's marks, then press a chord on it. */
-const chordOnMark = async (page, n, key) => {
-	if (!(await page.click("#editor .cm-pi", n))) return "no mark";
-	await new Promise((r) => setTimeout(r, 100));
-	await page.press(key, { meta: true });
-	return "pressed";
-};
-const piMarks = (page) => page.evaluate("[...document.querySelectorAll('#editor .cm-pi')].map((m) => m.textContent)");
+/** The chunks of the diff being decided about: one row of buttons each. */
+const chunks = (page) => page.evaluate("document.querySelectorAll('#editor .cm-chunkButtons').length");
+/** What the diff says pi took away, as drawn above the chunks. */
+const takenAway = (page) => page.evaluate("[...document.querySelectorAll('#editor .cm-deletedChunk .cm-deletedText')].map((e) => e.textContent).join('|')");
+/** Press the button on the last chunk. */
+const onLastChunk = (page, label) =>
+	page.evaluate(`[...document.querySelectorAll('#editor .cm-chunkButtons button')].filter((b) => b.textContent === ${JSON.stringify(label)}).at(-1)?.click()`);
 
 /**
  * Another tab, without a browser: a socket to the same server that opens a
@@ -449,7 +522,7 @@ async function otherTab(api) {
 check("a change from elsewhere lands in the editor as a change, not a reload", async ({ app, api, cwd }) => {
 	const other = await otherTab(api);
 	try {
-		await app.evaluate(`document.querySelector('#notes button[title="first.md"]').click()`);
+		await app.evaluate(`document.querySelector('#notes button[data-path="first.md"]').click()`);
 		await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("from outside"));
 		const before = readFileSync(join(cwd, "first.md"), "utf8");
 		// Put the cursor at the end of the first line, so it can be seen not to move.
@@ -533,6 +606,24 @@ check("a write that did not pass through the app arrives as outside's change", a
 	assert.ok(readFileSync(join(cwd, "first.md"), "utf8").includes("AFTER"));
 });
 
+check("a write from outside mid-syllable waits for the syllable, then lands", async ({ app, cwd }) => {
+	await until("a clean editor", async () => (await editorStatus(app)) === "saved");
+	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await app.compose("ㅎ");
+	await until("the composition to be open", () => app.evaluate("document.querySelector('#editor .cm-content').cmTile.root.view.composing"));
+	const before = readFileSync(join(cwd, "first.md"), "utf8");
+	writeFileSync(join(cwd, "first.md"), "MID-SYLLABLE\n" + before);
+	// The change is at the server and on the socket; the editor holds it while the syllable is open.
+	await new Promise((r) => setTimeout(r, 700));
+	assert.ok(!(await editorText(app)).includes("MID-SYLLABLE"), "held while composing");
+	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); })()`);
+	await app.ime("ㅎㅏ", "하");
+	await until("the change to land once the syllable is done", async () => (await editorText(app)).includes("MID-SYLLABLE"));
+	assert.ok((await editorText(app)).includes("하"), "and the syllable is there");
+	assert.deepEqual(app.errors, [], "nothing thrown");
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+});
+
 check("a note deleted on disk is put to the person, and can be put back from the screen", async ({ app, cwd }) => {
 	await until("a clean editor", async () => (await editorStatus(app)) === "saved");
 	const shown = await editorText(app);
@@ -545,35 +636,95 @@ check("a note deleted on disk is put to the person, and can be put back from the
 	assert.equal(await app.evaluate("!!document.querySelector('#editor [role=alert]')"), false);
 });
 
-check("what pi wrote is marked, until it is accepted or put back", async ({ app, cwd }) => {
-	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
-	await until("pi's marks", async () => (await piMarks(app)).length === 2);
-	assert.deepEqual(await piMarks(app), ["SECOND", "pi wrote this"]);
-	await app.shot("pending");
-	// Accepting: the words stay, the mark goes, and it is in the record.
-	assert.equal(await chordOnMark(app, 1, "Enter"), "pressed");
-	await until("the mark to go", async () => (await piMarks(app)).length === 1);
+check("what pi changed is a diff to decide about, and ⌘Z takes a decision back", async ({ app, cwd }) => {
+	const log = () => readFileSync(join(cwd, ".pi/history/ideas/second.md.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+	await pickNote(app, "ideas/second.md");
+	// The note opens with its diff. pi changed a word and added a line two
+	// lines down, which the merge view shows as one chunk — the blank line
+	// between is too short to keep them apart — and the word pi replaced is
+	// drawn above it, though it is in no file.
+	await until("the diff", async () => (await chunks(app)) === 1);
+	assert.ok((await takenAway(app)).includes("second"), "what pi replaced is shown");
+	await app.shot("diff");
+	// Typing outside the chunk is the person's and not for a moment pi's:
+	// "before" is kept up with it in the same transaction, so no chunk appears
+	// while the autosave is still on its way, and none after it lands either.
+	await app.click("#editor .cm-line", 3);
+	assert.equal(await type(app, "mine"), true);
+	assert.equal(await chunks(app), 1, "still one chunk, before any save");
+	await until("the typing to be noticed", async () => (await editorStatus(app)) !== "saved");
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.equal(await chunks(app), 1, "and one after it");
+	// Keeping: the chunk goes, the words stay, and the record hears it.
+	await onLastChunk(app, "Keep");
+	await until("no chunk", async () => (await chunks(app)) === 0);
+	await until("the record", () => log().at(-1)?.kept === true);
 	assert.ok((await editorText(app)).includes("pi wrote this"));
-	assert.ok(readFileSync(join(cwd, ".pi/history/ideas/second.md.jsonl"), "utf8").split("\n").filter(Boolean).length === 4);
-	// Putting back: pi's word is replaced by the one it replaced, and that is saved as mine.
-	assert.equal(await chordOnMark(app, 0, "Backspace"), "pressed");
-	await until("the old word", async () => (await editorText(app)).includes("# second"));
+	// ⌘Z takes the keeping back — the chunk is there again, and the record is
+	// told the other way round rather than having a line rubbed out.
+	await app.click("#editor .cm-line", 0);
+	await app.press("z", { meta: true });
+	await until("the chunk again", async () => (await chunks(app)) === 1);
+	await until("the record, the other way", () => log().at(-1)?.kept === false);
+	// Undoing: what pi did is put back — the word, and the line it added —
+	// which is an edit of the person's and saved as one. Nothing is left to
+	// decide about, so the diff is gone.
+	await app.click("#editor .cm-changedLine", 0);
+	await new Promise((r) => setTimeout(r, 100));
+	await app.press("Backspace", { meta: true });
+	await until("the old word", async () => (await editorText(app)).includes("# second") && !(await editorText(app)).includes("pi wrote this"));
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 	assert.ok(readFileSync(join(cwd, "ideas/second.md"), "utf8").startsWith("# second"));
-	assert.deepEqual(await piMarks(app), []);
+	await until("no diff", async () => (await chunks(app)) === 0);
 });
+
+check("choosing words in a note shows them above the box, and the × takes them off", async ({ app }) => {
+	await app.evaluate(`document.querySelector('#notes button[data-path="first.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved");
+	// Chosen the way a person chooses: dragged across the line.
+	assert.equal(await app.drag("#editor .cm-line", 0), true);
+	const chip = await until("the chosen words above the box", async () => {
+		const text = await app.evaluate("document.getElementById('chosen')?.textContent ?? ''");
+		return text.trim() ? text : null;
+	});
+	assert.ok((await editorText(app)).includes(chip.trim()), `what is above the box is what is chosen in the note: ${chip}`);
+	await app.shot("chosen");
+	// Taking them off leaves the words chosen on screen and only stops them going.
+	await app.evaluate(`document.querySelector('#chosen button').click()`);
+	await until("the chip to go", async () => !(await app.evaluate("!!document.getElementById('chosen')")));
+	assert.equal(await app.evaluate("!!document.querySelector('#editor .cm-selectionBackground, #editor .cm-selectionLayer > *')"), true, "the words are still chosen");
+});
+
+/** The line a note made here opens with, saying when it was made — see withCreated in vault.ts. */
+const MADE = /^---\ncreated: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}\n---\n/;
+/** A note's own text, without that line. */
+const written = (text) => {
+	assert.match(text, MADE, "a note made here says when it was made");
+	return text.replace(MADE, "");
+};
 
 check("⌘N makes an untitled note and opens it", async ({ app, cwd }) => {
 	await app.evaluate("document.body.focus()");
 	await app.press("n", { meta: true });
 	await until("the new note", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("location.hash")) === "#Untitled.md");
 	const path = decodeURIComponent((await app.evaluate("location.hash")).slice(1));
-	assert.equal(readFileSync(join(cwd, path), "utf8"), "");
-	assert.equal(await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.title`), path);
+	assert.equal(written(readFileSync(join(cwd, path), "utf8")), "", "and nothing else");
+	assert.equal(await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.dataset.path`), path);
 	assert.equal(await type(app, "# today"), true);
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
-	assert.equal(readFileSync(join(cwd, path), "utf8"), "# today");
+	assert.equal(written(readFileSync(join(cwd, path), "utf8")), "# today");
 });
+
+/** Open the conversation's name from the pencil, type, and commit. */
+const rename = async (page, name) => {
+	await page.click('#settings [aria-label="Rename"]');
+	await until("the name field", () => page.evaluate("document.activeElement?.id === 'sessionTitle'"));
+	// The name opens chosen, so what is typed replaces it; insertText with
+	// nothing to insert does nothing, and taking the choice out is a Backspace.
+	if (name) await page.evaluate(`document.execCommand("insertText", false, ${JSON.stringify(name)})`);
+	else await page.press("Backspace");
+	await page.press("Enter");
+};
 
 /** Type a name into the title field, the way a person would, and press a key. */
 const retitle = async (page, name, key = "Enter") => {
@@ -588,9 +739,9 @@ check("the title is the file's name, and changing it moves the note with its tex
 	await until("the new address", async () => (await app.evaluate("location.hash")) === "#My%20note.md");
 	assert.equal(await app.evaluate("document.getElementById('title').value"), "My note");
 	assert.equal(existsSync(join(cwd, "Untitled.md")), false);
-	assert.equal(readFileSync(join(cwd, "My note.md"), "utf8"), "# today", "the text went with it");
+	assert.equal(written(readFileSync(join(cwd, "My note.md"), "utf8")), "# today", "the text went with it");
 	assert.ok((await editorText(app)).includes("# today"), "and stayed on screen");
-	assert.equal(await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.title`), "My note.md");
+	assert.equal(await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.dataset.path`), "My note.md");
 	// Typing after the move saves to the new path.
 	await until("a clean editor", async () => (await editorStatus(app)) === "saved");
 	assert.equal(await type(app, "MOVED "), true);
@@ -614,7 +765,7 @@ check("a slash in the title moves the note to that folder, and a leading one bac
 	assert.equal(await app.evaluate("document.getElementById('title').value"), "moved");
 	assert.equal(existsSync(join(cwd, "My note.md")), false);
 	assert.ok(readFileSync(join(cwd, "ideas/moved.md"), "utf8").includes("MOVED"), "the text went with it");
-	await until("the row to follow", async () => (await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.title`)) === "ideas/moved.md");
+	await until("the row to follow", async () => (await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.dataset.path`)) === "ideas/moved.md");
 	// Back to the top, where the checks after this one look for it.
 	await retitle(app, "/My note");
 	await until("the old address", async () => (await app.evaluate("location.hash")) === "#My%20note.md");
@@ -622,7 +773,7 @@ check("a slash in the title moves the note to that folder, and a leading one bac
 });
 
 check("a list item continues on Enter and ends on a second, and a bracket closes as it opens", async ({ app, cwd }) => {
-	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await pickNote(app, "ideas/second.md");
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	// Start a list at the end of the note.
 	await app.press("End", { meta: true });
@@ -643,27 +794,34 @@ check("a list item continues on Enter and ends on a second, and a bracket closes
 check("an empty note says so, and a code block is drawn in a monospace", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "empty.md"), "");
 	writeFileSync(join(cwd, "code.md"), "text\n\n```js\nconst a = 1;\n```\n");
-	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="code.md"]') && !!document.querySelector('#notes button[title="empty.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="empty.md"]').click()`);
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="code.md"]') && !!document.querySelector('#notes button[data-path="empty.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="empty.md"]').click()`);
 	await until("the placeholder", () => app.evaluate("document.querySelector('#editor .cm-placeholder')?.textContent === 'Write here'"));
 	assert.equal(await app.evaluate("document.querySelector('#editor .cm-content')?.getAttribute('aria-label')"), "Note");
-	await app.evaluate(`document.querySelector('#notes button[title="code.md"]').click()`);
-	await until("the code lines", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-code-line').length")) === 3);
+	await app.evaluate(`document.querySelector('#notes button[data-path="code.md"]').click()`);
+	// The cursor lands on "text": the block's fences are gone from the layout, and its one line of code sits in the box, the language in the corner.
+	await until("the code box, one line, fences gone", () => app.evaluate("document.querySelectorAll('#editor .cm-code .cm-line').length === 1 && document.querySelector('#editor .cm-code')?.dataset.lang === 'js'"));
+	assert.ok(!(await shownText(app)).includes("```"), "no fence drawn");
+	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-code'), '::before').content"), '"js"');
 	// "text", the blank under it, and the empty last line after the closing fence.
 	assert.equal(await app.evaluate("[...document.querySelectorAll('#editor .cm-line')].filter((l) => !l.classList.contains('cm-code-line')).length"), 3, "the prose lines are not");
+	// On a line of the block, both fences come back.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.line(4).from } }); })()`);
+	await until("the fences back", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-code .cm-line').length")) === 3 && (await shownText(app)).includes("```js"));
+	await app.shot("code-box");
 });
 
-check("a task is a box off the cursor's line, ticked by a click or ⌘Enter, and a rule is a line", async ({ app, cwd }) => {
+check("a task is a box, cursor or not, ticked by a click or ⌘Enter, and a rule is a line", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "tasks.md"), "- [ ] one\n- [x] two\n\n---\n\nend\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="tasks.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="tasks.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="tasks.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="tasks.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("- [ ] one"));
-	// The cursor lands on the first line, so that task stays as text and the other is a box; the rule is a line.
-	await until("one box and a rule", () => app.evaluate("document.querySelectorAll('#editor input.cm-task').length === 1 && document.querySelectorAll('#editor hr.cm-rule').length === 1"));
-	assert.ok((await shownText(app)).includes("[ ] one"));
+	// The cursor lands on the first line; its task is a box all the same, as the other is; the rule is a line.
+	await until("two boxes and a rule", () => app.evaluate("document.querySelectorAll('#editor input.cm-task').length === 2 && document.querySelectorAll('#editor hr.cm-rule').length === 1"));
+	assert.ok(!(await shownText(app)).includes("[ ] one"));
 	assert.ok(!(await shownText(app)).includes("[x] two"));
-	// Clicking the box ticks it off in the text.
-	assert.equal(await app.click("#editor input.cm-task", 0), true);
+	// Clicking the second box ticks it off in the text.
+	assert.equal(await app.click("#editor input.cm-task", 1), true);
 	await until("two unticked", async () => (await editorText(app)).includes("- [ ] two"));
 	// ⌘Enter on the cursor's line ticks that one.
 	await app.press("Enter", { meta: true });
@@ -673,13 +831,13 @@ check("a task is a box off the cursor's line, ticked by a click or ⌘Enter, and
 });
 
 check("deleting a note closes it and offers it back, and Restore brings it back open", async ({ app, cwd }) => {
-	await app.evaluate(`document.querySelector('#notes button[title="code.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="code.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved");
 	await app.evaluate(`document.querySelector('button[aria-label="Delete note"]').click()`);
 	await until("the column to empty", () => app.evaluate("!document.getElementById('editor') && document.body.textContent.includes('Deleted code')"));
 	assert.equal(existsSync(join(cwd, "code.md")), false);
 	assert.equal(existsSync(join(cwd, ".pi/trash/notes/code.md")), true);
-	assert.equal(await app.evaluate(`!!document.querySelector('#notes button[title="code.md"]')`), false, "off the list");
+	assert.equal(await app.evaluate(`!!document.querySelector('#notes button[data-path="code.md"]')`), false, "off the list");
 	await app.evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent === "Restore").click()`);
 	await until("the note back", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("location.hash")) === "#code.md");
 	assert.equal(existsSync(join(cwd, "code.md")), true);
@@ -706,7 +864,7 @@ check("⌘P finds a note by a few letters, and makes one that is not there", asy
 });
 
 check("⌘F finds in the note, and Escape puts the panel away", async ({ app }) => {
-	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await pickNote(app, "ideas/second.md");
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	await app.press("f", { meta: true });
 	await until("the panel", () => app.evaluate("document.activeElement?.name === 'search'"));
@@ -722,8 +880,8 @@ check("⌘F finds in the note, and Escape puts the panel away", async ({ app }) 
 
 check("links are drawn, a missing one differently; ⌘+click follows one and makes the other", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "hub.md"), "go to [[My note]] or [[nowhere yet]]\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="hub.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="hub.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="hub.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="hub.md"]').click()`);
 	await until("the links", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink').length")) === 2);
 	assert.deepEqual(
 		await app.evaluate("[...document.querySelectorAll('#editor .cm-wikilink')].map((l) => l.classList.contains('cm-wikilink-missing'))"),
@@ -734,18 +892,18 @@ check("links are drawn, a missing one differently; ⌘+click follows one and mak
 	await until("My note", async () => (await app.evaluate("location.hash")) === "#My%20note.md");
 	await until("its backlinks", () => app.evaluate("document.querySelector('#backlinks')?.textContent ?? ''").then((t) => t.includes("hub")));
 	// Back by the backlink, then make the missing one.
-	await app.evaluate(`[...document.querySelectorAll('#backlinks button')].find((b) => b.title === "hub.md").click()`);
+	await app.evaluate(`[...document.querySelectorAll('#backlinks button')].find((b) => b.dataset.path === "hub.md").click()`);
 	await until("hub again", async () => (await app.evaluate("location.hash")) === "#hub.md" && (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink').length")) === 2);
 	await app.click("#editor .cm-wikilink", 1, { meta: true });
 	await until("the new note", async () => (await app.evaluate("location.hash")) === "#nowhere%20yet.md" && (await editorStatus(app)) === "saved");
 	assert.equal(existsSync(join(cwd, "nowhere yet.md")), true);
 	// And back in hub the link is no longer missing.
-	await app.evaluate(`document.querySelector('#notes button[title="hub.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="hub.md"]').click()`);
 	await until("no missing link", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink-missing').length")) === 0);
 });
 
 check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) => {
-	await app.evaluate(`document.querySelector('#notes button[title="hub.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="hub.md"]').click()`);
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	await app.press("End", { meta: true });
 	await app.press("Enter");
@@ -757,10 +915,652 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	assert.ok(readFileSync(join(cwd, "hub.md"), "utf8").endsWith("[[My note]]"));
 });
 
+check("a quote is one element around its lines; a quote in a quote is a bar in a bar; it wraps and takes Hangul", async ({ app, cwd }) => {
+	const long = "word ".repeat(40).trim();
+	// The bare `>` line: without it, "after" would be a lazy continuation of the inner quote, as CommonMark has it.
+	writeFileSync(join(cwd, "quotes.md"), `> ${long}\n> > inner\n>\n> after\n\nend\n`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="quotes.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="quotes.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await until("the quote elements", () => app.evaluate("document.querySelectorAll('#editor .cm-quote').length === 2 && !!document.querySelector('#editor .cm-quote .cm-quote')"));
+	const shape = await app.evaluate(`(() => {
+		const outer = document.querySelector('#editor .cm-quote'); const inner = outer.querySelector('.cm-quote');
+		const lines = [...outer.querySelectorAll(':scope > .cm-line')];
+		const px = (el) => parseFloat(getComputedStyle(el).paddingLeft);
+		return { outerLines: lines.length, innerLines: inner.querySelectorAll('.cm-line').length, wraps: lines[0].getBoundingClientRect().height > 2 * lines[2].getBoundingClientRect().height, innerLeft: inner.getBoundingClientRect().left - outer.getBoundingClientRect().left, room: px(outer) + parseFloat(getComputedStyle(outer).borderLeftWidth) };
+	})()`);
+	assert.equal(shape.outerLines, 3, `the outer quote's own lines — the long one, the bare >, "after": ${JSON.stringify(shape)}`);
+	assert.equal(shape.innerLines, 1, `the inner quote's line: ${JSON.stringify(shape)}`);
+	assert.ok(shape.wraps, `the long line wraps inside the element: ${JSON.stringify(shape)}`);
+	assert.ok(Math.abs(shape.innerLeft - shape.room) < 1, `the inner bar stands just inside the outer's bar and room: ${JSON.stringify(shape)}`);
+	// Hangul composed on a quote line, where the marks are drawn back under the cursor: lands whole, nothing torn.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const line = v.state.doc.line(4); v.dispatch({ selection: { anchor: line.to } }); })()`);
+	await app.ime("ㅎㅏㄴ", "한");
+	await app.ime("ㄱㅡㄹ", "글");
+	await until("the syllables", async () => (await editorText(app)).includes("> after한글"));
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.deepEqual(app.errors, [], "nothing thrown while composing");
+	await app.shot("quotes");
+});
+
+check("a bullet is a dot, cursor or not, and a task shows its box alone", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "bullets.md"), "- one\n- [ ] two\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="bullets.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="bullets.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("- [ ] two"));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("a dot, and a box without a dash", async () => (await shownText(app)).includes("•one") && (await shownText(app)).includes("two") && !(await shownText(app)).includes("- "));
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-bullet').length"), 1);
+	// Under the cursor the dot stays: the list's shape is not text to edit, and the caret steps over it.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 2 } }); })()`);
+	await new Promise((r) => setTimeout(r, 100));
+	assert.ok((await shownText(app)).includes("•one"), "the dot under the cursor");
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-bullet').length"), 1);
+	await app.press("ArrowLeft");
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-content').cmTile.root.view.state.selection.main.head"), 0, "the caret steps over the dot to the line's start");
+});
+
+check("every list line's padding and text-indent cancel, so the selection band never moves with the first line on screen", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "hang.md"), "- one\n  - two\n    - three\n    still two\n- [ ] task\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="hang.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="hang.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("still two"));
+	await until("the list lines", () => app.evaluate("document.querySelectorAll('#editor .cm-list-line').length === 5"));
+	const lines = await app.evaluate(`[...document.querySelectorAll('#editor .cm-list-line')].map((el) => { const s = getComputedStyle(el); return [parseFloat(s.paddingLeft), parseFloat(s.textIndent)]; })`);
+	assert.equal(lines.length, 5);
+	for (const [pad, indent] of lines) {
+		assert.ok(pad > 0, "each list line is padded");
+		assert.ok(Math.abs(pad + indent) < 0.5, `padding ${pad} and text-indent ${indent} cancel`);
+	}
+	// The nested lines are padded more than the outer, and the continuation line as its item.
+	assert.ok(lines[1][0] > lines[0][0] && lines[2][0] > lines[1][0] && lines[3][0] === lines[1][0]);
+	// Everything selected, with the nested item scrolled to be the first line on screen or not: the band stays in the column.
+	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: 0, head: v.state.doc.length } }); })()`);
+	await until("the band to be drawn", () => app.evaluate("document.querySelectorAll('#editor .cm-selectionBackground').length > 0"));
+	const within = await app.evaluate(`(() => {
+		const content = document.querySelector('#editor .cm-content').getBoundingClientRect();
+		return [...document.querySelectorAll('#editor .cm-selectionBackground')].every((el) => { const r = el.getBoundingClientRect(); return r.left >= content.left - 1 && r.right <= content.right + 1; });
+	})()`);
+	assert.ok(within, "every piece of the band lies within the text column");
+});
+
+check("Tab nests a numbered item and the numbers follow; Shift-Tab brings it back", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "numbered.md"), "1. a\n2. b\n3. c\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="numbered.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="numbered.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 6 } }); })()`);
+	await app.press("Tab");
+	await until("b nested under a, c renumbered", async () => (await editorText(app)) === "1. a\n    1. b\n2. c\n");
+	await app.press("Tab", { shift: true });
+	await until("back in one list", async () => (await editorText(app)) === "1. a\n2. b\n3. c\n");
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+});
+
+check("the smaller marks hide too, and a done task reads as done", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "small.md"), "- [x] done ~~gone~~ `code`\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="small.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="small.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("~~gone~~"));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("the marks hidden", async () => (await shownText(app)).includes("done gone code"));
+	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-task-done')).textDecorationLine"), "line-through");
+	assert.notEqual(await app.evaluate("[...document.querySelectorAll('#editor .cm-task-done span')].map((s) => getComputedStyle(s).backgroundColor).find((c) => c !== 'rgba(0, 0, 0, 0)')"), undefined, "inline code sits in a box");
+	await app.shot("small-marks");
+});
+
+check("a %% line opens a comment that runs over blank lines to the next", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "block-comment.md"), "kept\n\n%%\nnot [[this]]\n\n# nor this\n%%\n\nkept too\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="block-comment.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="block-comment.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("kept too"));
+	// Everything between the fences is one comment: no link drawn, no heading style. The fences are marks, drawn as marks are.
+	await until("the comment", () => app.evaluate("[...document.querySelectorAll('#editor .cm-comment')].map((s) => s.textContent).join('')").then((t) => t.includes("not [[this]]") && t.includes("# nor this")));
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-wikilink').length"), 0);
+});
+
+check("under a note, the notes that share its tags", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "shared-a.md"), "#team notes\n");
+	writeFileSync(join(cwd, "shared-b.md"), "more #Team and #other\n");
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="shared-a.md"]') && !!document.querySelector('#notes button[data-path="shared-b.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="shared-a.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("#team"));
+	await until("the tagged strip", () => app.evaluate("document.querySelector('#tagged')?.textContent ?? ''").then((t) => t.includes("shared-b") && t.includes("#team") && !t.includes("#other")));
+	// The other note loses the tag: the strip goes.
+	writeFileSync(join(cwd, "shared-b.md"), "no more\n");
+	await until("the strip to go", () => app.evaluate("!document.querySelector('#tagged')"));
+});
+
+check("a tag and a link written in the properties count as much as ones written in the note", async ({ app, cwd }) => {
+	// One note says its tag in the text, the other in its properties, and they share it.
+	writeFileSync(join(cwd, "prop-tagged.md"), '---\ntags: [Crew]\nrelated: "[[prop-hub]]"\n---\n\nnothing in the text\n');
+	writeFileSync(join(cwd, "prop-body.md"), "#crew in the text\n");
+	writeFileSync(join(cwd, "prop-hub.md"), "the one linked to\n");
+	await until("the notes to be listed", () => app.evaluate(`["prop-tagged.md", "prop-body.md", "prop-hub.md"].every((p) => document.querySelector('#notes button[data-path="' + p + '"]'))`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="prop-body.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("#crew"));
+	await until("the note whose tag is only a property", () => app.evaluate("document.querySelector('#tagged')?.textContent ?? ''").then((t) => t.includes("prop-tagged") && t.includes("#crew")));
+	// And the link written in a property is a backlink on the note it names.
+	await app.evaluate(`document.querySelector('#notes button[data-path="prop-hub.md"]').click()`);
+	await until("its backlinks", () => app.evaluate("document.querySelector('#backlinks')?.textContent ?? ''").then((t) => t.includes("prop-tagged")));
+	// Renaming the note it names rewrites the property, not just the text: the backlink survives the move.
+	await retitle(app, "prop-centre");
+	await until("the note moved", () => existsSync(join(cwd, "prop-centre.md")));
+	await until("the property rewritten", () => readFileSync(join(cwd, "prop-tagged.md"), "utf8").includes('"[[prop-centre]]"'));
+	await until("its backlinks again", () => app.evaluate("document.querySelector('#backlinks')?.textContent ?? ''").then((t) => t.includes("prop-tagged")));
+	// Taken out of the properties, both go.
+	writeFileSync(join(cwd, "prop-tagged.md"), "---\nstatus: draft\n---\n\nnothing in the text\n");
+	await until("the backlink to go", () => app.evaluate("!document.querySelector('#backlinks')"));
+	await app.evaluate(`document.querySelector('#notes button[data-path="prop-body.md"]').click()`);
+	await until("the tagged strip to go", () => app.evaluate("!document.querySelector('#tagged')"));
+});
+
+check("%%a comment%% is set apart, its marks hidden off the cursor", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "comment.md"), "say %%to self%% now\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="comment.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="comment.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("%%to self%%"));
+	await until("the comment, as one span", () => app.evaluate("[...document.querySelectorAll('#editor .cm-comment')].map((s) => s.textContent).join('')").then((t) => t.includes("to self")));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("the marks to be hidden", async () => (await shownText(app)).includes("say to self now"));
+});
+
+check("a quote opening with [!note] is a callout, named by its type", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "callout.md"), "> [!note] Keep\n> the body\n\nafter\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="callout.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="callout.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("[!note]"));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("one callout element around two lines, the first a title", () => app.evaluate("document.querySelectorAll('#editor .cm-callout').length === 1 && document.querySelectorAll('#editor .cm-callout .cm-line').length === 2 && document.querySelector('#editor .cm-callout-title')?.dataset.callout === 'note'"));
+	await until("the marker hidden", async () => !(await shownText(app)).includes("[!note]"));
+	// The type is drawn before the title by CSS, from the attribute.
+	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-callout-title'), '::before').content"), '"note"');
+	await app.shot("callout");
+});
+
+check("a #tag is set off from the prose, and a # in a URL or a heading is not", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "tags.md"), "# top\n\nsee #one and https://x.y/p#frag\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="tags.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="tags.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("#one"));
+	await until("one tag", () => app.evaluate("[...document.querySelectorAll('#editor .cm-tag')].map((s) => s.textContent).join('|')").then((t) => t === "#one"));
+});
+
+check("==words== are washed with colour, their marks hidden off the cursor", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "hl.md"), "say ==hi== now\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="hl.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="hl.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("==hi=="));
+	await until("the highlight, as one span", () => app.evaluate("[...document.querySelectorAll('#editor .cm-highlight')].map((s) => s.textContent).join('|')").then((t) => t.includes("hi")));
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("the marks to be hidden", async () => (await shownText(app)).includes("say hi now"));
+	// Under the cursor, with the focus: without it the marks stay hidden.
+	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: 6 } }); })()`);
+	await until("the marks back under the cursor", async () => (await shownText(app)).includes("==hi=="));
+});
+
+check("a note's front matter is hidden, out of the cursor's reach, shown by ⌘E, and the note opens under it", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "props.md"), "---\ntags: [x]\n---\n\n# body\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="props.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="props.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("# body"));
+	const head = () => app.evaluate("document.querySelector('#editor .cm-content')?.cmTile?.root?.view?.state.selection.main.head");
+	assert.equal(await head(), 18, "the note opens under its properties, where its text begins");
+	// Off its lines the block is not there at all — no rule, no words — and the text begins the note.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("the heading's mark to be hidden", async () => !(await shownText(app)).includes("# body"));
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor hr.cm-rule').length"), 0);
+	assert.ok(!(await shownText(app)).includes("tags"), "the block is hidden off its lines");
+	// The cursor cannot be put on its lines; ⌘E shows it, as text.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 0 } }); })()`);
+	assert.equal(await head(), 18, "the cursor is kept under the block");
+	assert.ok(!(await shownText(app)).includes("tags"), "still hidden");
+	await app.press("e", { meta: true });
+	await until("the source", async () => (await shownText(app)).includes("---tags: [x]---") && (await shownText(app)).includes("# body"));
+	await app.press("e", { meta: true });
+	assert.equal(readFileSync(join(cwd, "props.md"), "utf8"), "---\ntags: [x]\n---\n\n# body\n", "the file is untouched");
+});
+
+check("a note opens again where it was left", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "left.md"), "one\ntwo\nthree\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="left.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="left.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("three"));
+	const head = () => app.evaluate("document.querySelector('#editor .cm-content')?.cmTile?.root?.view?.state.selection.main.head");
+	assert.equal(await head(), 0, "a note never left opens at the top");
+	const end = (await editorText(app)).length;
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: ${end} } }); })()`);
+	await pickNote(app, "ideas/second.md");
+	await until("the other note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("second"));
+	await app.evaluate(`document.querySelector('#notes button[data-path="left.md"]').click()`);
+	await until("back at the end", async () => (await editorStatus(app)) === "saved" && (await head()) === end);
+});
+
+check("the title scrolls away with the note, and the note comes back scrolled where it was left", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "tall.md"), Array.from({ length: 120 }, (_, i) => `line ${i}`).join("\n\n") + "\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="tall.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="tall.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("line 119"));
+	const titleTop = () => app.evaluate("document.querySelector('#title').getBoundingClientRect().top");
+	const pageTop = await app.evaluate("document.querySelector('#note').getBoundingClientRect().top");
+	assert.ok((await titleTop()) >= pageTop, "the title starts in view");
+	await app.evaluate("document.querySelector('#note').scrollTop = 600");
+	await until("the title to have gone up with the page", async () => (await titleTop()) < pageTop);
+	// Leave and come back: the page is where it was.
+	await pickNote(app, "ideas/second.md");
+	await until("the other note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("second"));
+	await app.evaluate(`document.querySelector('#notes button[data-path="tall.md"]').click()`);
+	await until("back where it was", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.querySelector('#note').scrollTop")) === 600);
+});
+
+check("open notes are tabs in the title bar; a click picks one, its × closes it to the neighbour, and a reload keeps the row", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "tab-a.md"), "A\n");
+	writeFileSync(join(cwd, "tab-b.md"), "B\n");
+	await until("both listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="tab-a.md"]') && !!document.querySelector('#notes button[data-path="tab-b.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="tab-a.md"]').click()`);
+	await until("a", async () => (await editorText(app)) === "A\n");
+	await app.evaluate(`document.querySelector('#notes button[data-path="tab-b.md"]').click()`);
+	await until("b", async () => (await editorText(app)) === "B\n");
+	const row = () => app.evaluate("[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.path)");
+	const front = () => app.evaluate("document.querySelector('[role=tab][data-state=active]')?.dataset.path");
+	assert.deepEqual((await row()).slice(-2), ["tab-a.md", "tab-b.md"], "in the order they were opened, once each");
+	assert.equal(await front(), "tab-b.md");
+	// A second opening is not a second tab.
+	await app.evaluate(`document.querySelector('#notes button[data-path="tab-a.md"]').click()`);
+	await until("a again", async () => (await editorText(app)) === "A\n");
+	assert.equal((await row()).filter((t) => t === "tab-a.md").length, 1);
+	assert.equal(await front(), "tab-a.md");
+	// The row is long by now; a person would scroll it, and so does this.
+	await app.evaluate(`document.querySelector('[role=tab][data-path="tab-b.md"]').scrollIntoView({ inline: "nearest" })`);
+	await app.click('[role=tab][data-path="tab-b.md"]');
+	await until("b in front by the tab", async () => (await app.evaluate("location.hash")) === "#tab-b.md" && (await editorText(app)) === "B\n");
+	await app.shot("tabs");
+	// Closing the one in front, with nothing to its right, goes to its left.
+	await app.click('[role=tab][data-path="tab-b.md"] [role=button]');
+	await until("a after the close", async () => (await app.evaluate("location.hash")) === "#tab-a.md" && (await editorText(app)) === "A\n");
+	assert.equal((await row()).includes("tab-b.md"), false);
+	const before = await row();
+	await app.evaluate("location.reload()");
+	await until("the row after a reload", async () => (await editorStatus(app)) === "saved" && (await row()).join() === before.join());
+	assert.equal(await front(), "tab-a.md");
+});
+
+check("a middle click closes a tab without picking it, and Delete on a focused tab closes it and moves the focus along", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "tab-c.md"), "C\n");
+	writeFileSync(join(cwd, "tab-d.md"), "D\n");
+	await until("both listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="tab-c.md"]') && !!document.querySelector('#notes button[data-path="tab-d.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="tab-c.md"]').click()`);
+	await until("c", async () => (await editorText(app)) === "C\n");
+	await app.evaluate(`document.querySelector('#notes button[data-path="tab-d.md"]').click()`);
+	await until("d", async () => (await editorText(app)) === "D\n");
+	const row = () => app.evaluate("[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.path)");
+	const focused = () => app.evaluate("document.activeElement?.getAttribute('role') === 'tab' ? document.activeElement.dataset.path : null");
+	// The wheel button on a tab that is not in front: it goes, the front one stays.
+	await app.evaluate(`document.querySelector('[role=tab][data-path="tab-c.md"]').scrollIntoView({ inline: "nearest" })`);
+	await app.click('[role=tab][data-path="tab-c.md"]', 0, { button: "middle" });
+	await until("c gone", async () => !(await row()).includes("tab-c.md"));
+	assert.equal(await app.evaluate("location.hash"), "#tab-d.md", "the front tab did not change");
+	// Delete with the focus on the front tab: its left neighbour is in front, and has the focus.
+	await app.click('[role=tab][data-path="tab-d.md"]');
+	await until("the tab focused", async () => (await focused()) === "tab-d.md");
+	await app.press("Delete");
+	await until("d gone and the neighbour in front", async () => !(await row()).includes("tab-d.md") && (await app.evaluate("location.hash")) === "#tab-a.md");
+	await until("the focus on the neighbour", async () => (await focused()) === "tab-a.md");
+});
+
+check("⌘⇧T puts a closed tab back where it was, and ⌘⇧] and ⌘⇧[ go along the row", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "tab-e.md"), "E\n");
+	writeFileSync(join(cwd, "tab-f.md"), "F\n");
+	await until("both listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="tab-e.md"]') && !!document.querySelector('#notes button[data-path="tab-f.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="tab-e.md"]').click()`);
+	await until("e", async () => (await editorText(app)) === "E\n");
+	await app.evaluate(`document.querySelector('#notes button[data-path="tab-f.md"]').click()`);
+	await until("f", async () => (await editorText(app)) === "F\n");
+	const row = () => app.evaluate("[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.path)");
+	const before = await row();
+	// Close the one before last with its ×, then ask for it back: same place, in front.
+	await app.evaluate(`document.querySelector('[role=tab][data-path="tab-e.md"]').scrollIntoView({ inline: "nearest" })`);
+	await app.click('[role=tab][data-path="tab-e.md"] [role=button]');
+	await until("e gone", async () => !(await row()).includes("tab-e.md"));
+	assert.equal(await app.evaluate("location.hash"), "#tab-f.md", "closing a tab behind the front one did not pick it");
+	await app.press("t", { meta: true, shift: true });
+	// Its text on screen, not just its address: the app hears the address a beat after it is set.
+	await until("e back in its place", async () => (await row()).join() === before.join() && (await editorText(app)) === "E\n");
+	await app.press("]", { meta: true, shift: true });
+	await until("f by ⌘⇧]", async () => (await editorText(app)) === "F\n");
+	await app.press("]", { meta: true, shift: true });
+	// The tab in front is the app's own state; the address runs ahead of it, and the old editor lingers a beat.
+	await until("round to the first", () => app.evaluate(`document.querySelector('[role=tab][data-state=active]')?.dataset.path === ${JSON.stringify(before[0])}`));
+	await app.press("[", { meta: true, shift: true });
+	await until("and back to the last", async () => (await editorText(app)) === "F\n");
+});
+
+check("a tab dragged onto another takes its place, and a press without a move is still a pick", async ({ app }) => {
+	const row = () => app.evaluate("[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.path)");
+	const before = await row();
+	const [a, b] = before.slice(-2);
+	await app.evaluate(`document.querySelector('[role=tab][data-path=${JSON.stringify(b)}]').scrollIntoView({ inline: "nearest" })`);
+	await app.dragTo(`[role=tab][data-path=${JSON.stringify(b)}]`, `[role=tab][data-path=${JSON.stringify(a)}]`);
+	await until("the last two swapped", async () => (await row()).slice(-2).join() === [b, a].join());
+	assert.deepEqual((await row()).slice(0, -2), before.slice(0, -2), "the rest did not move");
+	await app.evaluate("location.reload()");
+	await until("the order after a reload", async () => (await editorStatus(app)) === "saved" && (await row()).slice(-2).join() === [b, a].join());
+	// A plain click on a tab is still a pick, with the sortable listening on the same div.
+	await app.evaluate(`document.querySelector('[role=tab][data-path=${JSON.stringify(b)}]').scrollIntoView({ inline: "nearest" })`);
+	await app.click(`[role=tab][data-path=${JSON.stringify(b)}]`);
+	await until("b picked", async () => (await app.evaluate("location.hash")) === "#" + encodeURIComponent(b).replace(/%2F/g, "/"));
+});
+
+check("a right click on a tab is a menu; Close to the Right closes those, and ⌘⇧T brings them back one at a time", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "tab-g.md"), "G\n");
+	writeFileSync(join(cwd, "tab-h.md"), "H\n");
+	await until("both listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="tab-g.md"]') && !!document.querySelector('#notes button[data-path="tab-h.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="tab-g.md"]').click()`);
+	await until("g", async () => (await editorText(app)) === "G\n");
+	await app.evaluate(`document.querySelector('#notes button[data-path="tab-h.md"]').click()`);
+	await until("h", async () => (await editorText(app)) === "H\n");
+	const row = () => app.evaluate("[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.path)");
+	const before = await row();
+	const third = before[before.length - 3];
+	await app.evaluate(`document.querySelector('[role=tab][data-path=${JSON.stringify(third)}]').scrollIntoView({ inline: "nearest" })`);
+	await app.click(`[role=tab][data-path=${JSON.stringify(third)}]`, 0, { button: "right" });
+	await until("the menu", () => app.evaluate("!!document.querySelector('[role=menu]')"));
+	assert.equal(await app.evaluate("location.hash"), "#tab-h.md", "a right click does not pick the tab");
+	const items = await app.evaluate("[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((i) => i.textContent.replace('⌘W', '').trim())");
+	assert.deepEqual(items, ["Close", "Close Others", "Close to the Right", "Close All", "Copy Path"]);
+	await app.evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((i) => i.textContent.includes('Close to the Right')).click()`);
+	await until("g and h gone, the third in front", async () => (await row()).join() === before.slice(0, -2).join() && (await app.evaluate("location.hash")) === "#" + encodeURIComponent(third).replace(/%2F/g, "/"));
+	assert.equal(await app.evaluate("!!document.querySelector('[role=menu]')"), false, "the menu went with the choice");
+	// Back, last closed first, each where it was.
+	await until("the third's text", async () => (await editorStatus(app)) === "saved");
+	await app.press("t", { meta: true, shift: true });
+	await until("h back", async () => (await row()).join() === [...before.slice(0, -2), "tab-h.md"].join() && (await editorText(app)) === "H\n");
+	await app.press("t", { meta: true, shift: true });
+	await until("g back in its place", async () => (await row()).join() === before.join() && (await editorText(app)) === "G\n");
+});
+
+/**
+ * The panel opened to its rows. A note shows its properties as one folded
+ * line until it is asked; the line is clicked whenever it is there, since it
+ * arrives with the note rather than with the click before it.
+ */
+const showProperties = async (page) => {
+	await until("the property rows", async () => {
+		if (await page.evaluate("!!document.querySelector('#properties-summary')")) await page.click("#properties-summary");
+		return page.evaluate("!!document.querySelector('#properties [data-property], #add-property')");
+	});
+};
+
+check("the properties are rows above the note: a chip added, a property added and filled, ⌘Z, a Backspace that cannot reach them, and a broken block said so", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "rows.md"), "---\ntags: [x]\n---\n\n# body\n");
+	writeFileSync(join(cwd, "broken.md"), "---\ntags: [x\n---\nbody\n");
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="rows.md"]') && !!document.querySelector('#notes button[data-path="broken.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="rows.md"]').click()`);
+	await until("the folded line", () => app.evaluate(`document.querySelector('#properties-summary [data-said="tags"]')?.textContent.includes("x")`));
+	await showProperties(app);
+	await until("the row", () => app.evaluate(`!!document.querySelector('#properties [data-property="tags"] [data-chip="x"]')`));
+	const file = () => readFileSync(join(cwd, "rows.md"), "utf8");
+	// A chip added keeps the list's shape, and only that line changes.
+	await app.click('#properties [aria-label="Add to tags"]');
+	await app.keys("y");
+	await app.press("Enter");
+	await until("the chip", () => app.evaluate(`!!document.querySelector('#properties [data-chip="y"]')`));
+	await until("the file", () => file() === "---\ntags: [x, y]\n---\n\n# body\n");
+	// A property added is a line with no value, then the value typed in.
+	await app.click("#add-property");
+	await app.keys("status");
+	await app.press("Enter");
+	await until("the new row", () => app.evaluate(`!!document.querySelector('#properties [data-property="status"] input:not([data-name])')`));
+	await until("its line", () => file() === "---\ntags: [x, y]\nstatus:\n---\n\n# body\n");
+	await app.click('#properties [data-property="status"] input:not([data-name])');
+	await app.keys("draft");
+	await app.press("Enter");
+	await until("the value", () => file() === "---\ntags: [x, y]\nstatus: draft\n---\n\n# body\n");
+	// ⌘Z in the note takes the last of those back, as it would typing.
+	await app.evaluate("document.querySelector('#editor .cm-content').focus()");
+	await app.press("z", { meta: true });
+	await until("the value undone", () => file() === "---\ntags: [x, y]\nstatus:\n---\n\n# body\n");
+	// The cursor cannot go into the block, and a Backspace at the top of the text does not reach it.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 0 } }); })()`);
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-content').cmTile.root.view.state.selection.main.head"), "---\ntags: [x, y]\nstatus:\n---\n".length);
+	await app.press("Backspace");
+	await app.keys("z");
+	await until("the letter, and the block whole", () => file() === "---\ntags: [x, y]\nstatus:\n---\nz\n# body\n");
+	// A block that does not parse is said so, and offers the source.
+	await app.evaluate(`document.querySelector('#notes button[data-path="broken.md"]').click()`);
+	await until("the warning", () => app.evaluate(`document.querySelector('#properties [role=alert]')?.textContent.includes('could not be read')`));
+	assert.equal(await app.evaluate("!!document.querySelector('#add-property')"), false);
+	assert.equal(readFileSync(join(cwd, "broken.md"), "utf8"), "---\ntags: [x\n---\nbody\n", "left exactly as it was");
+});
+
+check("the row's end lists every open tab with the front one marked, picks one, and makes a new note", async ({ app, cwd }) => {
+	const row = () => app.evaluate("[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.path)");
+	const tabs = await row();
+	await app.click('[aria-label="Open tabs"]');
+	await until("the list", () => app.evaluate("!!document.querySelector('[role=menu]')"));
+	const listed = await app.evaluate("[...document.querySelectorAll('[role=menu] [role=menuitemradio]')].map((i) => i.title)");
+	assert.deepEqual(listed, tabs, "every open tab, in the row's order");
+	assert.equal(await app.evaluate("document.querySelector('[role=menu] [role=menuitemradio][data-state=checked]')?.title"), await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.dataset.path"), "the front one is marked");
+	// A note in a folder says its folder beside the name.
+	assert.ok(await app.evaluate(`document.querySelector('[role=menu] [role=menuitemradio][title="ideas/second.md"]')?.textContent.includes("ideas")`));
+	await app.evaluate(`document.querySelector('[role=menu] [role=menuitemradio][title=${JSON.stringify(tabs[0])}]').click()`);
+	await until("the first picked", () => app.evaluate(`document.querySelector('[role=tab][data-state=active]')?.dataset.path === ${JSON.stringify(tabs[0])}`));
+	assert.equal(await app.evaluate("!!document.querySelector('[role=menu]')"), false, "the list went with the choice");
+	// + is ⌘N for the mouse.
+	await app.click('[aria-label="New note"]');
+	await until("a new note in front", async () => (await editorStatus(app)) === "saved" && /Untitled/.test(await app.evaluate("location.hash")));
+	assert.equal((await row()).length, tabs.length + 1, "one more tab");
+	assert.ok(existsSync(join(cwd, decodeURIComponent((await app.evaluate("location.hash")).slice(1)))), "and its file");
+});
+
+check("a property box offers what the vault already says: the name, then the values that name holds, and Shift-Enter keeps what was typed", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "said-a.md"), "---\nstatus: draft\ntags: [reading]\n---\nbody\n");
+	writeFileSync(join(cwd, "said-b.md"), "---\nstatus: shipped\n---\nbody\n");
+	writeFileSync(join(cwd, "offered.md"), "---\ntags: []\n---\nbody\n");
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="offered.md"]') && !!document.querySelector('#notes button[data-path="said-b.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="offered.md"]').click()`);
+	await showProperties(app);
+	await until("the rows", () => app.evaluate(`!!document.querySelector('#properties [data-property="tags"]')`));
+	const file = () => readFileSync(join(cwd, "offered.md"), "utf8");
+	const offering = () => app.evaluate(`[...document.querySelectorAll('[data-suggestion]')].map((i) => i.dataset.suggestion)`);
+	// A name the vault already uses, narrowed by what is typed, and Enter takes it.
+	await app.click("#add-property");
+	await app.keys("st");
+	await until("status offered", async () => (await offering()).join() === "status");
+	await app.press("Enter");
+	await until("the line", () => file() === "---\ntags: []\nstatus:\n---\nbody\n");
+	// The value box offers what that name holds elsewhere, most used first, and nothing that does not answer.
+	await app.click('#properties [data-property="status"] input:not([data-name])');
+	assert.deepEqual(await offering(), [], "a box arrived at says nothing until it is asked");
+	// ⌥↓ asks; a bare ↓ is the page's, and would carry the cursor to the next row.
+	await app.press("ArrowDown", { alt: true });
+	await until("both values", async () => (await offering()).join() === "draft,shipped");
+	await app.keys("sh");
+	await until("only the one", async () => (await offering()).join() === "shipped");
+	await app.press("Enter");
+	await until("the value taken", () => file() === "---\ntags: []\nstatus: shipped\n---\nbody\n");
+	// Shift-Enter keeps what was typed, offer or no offer, as Obsidian has it.
+	await app.click('#properties [aria-label="Add to tags"]');
+	await app.keys("read");
+	await until("the tag offered", async () => (await offering()).join() === "reading");
+	await app.press("Enter", { shift: true });
+	await until("what was typed", () => file() === "---\ntags: [read]\nstatus: shipped\n---\nbody\n");
+});
+
+check("↑ and ↓ carry the cursor from the title down through the properties into the text, and back up again", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "steps.md"), "---\nowner: me\ndone: true\n---\n# body\nsecond line\n");
+	writeFileSync(join(cwd, "bare.md"), "# nothing above\n");
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="steps.md"]') && !!document.querySelector('#notes button[data-path="bare.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="steps.md"]').click()`);
+	await until("the folded line", () => app.evaluate(`!!document.querySelector('#properties-summary')`));
+	/** What has the cursor, named the way the page names it. */
+	const where = () =>
+		app.evaluate(`(() => {
+			const a = document.activeElement;
+			if (!a) return "nothing";
+			if (a.classList.contains("cm-content")) return "text";
+			// The row first: a box in one carries an id of the list's making.
+			return a.closest("#properties [data-property]")?.dataset.property ?? (a.id ? "#" + a.id : a.tagName);
+		})()`);
+	const line = () => app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; return v.state.doc.lineAt(v.state.selection.main.head).text; })()`);
+
+	// Folded, the panel is one line and one stop: ↓ reaches it and Enter opens it onto the first row.
+	await app.evaluate(`document.getElementById("title").focus()`);
+	await app.press("ArrowDown");
+	await until("the folded line has the cursor", async () => (await where()) === "#properties-summary");
+	await app.press("ArrowRight");
+	await until("the first row has it", async () => (await where()) === "owner");
+	// Down: each row, the button that ends them, then the text — at its first line, not where it was left.
+	for (const stop of ["done", "#add-property", "text"]) {
+		await app.press("ArrowDown");
+		await until(`the cursor at ${stop}`, async () => (await where()) === stop);
+	}
+	assert.equal(await line(), "# body", "the text takes the cursor at its first line");
+	// In the text ↑ is the text's own key until there is nothing above.
+	await app.press("ArrowDown");
+	assert.equal(await line(), "second line");
+	await app.press("ArrowUp");
+	assert.equal(await where(), "text", "it did not leave from the middle");
+	assert.equal(await line(), "# body");
+	// Up: the last property, not the button under it — there is nothing to add yet.
+	for (const stop of ["done", "owner", "#title"]) {
+		await app.press("ArrowUp");
+		await until(`the cursor back at ${stop}`, async () => (await where()) === stop);
+	}
+	// Mid-syllable nothing moves: the arrow belongs to whoever is composing.
+	await app.compose("ㅎ");
+	await app.press("ArrowDown");
+	assert.equal(await where(), "#title", "still in the title");
+	// Finish the syllable and put the name back: a composition left open holds
+	// the keyboard, and whatever runs next would type into nothing.
+	await app.ime("ㅎㅏ", "하");
+	await app.press("Escape");
+	await until("the name as it was", () => app.evaluate(`document.getElementById("title").value === "steps"`));
+	// A note with no properties: the title and the text are neighbours.
+	await app.evaluate(`document.querySelector('#notes button[data-path="bare.md"]').click()`);
+	await until("the other note", async () => (await editorText(app)) === "# nothing above\n");
+	await app.evaluate(`document.getElementById("title").focus()`);
+	await app.press("ArrowDown");
+	await until("straight into the text", async () => (await where()) === "text");
+});
+
+check("a property is given another name from its row, keeping what it holds and where it sits", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "renamed.md"), "---\n# why\ntitle: 'kept'   # here\nstatus: draft\nother: 1\n---\nbody\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="renamed.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="renamed.md"]').click()`);
+	await showProperties(app);
+	await until("the rows", () => app.evaluate(`!!document.querySelector('#properties [data-property="status"]')`));
+	const file = () => readFileSync(join(cwd, "renamed.md"), "utf8");
+	// The name is a box: what is typed into it renames the property in place.
+	await app.click('#properties [data-property="status"] [data-name]');
+	await app.evaluate(`(() => { const b = document.activeElement; b.select(); document.execCommand("insertText", false, "state"); })()`);
+	await app.press("Enter");
+	await until("the note", () => file() === "---\n# why\ntitle: 'kept'   # here\nstate: draft\nother: 1\n---\nbody\n");
+	// ← and → cross a row, but only from the edge of the box: in the middle of a value the arrow is the caret's.
+	await app.click('#properties [data-property="state"] input:not([data-name])');
+	await app.evaluate(`document.activeElement.setSelectionRange(2, 2)`);
+	await app.press("ArrowLeft");
+	assert.equal(await app.evaluate(`document.activeElement?.dataset.name`), undefined, "the caret moved and the cursor stayed");
+	await app.evaluate(`document.activeElement.setSelectionRange(0, 0)`);
+	await app.press("ArrowLeft");
+	await until("the name has the cursor", () => app.evaluate(`document.activeElement?.dataset.name === ""`));
+	await app.press("ArrowRight");
+	await until("the value again", () => app.evaluate(`document.activeElement?.dataset.name === undefined && !!document.activeElement?.closest('[data-property="state"]')`));
+	await app.press("ArrowDown");
+	await until("the next property", () => app.evaluate(`!!document.activeElement?.closest('[data-property="other"]')`));
+	// A name the note already has is refused, and the box puts back what was there.
+	await app.click('#properties [data-property="state"] [data-name]');
+	await app.evaluate(`(() => { const b = document.activeElement; b.select(); document.execCommand("insertText", false, "other"); })()`);
+	await app.press("Enter");
+	await until("nothing moved", () => file() === "---\n# why\ntitle: 'kept'   # here\nstate: draft\nother: 1\n---\nbody\n");
+	assert.ok(await app.evaluate(`!!document.querySelector('#properties [data-property="state"]')`), "the property is still called what it was");
+});
+
+check("a row is drawn by its type — a box, a date, a number — the type is chosen for the name from the row's icon, and a value that does not fit is said so", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "typed.md"), "---\ndone: true\nwhen: 2024-01-01\ncount: 3\nodd: nope\n---\nbody\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="typed.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="typed.md"]').click()`);
+	await showProperties(app);
+	await until("the rows", () => app.evaluate(`!!document.querySelector('#properties [data-property="odd"]')`));
+	const file = () => readFileSync(join(cwd, "typed.md"), "utf8");
+	// Guessed from the values.
+	assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('#properties [data-property]')].map((r) => r.dataset.type)`), ["checkbox", "date", "number", "text"]);
+	assert.equal(await app.evaluate(`document.querySelector('#properties [data-property="when"] input:not([data-name])').type`), "date");
+	assert.equal(await app.evaluate(`document.querySelector('#properties [data-property="count"] input:not([data-name])').type`), "number");
+	// The box is the value: unticked, the file says false.
+	await app.click('#properties [data-property="done"] [role=checkbox]');
+	await until("the file", () => file() === "---\ndone: false\nwhen: 2024-01-01\ncount: 3\nodd: nope\n---\nbody\n");
+	// A type chosen for the name is kept beside the notes, and the row is drawn by it.
+	await app.click('#properties [data-property="odd"] [aria-label="Type of odd"]');
+	await until("the menu", () => app.evaluate(`document.querySelectorAll('[role=menuitemradio]').length > 0`));
+	await app.evaluate(`[...document.querySelectorAll('[role=menuitemradio]')].find((i) => i.textContent.trim() === "Date").click()`);
+	await until("the choice kept", () => existsSync(join(cwd, ".pi/properties.json")) && JSON.parse(readFileSync(join(cwd, ".pi/properties.json"), "utf8")).types.odd === "date");
+	await until("the row a date, and the value not one", () => app.evaluate(`document.querySelector('#properties [data-property="odd"]')?.dataset.type === "date" && !!document.querySelector('#properties [data-property="odd"] [aria-label="Not a date"]')`));
+	assert.equal(file(), "---\ndone: false\nwhen: 2024-01-01\ncount: 3\nodd: nope\n---\nbody\n", "the value is not corrected");
+});
+
+check("a list item's wrapped lines start where its words do", async ({ app, cwd }) => {
+	const long = "word ".repeat(40).trim();
+	// The continuation is indented to the inner item's words: short of that it would be drawn at the outer item's depth, as typed.
+	writeFileSync(join(cwd, "list.md"), `- ${long}\n    - inner ${long}\n      continued\n- [ ] task ${long}\n\n> - quoted\n`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="list.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="list.md"]').click()`);
+	await until("the list lines", () => app.evaluate("document.querySelectorAll('#editor .cm-list-line').length === 5"));
+	// The cursor lands on the first line; the indented lines hold their spaces in a box, cursor or not.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
+	await until("the indentation boxed", () => app.evaluate("[...document.querySelectorAll('#editor .cm-list-indent')].map((el) => el.textContent.length).join() === '4,6'"));
+	// The second row of the outer item sits under its words, not under the bullet; the inner item's, one unit further.
+	const rows = await app.evaluate(`(() => {
+		const px = (el) => parseFloat(getComputedStyle(el).paddingLeft);
+		const lines = [...document.querySelectorAll('#editor .cm-list-line')];
+		const [outer, inner, continued, task, quoted] = lines;
+		// Off the cursor, the marker is the dot, one unit wide, at the line's edge; a task's is its box and gap.
+		const dot = outer.querySelector('.cm-bullet').getBoundingClientRect();
+		const innerDot = inner.querySelector('.cm-bullet').getBoundingClientRect();
+		// The glyph, not its box: an inherited text-indent once drew the dot a unit out of a box that measured fine.
+		const glyphOf = (el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect(); };
+		const glyph = glyphOf(outer.querySelector('.cm-bullet'));
+		const box = task.querySelector('.cm-task-box');
+		const taskPrefix = { width: box.getBoundingClientRect().width + parseFloat(getComputedStyle(box).marginRight) };
+		const quotedDot = quoted.querySelector('.cm-bullet').getBoundingClientRect();
+		return { outer: px(outer), inner: px(inner), continued: px(continued), quoted: quoted.getBoundingClientRect().left - outer.getBoundingClientRect().left, quotedDotLeft: quotedDot.left - quoted.getBoundingClientRect().left, quotedPad: px(quoted), prefixWidth: dot.width, innerPrefixWidth: innerDot.width, taskPrefixWidth: taskPrefix.width, prefixLeft: dot.left - outer.getBoundingClientRect().left, glyphIn: glyph.left - dot.left, tall: outer.getBoundingClientRect().height > 2 * innerDot.height };
+	})()`);
+	assert.ok(Math.abs(rows.innerPrefixWidth - rows.outer) < 1, `the nested marker is one unit too, its indentation hidden: ${JSON.stringify(rows)}`);
+	assert.ok(Math.abs(rows.taskPrefixWidth - rows.outer) < 1.5, `the task's box and gap are one unit: ${JSON.stringify(rows)}`);
+	assert.ok(Math.abs(rows.continued - rows.inner) < 1, `a continuation of the inner item has the inner padding alone: ${JSON.stringify(rows)}`);
+	assert.ok(rows.tall, "the item wraps");
+	assert.ok(rows.outer > 0 && Math.abs(rows.inner - 2 * rows.outer) < 1, `inner is one unit further: ${JSON.stringify(rows)}`);
+	assert.ok(Math.abs(rows.prefixWidth - rows.outer) < 1, `the marker's box is one unit wide: ${JSON.stringify(rows)}`);
+	assert.ok(Math.abs(rows.prefixLeft) < 1, `the marker starts at the line's edge: ${JSON.stringify(rows)}`);
+	assert.ok(rows.glyphIn >= 0 && rows.glyphIn < rows.prefixWidth, `the dot is drawn inside its box: ${JSON.stringify(rows)}`);
+	assert.ok(rows.quoted > 0, `a quoted item sits inside the quote's room, past the bar: ${JSON.stringify(rows)}`);
+	assert.ok(Math.abs(rows.quotedDotLeft) < 1, `and its dot at its line's edge, not out over the bar: ${JSON.stringify(rows)}`);
+	await app.shot("list-indent");
+});
+
+check("a mark typed over chosen words wraps them; typed alone it is a letter", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "wrap.md"), "say hi now\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="wrap.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="wrap.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: 4, head: 6 } })`);
+	await app.keys("*");
+	await until("wrapped once", async () => (await editorText(app)) === "say *hi* now\n");
+	await app.keys("*");
+	await until("wrapped twice", async () => (await editorText(app)) === "say **hi** now\n");
+	await app.keys("=");
+	await until("highlighted", async () => (await editorText(app)) === "say **==hi==** now\n");
+	// A bare cursor: the character is just typed.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length - 1 } }); })()`);
+	await app.keys("*");
+	await until("typed alone", async () => (await editorText(app)) === "say **==hi==** now*\n");
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+});
+
 check("⌘B and ⌘I put a mark around the chosen words and take it off again", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "marks.md"), "say hi now\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="marks.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="marks.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="marks.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="marks.md"]').click()`);
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	await app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: 4, head: 6 } })`);
 	await app.press("b", { meta: true });
@@ -775,7 +1575,7 @@ check("⌘B and ⌘I put a mark around the chosen words and take it off again", 
 });
 
 check("a < in prose offers no HTML tags", async ({ app }) => {
-	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await pickNote(app, "ideas/second.md");
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	await app.press("End", { meta: true });
 	await app.keys(" <di");
@@ -788,7 +1588,7 @@ check("a < in prose offers no HTML tags", async ({ app }) => {
 
 check("⌘⇧F finds words in any note, and Enter opens the note they are in", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "far.md"), "# far\n\nsomewhere a Haystack-Needle sits\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="far.md"]')`));
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="far.md"]')`));
 	await app.press("f", { meta: true, shift: true });
 	await until("the palette", () => app.evaluate("document.activeElement?.dataset.slot === 'command-input'"));
 	await app.keys("haystack-needle");
@@ -806,7 +1606,7 @@ const caretLine = (page) =>
 		const line = (n?.nodeType === 1 ? n : n?.parentElement)?.closest('#editor .cm-line');
 		if (!line) return null;
 		const box = line.getBoundingClientRect();
-		const view = document.querySelector('#editor .cm-scroller').getBoundingClientRect();
+		const view = document.querySelector('#note').getBoundingClientRect();
 		return { text: line.textContent, seen: box.top >= view.top && box.bottom <= view.bottom };
 	})()`);
 
@@ -815,9 +1615,9 @@ check("⌘+click on a link to a heading or a block opens its note at that line",
 	const filler = Array.from({ length: 80 }, (_, i) => `filler ${i}`).join("\n\n");
 	writeFileSync(join(cwd, "long.md"), `# long\n\n${filler}\n\nthe block ^far-block\n\n${filler}\n\n## Far down\n\nend\n`);
 	writeFileSync(join(cwd, "jump.md"), "[[long#Far down]] and [[long#^far-block]]\n");
-	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="jump.md"]') && !!document.querySelector('#notes button[title="long.md"]')`));
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="jump.md"]') && !!document.querySelector('#notes button[data-path="long.md"]')`));
 	for (const [n, line] of [[0, "## Far down"], [1, "the block ^far-block"]]) {
-		await app.evaluate(`document.querySelector('#notes button[title="jump.md"]').click()`);
+		await app.evaluate(`document.querySelector('#notes button[data-path="jump.md"]').click()`);
 		await until("the links", async () => (await app.evaluate("location.hash")) === "#jump.md" && (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink').length")) === 2);
 		await app.click("#editor .cm-wikilink", n, { meta: true });
 		await until(`the cursor on "${line}"`, async () => (await app.evaluate("location.hash")) === "#long.md" && (await caretLine(app))?.text === line);
@@ -828,8 +1628,7 @@ check("⌘+click on a link to a heading or a block opens its note at that line",
 check("⌘+click on a markdown link opens the note at its path, and a web address in a new window", async ({ app, cwd, api, devtools }) => {
 	const site = `http://127.0.0.1:${api}/?from=markdown-link`;
 	writeFileSync(join(cwd, "ideas", "plain.md"), `[up to jump](../jump.md)\n\n[the site](${site})\n`);
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="ideas/plain.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="ideas/plain.md"]').click()`);
+	await pickNote(app, "ideas/plain.md");
 	await until("the note", async () => (await app.evaluate("location.hash")) === "#ideas/plain.md" && (await editorStatus(app)) === "saved");
 	// A markdown link is drawn as `[`, the words, `](`, the address, `)`: the fourth is the address.
 	const address = (line) => `#editor .cm-line:nth-child(${line}) > span:nth-child(4)`;
@@ -841,13 +1640,92 @@ check("⌘+click on a markdown link opens the note at its path, and a web addres
 	await until("the note the path names", async () => (await app.evaluate("location.hash")) === "#jump.md" && (await editorStatus(app)) === "saved");
 });
 
+check("the conversation is named from the pencil in its header, and emptying the name gives the first message back", async ({ app }) => {
+	const shown = () => app.evaluate("document.getElementById('sessionTitle').textContent");
+	// Unnamed, the header reads by its first message — shown, but not as the
+	// value: the field opens on no name at all, so leaving it alone cannot
+	// turn what stands in for a name into one.
+	const first = await shown();
+	assert.ok(first && first !== "New session", "the first message stands in for a name");
+	await app.click('#settings [aria-label="Rename"]');
+	await until("the field", () => app.evaluate("document.activeElement?.id === 'sessionTitle'"));
+	assert.equal(await app.evaluate("document.getElementById('sessionTitle').value"), "", "opened on no name");
+	await app.press("Escape");
+	await until("the text back", async () => (await shown()) === first);
+
+	// pi takes the spaces off, so what comes back is not what was typed.
+	await rename(app, "  Reading list  ");
+	await until("the name pi kept", async () => (await shown()) === "Reading list");
+	// And the session list says the same thing the header does.
+	await app.click("#sessions");
+	await until("the named session", () =>
+		app.evaluate("[...document.querySelectorAll('[cmdk-item]')].some((i) => i.textContent.includes('Reading list'))"),
+	);
+	await app.press("Escape");
+
+	// Emptied, the name is taken off rather than set to nothing.
+	await rename(app, "");
+	await until("the name to come off", async () => (await shown()) === first);
+});
+
+check("chosen in Settings, pi is a row of sessions and a window over the corner, and what is typed survives the window going", async ({ app }) => {
+	const column = () => app.evaluate("!!document.querySelector('[data-slot=resizable-panel][id=pi], #pi')");
+	const window_ = () => app.evaluate("!!document.getElementById('dockWindow')");
+	const pressed = () => app.evaluate("document.getElementById('togglePi')?.getAttribute('aria-pressed')");
+	assert.equal(await app.evaluate("!!document.getElementById('settings')"), true, "pi in its column");
+	assert.equal(await app.evaluate("!!document.getElementById('dock')"), false, "no row under the columns");
+
+	// Chosen in Settings, under Appearance, and drawn as it is chosen.
+	await app.click("button[aria-label=Settings]");
+	await until("the setting", () => app.evaluate("!!document.getElementById('piLayout-dock')"));
+	await app.click("#piLayout-dock");
+	await app.press("Escape");
+	await until("the row and the window", async () => (await app.evaluate("!!document.getElementById('dock')")) && (await window_()));
+	// And kept: the same window, opened again, is in the dock.
+	await app.evaluate("location.reload()");
+	await until("the dock after a reload", async () => (await app.evaluate("!!document.getElementById('dock')")) && (await window_()));
+	assert.equal(await column(), false, "no third column");
+	assert.ok(await app.evaluate("!!document.querySelector('#dockWindow #settings')"), "pi's header is in the window");
+	assert.ok((await app.evaluate("document.querySelectorAll('#dock [role=tab]').length")) >= 1, "the row has the session");
+	assert.equal(await app.evaluate("document.querySelector('#dock [role=tab][data-state=active]')?.textContent"), await app.evaluate("document.getElementById('sessionTitle').textContent"), "the active tab is the session in the window");
+
+	// Typed, then the window is put away and brought back: the window is made
+	// again, and the box in it has what was typed — see draft.ts.
+	await app.click("#dockWindow textarea");
+	await app.keys("kept across");
+	await app.click("#togglePi");
+	await until("the window gone", async () => !(await window_()));
+	assert.equal(await pressed(), "false");
+	await app.click("#togglePi");
+	await until("the window back", window_);
+	assert.equal(await app.evaluate("document.querySelector('#dockWindow textarea').value"), "kept across");
+
+	// A tab on the row opens the window too.
+	await app.click("#togglePi");
+	await until("the window gone again", async () => !(await window_()));
+	await app.click("#dock [role=tab]");
+	await until("the window back from the row", window_);
+
+	await app.click("button[aria-label=Settings]");
+	await until("the setting again", () => app.evaluate("!!document.getElementById('piLayout-column')"));
+	await app.click("#piLayout-column");
+	await app.press("Escape");
+	await until("the column back", () => app.evaluate("!!document.getElementById('settings') && !document.getElementById('dock')"));
+});
+
 check("the bench renders every scenario it knows", async ({ bench }) => {
-	const scenarios = await until("the gallery", () =>
-		bench.evaluate("[...document.querySelectorAll('select option')].map((o) => o.value).join(',')"),
+	// The list is drawn only while the picker is open, and each entry carries
+	// its id: what is read is the scenario's name, and the name is not the id.
+	await until("the gallery", () => bench.evaluate("!!document.getElementById('scenario')"));
+	await bench.click("#scenario");
+	const scenarios = await until("the scenarios", () =>
+		bench.evaluate("[...document.querySelectorAll('[role=option]')].map((o) => o.dataset.scenario).join(',')"),
 	);
 	for (const id of ["tool-headers", "branches", "thinking", "recorded:turn-with-tools"]) {
 		assert.ok(scenarios.includes(id), `the bench is missing ${id}`);
 	}
+	// Away again, so the check after this one does not read a page with a menu over it.
+	await bench.press("Escape");
 });
 
 check("nothing was written to the console", async ({ app, bench }) => {
