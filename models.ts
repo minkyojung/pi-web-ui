@@ -37,3 +37,109 @@ export function modelsNotice(lost: readonly string[], error: string | undefined)
 	if (lost.length) return `${lost.join(", ")}: not offered just now — the credentials could not be read. Looking again.`;
 	return undefined;
 }
+
+/**
+ * pi's thinking levels, weakest first.
+ *
+ * Written out again rather than imported. pi's copy lives in
+ * @earendil-works/pi-ai, which sits under pi-coding-agent's own node_modules
+ * and is not re-exported, so importing it would mean depending on it directly
+ * — a second copy, free to drift from the one the session actually runs on.
+ */
+export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+
+/** As much of pi's Model as a level needs. */
+interface Reasoner {
+	reasoning: boolean;
+	thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>>;
+}
+
+/**
+ * Which levels a model offers — including models the session is not on.
+ *
+ * pi answers this for the current model only (getAvailableThinkingLevels), and
+ * the picker names a level beside every model it lists, so its rule is
+ * followed here: a model that does not reason has the one level; otherwise a
+ * level is offered unless the map says null against it, except xhigh and max,
+ * which are offered only where the map names them. An absent key there means
+ * the provider has no value to send for that level, not that a default will do.
+ */
+export function supportedLevels(model: Reasoner): ThinkingLevel[] {
+	if (!model.reasoning) return ["off"];
+	return THINKING_LEVELS.filter((level) => {
+		const mapped = model.thinkingLevelMap?.[level];
+		if (mapped === null) return false;
+		if (level === "xhigh" || level === "max") return mapped !== undefined;
+		return true;
+	});
+}
+
+/**
+ * The level a model will actually be on when asked for one it does not offer.
+ *
+ * Harder first, then easier, which is pi's order in clampThinkingLevel: asking
+ * for more thought than a model has should not quietly buy less. Shown in the
+ * picker beside a model before it is chosen, so it has to be what pi will do
+ * rather than what was wished for.
+ */
+export function clampLevel(levels: readonly ThinkingLevel[], wanted: string): ThinkingLevel {
+	if (levels.includes(wanted as ThinkingLevel)) return wanted as ThinkingLevel;
+	const from = THINKING_LEVELS.indexOf(wanted as ThinkingLevel);
+	if (from === -1) return levels[0] ?? "off";
+	for (let i = from + 1; i < THINKING_LEVELS.length; i++) {
+		if (levels.includes(THINKING_LEVELS[i])) return THINKING_LEVELS[i];
+	}
+	for (let i = from - 1; i >= 0; i--) {
+		if (levels.includes(THINKING_LEVELS[i])) return THINKING_LEVELS[i];
+	}
+	return levels[0] ?? "off";
+}
+
+/**
+ * How many models the loadout holds.
+ *
+ * Held to a number rather than left open because the list is the thing the
+ * picker opens on: it has to be read at a glance and reached by a digit, and
+ * both stop being true somewhere around here. The loadout screen draws this
+ * many places, and settings keeps no more.
+ */
+export const LOADOUT_SLOTS = 5;
+
+/**
+ * What the picker offers before anyone has said what it should offer: the
+ * newest GPT models, newest first.
+ *
+ * A seed rather than a default — read only while the loadout in settings is
+ * empty, so editing it here still reaches anyone who has never chosen. What it
+ * names and pi does not offer is passed over: a model the credentials do not
+ * reach, or one renamed since, leaves a shorter list rather than a dead row.
+ */
+export const SEED_LOADOUT: readonly string[] = [
+	"openai/gpt-6-astra",
+	"openai/gpt-5.6-sol",
+	"openai/gpt-5.6-luna",
+	"openai/gpt-5.6-terra",
+	"openai/gpt-5.5",
+];
+
+/**
+ * The models the picker lists: those chosen, in the order chosen, and the one
+ * the session is on.
+ *
+ * The current model belongs on the list whether or not anybody put it there.
+ * pi opens on the model it was left on, and the CLI can leave it on one this
+ * app never offered; without it the list would show nothing as chosen and the
+ * first keystroke would silently move the session off it.
+ */
+export function loadoutOf(
+	chosen: readonly string[],
+	available: readonly string[],
+	current: string | null,
+): string[] {
+	const offered = new Set(available);
+	const keys = (chosen.length ? chosen : SEED_LOADOUT).filter((key) => offered.has(key));
+	if (current && !keys.includes(current)) keys.push(current);
+	return keys;
+}

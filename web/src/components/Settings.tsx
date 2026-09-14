@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SlidersHorizontalIcon } from "lucide-react";
 import { MODE_IDS, describeMode, type ToolModeId } from "../../../toolModes";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Loadout } from "@/components/Loadout";
 import {
   Select,
   SelectContent,
@@ -24,9 +25,10 @@ import { readTheme, setTheme, type Theme } from "@/theme";
 /** settings.ts, as it arrives. Declared again rather than imported: that module reads files. */
 type Settings = {
   toolMode: ToolModeId;
+  loadout: string[];
 };
 
-const SECTIONS = ["Appearance", "Agent", "Keys"] as const;
+const SECTIONS = ["Appearance", "Agent", "Loadout", "Keys"] as const;
 type Section = (typeof SECTIONS)[number];
 
 /**
@@ -106,39 +108,61 @@ export function Settings() {
 function Panel({ section }: { section: Section }) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // What is on screen, readable without waiting for a render — see save.
+  const showing = useRef<Settings | null>(null);
+  const saves = useRef(0);
 
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => (r.ok ? r.json() : null))
-      .then(setSettings)
+      .then((s) => {
+        showing.current = s;
+        setSettings(s);
+      })
       .catch(() => setError("could not read settings"));
   }, []);
 
   /**
    * The whole object every time, and whatever comes back is what is shown: the
    * server decides what it will keep, and the screen says what it kept.
+   *
+   * Built on what is on screen rather than on what the server last confirmed,
+   * and the answer to a save that another has overtaken is dropped. The loadout
+   * is a whole list written at once, so two edits made inside one round trip
+   * would otherwise each start from the saved copy and the first would be lost.
    */
   const save = useCallback(async (patch: Partial<Settings>) => {
+    if (!showing.current) return;
     setError(null);
-    setSettings((cur) => (cur ? { ...cur, ...patch } : cur));
+    const next = { ...showing.current, ...patch };
+    showing.current = next;
+    setSettings(next);
+    const mine = ++saves.current;
     try {
       const r = await fetch("/api/settings", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...settings, ...patch }),
+        body: JSON.stringify(next),
       });
       if (!r.ok) throw new Error(`${r.status}`);
-      setSettings(await r.json());
+      const kept = await r.json();
+      if (mine !== saves.current) return;
+      showing.current = kept;
+      setSettings(kept);
     } catch {
       setError("could not save");
     }
-  }, [settings]);
+  }, []);
 
   return (
     <section className="flex flex-col gap-4">
       {section === "Appearance" && <Appearance />}
 
       {section === "Keys" && <Keys />}
+
+      {section === "Loadout" && settings && (
+        <Loadout chosen={settings.loadout} onChange={(loadout) => void save({ loadout })} />
+      )}
 
       {section === "Agent" && (
         <>

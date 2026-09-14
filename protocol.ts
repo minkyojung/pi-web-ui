@@ -142,18 +142,37 @@ export interface SessionInfo {
 	current: boolean;
 }
 
+/** A model the picker offers, and what it will be thinking at when chosen. */
+export interface ModelInfo {
+	/** `provider/id` — what set_model takes. */
+	key: string;
+	/** The model's own name, as pi gives it: "GPT-5.6 Sol", not the id. */
+	name: string;
+	/**
+	 * The levels this model offers, weakest first. The picker shows every level
+	 * there is and greys the rest, so a model that cannot go to max is seen not
+	 * to rather than quietly offered one step fewer.
+	 */
+	levels: string[];
+	/**
+	 * The level it is on — for the current model what it is thinking at now, and
+	 * for the others what choosing them would put them at. pi keeps one of these
+	 * per model, so each carries its own.
+	 */
+	level: string;
+}
+
 export interface ConfigMsg {
 	type: "config";
 	model: string | null;
-	models: string[];
+	/** The loadout, in order, and the model the session is on. See models.ts. */
+	models: ModelInfo[];
 	/**
 	 * Why `models` may be short, when it may be: a provider pi could not check
 	 * just now, or pi's own report of trouble. See models.ts. Absent when the
 	 * list is what it should be.
 	 */
 	modelsNotice?: string;
-	thinkingLevel: string;
-	thinkingLevels: string[];
 	tools: { name: string; description?: string }[];
 	activeTools: string[];
 	isStreaming: boolean;

@@ -11,9 +11,8 @@ import { send } from "../ws";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { ContextPopover } from "./ContextPopover";
-import { ModelSelect } from "./ModelSelect";
+import { ModelPicker } from "./ModelPicker";
 import { QueuedMessages } from "./QueuedMessages";
-import { ThinkingSelect } from "./ThinkingSelect";
 import { ToolModes } from "./ToolModes";
 import {
 	PromptInput,
@@ -182,12 +181,15 @@ export function Composer({ note }: { note: string | null }) {
 				</PromptInputBody>
 				<PromptInputFooter>
 					<PromptInputTools>
-						{/* Chosen per message, so it sits with the message. Native: fifty-odd
-						    entries in provider groups are picked by typing the first letters. */}
+						{/* Chosen per message, so it sits with the message. */}
 						{config && (
 							<>
-								<ModelSelect model={config.model} models={config.models} notice={config.modelsNotice} />
-								<ThinkingSelect level={config.thinkingLevel} levels={config.thinkingLevels} disabled={!online} />
+								<ModelPicker
+									model={config.model}
+									models={config.models}
+									notice={config.modelsNotice}
+									disabled={!online}
+								/>
 								<ToolModes
 									tools={config.tools}
 									active={config.activeTools}

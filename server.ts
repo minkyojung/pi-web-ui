@@ -25,7 +25,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { itemsFromMessages } from "./conversation.js";
 import { modeToolNames } from "./toolModes.ts";
-import { lostProviders, modelsNotice as modelsNotice_ } from "./models.ts";
+import { clampLevel, loadoutOf, lostProviders, modelsNotice as modelsNotice_, supportedLevels } from "./models.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
@@ -49,6 +49,7 @@ import type {
 	ConfigMsg,
 	ContextSourcesMsg,
 	FilesMsg,
+	ModelInfo,
 	NoteChangedMsg,
 	NoteMsg,
 	PiEventMsg,
@@ -248,17 +249,61 @@ const session = () => runtime.session;
 /** Derived from the session so it stays in sync; pi does not re-export ThinkingLevel. */
 type ThinkingLevel = ReturnType<typeof session>["thinkingLevel"];
 
+type AvailableModel = ReturnType<typeof availableModels>[number];
+
+/**
+ * A model as both the picker and the loadout screen show it.
+ *
+ * The level named beside a model has to be the one that choosing it will get:
+ * what the session is thinking at for the model it is on, and for the rest what
+ * pi would put them back on — its own memory of that model, else the default it
+ * falls back to — clamped, since pi clamps on the way in and neither screen may
+ * name a level the model will not do.
+ */
+function modelInfo(m: AvailableModel, current: string | null): ModelInfo {
+	const s = session();
+	const settings = s.settingsManager;
+	const key = modelKey(m);
+	const levels = supportedLevels(m);
+	const level =
+		key === current
+			? s.thinkingLevel
+			: clampLevel(levels, settings.getModelThinkingLevel(m.provider, m.id) ?? settings.getDefaultThinkingLevel() ?? s.thinkingLevel);
+	return { key, name: m.name, levels, level };
+}
+
+/**
+ * Every model pi can reach, for the screen that chooses a loadout from them.
+ *
+ * Over HTTP rather than in the config broadcast: it is fifty-odd entries that
+ * change when credentials do, and config goes out on every keystroke's worth of
+ * streaming state. The screen that needs it is a modal, so it cannot go stale
+ * while it is being read.
+ */
+function catalog(): ModelInfo[] {
+	const model = session().model;
+	const current = model ? modelKey(model) : null;
+	return availableModels().map((m) => modelInfo(m, current));
+}
+
 /** Everything the settings UI needs. Re-sent whenever any of it changes. */
 function config(): ConfigMsg {
 	const s = session();
 	const model = s.model;
+	const current = model ? modelKey(model) : null;
+	const offered = new Map(availableModels().map((m) => [modelKey(m), m]));
+	// The model the session is on belongs on the list even when the snapshot has
+	// left it out — see availableModels. Without this the picker could show the
+	// session running on nothing.
+	if (model && current) offered.set(current, model);
 	return {
 		type: "config",
-		model: model ? modelKey(model) : null,
-		models: availableModels().map(modelKey),
+		model: current,
+		models: loadoutOf(readSettings().loadout, [...offered.keys()], current).flatMap((key) => {
+			const m = offered.get(key);
+			return m ? [modelInfo(m, current)] : [];
+		}),
 		modelsNotice,
-		thinkingLevel: s.thinkingLevel,
-		thinkingLevels: s.supportsThinking() ? s.getAvailableThinkingLevels() : [],
 		tools: s.getAllTools().map((tool) => ({ name: tool.name, description: tool.description })),
 		activeTools: s.getActiveToolNames(),
 		isStreaming: s.isStreaming,
@@ -848,13 +893,20 @@ const server = createServer(async (req, res) => {
 		// about would come back as its default and quietly undo an edit.
 		if (pathname === "/api/settings" && req.method === "POST") {
 			try {
-				return json(200, writeSettings(JSON.parse(await text(req))));
+				const written = writeSettings(JSON.parse(await text(req)));
+				// The loadout lives here and is drawn on the composer, which hears about
+				// it on the socket rather than by asking — so a change made on this
+				// screen has to be announced, or the picker keeps the old list until
+				// something else happens to move it.
+				broadcast(config());
+				return json(200, written);
 			} catch {
 				return json(400, { error: "invalid JSON" });
 			}
 		}
 		if (req.method !== "GET") return json(405, { error: "read only" });
 		if (pathname === "/api/settings") return json(200, readSettings());
+		if (pathname === "/api/models") return json(200, catalog());
 		return json(404, { error: "not found" });
 	}
 
@@ -1034,13 +1086,20 @@ wss.on("connection", async (ws) => {
 				case "set_thinking": {
 					// setThinkingLevel clamps rather than rejecting, so an unknown
 					// value would silently become "off". Validate first.
-					const levels = config().thinkingLevels;
+					const model = session().model;
+					const levels = model ? supportedLevels(model) : [];
 					if (typeof msg.level !== "string" || !levels.includes(msg.level as ThinkingLevel)) {
 						reply({ type: "error", message: `unsupported thinking level: ${msg.level}` });
 						return;
 					}
-					// As with the model: persist makes the choice outlive this session.
-					session().setThinkingLevel(msg.level as ThinkingLevel, { persist: true });
+					// Written against this model rather than as the default for every
+					// model: each entry in the loadout carries its own level, and pi puts
+					// a model back on the one it remembers when the session moves to it
+					// — so persist:true here would flatten the lot to whichever was set
+					// last. The default is left alone; it is what a model nobody has set
+					// a level for still starts from.
+					session().setThinkingLevel(msg.level as ThinkingLevel);
+					if (model) session().settingsManager.setModelThinkingLevel(model.provider, model.id, msg.level as ThinkingLevel);
 					broadcast(config());
 					break;
 				}
