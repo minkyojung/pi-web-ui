@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { SlidersHorizontalIcon } from "lucide-react";
+import { SettingsIcon } from "lucide-react";
 import { MODE_IDS, describeMode, type ToolModeId } from "../../../toolModes";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -73,17 +73,17 @@ export function Settings() {
               aria-label="Settings"
               className="h-7 w-7 shrink-0 p-0 text-muted-foreground"
             >
-              <SlidersHorizontalIcon className="size-3.5" />
+              <SettingsIcon className="size-3.5" />
             </Button>
           </DialogTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Settings ⌘,</TooltipContent>
+        <TooltipContent side="top">Settings ⌘,</TooltipContent>
       </Tooltip>
-      <DialogContent className="grid-cols-[10rem_1fr] gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      <DialogContent className="h-[72vh] max-h-[44rem] min-h-[28rem] w-[72vw] max-w-[64rem] min-w-[40rem] grid-cols-[13rem_1fr] grid-rows-1 gap-0 overflow-hidden p-0 sm:max-w-[64rem]">
         <DialogDescription className="sr-only">
           Settings for how this window is drawn and what the agent may do.
         </DialogDescription>
-        <nav className="flex flex-col gap-0.5 border-r bg-muted/30 p-3">
+        <nav className="flex flex-col gap-0.5 bg-muted/30 p-3">
           <DialogTitle className="px-2 pt-1 pb-2 text-sm font-semibold">Settings</DialogTitle>
           {SECTIONS.map((name) => (
             <Button
@@ -98,7 +98,7 @@ export function Settings() {
             </Button>
           ))}
         </nav>
-        <div className="max-h-[28rem] min-w-0 overflow-y-auto p-5">
+        <div className="min-w-0 overflow-y-auto p-6">
           <Panel section={section} />
         </div>
       </DialogContent>

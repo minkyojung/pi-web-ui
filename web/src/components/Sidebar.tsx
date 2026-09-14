@@ -1,11 +1,12 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { cn } from "cn";
-import { ChevronRightIcon, FileTextIcon, FolderIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, FileTextIcon, FolderIcon } from "lucide-react";
 
 import { titleOf } from "../noteSync";
 import { filesStore } from "../serverState";
 import { type Node, openFoldersStore, reveal, setOpenFolders, toggle, treeOf } from "../tree";
+import { FolderPicker } from "./FolderPicker";
 import { Settings } from "./Settings";
 import { Button } from "./ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
@@ -28,14 +29,31 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  *
  * Its header is the window's own top-left corner: the traffic lights sit in
  * that row, which is why it has a fixed height rather than one its contents
- * decide. The settings live there because they are about the window and the
- * agent, not about anything in the column below.
+ * decide. The way back through the notes is at the far end of it — going
+ * somewhere else is what this column is for, and the near end belongs to the
+ * traffic lights, which are three buttons a fourth should not crowd. It
+ * arrives as a slot: where you have been is the window's (App.tsx), and the
+ * column has no business knowing it.
+ *
+ * The foot of the column is what is true of the whole window: which folder
+ * this is, and the settings — away from the notes and the moving about, since
+ * neither is about anything in the list. Obsidian keeps its vault there and
+ * Linear, Slack and VS Code all keep their settings there.
  *
  * It paints in the sidebar tokens, not the page's. Every theme sets the column
  * a step off the page it sits beside — that is what the tokens are for — and a
  * column drawn in --background has no way to say it.
  */
-export function Sidebar({ open, onOpen }: { open: string | null; onOpen: (path: string) => void }) {
+export function Sidebar({
+	open,
+	onOpen,
+	steps,
+}: {
+	open: string | null;
+	onOpen: (path: string) => void;
+	/** Drawn in the header, beside the traffic lights. */
+	steps?: React.ReactNode;
+}) {
 	const files = useSyncExternalStore(filesStore.subscribe, filesStore.get);
 	const openFolders = useSyncExternalStore(openFoldersStore.subscribe, openFoldersStore.get);
 
@@ -46,9 +64,9 @@ export function Sidebar({ open, onOpen }: { open: string | null; onOpen: (path: 
 	}, [open]);
 
 	return (
-		<nav className="flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-			<div className="drag-region titlebar-inset flex h-11 shrink-0 items-center justify-end border-b border-sidebar-border px-2">
-				<Settings />
+		<nav className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
+			<div className="drag-region titlebar-inset flex h-11 shrink-0 items-center justify-end gap-0.5 overflow-hidden border-b border-sidebar-border px-2">
+				{steps}
 			</div>
 			{files.length === 0 ? (
 				<div className="flex flex-1 items-center justify-center p-4 text-center text-sm text-muted-foreground">
@@ -63,7 +81,42 @@ export function Sidebar({ open, onOpen }: { open: string | null; onOpen: (path: 
 					))}
 				</ul>
 			)}
+			{/* Not a drag region: the foot of the window is not its title bar. */}
+			<div className="flex h-10 shrink-0 items-center gap-1 border-t border-sidebar-border px-2">
+				<FolderPicker />
+				<Settings />
+			</div>
 		</nav>
+	);
+}
+
+/**
+ * The way back through the notes you have been in, and forward again.
+ *
+ * Lit only while there is somewhere to go — which is the one thing the
+ * browser's own list cannot be asked, and half the reason the app keeps its
+ * own (nav.ts).
+ */
+export function Steps({ back, forward, canBack, canForward }: { back: () => void; forward: () => void; canBack: boolean; canForward: boolean }) {
+	return (
+		<>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button id="back" variant="ghost" size="icon-xs" aria-label="Back" className="shrink-0 text-muted-foreground" disabled={!canBack} onClick={back}>
+						<ChevronLeftIcon />
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent side="bottom">Back ⌘[</TooltipContent>
+			</Tooltip>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button id="forward" variant="ghost" size="icon-xs" aria-label="Forward" className="shrink-0 text-muted-foreground" disabled={!canForward} onClick={forward}>
+						<ChevronRightIcon />
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent side="bottom">Forward ⌘]</TooltipContent>
+			</Tooltip>
+		</>
 	);
 }
 

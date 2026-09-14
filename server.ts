@@ -273,6 +273,7 @@ function config(): ConfigMsg {
 		},
 		sessionId: s.sessionId,
 		sessionName: s.sessionName ?? null,
+		folder: CWD,
 	};
 }
 

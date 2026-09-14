@@ -23,7 +23,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -305,6 +305,13 @@ const allDisabled = (page, title) =>
 
 check("the app renders a conversation", async ({ app }) => {
 	await until("the conversation", () => app.evaluate("!!document.getElementById('chat')"));
+});
+
+check("the sidebar's foot names the folder the notes are in", async ({ app, cwd }) => {
+	// The name only; the full path is the tooltip. Without the desktop shell
+	// there is nowhere else to go, so it is a label rather than a menu.
+	await until("the folder's name", async () => (await app.evaluate("document.querySelector('#folder')?.textContent ?? ''")) === basename(cwd));
+	assert.equal(await app.evaluate("document.querySelector('#folder').tagName"), "DIV");
 });
 
 check("the sidebar is the folder's tree: its notes and folders, a folder's notes once it is opened, and nothing else", async ({ app }) => {

@@ -12,7 +12,7 @@ import { createServer } from "node:net";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { BrowserWindow, Menu, app, dialog, shell } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
 
 const HOST = "127.0.0.1";
 const here = (path) => fileURLToPath(new URL(path, import.meta.url));
@@ -78,12 +78,25 @@ async function askForWorkdir(current) {
 	return canceled ? null : filePaths[0];
 }
 
+/**
+ * The folders worked in before, newest first and the current one at its head,
+ * so the page can offer them the way Obsidian offers its vaults. Ones that
+ * have since been deleted or moved are dropped as they are read: a list that
+ * offers a folder which is not there is worse than a short list.
+ */
+const RECENT = 8;
+function remember(settings, workdir) {
+	const recent = [workdir, ...(settings.recent ?? []).filter((path) => path !== workdir)]
+		.filter((path) => existsSync(path))
+		.slice(0, RECENT);
+	return { ...settings, workdir, recent };
+}
+
 async function resolveWorkdir() {
 	const settings = readSettings();
-	if (settings.workdir && existsSync(settings.workdir)) return settings.workdir;
-	const picked = await askForWorkdir(settings.workdir);
-	if (picked) writeSettings({ ...settings, workdir: picked });
-	return picked;
+	const known = settings.workdir && existsSync(settings.workdir) ? settings.workdir : await askForWorkdir(settings.workdir);
+	if (known) writeSettings(remember(settings, known));
+	return known;
 }
 
 let child = null;
@@ -144,13 +157,31 @@ function stopServer() {
  * underneath a live session would mean tearing down the socket, the window and
  * the session together, which is what a relaunch already does correctly.
  */
-async function changeWorkdir() {
+function openWorkdir(picked) {
 	const settings = readSettings();
-	const picked = await askForWorkdir(settings.workdir);
-	if (!picked || picked === settings.workdir) return;
-	writeSettings({ ...settings, workdir: picked });
+	if (!picked || picked === settings.workdir || !existsSync(picked)) return;
+	writeSettings(remember(settings, picked));
 	app.relaunch();
 	app.quit();
+}
+
+async function changeWorkdir() {
+	openWorkdir(await askForWorkdir(readSettings().workdir));
+}
+
+/**
+ * The folder, for the page's own picker. In a dev run the dev server owns the
+ * folder and a relaunch would not change it, so there is nothing to offer and
+ * the page says so by drawing a name rather than a menu.
+ */
+function serveFolders() {
+	ipcMain.handle("folders", () => {
+		if (devUrl) return { current: null, recent: [] };
+		const settings = readSettings();
+		return { current: settings.workdir ?? null, recent: (settings.recent ?? []).filter((path) => existsSync(path)) };
+	});
+	ipcMain.handle("folder:choose", changeWorkdir);
+	ipcMain.handle("folder:open", (_event, path) => openWorkdir(path));
 }
 
 function buildMenu(workdir) {
@@ -201,6 +232,7 @@ function markTrafficLights(window) {
 }
 
 async function main() {
+	serveFolders();
 	let url;
 	let workdirForTitle = process.cwd();
 	if (devUrl) {
@@ -233,8 +265,9 @@ async function main() {
 			? { titleBarStyle: "hidden", trafficLightPosition: { x: 20, y: 16 } }
 			: {}),
 		// Nothing here needs node in the renderer: it talks to the server over a
-		// websocket like the browser does.
-		webPreferences: { nodeIntegration: false, contextIsolation: true },
+		// websocket like the browser does. The preload carries the one thing no
+		// page can do — see preload.cjs.
+		webPreferences: { nodeIntegration: false, contextIsolation: true, preload: here("preload.cjs") },
 	});
 	window.webContents.on("did-finish-load", () => markTrafficLights(window));
 	window.on("enter-full-screen", () => markTrafficLights(window));

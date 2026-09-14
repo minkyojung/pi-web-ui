@@ -179,6 +179,8 @@ export interface ConfigMsg {
 	queued: { steering: string[]; followUp: string[] };
 	sessionId: string;
 	sessionName: string | null;
+	/** The folder the agent reads and writes in, in full. See CWD in server.ts. */
+	folder: string;
 }
 
 export interface UsageMsg {
