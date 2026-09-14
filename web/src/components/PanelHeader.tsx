@@ -1,5 +1,5 @@
-import { useRef, useState, useSyncExternalStore } from "react";
-import { Check, History, PanelRight, PanelRightOpen, Plus } from "lucide-react";
+import { useState, useSyncExternalStore } from "react";
+import { Check, History, PanelRight, PanelRightOpen, Pencil, Plus } from "lucide-react";
 
 import type { SessionInfo } from "../types";
 import { sessionsStore } from "../serverState";
@@ -7,6 +7,7 @@ import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Button } from "./ui/button";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "./ui/command";
+import { Input } from "./ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -97,64 +98,91 @@ export function PiToggle({ open, onToggle }: { open: boolean; onToggle: () => vo
 }
 
 /**
- * The conversation's name: the one thing in this header that is not a button.
- * A line of text until it is clicked, and a field after — the name belongs to
- * the conversation, so it is changed where it is shown rather than behind a
- * dialog, the way a note's title is in Title.tsx.
+ * The conversation's name, and the pencil that opens it for changing.
  *
- * A conversation nobody has named still reads by its first message, but that
- * is the placeholder and not the value: a name nobody typed should not become
- * one just because the field was focused and left. It is drawn in the same ink
- * as a real name, because to the person reading it there is no difference.
+ * Two states, drawn as two things. A line of text while it is being read: it
+ * can be elided when it is too long, and — the reason it is not an input all
+ * the time — it leaves the header draggable, which is how the window is moved
+ * now that the shell's title bar is hidden. A field only while it is being
+ * changed.
  *
- * Uncontrolled, and keyed on what pi kept: pi trims the name and takes the
- * line breaks out of it, so what is stored can differ from what was typed, and
- * remounting on the way back is what makes the box say what was kept.
+ * A conversation nobody has named reads by its first message, which is shown
+ * but is not the value: the field opens empty, so a name nobody typed cannot
+ * become one by being left alone. What that difference is for comes next —
+ * a conversation that has never been named is the only one anything else may
+ * name.
+ *
+ * The pencil appears under the pointer, as the copy and ask-again buttons on
+ * a turn do. Double-clicking the name is the other way in, as it is in a file
+ * list.
  */
 function SessionTitle({ current, online }: { current: SessionInfo | undefined; online: boolean }) {
-	const box = useRef<HTMLInputElement>(null);
+	const [editing, setEditing] = useState(false);
 	const name = current?.name ?? "";
-	const commit = () => {
-		const typed = (box.current?.value ?? "").trim();
-		// pi would store what is already stored; the round trip would buy nothing,
-		// and nothing would come back to put the trimmed text in the box.
-		if (typed === name) {
-			if (box.current) box.current.value = name;
-			return;
-		}
+	const shown = current ? nameOf(current) : "New session";
+
+	if (!editing) {
+		return (
+			<>
+				<span id="sessionTitle" className="min-w-0 flex-1 truncate text-sm font-medium" onDoubleClick={() => online && setEditing(true)}>
+					{shown}
+				</span>
+				{/* Nothing can be renamed while the socket is down, and a control that
+				    still looked live would silently do nothing. */}
+				{online && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon-xs"
+								aria-label="Rename"
+								className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/header:opacity-100 focus-visible:opacity-100"
+								onClick={() => setEditing(true)}
+							>
+								<Pencil />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent side="bottom">Rename</TooltipContent>
+					</Tooltip>
+				)}
+			</>
+		);
+	}
+
+	const close = (send_: boolean, box: HTMLInputElement) => {
+		setEditing(false);
+		if (!send_) return;
+		const typed = box.value.trim();
+		// pi would store what is already stored, and the answer would change nothing.
+		if (typed === name) return;
 		// Emptied on purpose: pi reads an empty name as the name being taken off,
-		// and the first message is shown again.
+		// and the first message stands in for it again.
 		send({ type: "set_session_name", name: typed });
 	};
 
 	return (
-		<input
-			key={`${current?.id ?? "none"}:${name}`}
-			ref={box}
+		<Input
 			id="sessionTitle"
-			type="text"
+			// Opened on the name itself, not on what stands in for one, and with it
+			// chosen: the common reason to open this is to replace it.
 			defaultValue={name}
-			placeholder={current ? nameOf(current) : "New session"}
+			placeholder={shown}
 			aria-label="Conversation name"
 			spellCheck={false}
-			// Read-only rather than disabled while the socket is down: the name is
-			// something to read as much as something to change, and a disabled box
-			// greys out what it is showing.
-			readOnly={!online}
-			className="min-w-0 flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-foreground"
+			autoFocus
+			onFocus={(e) => e.currentTarget.select()}
+			className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-sm font-medium shadow-none placeholder:text-foreground focus-visible:ring-0 dark:bg-transparent"
 			onKeyDown={(e) => {
 				if (e.nativeEvent.isComposing) return;
 				if (e.key === "Enter") {
 					e.preventDefault();
-					commit();
-					e.currentTarget.blur();
+					close(true, e.currentTarget);
 				} else if (e.key === "Escape") {
 					e.preventDefault();
-					if (box.current) box.current.value = name;
-					e.currentTarget.blur();
+					close(false, e.currentTarget);
 				}
 			}}
-			onBlur={commit}
+			onBlur={(e) => close(true, e.currentTarget)}
 		/>
 	);
 }
@@ -175,7 +203,7 @@ export function PanelHeader() {
 	const current = sessions.find((s) => s.current);
 
 	return (
-		<div id="settings" className="drag-region flex h-11 shrink-0 items-center gap-1 border-b pr-2 pl-3">
+		<div id="settings" className="group/header drag-region flex h-11 shrink-0 items-center gap-1 border-b pr-2 pl-3">
 			<SessionTitle current={current} online={online} />
 			<Tooltip>
 				<TooltipTrigger asChild>

@@ -677,11 +677,12 @@ check("⌘N makes an untitled note and opens it", async ({ app, cwd }) => {
 	assert.equal(readFileSync(join(cwd, path), "utf8"), "# today");
 });
 
-/** Type a name into the conversation's header, the way a person would, and commit it. */
+/** Open the conversation's name from the pencil, type, and commit. */
 const rename = async (page, name) => {
-	await page.click("#sessionTitle");
-	await page.evaluate(`document.getElementById('sessionTitle').select()`);
-	// insertText with nothing to insert does nothing; taking the chosen text out is a Backspace.
+	await page.click('#settings [aria-label="Rename"]');
+	await until("the name field", () => page.evaluate("document.activeElement?.id === 'sessionTitle'"));
+	// The name opens chosen, so what is typed replaces it; insertText with
+	// nothing to insert does nothing, and taking the choice out is a Backspace.
 	if (name) await page.evaluate(`document.execCommand("insertText", false, ${JSON.stringify(name)})`);
 	else await page.press("Backspace");
 	await page.press("Enter");
@@ -1403,14 +1404,18 @@ check("⌘+click on a markdown link opens the note at its path, and a web addres
 	await until("the note the path names", async () => (await app.evaluate("location.hash")) === "#jump.md" && (await editorStatus(app)) === "saved");
 });
 
-check("the conversation is named in its header, and emptying the name gives the first message back", async ({ app }) => {
-	const shown = () => app.evaluate("document.getElementById('sessionTitle').value");
-	const placeholder = () => app.evaluate("document.getElementById('sessionTitle').placeholder");
-	// Unnamed, the header reads by the first message — as the placeholder, so
-	// that focusing and leaving the field cannot turn it into a name.
-	assert.equal(await shown(), "");
-	const first = await placeholder();
+check("the conversation is named from the pencil in its header, and emptying the name gives the first message back", async ({ app }) => {
+	const shown = () => app.evaluate("document.getElementById('sessionTitle').textContent");
+	// Unnamed, the header reads by its first message — shown, but not as the
+	// value: the field opens on no name at all, so leaving it alone cannot
+	// turn what stands in for a name into one.
+	const first = await shown();
 	assert.ok(first && first !== "New session", "the first message stands in for a name");
+	await app.click('#settings [aria-label="Rename"]');
+	await until("the field", () => app.evaluate("document.activeElement?.id === 'sessionTitle'"));
+	assert.equal(await app.evaluate("document.getElementById('sessionTitle').value"), "", "opened on no name");
+	await app.press("Escape");
+	await until("the text back", async () => (await shown()) === first);
 
 	// pi takes the spaces off, so what comes back is not what was typed.
 	await rename(app, "  Reading list  ");
@@ -1424,7 +1429,7 @@ check("the conversation is named in its header, and emptying the name gives the 
 
 	// Emptied, the name is taken off rather than set to nothing.
 	await rename(app, "");
-	await until("the name to come off", async () => (await shown()) === "" && (await placeholder()) === first);
+	await until("the name to come off", async () => (await shown()) === first);
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {
