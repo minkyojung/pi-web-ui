@@ -28,11 +28,19 @@ export interface Settings {
 	 * meanwhile — see SEED_LOADOUT in models.ts.
 	 */
 	loadout: string[];
+	/**
+	 * Whether a note made here writes down when it was made. The file system's
+	 * own answer does not survive a clone or a sync, and the note's does — see
+	 * withCreated in vault.ts. Off for someone who would rather their notes
+	 * carried nothing they did not write.
+	 */
+	created: boolean;
 }
 
 export const DEFAULTS: Settings = {
 	toolMode: DEFAULT_MODE,
 	loadout: [],
+	created: true,
 };
 
 /**
@@ -50,6 +58,7 @@ export function coerce(raw: unknown): Settings {
 		loadout: Array.isArray(o.loadout)
 			? o.loadout.filter((key) => typeof key === "string").slice(0, LOADOUT_SLOTS)
 			: [],
+		created: typeof o.created === "boolean" ? o.created : DEFAULTS.created,
 	};
 }
 

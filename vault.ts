@@ -12,6 +12,7 @@
  * is rare, and rare things are better seen than smoothed over.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { propertiesOf, setProperty, withProperties } from "./properties.ts";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
 export type NoteFile = {
@@ -196,6 +197,39 @@ export function newNoteName(existing: Iterable<string>): string {
 	if (!taken.has("Untitled.md")) return "Untitled.md";
 	for (let n = 2; ; n++) if (!taken.has(`Untitled ${n}.md`)) return `Untitled ${n}.md`;
 }
+
+/**
+ * The note with when it was made written into it — the one thing the app
+ * knows at that moment and nothing else does for long.
+ *
+ * The file system knows it too, and is the wrong place to keep it: a `git
+ * clone`, a folder copied, a vault synced — each gives every note the same
+ * birthday, the day it arrived. Written into the note, it survives all of
+ * them, which is the whole test a stamp has to pass. Nothing else passes it.
+ * A title would be a second answer to what the file's name already gives, an
+ * id a second name for what the path already is, and a modified time a line
+ * that changes on every save and is already in the history beside the words
+ * it belongs to.
+ *
+ * Local time, to the minute, as a person means it: `2026-01-01T00:05` is what
+ * the date-and-time widget reads and writes (propertyTypes.ts), and the note
+ * has nowhere to put an offset. Never a Date turned into a string — that is a
+ * UTC instant, and either side of midnight it is the wrong day.
+ *
+ * A note that already says when it was made keeps what it says, and one whose
+ * block cannot be read is left as it is: nothing is written over here either.
+ */
+export function withCreated(text: string, at: Date): string {
+	const two = (n: number) => String(n).padStart(2, "0");
+	const said = `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}T${two(at.getHours())}:${two(at.getMinutes())}`;
+	const had = propertiesOf(text);
+	if (had.block && had.errors.length === 0 && had.doc.has(CREATED)) return text;
+	const made = withProperties(text, (doc) => setProperty(doc, CREATED, said));
+	return made.ok ? made.text : text;
+}
+
+/** What the property is called. `created` is what a vault of markdown notes calls it. */
+const CREATED = "created";
 
 export type RenameResult =
 	| { ok: true }

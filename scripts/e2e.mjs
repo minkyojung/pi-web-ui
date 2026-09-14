@@ -665,16 +665,24 @@ check("choosing words in a note shows them above the box, and the × takes them 
 	assert.equal(await app.evaluate("!!document.querySelector('#editor .cm-selectionBackground, #editor .cm-selectionLayer > *')"), true, "the words are still chosen");
 });
 
+/** The line a note made here opens with, saying when it was made — see withCreated in vault.ts. */
+const MADE = /^---\ncreated: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}\n---\n/;
+/** A note's own text, without that line. */
+const written = (text) => {
+	assert.match(text, MADE, "a note made here says when it was made");
+	return text.replace(MADE, "");
+};
+
 check("⌘N makes an untitled note and opens it", async ({ app, cwd }) => {
 	await app.evaluate("document.body.focus()");
 	await app.press("n", { meta: true });
 	await until("the new note", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("location.hash")) === "#Untitled.md");
 	const path = decodeURIComponent((await app.evaluate("location.hash")).slice(1));
-	assert.equal(readFileSync(join(cwd, path), "utf8"), "");
+	assert.equal(written(readFileSync(join(cwd, path), "utf8")), "", "and nothing else");
 	assert.equal(await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.dataset.path`), path);
 	assert.equal(await type(app, "# today"), true);
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
-	assert.equal(readFileSync(join(cwd, path), "utf8"), "# today");
+	assert.equal(written(readFileSync(join(cwd, path), "utf8")), "# today");
 });
 
 /** Open the conversation's name from the pencil, type, and commit. */
@@ -701,7 +709,7 @@ check("the title is the file's name, and changing it moves the note with its tex
 	await until("the new address", async () => (await app.evaluate("location.hash")) === "#My%20note.md");
 	assert.equal(await app.evaluate("document.getElementById('title').value"), "My note");
 	assert.equal(existsSync(join(cwd, "Untitled.md")), false);
-	assert.equal(readFileSync(join(cwd, "My note.md"), "utf8"), "# today", "the text went with it");
+	assert.equal(written(readFileSync(join(cwd, "My note.md"), "utf8")), "# today", "the text went with it");
 	assert.ok((await editorText(app)).includes("# today"), "and stayed on screen");
 	assert.equal(await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.dataset.path`), "My note.md");
 	// Typing after the move saves to the new path.

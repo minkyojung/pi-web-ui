@@ -1,78 +1,105 @@
 /**
- * pi's questions to the person, answered in the browser.
+ * Answering an extension's questions from the browser.
  *
- * A question comes from the ask_user tool (askUser.ts) and goes out to every
- * tab as prompt_request; the first reply from any tab settles it, and every
- * tab hears prompt_dismiss so the card goes away everywhere. Nothing waits
- * it out: the card stays until it is answered, closed, or the session it
- * belonged to is aborted or replaced, which clears every open question.
+ * The dashboard extension replaces pi's dialog methods with its own PromptBus
+ * and sends every question to a dashboard app nobody here has open, where it
+ * waits out a five-minute timeout. The same bridge exposes a hook for other
+ * packages to register as an answerer — `prompt:register-adapter`, documented
+ * in its architecture notes and used by its sibling flows plugin — so this is
+ * one: it forwards each question to the browser, and hands the first reply
+ * back to the bus.
  *
  * Nothing here touches conversation.js. A question is not a conversation item.
  */
+import type { EventBus } from "@earendil-works/pi-coding-agent";
 import type { PromptRequest, ServerMsg } from "./protocol.ts";
+
+export interface PromptResponse {
+	id: string;
+	answer?: string;
+	cancelled?: boolean;
+	source: string;
+}
+
+/** What the bus calls on an adapter, and what it injects into one. */
+interface PromptAdapter {
+	name: string;
+	priority: number;
+	onRequest(prompt: PromptRequest): object;
+	onResponse(response: PromptResponse): void;
+	onCancel(id: string): void;
+	setRespond(fn: (response: PromptResponse) => void): void;
+	setCancel(fn: (id: string) => void): void;
+}
 
 const SOURCE = "pi-web-ui";
 
-/** How a question ended without an answer: the person closed it, or the session went. */
-export class Cancelled extends Error {
-	constructor() {
-		super("The question was not answered.");
-		this.name = "Cancelled";
-	}
-}
-
-/** A question waiting on a browser. */
-interface Waiting {
-	resolve: (answer: string) => void;
-	reject: (reason: Cancelled) => void;
-}
-
 export function createPromptBridge(broadcast: (payload: ServerMsg) => void) {
 	const pending = new Map<string, PromptRequest>();
-	const waiting = new Map<string, Waiting>();
+	let respond: ((response: PromptResponse) => void) | null = null;
+	let cancel: ((id: string) => void) | null = null;
 
-	// The one place a question is settled: the browser's reply, a cancel from
-	// the browser, or everything at once before an abort. Whichever it was,
-	// every browser hears the same thing.
-	const settle = (id: string, answer: string | null) => {
-		const waits = waiting.get(id);
-		if (!waits) return;
-		waiting.delete(id);
-		pending.delete(id);
-		if (answer === null) {
-			broadcast({ type: "prompt_dismiss", id, cancelled: true });
-			waits.reject(new Cancelled());
-		} else {
-			broadcast({ type: "prompt_dismiss", id, answer, cancelled: false });
-			waits.resolve(answer);
-		}
+	// The one place a question leaves the map. Whether a tab answered, another
+	// adapter did, or the bus timed it out, every browser hears the same thing.
+	const dismiss = (id: string, extra: { answer?: string; cancelled: boolean }) => {
+		if (pending.delete(id)) broadcast({ type: "prompt_dismiss", id, ...extra });
+	};
+
+	const adapter: PromptAdapter = {
+		name: SOURCE,
+		// Lower runs first. The dashboard's own fallback adapter sits at 9999.
+		priority: 100,
+		onRequest(prompt) {
+			pending.set(prompt.id, prompt);
+			broadcast({ type: "prompt_request", prompt });
+			// An empty claim: participate, but let the bus render nothing of ours
+			// on the dashboard side.
+			return {};
+		},
+		onResponse(response) {
+			dismiss(response.id, { answer: response.answer, cancelled: response.cancelled === true });
+		},
+		onCancel(id) {
+			dismiss(id, { cancelled: true });
+		},
+		setRespond(fn) {
+			respond = fn;
+		},
+		setCancel(fn) {
+			cancel = fn;
+		},
 	};
 
 	return {
 		/**
-		 * Ask the browser, and wait. The answer is a string in the shape the
-		 * card sends — see promptAnswer.ts in the client — or a Cancelled
-		 * rejection when the person closed it or the session went.
+		 * Call after every bindExtensions(): a replaced session reloads the
+		 * extension, which builds a new bus with a new hook. Returns false when
+		 * the hook never injected a responder — the extension is absent or has
+		 * changed — so the caller can say so instead of letting questions time
+		 * out silently. The reset comes first so the answer is per-bind.
 		 */
-		ask(question: Omit<PromptRequest, "id" | "pipeline">): Promise<string> {
-			const prompt: PromptRequest = { ...question, id: crypto.randomUUID(), pipeline: SOURCE };
-			pending.set(prompt.id, prompt);
-			broadcast({ type: "prompt_request", prompt });
-			return new Promise<string>((resolve, reject) => waiting.set(prompt.id, { resolve, reject }));
+		register(bus: EventBus): boolean {
+			respond = null;
+			cancel = null;
+			bus.emit("prompt:register-adapter", adapter);
+			return respond !== null;
 		},
 
 		/**
-		 * A browser's reply. A reply to a question already settled — by
-		 * another tab, or by an abort — finds nothing waiting and is dropped.
+		 * A browser's reply. Cancelling goes through the bus's own cancel, which
+		 * resolves the tool the way its decoders expect, rather than a response
+		 * flagged cancelled. A reply to a question already settled — by another
+		 * tab, or by the timeout — finds nothing in the map and is dropped.
 		 */
 		answer(id: string, answer: string | undefined, cancelled: boolean): void {
-			if (cancelled) settle(id, null);
-			else if (answer !== undefined) settle(id, answer);
+			if (!pending.has(id)) return;
+			if (cancelled) cancel?.(id);
+			else if (answer !== undefined) respond?.({ id, answer, source: SOURCE });
 		},
 
 		/** Before an abort: a tool waiting on a question cannot be aborted around. */
 		cancelAll(): void {
-			for (const id of [...waiting.keys()]) settle(id, null);
+			for (const id of [...pending.keys()]) cancel?.(id);
 		},
 
 		/** For a tab that connects while questions are open. */

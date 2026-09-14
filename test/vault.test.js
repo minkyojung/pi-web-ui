@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { listNotes, newNoteName, notePath, readNote, renameNote, resolveNote, restoreNote, trashNote, writeNote } from "../vault.ts";
+import { listNotes, newNoteName, notePath, readNote, renameNote, resolveNote, restoreNote, trashNote, withCreated, writeNote } from "../vault.ts";
 
 const DIR = mkdtempSync(join(tmpdir(), "notes-"));
 /** What the disk calls DIR: on a Mac the temp folder is reached through a symlink. */
@@ -219,4 +219,31 @@ test("폴더 밖을 가리키는 심볼릭 링크는 노트가 아니다 — 글
   });
   assert.equal(notePath(DIR, "escape.md"), null);
   assert.equal(readNote(DIR, "escape.md"), null);
+});
+
+// --- what a note says the moment it is made ---
+
+const AT = new Date(2026, 0, 1, 0, 5); // 새해 0시 5분, 이곳의 시각으로
+
+test("새 노트는 만들어진 시각을 적는다 — 지역 시각으로, 분까지", () => {
+  assert.equal(withCreated("", AT), "---\ncreated: 2026-01-01T00:05\n---\n");
+});
+
+test("UTC로 바꾸지 않는다 — 자정 근처에서 날짜가 하루 어긋나지 않도록", () => {
+  // toISOString이라면 서울에서 2025-12-31T15:05Z가 되어 전날이 된다.
+  assert.match(withCreated("", AT), /2026-01-01T00:05/);
+});
+
+test("이미 속성이 있으면 그 줄들은 그대로 두고 한 줄만 더한다", () => {
+  assert.equal(withCreated("---\ntags: [a]   # kept\n---\nbody\n", AT), "---\ntags: [a]   # kept\ncreated: 2026-01-01T00:05\n---\nbody\n");
+});
+
+test("이미 만들어진 시각을 말하는 노트는 그대로 둔다", () => {
+  const note = "---\ncreated: 2020-05-05T09:00\n---\nbody\n";
+  assert.equal(withCreated(note, AT), note);
+});
+
+test("깨진 블록은 건드리지 않는다", () => {
+  const note = "---\ntags: [a\n---\nbody\n";
+  assert.equal(withCreated(note, AT), note);
 });

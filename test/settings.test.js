@@ -20,7 +20,7 @@ test("없는 파일은 기본값이고, 읽는다고 생기지 않는다", () =>
 });
 
 test("쓴 것이 그대로 다시 읽힌다", () => {
-  const next = { toolMode: "plan", loadout: ["openai/gpt-5.6-sol"] };
+  const next = { toolMode: "plan", loadout: ["openai/gpt-5.6-sol"], created: false };
   assert.deepEqual(writeSettings(next), next);
   assert.deepEqual(readSettings(), next);
 });
@@ -32,7 +32,7 @@ test("모르는 툴 모드는 기본 모드가 된다", () => {
 });
 
 test("모르는 칸은 버려진다 — 파일을 손으로 고칠 수 있으므로", () => {
-  assert.deepEqual(coerce({ toolMode: "coding", feedDays: 3 }), { toolMode: "coding", loadout: [] });
+  assert.deepEqual(coerce({ toolMode: "coding", feedDays: 3 }), { toolMode: "coding", loadout: [], created: true });
 });
 
 test("로드아웃은 문자열만 남기고, 목록이 아니면 비운다", () => {
@@ -67,4 +67,10 @@ test("손으로 열어볼 수 있는 모양으로 남는다", () => {
   const text = readFileSync(PATH, "utf8");
   assert.match(text, /\n {2}"toolMode"/);
   assert.equal(text.endsWith("\n"), true);
+});
+
+test("새 노트에 만든 시각을 적는 것은 기본이고, 끌 수 있다", () => {
+  assert.equal(DEFAULTS.created, true);
+  assert.equal(coerce({ created: false }).created, false);
+  assert.equal(coerce({ created: "yes" }).created, true, "참거짓이 아니면 기본값");
 });
