@@ -10,6 +10,8 @@
  * The choice outlives the window, as the columns' widths do; the shadcn
  * sidebar keeps its open state the same way.
  */
+import { createStore } from "./serverState.ts";
+
 export type Layout = "column" | "dock";
 
 const KEY = "pi.layout";
@@ -26,12 +28,25 @@ export function readLayout(): Layout {
 	}
 }
 
-export function writeLayout(layout: Layout): void {
+function writeLayout(layout: Layout): void {
 	try {
 		localStorage.setItem(KEY, layout);
 	} catch {
 		// Unwritable storage costs the choice its memory, not this window its layout.
 	}
+}
+
+/**
+ * The choice, as it stands. Set from Settings and read by the app, so the
+ * window is redrawn as the button is clicked, as the theme is; a setting
+ * rather than a button on pi itself, since it is a way of working and not a
+ * thing done while working.
+ */
+export const layoutStore = createStore<Layout>(readLayout());
+
+export function setLayout(layout: Layout): void {
+	writeLayout(layout);
+	layoutStore.set(layout);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { SlidersHorizontalIcon } from "lucide-react";
 import { MODE_IDS, describeMode, type ToolModeId } from "../../../toolModes";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { type Layout, layoutStore, setLayout } from "@/piLayout";
 import { readTheme, setTheme, type Theme } from "@/theme";
 
 /** settings.ts, as it arrives. Declared again rather than imported: that module reads files. */
@@ -221,14 +222,20 @@ const THEMES: { id: Theme; label: string }[] = [
   { id: "perplexity-dark", label: "Perplexity Dark" },
 ];
 
+const LAYOUTS: { id: Layout; label: string }[] = [
+  { id: "column", label: "Beside the note" },
+  { id: "dock", label: "In a dock" },
+];
+
 /**
- * The one setting that is about this window rather than about the agent, and
- * the only one that does not go to the server — see theme.ts. Which is also why
- * it applies as it is clicked: there is nothing to wait for, and the answer to
- * "what does dark look like" is the screen.
+ * The settings that are about this window rather than about the agent, and
+ * the only ones that do not go to the server — see theme.ts and piLayout.ts.
+ * Which is also why they apply as they are clicked: there is nothing to wait
+ * for, and the answer to "what does dark look like" is the screen.
  */
 function Appearance() {
   const [theme, setCurrent] = useState<Theme>(readTheme);
+  const layout = useSyncExternalStore(layoutStore.subscribe, layoutStore.get);
 
   return (
     <>
@@ -258,6 +265,29 @@ function Appearance() {
           two answers.
         </p>
       </div>
+      <div className="flex flex-col gap-1.5">
+        <Label className="text-xs text-muted-foreground">pi</Label>
+        <ButtonGroup>
+          {LAYOUTS.map(({ id, label }) => (
+            <Button
+              key={id}
+              id={`piLayout-${id}`}
+              variant="outline"
+              size="sm"
+              data-active={layout === id}
+              aria-pressed={layout === id}
+              onClick={() => setLayout(id)}
+              className="h-8 px-3 text-xs data-[active=true]:bg-accent data-[active=true]:text-accent-foreground"
+            >
+              {label}
+            </Button>
+          ))}
+        </ButtonGroup>
+        <p className="text-xs text-muted-foreground">
+          A column beside the note, or a row of sessions along the bottom with a window over the
+          corner. ⌘\ shows and hides pi either way.
+        </p>
+      </div>
     </>
   );
 }
@@ -274,7 +304,7 @@ const KEYS: [string, string][] = [
   [`${MOD}↵`, "Accept pi's words under the cursor"],
   [`${MOD}⌫`, "Put back what pi replaced under the cursor"],
   [`${MOD}↵ in the message box`, "Steer the run in progress"],
-  [`${MOD}\\`, "Show or hide pi's column"],
+  [`${MOD}\\`, "Show or hide pi"],
   [`${MOD},`, "Settings"],
   [`${MOD}⇧D`, "Raw events, for debugging"],
 ];
