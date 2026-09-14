@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 
-import { Composer } from "./components/Composer";
-import { Conversation } from "./components/Conversation";
 import { Editor } from "./components/Editor";
-import { RawView } from "./components/RawView";
-import { PanelHeader } from "./components/PanelHeader";
+import { Pi } from "./components/Pi";
 import { Sidebar } from "./components/Sidebar";
 import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
@@ -17,7 +14,7 @@ import { hashForNote, noteFromHash } from "./noteSync";
 import { bump, forget, readRecent, writeRecent } from "./recent";
 import { filesStore, noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
 import { Button } from "./components/ui/button";
-import { getConnection, getItems, subscribe } from "./store";
+import { getConnection, subscribe } from "./store";
 import { send } from "./ws";
 
 /**
@@ -88,7 +85,6 @@ noteRenamedStore.subscribe(() => {
  * seat. It collapses with ⌘\ so it can be ignored.
  */
 export function App() {
-	const items = useSyncExternalStore(subscribe, getItems);
 	const [open, place, setOpen] = useOpenNote();
 	// A debug view, so it is behind a shortcut rather than a permanent control in
 	// the best seat on screen. RawView says how to leave, since nothing says it
@@ -223,11 +219,7 @@ export function App() {
 					collapsedSize="0%"
 					className="flex min-w-0 flex-col border-l"
 				>
-					<PanelHeader />
-					{/* The two views used to be swapped by a body.raw class, which has no
-					    home in a utility stylesheet — and only one was ever read. */}
-					{raw ? <RawView /> : <Conversation items={items} />}
-					<Composer note={open} />
+					<Pi note={open} raw={raw} />
 				</ResizablePanel>
 			</ResizablePanelGroup>
 		</TooltipProvider>
