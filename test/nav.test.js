@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { back, canBack, canForward, empty, forget, forward, go, here, replace, restored } from "../web/src/nav.ts";
+import { back, canBack, canForward, empty, forget, forward, go, here, remember, replace, restored } from "../web/src/nav.ts";
+
+/** 걸음에서 id를 뺀 것: id는 이 창 안에서만 뜻이 있어 견주지 않는다. */
+const step = ({ id, ...rest }) => rest;
 
 /** 경로만 늘어놓아 보기 위한 것: 서 있는 자리는 ▸로 표시한다. */
 const shown = (nav) => nav.entries.map((e, i) => (i === nav.at ? `▸${e.path}` : e.path));
@@ -12,7 +15,7 @@ test("연 노트는 끝에 쌓이고, 보고 있는 것을 또 열면 아무 일
   const nav = opened("a", "b", "c");
   assert.deepEqual(shown(nav), ["a", "b", "▸c"]);
   assert.equal(go(nav, "c"), nav, "제자리는 참조까지 그대로다");
-  assert.deepEqual(here(nav), { path: "c" });
+  assert.deepEqual(step(here(nav)), { path: "c" });
   assert.equal(here(empty), null);
 });
 
@@ -44,14 +47,14 @@ test("같은 노트라도 다른 자리로 뛰면 다른 걸음이다", () => {
   const place = { heading: "둘째 장", block: null };
   const nav = go(go(empty, "a"), "a", place);
   assert.deepEqual(shown(nav), ["a", "▸a"]);
-  assert.deepEqual(here(nav), { path: "a", place: { heading: "둘째 장", block: null } });
+  assert.deepEqual(step(here(nav)), { path: "a", place: { heading: "둘째 장", block: null } });
   assert.equal(go(nav, "a", { ...place, alias: null }), nav, "자리가 같으면 링크가 달라도 제자리다");
   assert.deepEqual(shown(back(nav)), ["▸a", "a"]);
 });
 
 test("링크가 가리키는 곳이 없으면 자리도 남기지 않는다", () => {
-  assert.deepEqual(here(go(empty, "a", { heading: null, block: null })), { path: "a" });
-  assert.deepEqual(here(go(empty, "a", null)), { path: "a" });
+  assert.deepEqual(step(here(go(empty, "a", { heading: null, block: null }))), { path: "a" });
+  assert.deepEqual(step(here(go(empty, "a", null))), { path: "a" });
 });
 
 test("멀리 가면 가장 오래된 것부터 버려진다", () => {
@@ -59,7 +62,7 @@ test("멀리 가면 가장 오래된 것부터 버려진다", () => {
   const nav = opened(...many);
   assert.equal(nav.entries.length, 50);
   assert.deepEqual(shown(nav).slice(0, 1), ["n10"]);
-  assert.deepEqual(here(nav), { path: "n59" });
+  assert.deepEqual(step(here(nav)), { path: "n59" });
   assert.equal(nav.at, 49);
 });
 
@@ -106,5 +109,40 @@ test("남은 것이 이 목록이 아니면 없던 것으로 한다", () => {
   assert.deepEqual(restored({ entries: [{ path: "a" }], at: "1" }), empty);
   assert.deepEqual(restored({ entries: [{ path: "a" }, { no: "path" }], at: 0 }), empty);
   assert.deepEqual(shown(restored({ entries: [{ path: "a" }, { path: "b" }], at: 9 })), ["a", "▸b"], "자리가 목록 밖이면 마지막 걸음에 선다");
-  assert.deepEqual(restored({ entries: [{ path: "a" }, { path: "b", place: { heading: 7 } }], at: 0 }).entries[1], { path: "b" }, "자리라 할 수 없는 것은 자리가 아니다");
+  assert.deepEqual(step(restored({ entries: [{ path: "a" }, { path: "b", place: { heading: 7 } }], at: 0 }).entries[1]), { path: "b" }, "자리라 할 수 없는 것은 자리가 아니다");
+});
+
+/** 한 걸음을 떠나며 남긴 자리. */
+const at = (nav, scrollTop) => remember(nav, here(nav).id, { anchor: 0, head: 0, scrollTop });
+
+test("자리는 노트가 아니라 걸음이 가진다: 같은 노트의 두 걸음은 서로 다른 곳에 선다", () => {
+  // a를 맨 위에서 읽다 b로, a를 다시 열어 아래에서 읽다 c로.
+  let nav = go(empty, "a");
+  nav = go(at(nav, 0), "b");
+  nav = go(nav, "a");
+  nav = go(at(nav, 600), "c");
+  assert.equal(here(back(nav)).left.scrollTop, 600, "한 걸음 뒤는 아래에서 읽던 a");
+  assert.equal(here(back(back(back(nav)))).left.scrollTop, 0, "세 걸음 뒤는 맨 위에서 읽던 그 a");
+});
+
+test("다시 여는 노트는 마지막으로 읽던 자리를 물려받고, 그것이 걸음의 자리가 된다", () => {
+  let nav = go(empty, "a");
+  nav = go(at(nav, 600), "b");
+  nav = go(nav, "a");
+  assert.equal(here(nav).left.scrollTop, 600, "새 걸음이지만 마지막으로 읽던 곳에서 열린다");
+  assert.equal(here(back(back(nav))).left.scrollTop, 600, "물려준 걸음은 그대로다");
+  assert.equal(here(go(empty, "never")).left, undefined, "읽은 적 없으면 물려받을 것도 없다");
+});
+
+test("목록에 없는 걸음의 자리는 아무 데도 적히지 않는다", () => {
+  const nav = go(empty, "a");
+  assert.equal(remember(nav, 9999, { anchor: 1, head: 1, scrollTop: 1 }), nav);
+});
+
+test("걸음의 자리는 창이 닫혀도 남고, 자리라 할 수 없는 것은 버려진다", () => {
+  const nav = at(go(go(empty, "a"), "b"), 600);
+  const again = restored(JSON.parse(JSON.stringify(nav)));
+  assert.equal(here(again).left.scrollTop, 600, "다시 열면 읽던 곳에서 열린다");
+  assert.equal(restored({ entries: [{ path: "a", left: { anchor: 0, head: 0 } }], at: 0 }).entries[0].left, undefined);
+  assert.equal(restored({ entries: [{ path: "a", left: { anchor: -1, head: 0, scrollTop: 0 } }], at: 0 }).entries[0].left, undefined);
 });
