@@ -11,7 +11,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { NativeSelect } from "@/components/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { readTheme, setTheme, type Theme } from "@/theme";
 
@@ -141,24 +147,26 @@ function Panel({ section }: { section: Section }) {
             <Label htmlFor="toolMode" className="text-xs text-muted-foreground">
               New sessions open on
             </Label>
-            {/* NativeSelect's chevron is placed against its own wrapper, and the
-                wrapper stretches to the column. Narrowing has to happen outside
-                it, or the arrow ends up a panel's width from the box. */}
-            <div className="w-48">
-              <NativeSelect
-                id="toolMode"
-                className="text-sm"
-                disabled={!settings}
-                value={settings?.toolMode ?? ""}
-                onChange={(e) => void save({ toolMode: e.target.value as ToolModeId })}
-              >
+            {/* The native select was for the lists that are picked by typing —
+                fifty models, an unbounded session list. This one is three
+                rungs, so it can be the app's own listbox and be drawn in the
+                app's chrome rather than the system's. */}
+            <Select
+              disabled={!settings}
+              value={settings?.toolMode ?? ""}
+              onValueChange={(v) => void save({ toolMode: v as ToolModeId })}
+            >
+              <SelectTrigger id="toolMode" size="sm" className="w-48">
+                <SelectValue placeholder="…" />
+              </SelectTrigger>
+              <SelectContent>
                 {MODE_IDS.map((id) => (
-                  <option key={id} value={id}>
+                  <SelectItem key={id} value={id}>
                     {describeMode(id).name}
-                  </option>
+                  </SelectItem>
                 ))}
-              </NativeSelect>
-            </div>
+              </SelectContent>
+            </Select>
             <p className="text-xs text-muted-foreground">
               {settings ? describeMode(settings.toolMode).can.join(" · ") : " "}
             </p>
