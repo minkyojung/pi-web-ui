@@ -442,3 +442,17 @@ it("잘못된 JSON은 이 탭에만 에러이고 서버는 산다", async () => 
   send({ type: "open_note", path: "a.md" });
   await want("note");
 });
+
+it("속성의 타입을 고르면 모두에게 알려지고 .pi/properties.json에 남는다; 예약된 이름은 거부된다", async () => {
+  clear();
+  send({ type: "set_property_type", name: "Pages", propertyType: "number" });
+  const types = await want("property_types", (m) => m.types.pages === "number");
+  assert.deepEqual(types.types, { pages: "number" });
+  assert.deepEqual(JSON.parse(readFileSync(join(cwd, ".pi/properties.json"), "utf8")), { types: { pages: "number" } });
+  clear();
+  send({ type: "set_property_type", name: "tags", propertyType: "text" });
+  const err = await want("error");
+  assert.match(err.message, /tags/);
+  send({ type: "set_property_type", name: "pages", propertyType: null });
+  await want("property_types", (m) => !("pages" in m.types));
+});

@@ -38,6 +38,8 @@ import { watchNotes } from "./watcher.ts";
 import { guard, VAULT_PROMPT } from "./guard.ts";
 import { renameTarget } from "./naming.ts";
 import { LinkStore, type Touched } from "./linkIndex.ts";
+import { PropertyRegistry } from "./propertyRegistry.ts";
+import { isPropertyType } from "./propertyTypes.ts";
 import { backlinksOf, retarget } from "./links.ts";
 import { search } from "./search.ts";
 import type {
@@ -372,6 +374,10 @@ function note(path: string): NoteMsg | null {
 /** Every note's links, for "who links here" — see linkIndex.ts. */
 const links = new LinkStore(CWD);
 links.load();
+
+/** What kind of thing each property holds, where someone has chosen — see propertyRegistry.ts. */
+const propertyTypes = new PropertyRegistry(CWD);
+propertyTypes.load();
 
 /** After a change to what links where: the notes whose backlinks may differ hear theirs again. */
 function backlinksFor(paths: string[]): void {
@@ -878,6 +884,7 @@ wss.on("connection", async (ws) => {
 	reply(snapshot());
 	reply(branches());
 	reply(files());
+	reply({ type: "property_types", types: propertyTypes.all() });
 	// A tab opened while a question is waiting should see it too.
 	for (const prompt of prompts.open()) reply({ type: "prompt_request", prompt });
 
@@ -1152,6 +1159,15 @@ wss.on("connection", async (ws) => {
 				// A note's path is its name. The file and its history move together,
 				// and the version the tabs hold moves with them, so the watcher's
 				// report of the move is not taken for someone writing.
+				case "set_property_type": {
+					if (typeof msg.name !== "string" || (msg.propertyType !== null && !isPropertyType(msg.propertyType))) return;
+					if (!propertyTypes.set(msg.name, msg.propertyType)) {
+						reply({ type: "error", message: `the type of ${msg.name} is not for choosing` });
+						return;
+					}
+					broadcast({ type: "property_types", types: propertyTypes.all() });
+					return;
+				}
 				case "rename_note": {
 					if (typeof msg.path !== "string" || typeof msg.to !== "string") return;
 					const moved = renameNote(CWD, msg.path, msg.to);

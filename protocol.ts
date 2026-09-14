@@ -11,6 +11,7 @@
  * Shared at the repo root like toolModes.ts. Types only: the client bundles
  * this, so nothing here may run.
  */
+import type { PropertyType, Registry } from "./propertyTypes.ts";
 import type { Ask, AskOutcome } from "./ask";
 import type { BranchPoint } from "./branches";
 import type { Author, Change } from "./history";
@@ -92,7 +93,9 @@ export type ClientMsg =
 	 * tab; `id` is the tab's own count of asks, sent back so an answer that
 	 * arrives after a newer ask can be told apart and dropped.
 	 */
-	| { type: "search_notes"; query: string; id: number };
+	| { type: "search_notes"; query: string; id: number }
+	/** Choose what kind of thing the property `name` holds, vault-wide; null lets it be guessed from its values again. */
+	| { type: "set_property_type"; name: string; propertyType: PropertyType | null };
 
 export type ClientMsgType = ClientMsg["type"];
 
@@ -236,6 +239,12 @@ export interface BacklinksMsg {
 	type: "backlinks";
 	path: string;
 	notes: Backlink[];
+}
+
+/** The property types chosen for the vault, whole: on connect, and again whenever one is chosen. See propertyTypes.ts. */
+export interface PropertyTypesMsg {
+	type: "property_types";
+	types: Registry;
 }
 
 /** The notes sharing a tag with `path`, again: sent the same way, whenever a note's tags changed. */
@@ -399,6 +408,7 @@ export type StateMsg =
 	| NoteMsg
 	| BacklinksMsg
 	| TaggedMsg
+	| PropertyTypesMsg
 	| NoteChangedMsg
 	| NoteCreatedMsg
 	| NoteRenamedMsg

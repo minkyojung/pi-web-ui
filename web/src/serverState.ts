@@ -5,6 +5,7 @@
  * opening config/usage/snapshot/sessions would otherwise land with nobody
  * listening and the settings bar would stay empty until something changed.
  */
+import type { Registry } from "../../propertyTypes.ts";
 import type {
 	Backlink,
 	BranchPoint,
@@ -74,6 +75,9 @@ export function setBacklinks(path: string, notes: Backlink[]): void {
 
 /** The notes that share a tag with each note, as last told, by path. */
 export const taggedStore = createStore<Record<string, Tagged[]>>({});
+
+/** The property types chosen for the vault, by name; a name not here is guessed from its value. */
+export const propertyTypesStore = createStore<Registry>({});
 
 export function setTagged(path: string, notes: Tagged[]): void {
 	taggedStore.set({ ...taggedStore.get(), [path]: notes });
