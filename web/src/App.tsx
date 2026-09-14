@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { PanelImperativeHandle } from "react-resizable-panels";
+import { type PanelImperativeHandle, useDefaultLayout } from "react-resizable-panels";
 
 import { Editor } from "./components/Editor";
+import { DockBar, DockWindow } from "./components/Dock";
 import { Pi } from "./components/Pi";
+import { PiToggle } from "./components/PanelHeader";
 import { Sidebar } from "./components/Sidebar";
 import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
@@ -11,7 +13,10 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./componen
 import { TooltipProvider } from "./components/ui/tooltip";
 import type { Place } from "../../links.ts";
 import { hashForNote, noteFromHash } from "./noteSync";
+import { NoteTabs } from "./components/NoteTabs";
+import { layoutStore, shown } from "./piLayout";
 import { bump, forget, readRecent, writeRecent } from "./recent";
+import { type Closed, add as addTab, close as closeTabIn, move, neighbour, readTabs, reopen, writeTabs } from "./tabs";
 import { filesStore, noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
 import { Button } from "./components/ui/button";
 import { getConnection, subscribe } from "./store";
@@ -91,6 +96,35 @@ export function App() {
 	// is there in the first place.
 	const [raw, setRaw] = useState(false);
 	const pi = useRef<PanelImperativeHandle>(null);
+	// Whether the pi column is shown. The panel is the source of truth — it
+	// collapses by drag, by key and by button alike — and reports through
+	// onResize, so the toggle that brings it back can be drawn where it is not.
+	const [piOpen, setPiOpen] = useState(true);
+	// Where pi sits — a setting, see piLayout.ts. In the dock there is no
+	// third column, and the window's own flag is the truth of whether pi is
+	// shown; it opens on arrival, since moving pi somewhere is asking to see
+	// it there. The column needs nothing: a panel is made open.
+	const layout = useSyncExternalStore(layoutStore.subscribe, layoutStore.get);
+	const [dockOpen, setDockOpen] = useState(true);
+	useEffect(() => {
+		if (layout === "dock") setDockOpen((open) => shown(open, "arrive"));
+	}, [layout]);
+	// The columns' widths, and whether pi is folded away, outlive the window:
+	// the shadcn sidebar keeps its open state in a cookie for the same reason.
+	// Two columns and three are two layouts, kept apart by the panels they hold.
+	const columns = useDefaultLayout({
+		id: "columns",
+		storage: localStorage,
+		panelIds: layout === "dock" ? ["sidebar", "main"] : ["sidebar", "main", "pi"],
+	});
+	const togglePi = useCallback(() => {
+		if (layout === "dock") {
+			setDockOpen((open) => shown(open, "toggle"));
+			return;
+		}
+		const panel = pi.current;
+		if (panel) panel.isCollapsed() ? panel.expand() : panel.collapse();
+	}, [layout]);
 
 	// Which notes were opened, newest first, for the quick-open list. Follows
 	// a rename and drops a delete, so it never names a note that is not there.
@@ -105,6 +139,52 @@ export function App() {
 	useEffect(() => {
 		writeRecent(recent);
 	}, [recent]);
+
+	// Which notes are open in the middle column, left to right. Opening a note
+	// adds a tab; the address says which is in front. A rename follows the way
+	// the recent list does, and closing the one in front puts its neighbour there.
+	const [tabs, setTabs] = useState(readTabs);
+	useEffect(() => {
+		if (open) setTabs((list) => addTab(list, open));
+	}, [open]);
+	useEffect(() => {
+		if (renamedForRecent) setTabs((list) => forget(list, renamedForRecent.from, renamedForRecent.to));
+	}, [renamedForRecent]);
+	useEffect(() => {
+		writeTabs(tabs);
+	}, [tabs]);
+	// What was closed, newest last, for ⌘⇧T to put back where it was. Not
+	// kept across reloads: it is this sitting's changes of mind, not a record.
+	// A note that went to the trash is not on it — there is nothing to reopen.
+	const [closed, setClosed] = useState<Closed[]>([]);
+	// Several at once, from the tab's menu, closed one after another as the row
+	// stands at each step: each remembers its place then, which is where ⌘⇧T
+	// puts it back, last closed first, and the row comes out as it was.
+	const closeTabs = useCallback(
+		(paths: string[]) => {
+			let next = { tabs, active: open };
+			const gone: Closed[] = [];
+			for (const path of paths) {
+				const at = next.tabs.indexOf(path);
+				if (at === -1) continue;
+				if (noteDeletedStore.get()?.path !== path) gone.push({ path, at });
+				next = closeTabIn(next.tabs, path, next.active);
+			}
+			setTabs(next.tabs);
+			if (gone.length) setClosed((stack) => [...stack, ...gone]);
+			if (next.active !== open) setOpen(next.active);
+		},
+		[tabs, open, setOpen],
+	);
+	const closeTab = useCallback((path: string) => closeTabs([path]), [closeTabs]);
+	const reopenTab = useCallback(() => {
+		const last = closed[closed.length - 1];
+		if (!last) return;
+		setClosed(closed.slice(0, -1));
+		setTabs((list) => reopen(list, last));
+		setOpen(last.path);
+	}, [closed, setOpen]);
+
 	const [picking, setPicking] = useState(false);
 	const [searching, setSearching] = useState(false);
 	// An empty vault is a first run, or as good as one: the column says how to start.
@@ -121,14 +201,17 @@ export function App() {
 		setOpen(created.path);
 	}, [created, setOpen]);
 
-	// A note in the trash is closed wherever it was open. The middle column
-	// then offers to bring it back, until something else is opened.
+	// A note in the trash keeps its tab while it is in front, and the column
+	// under it offers to bring it back; opening something else, or closing the
+	// tab, is the answer. Deleted behind another tab — from another window —
+	// its tab just goes.
 	const deleted = useSyncExternalStore(noteDeletedStore.subscribe, noteDeletedStore.get);
 	useEffect(() => {
-		if (!deleted) return;
-		setRecent((list) => forget(list, deleted.path));
-		if (deleted.path === open) setOpen(null);
-	}, [deleted, open, setOpen]);
+		if (deleted) setRecent((list) => forget(list, deleted.path));
+	}, [deleted]);
+	useEffect(() => {
+		if (deleted && deleted.path !== open) closeTab(deleted.path);
+	}, [deleted, open, closeTab]);
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -152,39 +235,73 @@ export function App() {
 			}
 			if (e.key === "\\" && mod) {
 				e.preventDefault();
-				const panel = pi.current;
-				if (panel) panel.isCollapsed() ? panel.expand() : panel.collapse();
+				togglePi();
+			}
+			// ⌘W closes the tab in front, as in a browser; with none left, the
+			// window, as on a Mac. The shell's menu leaves the key to the page.
+			if ((e.key === "w" || e.key === "W") && mod && !e.shiftKey) {
+				e.preventDefault();
+				if (open) closeTab(open);
+				else if (tabs.length === 0) window.close();
+			}
+			if ((e.key === "t" || e.key === "T") && mod && e.shiftKey) {
+				e.preventDefault();
+				reopenTab();
+			}
+			// Along the row: ⌃Tab as everywhere, ⌘⇧[ and ⌘⇧] as on a Mac. By code,
+			// since with Shift the key on a Mac is } rather than ].
+			const along = e.key === "Tab" && e.ctrlKey ? (e.shiftKey ? -1 : 1)
+				: mod && e.shiftKey && e.code === "BracketRight" ? 1
+				: mod && e.shiftKey && e.code === "BracketLeft" ? -1
+				: 0;
+			if (along) {
+				e.preventDefault();
+				const next = neighbour(tabs, open, along);
+				if (next !== null && next !== open) setOpen(next);
 			}
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [online]);
+	}, [online, open, tabs, closeTab, reopenTab, setOpen, togglePi]);
 
 	return (
 		<TooltipProvider delayDuration={300}>
 			<QuickOpen open={picking} onOpenChange={setPicking} recent={recent} onPick={setOpen} />
 			<Search open={searching} onOpenChange={setSearching} onPick={setOpen} />
-			<ResizablePanelGroup orientation="horizontal" className="h-screen">
+			<div className="flex h-screen flex-col">
+			<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1" defaultLayout={columns.defaultLayout} onLayoutChanged={columns.onLayoutChanged}>
 				<ResizablePanel id="sidebar" defaultSize="22%" minSize="16%" className="min-w-0">
 					<Sidebar open={open} onOpen={setOpen} />
 				</ResizablePanel>
 				<ResizableHandle />
-				<ResizablePanel id="main" minSize="30%" className="min-w-0">
+				<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
+					{/* Always, even with no tab: it is the row the pi toggle lives in, and
+					    the header line that runs across all three columns. */}
+					<NoteTabs
+						tabs={tabs}
+						open={open}
+						onOpen={setOpen}
+						onClose={closeTab}
+						onCloseMany={closeTabs}
+						onReorder={(from, to) => setTabs((list) => move(list, from, to))}
+						onNew={online ? () => send({ type: "new_note" }) : undefined}
+						trailing={<PiToggle open={layout === "dock" ? dockOpen : piOpen} onToggle={togglePi} />}
+					/>
 					{/* The note is one page — its title, its text, what links here —
 					    and the page (#note) is what scrolls, as in Obsidian: the editor
 					    grows to its text and finds this scrolling parent on its own. Room
 					    below, so the last line can be brought up to where the eyes are. */}
-					{open ? (
-						<div id="note" className="no-scrollbar h-full overflow-y-auto pb-[40vh]">
+					{open && deleted?.path !== open ? (
+						<div id="note" className="no-scrollbar min-h-0 flex-1 overflow-y-auto pb-[40vh]">
 							<Title path={open} />
 							<Editor key={noteIdentity(open)} path={open} place={place} onOpen={setOpen} />
 						</div>
 					) : (
-						<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
-							{deleted ? (
+						<div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+							{deleted && deleted.path === open ? (
 								<>
 									<span>
 										Deleted <span className="text-foreground">{deleted.path.replace(/\.md$/, "")}</span>
@@ -209,19 +326,35 @@ export function App() {
 						</div>
 					)}
 				</ResizablePanel>
-				<ResizableHandle />
-				<ResizablePanel
-					id="pi"
-					panelRef={pi}
-					defaultSize="30%"
-					minSize="20%"
-					collapsible
-					collapsedSize="0%"
-					className="flex min-w-0 flex-col border-l"
-				>
-					<Pi note={open} raw={raw} />
-				</ResizablePanel>
+				{layout === "column" && (
+					<>
+						<ResizableHandle />
+						<ResizablePanel
+							id="pi"
+							panelRef={pi}
+							defaultSize="30%"
+							minSize="20%"
+							collapsible
+							collapsedSize="0%"
+							className="flex min-w-0 flex-col border-l"
+							onResize={() => setPiOpen(!pi.current?.isCollapsed())}
+						>
+							<Pi note={open} raw={raw} />
+						</ResizablePanel>
+					</>
+				)}
 			</ResizablePanelGroup>
+			{layout === "dock" && (
+				<>
+					<DockBar onPick={() => setDockOpen((open) => shown(open, "pick"))} />
+					{dockOpen && (
+						<DockWindow>
+							<Pi note={open} raw={raw} />
+						</DockWindow>
+					)}
+				</>
+			)}
+			</div>
 		</TooltipProvider>
 	);
 }
