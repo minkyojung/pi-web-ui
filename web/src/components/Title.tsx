@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Trash2 } from "lucide-react";
 
+import { step } from "../features/pageMove";
 import { renameTarget, titleOf } from "../noteSync";
 import { flushSaves } from "../saves";
 import { noteRenameFailedStore } from "../serverState";
@@ -81,10 +82,14 @@ export function Title({ path }: { path: string }) {
 				placeholder="Untitled"
 				onKeyDown={(e) => {
 					if (e.nativeEvent.isComposing) return;
+					// Enter is the rename, and stays here: going on to the text as
+					// well would be two things from one key. ↓ is how the page goes on.
 					if (e.key === "Enter") {
 						e.preventDefault();
 						commit();
 						e.currentTarget.blur();
+					} else if (e.key === "ArrowDown") {
+						if (step("title", 1)) e.preventDefault();
 					} else if (e.key === "Escape") {
 						e.preventDefault();
 						reset();

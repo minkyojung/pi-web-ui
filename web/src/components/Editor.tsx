@@ -15,6 +15,7 @@ import { indentListItem, listBackspace, listEnter, outdentListItem } from "../fe
 import { listNumbers } from "../features/listNumbers";
 import { listIndent } from "../features/listIndent";
 import { livePreview, toggleLivePreview, toggleTask } from "../features/livePreview";
+import { leaveTextUp } from "../features/pageMove";
 import { properties, propertiesField } from "../features/properties";
 import { fromServer, serverChange } from "../features/origin";
 import { landOn, links, notesChanged } from "../features/links";
@@ -300,6 +301,9 @@ export function Editor({
 					{ key: "Mod-Backspace", run: undoChunk },
 					// Before the search panel's Escape, which would take it while a diff is open.
 					{ key: "Escape", run: closeDiff },
+					// At the top of the text there is nothing above to move to, and
+					// the note's page goes on above: the properties, the title.
+					{ key: "ArrowUp", run: leaveTextUp },
 					{ key: "Mod-e", run: toggleLivePreview },
 					{ key: "Mod-b", run: toggleBold },
 					{ key: "Mod-i", run: toggleItalic },

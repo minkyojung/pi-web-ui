@@ -6,6 +6,7 @@ import { type Document, isScalar, isSeq, type Pair } from "yaml";
 
 import { bodyStart, type Properties as Read, suits, withProperties } from "../../../properties.ts";
 import { fits, fromInput, isReserved, keyOf, PROPERTY_TYPES, type PropertyType, typeOf } from "../../../propertyTypes.ts";
+import { stepInProperties } from "../features/pageMove";
 import { propertiesEdit } from "../features/properties";
 import { toggleLivePreview } from "../features/livePreview";
 import { propertyNamesStore, propertyTypesStore } from "../serverState";
@@ -117,8 +118,30 @@ export function Properties({ view, read }: { view: EditorView | null; read: Read
 	);
 }
 
+/**
+ * The rows, and ↑ ↓ down them. At the panel's ends the page goes on — the
+ * title above, the note's text below (pageMove.ts).
+ *
+ * On the way down, before the boxes: a bare ↓ in a row means the next row,
+ * and the list under a box would otherwise take it on its way past (cmdk
+ * answers the arrows whether or not it has anything to show). A box whose
+ * list is up says so and keeps them; so does one that counts its own value
+ * with them — a number, a date. Anything held down with the arrow is not
+ * the page's key at all.
+ */
 const Frame = ({ children }: { children: React.ReactNode }) => (
-	<div id="properties" className="mx-auto flex w-full max-w-[42rem] flex-col gap-1 px-6 pt-4 text-sm">
+	<div
+		id="properties"
+		className="mx-auto flex w-full max-w-[42rem] flex-col gap-1 px-6 pt-4 text-sm"
+		onKeyDownCapture={(e) => {
+			if (e.nativeEvent.isComposing || e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+			if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+			const box = e.target as HTMLElement;
+			if (box.closest("[data-suggesting]")) return;
+			if (box instanceof HTMLInputElement && box.type !== "text") return;
+			if (stepInProperties(box, e.key === "ArrowDown" ? 1 : -1)) e.preventDefault();
+		}}
+	>
 		{children}
 	</div>
 );
@@ -409,8 +432,10 @@ function Suggest({
 			setWanted(false);
 			return true;
 		}
-		// Closed, and there is something to say: ↓ asks for it, as a combobox does.
-		if (e.key === "ArrowDown" && !open && showing.length > 0) {
+		// Closed, and there is something to say: ⌥↓ asks for it, which is the
+		// combobox pattern's key for it (WAI-ARIA APG). A plain ↓ is the page's,
+		// and carries the cursor to the next row.
+		if (e.key === "ArrowDown" && e.altKey && !open && showing.length > 0) {
 			e.preventDefault();
 			setWanted(true);
 			return true;
@@ -427,10 +452,22 @@ function Suggest({
 
 	return (
 		// `contents`: the list's box is a box in the DOM, for the keys to reach it, and nothing in the layout.
-		<Command className="contents" shouldFilter={false} loop value={highlighted} onValueChange={setChosen}>
+		<Command className="contents" shouldFilter={false} loop value={highlighted} onValueChange={setChosen} data-suggesting={open ? "" : undefined}>
 			<Popover open={open} onOpenChange={setWanted}>
 				<PopoverAnchor asChild>
-					<CommandPrimitive.Input asChild value={value} onValueChange={onChange} onFocus={() => setWanted(true)} onBlur={() => setWanted(false)}>
+					<CommandPrimitive.Input
+						asChild
+						value={value}
+						// Typed into, the list comes up; merely arrived at, it does not.
+						// A list up the moment a box is reached would take the ↓ that
+						// carries the cursor to the next row, and the WAI-ARIA combobox
+						// pattern has it the same way: the popup opens on typing, or on ↓.
+						onValueChange={(text) => {
+							setWanted(true);
+							onChange(text);
+						}}
+						onBlur={() => setWanted(false)}
+					>
 						{children(taken)}
 					</CommandPrimitive.Input>
 				</PopoverAnchor>

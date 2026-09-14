@@ -195,8 +195,8 @@ async function openPage(devtoolsPort, url) {
 		return true;
 	};
 	const CODES = { Enter: 13, Backspace: 8, Escape: 27, End: 35, Tab: 9, b: 66, e: 69, f: 70, i: 73, k: 75, n: 78, p: 80, z: 90 };
-	const press = async (key, { meta = false, shift = false } = {}) => {
-		const modifiers = (meta ? 4 : 0) | (shift ? 8 : 0);
+	const press = async (key, { meta = false, shift = false, alt = false } = {}) => {
+		const modifiers = (meta ? 4 : 0) | (shift ? 8 : 0) | (alt ? 1 : 0);
 		const code = key.length === 1 ? `Key${key.toUpperCase()}` : key;
 		const base = { key, code, windowsVirtualKeyCode: CODES[key], nativeVirtualKeyCode: CODES[key], modifiers };
 		await call("Input.dispatchKeyEvent", { type: "keyDown", ...base });
@@ -1137,6 +1137,9 @@ check("a property box offers what the vault already says: the name, then the val
 	await until("the line", () => file() === "---\ntags: []\nstatus:\n---\nbody\n");
 	// The value box offers what that name holds elsewhere, most used first, and nothing that does not answer.
 	await app.click('#properties [data-property="status"] input');
+	assert.deepEqual(await offering(), [], "a box arrived at says nothing until it is asked");
+	// ⌥↓ asks; a bare ↓ is the page's, and would carry the cursor to the next row.
+	await app.press("ArrowDown", { alt: true });
 	await until("both values", async () => (await offering()).join() === "draft,shipped");
 	await app.keys("sh");
 	await until("only the one", async () => (await offering()).join() === "shipped");
@@ -1148,6 +1151,58 @@ check("a property box offers what the vault already says: the name, then the val
 	await until("the tag offered", async () => (await offering()).join() === "reading");
 	await app.press("Enter", { shift: true });
 	await until("what was typed", () => file() === "---\ntags: [read]\nstatus: shipped\n---\nbody\n");
+});
+
+check("↑ and ↓ carry the cursor from the title down through the properties into the text, and back up again", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "steps.md"), "---\nowner: me\ndone: true\n---\n# body\nsecond line\n");
+	writeFileSync(join(cwd, "bare.md"), "# nothing above\n");
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="steps.md"]') && !!document.querySelector('#notes button[data-path="bare.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="steps.md"]').click()`);
+	await until("the rows", () => app.evaluate(`!!document.querySelector('#properties [data-property="done"]')`));
+	/** What has the cursor, named the way the page names it. */
+	const where = () =>
+		app.evaluate(`(() => {
+			const a = document.activeElement;
+			if (!a) return "nothing";
+			if (a.classList.contains("cm-content")) return "text";
+			// The row first: a box in one carries an id of the list's making.
+			return a.closest("#properties [data-property]")?.dataset.property ?? (a.id ? "#" + a.id : a.tagName);
+		})()`);
+	const line = () => app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; return v.state.doc.lineAt(v.state.selection.main.head).text; })()`);
+
+	// Down: the title, each row, the button that ends them, then the text — at its first line, not where it was left.
+	await app.evaluate(`document.getElementById("title").focus()`);
+	for (const stop of ["owner", "done", "#add-property", "text"]) {
+		await app.press("ArrowDown");
+		await until(`the cursor at ${stop}`, async () => (await where()) === stop);
+	}
+	assert.equal(await line(), "# body", "the text takes the cursor at its first line");
+	// In the text ↑ is the text's own key until there is nothing above.
+	await app.press("ArrowDown");
+	assert.equal(await line(), "second line");
+	await app.press("ArrowUp");
+	assert.equal(await where(), "text", "it did not leave from the middle");
+	assert.equal(await line(), "# body");
+	// Up: the last property, not the button under it — there is nothing to add yet.
+	for (const stop of ["done", "owner", "#title"]) {
+		await app.press("ArrowUp");
+		await until(`the cursor back at ${stop}`, async () => (await where()) === stop);
+	}
+	// Mid-syllable nothing moves: the arrow belongs to whoever is composing.
+	await app.compose("ㅎ");
+	await app.press("ArrowDown");
+	assert.equal(await where(), "#title", "still in the title");
+	// Finish the syllable and put the name back: a composition left open holds
+	// the keyboard, and whatever runs next would type into nothing.
+	await app.ime("ㅎㅏ", "하");
+	await app.press("Escape");
+	await until("the name as it was", () => app.evaluate(`document.getElementById("title").value === "steps"`));
+	// A note with no properties: the title and the text are neighbours.
+	await app.evaluate(`document.querySelector('#notes button[data-path="bare.md"]').click()`);
+	await until("the other note", async () => (await editorText(app)) === "# nothing above\n");
+	await app.evaluate(`document.getElementById("title").focus()`);
+	await app.press("ArrowDown");
+	await until("straight into the text", async () => (await where()) === "text");
 });
 
 check("a row is drawn by its type — a box, a date, a number — the type is chosen for the name from the row's icon, and a value that does not fit is said so", async ({ app, cwd }) => {
