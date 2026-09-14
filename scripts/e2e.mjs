@@ -982,6 +982,30 @@ check("under a note, the notes that share its tags", async ({ app, cwd }) => {
 	await until("the strip to go", () => app.evaluate("!document.querySelector('#tagged')"));
 });
 
+check("a tag and a link written in the properties count as much as ones written in the note", async ({ app, cwd }) => {
+	// One note says its tag in the text, the other in its properties, and they share it.
+	writeFileSync(join(cwd, "prop-tagged.md"), '---\ntags: [Crew]\nrelated: "[[prop-hub]]"\n---\n\nnothing in the text\n');
+	writeFileSync(join(cwd, "prop-body.md"), "#crew in the text\n");
+	writeFileSync(join(cwd, "prop-hub.md"), "the one linked to\n");
+	await until("the notes to be listed", () => app.evaluate(`["prop-tagged.md", "prop-body.md", "prop-hub.md"].every((p) => document.querySelector('#notes button[data-path="' + p + '"]'))`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="prop-body.md"]').click()`);
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("#crew"));
+	await until("the note whose tag is only a property", () => app.evaluate("document.querySelector('#tagged')?.textContent ?? ''").then((t) => t.includes("prop-tagged") && t.includes("#crew")));
+	// And the link written in a property is a backlink on the note it names.
+	await app.evaluate(`document.querySelector('#notes button[data-path="prop-hub.md"]').click()`);
+	await until("its backlinks", () => app.evaluate("document.querySelector('#backlinks')?.textContent ?? ''").then((t) => t.includes("prop-tagged")));
+	// Renaming the note it names rewrites the property, not just the text: the backlink survives the move.
+	await retitle(app, "prop-centre");
+	await until("the note moved", () => existsSync(join(cwd, "prop-centre.md")));
+	await until("the property rewritten", () => readFileSync(join(cwd, "prop-tagged.md"), "utf8").includes('"[[prop-centre]]"'));
+	await until("its backlinks again", () => app.evaluate("document.querySelector('#backlinks')?.textContent ?? ''").then((t) => t.includes("prop-tagged")));
+	// Taken out of the properties, both go.
+	writeFileSync(join(cwd, "prop-tagged.md"), "---\nstatus: draft\n---\n\nnothing in the text\n");
+	await until("the backlink to go", () => app.evaluate("!document.querySelector('#backlinks')"));
+	await app.evaluate(`document.querySelector('#notes button[data-path="prop-body.md"]').click()`);
+	await until("the tagged strip to go", () => app.evaluate("!document.querySelector('#tagged')"));
+});
+
 check("%%a comment%% is set apart, its marks hidden off the cursor", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "comment.md"), "say %%to self%% now\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="comment.md"]')`));

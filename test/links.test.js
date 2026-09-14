@@ -4,6 +4,7 @@ import test from "node:test";
 import { parser as markdown } from "@lezer/markdown";
 
 import { backlinksOf, linksIn, markdownLinkTo, resolve, retarget } from "../links.ts";
+import { propertiesOf } from "../properties.ts";
 import { wikiLink } from "../wikilink.ts";
 
 /** The node names a parse gives, in order, for asserting on the tree itself. */
@@ -141,4 +142,60 @@ test("새 이름을 제목만으로는 못 찾을 때 — 더 가까운 같은 �
   assert.equal(near, "[[Alpha]]", "제목이 가장 가까운 것을 찾으면 제목으로");
   const far = retarget("[[Alpha]]", "Alpha.md", "ideas/deep/Alpha.md", ["Alpha.md", "ideas/Alpha.md", "note.md"], "note.md");
   assert.equal(far, "[[ideas/deep/Alpha]]", "제목이 다른 노트를 찾으면 경로로");
+});
+
+test("따옴표 친 속성 값 속의 [[링크]]도 링크다 — 백링크가 그것으로 잡힌다", () => {
+  const note = '---\nrelated: "[[Alpha]]"\nsee:\n  - "[[beta|the B]]"\n  - "[[gamma#head]]"\n---\n\nbody [[Delta]]\n';
+  const links = linksIn(note);
+  assert.deepEqual(links.map((l) => l.target), ["Delta", "Alpha", "beta", "gamma"]);
+  const front = links.find((l) => l.target === "Alpha");
+  assert.equal(note.slice(front.from, front.to), '"[[Alpha]]"', "링크가 적힌 값을 가리킨다");
+  assert.equal(links.find((l) => l.target === "beta").alias, "the B");
+  assert.equal(links.find((l) => l.target === "gamma").heading, "head");
+});
+
+test("속성 안의 것은 속성에서 왔다고 말한다 — 이름 바꾸기는 YAML을 지나야 하므로", () => {
+  const note = '---\nrelated: "[[Alpha]]"\n---\n\n[[Alpha]]\n';
+  assert.deepEqual(linksIn(note).map((l) => l.property ?? null), [null, "related"]);
+});
+
+test("따옴표 없는 [[…]]는 YAML의 중첩 목록이지 링크가 아니다 — Obsidian의 규칙", () => {
+  assert.deepEqual(linksIn("---\nrelated: [[Alpha]]\n---\n"), []);
+  assert.deepEqual(linksIn("---\ntags: [work]\n---\n"), [], "보통의 목록도 링크가 아니다");
+});
+
+test("깨진 블록 속의 것은 읽지 않는다", () => {
+  assert.deepEqual(linksIn('---\nrelated: "[[Alpha]]\n---\n'), []);
+});
+
+test("이름이 바뀌면 속성 안의 링크도 따라간다; 나머지 줄은 한 글자도 바뀌지 않는다", () => {
+  const note = `---\n# about\ntitle: 'kept'   # here\nrelated: "[[Alpha]]"\n---\n\nbody [[Alpha]]\n`;
+  const after = retarget(note, "Alpha.md", "Omega.md", ["Alpha.md", "note.md"], "note.md");
+  assert.equal(after, `---\n# about\ntitle: 'kept'   # here\nrelated: "[[Omega]]"\n---\n\nbody [[Omega]]\n`);
+});
+
+test("목록 안의 링크도 따라가고, 목록의 모양은 그대로다", () => {
+  const note = `---\nsee: ["[[Alpha]]", "[[beta]]"]\n---\n`;
+  assert.equal(retarget(note, "Alpha.md", "Omega.md", ["Alpha.md", "beta.md", "n.md"], "n.md"), `---\nsee: ["[[Omega]]", "[[beta]]"]\n---\n`);
+});
+
+test("글 속에 섞인 링크는 그 부분만 바뀌고, #제목과 별칭은 그대로다", () => {
+  const note = `---\nnote: "see [[Alpha#Intro|the A]] and more"\n---\n`;
+  assert.equal(retarget(note, "Alpha.md", "Omega.md", ["Alpha.md", "n.md"], "n.md"), `---\nnote: "see [[Omega#Intro|the A]] and more"\n---\n`);
+});
+
+test("가리키지 않는 속성은 건드리지 않는다", () => {
+  assert.equal(retarget(`---\nrelated: "[[beta]]"\n---\n`, "Alpha.md", "Omega.md", ["Alpha.md", "beta.md", "n.md"], "n.md"), null);
+});
+
+test("깨진 블록에는 쓰지 않는다 — 본문만 따라간다", () => {
+  const note = `---\nrelated: "[[Alpha]]\n---\n\nbody [[Alpha]]\n`;
+  assert.equal(retarget(note, "Alpha.md", "Omega.md", ["Alpha.md", "n.md"], "n.md"), `---\nrelated: "[[Alpha]]\n---\n\nbody [[Omega]]\n`);
+});
+
+test("새 이름에 따옴표가 있어도 블록은 깨지지 않는다 — 인용은 YAML이 맡는다", () => {
+  const note = `---\nrelated: "[[Alpha]]"\n---\n`;
+  const after = retarget(note, "Alpha.md", 'He said "hi".md', ["Alpha.md", "n.md"], "n.md");
+  assert.deepEqual(linksIn(after).map((l) => l.target), ['He said "hi"'], "다시 읽으면 새 이름이 나온다");
+  assert.equal(propertiesOf(after).errors.length, 0, "블록은 여전히 읽힌다");
 });

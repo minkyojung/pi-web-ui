@@ -18,7 +18,18 @@ import type { InlineContext, MarkdownConfig } from "@lezer/markdown";
 export const tagTag = Tag.define();
 
 const HASH = "#".charCodeAt(0);
-const tagRE = /#([\p{L}\p{N}_\-\/]+)/uy;
+/** What a tag is made of, in one place: the inline parser matches it, and a tag written as a property is held to it. */
+const CHARS = "[\\p{L}\\p{N}_\\-/]+";
+const tagRE = new RegExp(`#(${CHARS})`, "uy");
+const nameRE = new RegExp(`^${CHARS}$`, "u");
+
+/**
+ * Whether a name may stand after the `#`: letters, digits, `_`, `-` and `/`,
+ * with at least one that is not a digit, so that `2024` is a year and not a
+ * tag — Obsidian's rule. A tag written in a property has no `#` in front of
+ * it and is held to the same rule (links.ts).
+ */
+export const isTagName = (name: string) => nameRE.test(name) && /[^\p{N}]/u.test(name);
 
 function parseTag(cx: InlineContext, next: number, absPos: number): number {
 	if (next !== HASH) return -1;
@@ -26,7 +37,7 @@ function parseTag(cx: InlineContext, next: number, absPos: number): number {
 	if (pos > 0 && !/\s/.test(cx.text[pos - 1])) return -1;
 	tagRE.lastIndex = pos;
 	const m = tagRE.exec(cx.text);
-	if (!m || !/[^\p{N}]/u.test(m[1])) return -1;
+	if (!m || !isTagName(m[1])) return -1;
 	return cx.addElement(cx.elt("Tag", absPos, absPos + m[0].length, [cx.elt("TagMark", absPos, absPos + 1)]));
 }
 

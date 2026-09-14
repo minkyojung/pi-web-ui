@@ -18,7 +18,7 @@
  * broken, and no change is written over it. Obsidian once wrote over broken
  * blocks, and lost them.
  */
-import { Document, isMap, isSeq, type Pair, parseDocument, Scalar, YAMLMap, type YAMLError } from "yaml";
+import { Document, isMap, isScalar, isSeq, type Pair, parseDocument, Scalar, YAMLMap, type YAMLError } from "yaml";
 import { parser } from "./syntax.ts";
 
 /** Where the block sits in the note, and where its YAML sits inside it. */
@@ -192,7 +192,10 @@ function fresh(pair: Pair): string {
  * part of it, as Obsidian has it.
  */
 export function listOf(doc: Document, key: string): string[] {
-	const node = doc.get(key, true);
+	// By the name lower-cased, as a property is known by (propertyTypes.ts): `Tags` and `tags` are one.
+	const want = key.trim().toLowerCase();
+	const pair = isMap(doc.contents) ? doc.contents.items.find((p) => String(toPlain(p.key)).trim().toLowerCase() === want) : undefined;
+	const node = pair?.value;
 	const items = isSeq(node) ? node.items.map(toPlain) : [toPlain(node)];
 	return items
 		.filter((v): v is string | number => typeof v === "string" || typeof v === "number")
@@ -210,6 +213,47 @@ export type Suggestions = {
 	/** The values each name has held, by the name lower-cased (propertyTypes.keyOf), most used first. */
 	values: Record<string, string[]>;
 };
+
+/** A text value of a property: what it says, where the document holds it, and where it is written in the note. */
+export type TextValue = {
+	name: string;
+	/** Where the document keeps it — what `doc.setIn` takes, with the item's place for a list. */
+	at: (string | number)[];
+	/** What it says, as YAML reads it: the quotes gone and the escapes undone. */
+	value: string;
+	/** Where it is written in the note, quotes and all. */
+	from: number;
+	to: number;
+};
+
+/**
+ * Every text value of the note's properties — a list's items one at a time.
+ *
+ * What a reader that looks *inside* a value needs, and what a writer that
+ * changes one needs: a `[[link]]` written in a property is a link, is found
+ * by reading `value`, and is changed by setting `at` (links.ts). Both read
+ * the value rather than the source, so that the two agree about what is
+ * written there whatever the quoting does — and a value is put back through
+ * the document, never spliced into the note, since what needs quoting is
+ * YAML's to say and not ours.
+ *
+ * A block that does not parse says nothing, as everywhere else here.
+ */
+export function textValues(text: string): TextValue[] {
+	const read = propertiesOf(text);
+	if (!read.block || read.errors.length > 0 || !isMap(read.doc.contents)) return [];
+	const start = read.block.yaml.from;
+	const out: TextValue[] = [];
+	for (const pair of read.doc.contents.items) {
+		const name = String(toPlain(pair.key)).trim();
+		const items = isSeq(pair.value) ? pair.value.items : [pair.value];
+		items.forEach((node, i) => {
+			if (!isScalar(node) || typeof node.value !== "string" || !node.range) return;
+			out.push({ name, at: isSeq(pair.value) ? [name, i] : [name], value: node.value, from: start + node.range[0], to: start + node.range[1] });
+		});
+	}
+	return out;
+}
 
 /** A property as a note writes it: its name, and what stands under it, each value as the text it was written as. */
 export type Written = { name: string; values: string[] };
