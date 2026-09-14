@@ -16,7 +16,6 @@ import {
 	createAgentSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
-	createEventBus,
 	getAgentDir,
 	ModelRuntime,
 	SessionManager,
@@ -123,54 +122,6 @@ const availableModels = () => modelRuntime.getAvailableSnapshot();
  * runtime.session rather than capturing it.
  */
 /**
- * Shared with the extensions. The dashboard extension listens on it for
- * answerers to register (see prompts.ts); passing ours into the resource loader
- * is what makes its `pi.events` the same bus this process can emit on.
- */
-const eventBus = createEventBus();
-
-/**
- * The dashboard extension keeps its state on `process` so that a second load
- * in the same process — which it assumes is a subagent — can find the first
- * and stand down. pi replacing the session (New, Resume) reloads every
- * extension in this process, so the reloaded bridge stood down too: no tools
- * registered (13 became 8), no ui patch, no hook. Worse, the state it carried
- * over held the previous session's context, and touching that threw inside its
- * session_start, which skipped everything after.
- *
- * So before a session is built the previous bridge is retired the way its own
- * initialiser retires one — cleanup, connections, timers — and its state
- * removed, which makes the reload a first load. This is its internal state,
- * not an interface: if the key moves this is a no-op and bind() warns that
- * ask_user's hook did not answer.
- */
-function retireDashboardBridge(): void {
-	const key = "__pi_dashboard_bridge__";
-	const prev = (process as unknown as Record<string, DashboardBridgeState | undefined>)[key];
-	if (!prev) return;
-	try {
-		prev.cleanup?.();
-	} catch {
-		// Its problem to report; ours is only to get out of its way.
-	}
-	for (const connection of prev.connections ?? []) {
-		try {
-			connection.disconnect();
-		} catch {
-			// As above.
-		}
-	}
-	for (const timer of prev.timers ?? []) clearInterval(timer);
-	delete (process as unknown as Record<string, unknown>)[key];
-}
-
-interface DashboardBridgeState {
-	cleanup?: () => void;
-	connections?: { disconnect(): void }[];
-	timers?: ReturnType<typeof setInterval>[];
-}
-
-/**
  * The note open in the editor of the tab that last sent a prompt, and the
  * words chosen in it, given to pi for the turn as lines of the system prompt
  * — see guard.ts. One value, not one per tab: pi has one conversation.
@@ -195,7 +146,6 @@ let asking: (Ask & { at: number; done: (outcome: AskOutcome) => void }) | null =
 let claimant: Claim | null = null;
 
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
-	retireDashboardBridge();
 	// Built here rather than in the list below, because what it hears about
 	// pi's shell is also what the watcher asks — and the one that answers has
 	// to be this session's, not the one being replaced.
@@ -207,7 +157,6 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 		// Inline rather than a file under .pi/extensions/: that path needs the
 		// project trusted, and the desktop shell's cwd is wherever it was opened.
 		resourceLoaderOptions: {
-			eventBus,
 			// pi is told this is a folder of notes — see guard.ts.
 			appendSystemPrompt: [VAULT_PROMPT],
 			extensionFactories: [
@@ -788,10 +737,6 @@ let unsubscribe: (() => void) | undefined;
 async function bind(): Promise<void> {
 	unsubscribe?.();
 	await session().bindExtensions({});
-	// The extension's hook is registered inside bindExtensions (its session_start
-	// runs there), so this is the earliest point it can hear us — and it has to
-	// be repeated per bind, because a replaced session rebuilds the bus.
-	prompts.register(eventBus);
 	unsubscribe = session().subscribe(onEvent);
 }
 
