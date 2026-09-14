@@ -29,6 +29,7 @@ import { bodyStart, type Properties as PropertiesRead } from "../../../propertie
 import { tagTag } from "../../../tag.ts";
 import type { Place } from "../../../links.ts";
 import type { Left } from "../nav";
+import type { Backlink, Tagged } from "../types";
 import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, taggedStore } from "../serverState";
 import { titleOf } from "../noteSync";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
@@ -627,7 +628,7 @@ export function Editor({
 	return (
 		<div id="editor" data-status={status}>
 			{status === "conflict" && (
-				<div role="alert" className="sticky top-0 z-10 flex items-center gap-2 border-b bg-muted px-4 py-2 text-xs">
+				<div role="alert" className="sticky top-0 z-10 flex items-center gap-2 bg-muted px-4 py-2 text-xs">
 					<span className="flex-1">This note changed on disk while you were editing it.</span>
 					<Button variant="outline" size="sm" className="h-7 text-xs" onClick={reload}>
 						Reload
@@ -640,7 +641,7 @@ export function Editor({
 			{/* Above the text, on the page with it: the panel for the block the text hides. Not before the text is here — an empty note is not a note with no properties yet. */}
 			{status !== "loading" && <Properties view={view.current} read={read} />}
 			{status === "gone" && (
-				<div role="alert" className="sticky top-0 z-10 flex items-center gap-2 border-b bg-muted px-4 py-2 text-xs">
+				<div role="alert" className="sticky top-0 z-10 flex items-center gap-2 bg-muted px-4 py-2 text-xs">
 					<span className="flex-1">This note is no longer on disk. What is here is the only copy.</span>
 					<Button variant="outline" size="sm" className="h-7 text-xs" onClick={overwrite}>
 						Put it back
@@ -651,23 +652,41 @@ export function Editor({
 				</div>
 			)}
 			<div ref={host} />
-			<Backlinks path={path} onOpen={onOpen} />
-			<TaggedWith path={path} onOpen={onOpen} />
+			<NoteMeta path={path} onOpen={onOpen} />
 		</div>
 	);
 }
 
 /**
- * The notes that link here, under the note. From the index, sent with the
- * note and again whenever a write anywhere may have changed it. Nothing when
- * there are none: an empty "Linked from" is a question nobody asked.
+ * What the vault knows about the note, under the note: who links here, and
+ * who shares its tags. One block, because they are one thing — the note has
+ * ended and this is about it. The space above says so; there used to be a
+ * rule, and a second one between these two rows, which said the same thing
+ * twice about two halves of one aside.
+ *
+ * Nothing at all when there is neither, and each row gone when there is none
+ * of its own: an empty "Linked from" is a question nobody asked.
  */
-function Backlinks({ path, onOpen }: { path: string; onOpen?: (path: string) => void }) {
-	const all = useSyncExternalStore(backlinksStore.subscribe, backlinksStore.get);
-	const notes = all[path] ?? [];
+function NoteMeta({ path, onOpen }: { path: string; onOpen?: (path: string) => void }) {
+	const backlinks = useSyncExternalStore(backlinksStore.subscribe, backlinksStore.get)[path] ?? [];
+	const tagged = useSyncExternalStore(taggedStore.subscribe, taggedStore.get)[path] ?? [];
+	if (backlinks.length === 0 && tagged.length === 0) return null;
+	return (
+		<div className="mt-6 flex shrink-0 flex-col gap-1 px-6 pb-2 text-xs text-muted-foreground">
+			<Backlinks notes={backlinks} onOpen={onOpen} />
+			<TaggedWith notes={tagged} onOpen={onOpen} />
+		</div>
+	);
+}
+
+/**
+ * The notes that link here. From the index, sent with the note and again
+ * whenever a write anywhere may have changed it.
+ */
+function Backlinks({ notes, onOpen }: { notes: Backlink[]; onOpen?: (path: string) => void }) {
 	if (notes.length === 0) return null;
 	return (
-		<div id="backlinks" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t px-6 py-2 text-xs text-muted-foreground">
+		<div id="backlinks" className="flex flex-wrap items-center gap-x-3 gap-y-1">
 			<span>Linked from</span>
 			{notes.map((b) => (
 				<Tooltip key={b.path}>
@@ -685,17 +704,14 @@ function Backlinks({ path, onOpen }: { path: string; onOpen?: (path: string) => 
 }
 
 /**
- * The notes that share a tag with this one, under the note, beside the
- * backlinks and from the same index: sent with the note, and again whenever
- * a note's tags changed. Each with the tags shared, since that is why it is
- * here. Nothing when there are none.
+ * The notes that share a tag with this one, beside the backlinks and from the
+ * same index: sent with the note, and again whenever a note's tags changed.
+ * Each with the tags shared, since that is why it is here.
  */
-function TaggedWith({ path, onOpen }: { path: string; onOpen?: (path: string) => void }) {
-	const all = useSyncExternalStore(taggedStore.subscribe, taggedStore.get);
-	const notes = all[path] ?? [];
+function TaggedWith({ notes, onOpen }: { notes: Tagged[]; onOpen?: (path: string) => void }) {
 	if (notes.length === 0) return null;
 	return (
-		<div id="tagged" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t px-6 py-2 text-xs text-muted-foreground">
+		<div id="tagged" className="flex flex-wrap items-center gap-x-3 gap-y-1">
 			<span>Tagged with</span>
 			{notes.map((t) => (
 				<Tooltip key={t.path}>

@@ -162,7 +162,7 @@ export function Composer({ note }: { note: string | null }) {
 	}, [restored]);
 
 	return (
-		<div className="border-t p-3">
+		<div className="p-3">
 			<QueuedMessages />
 			<AskingAgain />
 			<PromptInput

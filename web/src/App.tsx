@@ -456,7 +456,7 @@ export function App() {
 							minSize="20%"
 							collapsible
 							collapsedSize="0%"
-							className="flex min-w-0 flex-col border-l"
+							className="flex min-w-0 flex-col"
 							onResize={() => setPiOpen(!pi.current?.isCollapsed())}
 						>
 							<Pi note={open} raw={raw} />

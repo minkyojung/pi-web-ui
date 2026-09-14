@@ -14,7 +14,7 @@ const Row = ({ label, value, muted = true }: { label: string; value: string; mut
 );
 
 const Section = ({ title, children }: { title?: string; children: React.ReactNode }) => (
-	<div className="flex flex-col gap-1.5 border-t pt-3 first:border-t-0 first:pt-0">
+	<div className="flex flex-col gap-1.5">
 		{title && <div className="text-sm font-semibold">{title}</div>}
 		{children}
 	</div>
@@ -50,7 +50,7 @@ export function ContextCard() {
 					<ContextGauge />
 				</Button>
 			</HoverCardTrigger>
-			<HoverCardContent align="end" side="top" className="flex w-80 flex-col gap-3">
+			<HoverCardContent align="end" side="top" className="flex w-80 flex-col gap-4">
 				<Section>
 					<div className="flex items-baseline justify-between">
 						<span className="text-sm font-semibold">Context</span>
