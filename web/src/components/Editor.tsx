@@ -35,6 +35,7 @@ import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Properties } from "./Properties";
 import { Button } from "./ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** How long typing has to stop before it is written down. */
 const AUTOSAVE_MS = 600;
@@ -638,16 +639,15 @@ function Backlinks({ path, onOpen }: { path: string; onOpen?: (path: string) => 
 		<div id="backlinks" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t px-6 py-2 text-xs text-muted-foreground">
 			<span>Linked from</span>
 			{notes.map((b) => (
-				<button
-					key={b.path}
-					type="button"
-					title={b.path}
-					onClick={() => onOpen?.(b.path)}
-					className="cursor-default rounded-sm px-1 text-foreground hover:bg-accent"
-				>
-					{titleOf(b.path)}
-					{b.count > 1 && <span className="ml-1 text-muted-foreground">{b.count}</span>}
-				</button>
+				<Tooltip key={b.path}>
+					<TooltipTrigger asChild>
+						<Button variant="ghost" size="xs" data-path={b.path} className="h-5 cursor-default px-1 font-normal text-foreground" onClick={() => onOpen?.(b.path)}>
+							{titleOf(b.path)}
+							{b.count > 1 && <span className="text-muted-foreground">{b.count}</span>}
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="bottom">{b.path}</TooltipContent>
+				</Tooltip>
 			))}
 		</div>
 	);
@@ -667,16 +667,15 @@ function TaggedWith({ path, onOpen }: { path: string; onOpen?: (path: string) =>
 		<div id="tagged" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t px-6 py-2 text-xs text-muted-foreground">
 			<span>Tagged with</span>
 			{notes.map((t) => (
-				<button
-					key={t.path}
-					type="button"
-					title={t.path}
-					onClick={() => onOpen?.(t.path)}
-					className="cursor-default rounded-sm px-1 text-foreground hover:bg-accent"
-				>
-					{titleOf(t.path)}
-					<span className="ml-1 text-muted-foreground">{t.tags.map((tag: string) => `#${tag}`).join(" ")}</span>
-				</button>
+				<Tooltip key={t.path}>
+					<TooltipTrigger asChild>
+						<Button variant="ghost" size="xs" data-path={t.path} className="h-5 cursor-default px-1 font-normal text-foreground" onClick={() => onOpen?.(t.path)}>
+							{titleOf(t.path)}
+							<span className="text-muted-foreground">{t.tags.map((tag: string) => `#${tag}`).join(" ")}</span>
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="bottom">{t.path}</TooltipContent>
+				</Tooltip>
 			))}
 		</div>
 	);

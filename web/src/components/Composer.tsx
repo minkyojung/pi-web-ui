@@ -9,6 +9,7 @@ import { askingAgainStore, configStore, promptsStore, restoredStore } from "../s
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import { ContextPopover } from "./ContextPopover";
 import { ModelSelect } from "./ModelSelect";
 import { QueuedMessages } from "./QueuedMessages";
@@ -77,14 +78,15 @@ function AskingAgain() {
 		<div className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
 			<PencilIcon className="size-3 shrink-0" />
 			<span className="min-w-0 flex-1 truncate">Asking again: {asking.text}</span>
-			<button
-				type="button"
+			<Button
+				variant="ghost"
+				size="icon-xs"
+				className="size-4 rounded-sm"
 				onClick={() => askingAgainStore.set(null)}
 				aria-label="Send as a new question instead"
-				className="rounded-sm p-0.5 hover:bg-accent hover:text-accent-foreground"
 			>
-				<X className="size-3" />
-			</button>
+				<X />
+			</Button>
 		</div>
 	);
 }
@@ -105,14 +107,15 @@ function Chosen({ chosen, onDrop }: { chosen: ChosenWords | null; onDrop: () => 
 			<Badge variant="secondary" className="max-w-full gap-1 font-normal" title={chosen.text}>
 				<TextQuoteIcon className="size-3 shrink-0" />
 				<span className="min-w-0 truncate">{chosen.text}</span>
-				<button
-					type="button"
+				<Button
+					variant="ghost"
+					size="icon-xs"
+					className="size-4 rounded-sm"
 					onClick={onDrop}
 					aria-label="Do not send the chosen words"
-					className="rounded-sm p-0.5 hover:bg-accent hover:text-accent-foreground"
 				>
-					<X className="size-3" />
-				</button>
+					<X />
+				</Button>
 			</Badge>
 		</PromptInputHeader>
 	);

@@ -3,6 +3,7 @@ import { useRef, useState, useSyncExternalStore } from "react";
 import { breakdown, compact } from "../contextBreakdown";
 import { configStore, contextSourcesStore, usageStore } from "../serverState";
 import { ContextGauge } from "./ContextGauge";
+import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 const Row = ({ label, value, muted = true }: { label: string; value: string; muted?: boolean }) => (
@@ -64,9 +65,10 @@ export function ContextPopover() {
 			}}
 		>
 			<PopoverTrigger asChild>
-				<button
-					type="button"
-					className="rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+				<Button
+					variant="ghost"
+					size="icon-sm"
+					className="size-7"
 					aria-label="Context usage"
 					onPointerEnter={enter}
 					onPointerLeave={leave}
@@ -78,7 +80,7 @@ export function ContextPopover() {
 					}}
 				>
 					<ContextGauge />
-				</button>
+				</Button>
 			</PopoverTrigger>
 			<PopoverContent
 				align="end"

@@ -4,6 +4,7 @@ import { CheckIcon, CopyIcon } from "lucide-react";
 import { stopNote, turnParts } from "../turn";
 import type { Item } from "../types";
 import { Button } from "./ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
  * The line under a finished run: how long it took, when it ended, what it
@@ -63,21 +64,26 @@ function CopyAnswer({ text }: { text: string }) {
 	}, [copied]);
 
 	return (
-		<Button
-			size="icon-xs"
-			variant="ghost"
-			title="Copy the answer"
-			className="opacity-0 transition-opacity group-hover/turn:opacity-100 focus-visible:opacity-100"
-			onClick={() => {
-				navigator.clipboard?.writeText(text).then(
-					() => setCopied(true),
-					// Clipboard access can be refused. Saying nothing is better than
-					// claiming a copy that did not happen.
-					() => {},
-				);
-			}}
-		>
-			{copied ? <CheckIcon /> : <CopyIcon />}
-		</Button>
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					size="icon-xs"
+					variant="ghost"
+					aria-label="Copy the answer"
+					className="opacity-0 transition-opacity group-hover/turn:opacity-100 focus-visible:opacity-100"
+					onClick={() => {
+						navigator.clipboard?.writeText(text).then(
+							() => setCopied(true),
+							// Clipboard access can be refused. Saying nothing is better than
+							// claiming a copy that did not happen.
+							() => {},
+						);
+					}}
+				>
+					{copied ? <CheckIcon /> : <CopyIcon />}
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent side="bottom">{copied ? "Copied" : "Copy the answer"}</TooltipContent>
+		</Tooltip>
 	);
 }

@@ -6,6 +6,7 @@ import { titleOf } from "../noteSync";
 import { filesStore } from "../serverState";
 import { Settings } from "./Settings";
 import { Button } from "./ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
  * The left column: the notes in the folder pi works in, newest first.
@@ -41,37 +42,42 @@ export function Sidebar({ open, onOpen }: { open: string | null; onOpen: (path: 
 				<ul id="notes" className="no-scrollbar flex-1 overflow-y-auto overscroll-contain px-2 py-1">
 					{files.map((file) => (
 						<li key={file.path}>
-							<Button
-								variant="ghost"
-								size="sm"
-								title={file.path}
-								data-active={file.path === open}
-								aria-current={file.path === open ? "page" : undefined}
-								onClick={() => onOpen(file.path)}
-								className={cn(
-									"h-8 w-full cursor-default justify-start px-2 font-normal",
-									// The dark hover ghost carries is the page's accent at half
-									// alpha, under a modifier tailwind-merge cannot line up with
-									// the one above it, so it is named again here.
-									"hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:hover:bg-sidebar-accent",
-									// Inside the row: the list scrolls, and a ring drawn outside
-									// the top row would be cut off by the edge it scrolls under.
-									"focus-visible:ring-sidebar-ring/50 focus-visible:ring-inset",
-									// Weight, not only colour — the open note and the one under
-									// the pointer are the same surface, and something has to tell
-									// them apart while the pointer is somewhere else.
-									"data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground",
-								)}
-							>
-								<span className="truncate">{titleOf(file.path)}</span>
-								{/* The folder, where there is one, as ⌘P writes it: to the right,
-								    quieter, and it gives way to the name when the column is narrow. */}
-								{file.path.includes("/") && (
-									<span className="ml-auto max-w-[40%] shrink-0 truncate text-xs text-muted-foreground">
-										{file.path.slice(0, file.path.lastIndexOf("/"))}
-									</span>
-								)}
-							</Button>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button
+										variant="ghost"
+										size="sm"
+										data-path={file.path}
+										data-active={file.path === open}
+										aria-current={file.path === open ? "page" : undefined}
+										onClick={() => onOpen(file.path)}
+										className={cn(
+											"h-8 w-full cursor-default justify-start px-2 font-normal",
+											// The dark hover ghost carries is the page's accent at half
+											// alpha, under a modifier tailwind-merge cannot line up with
+											// the one above it, so it is named again here.
+											"hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:hover:bg-sidebar-accent",
+											// Inside the row: the list scrolls, and a ring drawn outside
+											// the top row would be cut off by the edge it scrolls under.
+											"focus-visible:ring-sidebar-ring/50 focus-visible:ring-inset",
+											// Weight, not only colour — the open note and the one under
+											// the pointer are the same surface, and something has to tell
+											// them apart while the pointer is somewhere else.
+											"data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground",
+										)}
+									>
+										<span className="truncate">{titleOf(file.path)}</span>
+										{/* The folder, where there is one, as ⌘P writes it: to the right,
+										    quieter, and it gives way to the name when the column is narrow. */}
+										{file.path.includes("/") && (
+											<span className="ml-auto max-w-[40%] shrink-0 truncate text-xs text-muted-foreground">
+												{file.path.slice(0, file.path.lastIndexOf("/"))}
+											</span>
+										)}
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent side="right">{file.path}</TooltipContent>
+							</Tooltip>
 						</li>
 					))}
 				</ul>

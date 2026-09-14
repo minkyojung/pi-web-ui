@@ -281,11 +281,11 @@ const marks = async (page) => {
 };
 const press = (page, title) =>
 	page.evaluate(
-		`(() => { const b = [...document.querySelectorAll('#chat button[title=${JSON.stringify(title)}]')].find((x) => !x.disabled); if (!b) return false; b.click(); return true; })()`,
+		`(() => { const b = [...document.querySelectorAll('#chat button[aria-label=${JSON.stringify(title)}]')].find((x) => !x.disabled); if (!b) return false; b.click(); return true; })()`,
 	);
 const allDisabled = (page, title) =>
 	page.evaluate(
-		`[...document.querySelectorAll('#chat button[title=${JSON.stringify(title)}]')].every((b) => b.disabled)`,
+		`[...document.querySelectorAll('#chat button[aria-label=${JSON.stringify(title)}]')].every((b) => b.disabled)`,
 	);
 
 check("the app renders a conversation", async ({ app }) => {
@@ -294,7 +294,7 @@ check("the app renders a conversation", async ({ app }) => {
 
 check("the sidebar lists the folder's notes and nothing else", async ({ app }) => {
 	const listed = await until("the notes", () =>
-		app.evaluate("[...document.querySelectorAll('#notes button')].map((b) => b.title).join(',')"),
+		app.evaluate("[...document.querySelectorAll('#notes button')].map((b) => b.dataset.path).join(',')"),
 	);
 	assert.deepEqual(listed.split(",").sort(), ["first.md", "ideas/second.md"]);
 });
@@ -329,7 +329,7 @@ check("and forward again", async ({ app }) => {
 check("asking a question again fills the box without moving anything", async ({ app }) => {
 	const before = await marks(app);
 	assert.equal(await app.evaluate(`(() => {
-		const b = [...document.querySelectorAll('#chat button[title="Ask this again, differently"]')].pop();
+		const b = [...document.querySelectorAll('#chat button[aria-label="Ask this again, differently"]')].pop();
 		if (!b) return false;
 		b.click();
 		return true;
@@ -380,7 +380,7 @@ const type = (page, text) =>
 
 check("a row in the sidebar opens its note in the middle", async ({ app }) => {
 	assert.equal(
-		await app.evaluate(`(() => { const b = document.querySelector('#notes button[title="first.md"]'); if (!b) return false; b.click(); return true; })()`),
+		await app.evaluate(`(() => { const b = document.querySelector('#notes button[data-path="first.md"]'); if (!b) return false; b.click(); return true; })()`),
 		true,
 	);
 	await until("the note to load", async () => (await editorStatus(app)) === "saved");
@@ -469,7 +469,7 @@ async function otherTab(api) {
 check("a change from elsewhere lands in the editor as a change, not a reload", async ({ app, api, cwd }) => {
 	const other = await otherTab(api);
 	try {
-		await app.evaluate(`document.querySelector('#notes button[title="first.md"]').click()`);
+		await app.evaluate(`document.querySelector('#notes button[data-path="first.md"]').click()`);
 		await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("from outside"));
 		const before = readFileSync(join(cwd, "first.md"), "utf8");
 		// Put the cursor at the end of the first line, so it can be seen not to move.
@@ -585,7 +585,7 @@ check("a note deleted on disk is put to the person, and can be put back from the
 
 check("what pi changed is a diff to decide about, and ⌘Z takes a decision back", async ({ app, cwd }) => {
 	const log = () => readFileSync(join(cwd, ".pi/history/ideas/second.md.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
-	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="ideas/second.md"]').click()`);
 	// The note opens with its diff. pi changed a word and added a line two
 	// lines down, which the merge view shows as one chunk — the blank line
 	// between is too short to keep them apart — and the word pi replaced is
@@ -626,7 +626,7 @@ check("what pi changed is a diff to decide about, and ⌘Z takes a decision back
 });
 
 check("choosing words in a note shows them above the box, and the × takes them off", async ({ app }) => {
-	await app.evaluate(`document.querySelector('#notes button[title="first.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="first.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved");
 	// Chosen the way a person chooses: dragged across the line.
 	assert.equal(await app.drag("#editor .cm-line", 0), true);
@@ -648,7 +648,7 @@ check("⌘N makes an untitled note and opens it", async ({ app, cwd }) => {
 	await until("the new note", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("location.hash")) === "#Untitled.md");
 	const path = decodeURIComponent((await app.evaluate("location.hash")).slice(1));
 	assert.equal(readFileSync(join(cwd, path), "utf8"), "");
-	assert.equal(await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.title`), path);
+	assert.equal(await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.dataset.path`), path);
 	assert.equal(await type(app, "# today"), true);
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
 	assert.equal(readFileSync(join(cwd, path), "utf8"), "# today");
@@ -669,7 +669,7 @@ check("the title is the file's name, and changing it moves the note with its tex
 	assert.equal(existsSync(join(cwd, "Untitled.md")), false);
 	assert.equal(readFileSync(join(cwd, "My note.md"), "utf8"), "# today", "the text went with it");
 	assert.ok((await editorText(app)).includes("# today"), "and stayed on screen");
-	assert.equal(await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.title`), "My note.md");
+	assert.equal(await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.dataset.path`), "My note.md");
 	// Typing after the move saves to the new path.
 	await until("a clean editor", async () => (await editorStatus(app)) === "saved");
 	assert.equal(await type(app, "MOVED "), true);
@@ -693,7 +693,7 @@ check("a slash in the title moves the note to that folder, and a leading one bac
 	assert.equal(await app.evaluate("document.getElementById('title').value"), "moved");
 	assert.equal(existsSync(join(cwd, "My note.md")), false);
 	assert.ok(readFileSync(join(cwd, "ideas/moved.md"), "utf8").includes("MOVED"), "the text went with it");
-	await until("the row to follow", async () => (await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.title`)) === "ideas/moved.md");
+	await until("the row to follow", async () => (await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.dataset.path`)) === "ideas/moved.md");
 	// Back to the top, where the checks after this one look for it.
 	await retitle(app, "/My note");
 	await until("the old address", async () => (await app.evaluate("location.hash")) === "#My%20note.md");
@@ -701,7 +701,7 @@ check("a slash in the title moves the note to that folder, and a leading one bac
 });
 
 check("a list item continues on Enter and ends on a second, and a bracket closes as it opens", async ({ app, cwd }) => {
-	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="ideas/second.md"]').click()`);
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	// Start a list at the end of the note.
 	await app.press("End", { meta: true });
@@ -722,11 +722,11 @@ check("a list item continues on Enter and ends on a second, and a bracket closes
 check("an empty note says so, and a code block is drawn in a monospace", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "empty.md"), "");
 	writeFileSync(join(cwd, "code.md"), "text\n\n```js\nconst a = 1;\n```\n");
-	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="code.md"]') && !!document.querySelector('#notes button[title="empty.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="empty.md"]').click()`);
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="code.md"]') && !!document.querySelector('#notes button[data-path="empty.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="empty.md"]').click()`);
 	await until("the placeholder", () => app.evaluate("document.querySelector('#editor .cm-placeholder')?.textContent === 'Write here'"));
 	assert.equal(await app.evaluate("document.querySelector('#editor .cm-content')?.getAttribute('aria-label')"), "Note");
-	await app.evaluate(`document.querySelector('#notes button[title="code.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="code.md"]').click()`);
 	// The cursor lands on "text": the block's fences are gone from the layout, and its one line of code sits in the box, the language in the corner.
 	await until("the code box, one line, fences gone", () => app.evaluate("document.querySelectorAll('#editor .cm-code .cm-line').length === 1 && document.querySelector('#editor .cm-code')?.dataset.lang === 'js'"));
 	assert.ok(!(await shownText(app)).includes("```"), "no fence drawn");
@@ -741,8 +741,8 @@ check("an empty note says so, and a code block is drawn in a monospace", async (
 
 check("a task is a box, cursor or not, ticked by a click or ⌘Enter, and a rule is a line", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "tasks.md"), "- [ ] one\n- [x] two\n\n---\n\nend\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="tasks.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="tasks.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="tasks.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="tasks.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("- [ ] one"));
 	// The cursor lands on the first line; its task is a box all the same, as the other is; the rule is a line.
 	await until("two boxes and a rule", () => app.evaluate("document.querySelectorAll('#editor input.cm-task').length === 2 && document.querySelectorAll('#editor hr.cm-rule').length === 1"));
@@ -759,13 +759,13 @@ check("a task is a box, cursor or not, ticked by a click or ⌘Enter, and a rule
 });
 
 check("deleting a note closes it and offers it back, and Restore brings it back open", async ({ app, cwd }) => {
-	await app.evaluate(`document.querySelector('#notes button[title="code.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="code.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved");
 	await app.evaluate(`document.querySelector('button[aria-label="Delete note"]').click()`);
 	await until("the column to empty", () => app.evaluate("!document.getElementById('editor') && document.body.textContent.includes('Deleted code')"));
 	assert.equal(existsSync(join(cwd, "code.md")), false);
 	assert.equal(existsSync(join(cwd, ".pi/trash/notes/code.md")), true);
-	assert.equal(await app.evaluate(`!!document.querySelector('#notes button[title="code.md"]')`), false, "off the list");
+	assert.equal(await app.evaluate(`!!document.querySelector('#notes button[data-path="code.md"]')`), false, "off the list");
 	await app.evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent === "Restore").click()`);
 	await until("the note back", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("location.hash")) === "#code.md");
 	assert.equal(existsSync(join(cwd, "code.md")), true);
@@ -792,7 +792,7 @@ check("⌘P finds a note by a few letters, and makes one that is not there", asy
 });
 
 check("⌘F finds in the note, and Escape puts the panel away", async ({ app }) => {
-	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="ideas/second.md"]').click()`);
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	await app.press("f", { meta: true });
 	await until("the panel", () => app.evaluate("document.activeElement?.name === 'search'"));
@@ -808,8 +808,8 @@ check("⌘F finds in the note, and Escape puts the panel away", async ({ app }) 
 
 check("links are drawn, a missing one differently; ⌘+click follows one and makes the other", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "hub.md"), "go to [[My note]] or [[nowhere yet]]\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="hub.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="hub.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="hub.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="hub.md"]').click()`);
 	await until("the links", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink').length")) === 2);
 	assert.deepEqual(
 		await app.evaluate("[...document.querySelectorAll('#editor .cm-wikilink')].map((l) => l.classList.contains('cm-wikilink-missing'))"),
@@ -820,18 +820,18 @@ check("links are drawn, a missing one differently; ⌘+click follows one and mak
 	await until("My note", async () => (await app.evaluate("location.hash")) === "#My%20note.md");
 	await until("its backlinks", () => app.evaluate("document.querySelector('#backlinks')?.textContent ?? ''").then((t) => t.includes("hub")));
 	// Back by the backlink, then make the missing one.
-	await app.evaluate(`[...document.querySelectorAll('#backlinks button')].find((b) => b.title === "hub.md").click()`);
+	await app.evaluate(`[...document.querySelectorAll('#backlinks button')].find((b) => b.dataset.path === "hub.md").click()`);
 	await until("hub again", async () => (await app.evaluate("location.hash")) === "#hub.md" && (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink').length")) === 2);
 	await app.click("#editor .cm-wikilink", 1, { meta: true });
 	await until("the new note", async () => (await app.evaluate("location.hash")) === "#nowhere%20yet.md" && (await editorStatus(app)) === "saved");
 	assert.equal(existsSync(join(cwd, "nowhere yet.md")), true);
 	// And back in hub the link is no longer missing.
-	await app.evaluate(`document.querySelector('#notes button[title="hub.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="hub.md"]').click()`);
 	await until("no missing link", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink-missing').length")) === 0);
 });
 
 check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) => {
-	await app.evaluate(`document.querySelector('#notes button[title="hub.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="hub.md"]').click()`);
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	await app.press("End", { meta: true });
 	await app.press("Enter");
@@ -847,8 +847,8 @@ check("a quote is one element around its lines; a quote in a quote is a bar in a
 	const long = "word ".repeat(40).trim();
 	// The bare `>` line: without it, "after" would be a lazy continuation of the inner quote, as CommonMark has it.
 	writeFileSync(join(cwd, "quotes.md"), `> ${long}\n> > inner\n>\n> after\n\nend\n`);
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="quotes.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="quotes.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="quotes.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="quotes.md"]').click()`);
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	await until("the quote elements", () => app.evaluate("document.querySelectorAll('#editor .cm-quote').length === 2 && !!document.querySelector('#editor .cm-quote .cm-quote')"));
 	const shape = await app.evaluate(`(() => {
@@ -873,8 +873,8 @@ check("a quote is one element around its lines; a quote in a quote is a bar in a
 
 check("a bullet is a dot, cursor or not, and a task shows its box alone", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "bullets.md"), "- one\n- [ ] two\n\nend\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="bullets.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="bullets.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="bullets.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="bullets.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("- [ ] two"));
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
 	await until("a dot, and a box without a dash", async () => (await shownText(app)).includes("•one") && (await shownText(app)).includes("two") && !(await shownText(app)).includes("- "));
@@ -890,8 +890,8 @@ check("a bullet is a dot, cursor or not, and a task shows its box alone", async 
 
 check("Tab nests a numbered item and the numbers follow; Shift-Tab brings it back", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "numbered.md"), "1. a\n2. b\n3. c\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="numbered.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="numbered.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="numbered.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="numbered.md"]').click()`);
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 6 } }); })()`);
 	await app.press("Tab");
@@ -903,8 +903,8 @@ check("Tab nests a numbered item and the numbers follow; Shift-Tab brings it bac
 
 check("the smaller marks hide too, and a done task reads as done", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "small.md"), "- [x] done ~~gone~~ `code`\n\nend\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="small.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="small.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="small.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="small.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("~~gone~~"));
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
 	await until("the marks hidden", async () => (await shownText(app)).includes("done gone code"));
@@ -915,8 +915,8 @@ check("the smaller marks hide too, and a done task reads as done", async ({ app,
 
 check("a %% line opens a comment that runs over blank lines to the next", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "block-comment.md"), "kept\n\n%%\nnot [[this]]\n\n# nor this\n%%\n\nkept too\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="block-comment.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="block-comment.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="block-comment.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="block-comment.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("kept too"));
 	// Everything between the fences is one comment: no link drawn, no heading style. The fences are marks, drawn as marks are.
 	await until("the comment", () => app.evaluate("[...document.querySelectorAll('#editor .cm-comment')].map((s) => s.textContent).join('')").then((t) => t.includes("not [[this]]") && t.includes("# nor this")));
@@ -926,8 +926,8 @@ check("a %% line opens a comment that runs over blank lines to the next", async 
 check("under a note, the notes that share its tags", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "shared-a.md"), "#team notes\n");
 	writeFileSync(join(cwd, "shared-b.md"), "more #Team and #other\n");
-	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="shared-a.md"]') && !!document.querySelector('#notes button[title="shared-b.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="shared-a.md"]').click()`);
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="shared-a.md"]') && !!document.querySelector('#notes button[data-path="shared-b.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="shared-a.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("#team"));
 	await until("the tagged strip", () => app.evaluate("document.querySelector('#tagged')?.textContent ?? ''").then((t) => t.includes("shared-b") && t.includes("#team") && !t.includes("#other")));
 	// The other note loses the tag: the strip goes.
@@ -937,8 +937,8 @@ check("under a note, the notes that share its tags", async ({ app, cwd }) => {
 
 check("%%a comment%% is set apart, its marks hidden off the cursor", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "comment.md"), "say %%to self%% now\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="comment.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="comment.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="comment.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="comment.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("%%to self%%"));
 	await until("the comment, as one span", () => app.evaluate("[...document.querySelectorAll('#editor .cm-comment')].map((s) => s.textContent).join('')").then((t) => t.includes("to self")));
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
@@ -947,8 +947,8 @@ check("%%a comment%% is set apart, its marks hidden off the cursor", async ({ ap
 
 check("a quote opening with [!note] is a callout, named by its type", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "callout.md"), "> [!note] Keep\n> the body\n\nafter\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="callout.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="callout.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="callout.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="callout.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("[!note]"));
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
 	await until("one callout element around two lines, the first a title", () => app.evaluate("document.querySelectorAll('#editor .cm-callout').length === 1 && document.querySelectorAll('#editor .cm-callout .cm-line').length === 2 && document.querySelector('#editor .cm-callout-title')?.dataset.callout === 'note'"));
@@ -960,16 +960,16 @@ check("a quote opening with [!note] is a callout, named by its type", async ({ a
 
 check("a #tag is set off from the prose, and a # in a URL or a heading is not", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "tags.md"), "# top\n\nsee #one and https://x.y/p#frag\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="tags.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="tags.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="tags.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="tags.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("#one"));
 	await until("one tag", () => app.evaluate("[...document.querySelectorAll('#editor .cm-tag')].map((s) => s.textContent).join('|')").then((t) => t === "#one"));
 });
 
 check("==words== are washed with colour, their marks hidden off the cursor", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "hl.md"), "say ==hi== now\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="hl.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="hl.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="hl.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="hl.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("==hi=="));
 	await until("the highlight, as one span", () => app.evaluate("[...document.querySelectorAll('#editor .cm-highlight')].map((s) => s.textContent).join('|')").then((t) => t.includes("hi")));
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
@@ -980,8 +980,8 @@ check("==words== are washed with colour, their marks hidden off the cursor", asy
 
 check("a note's front matter is hidden, out of the cursor's reach, shown by ⌘E, and the note opens under it", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "props.md"), "---\ntags: [x]\n---\n\n# body\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="props.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="props.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="props.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="props.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("# body"));
 	const head = () => app.evaluate("document.querySelector('#editor .cm-content')?.cmTile?.root?.view?.state.selection.main.head");
 	assert.equal(await head(), 18, "the note opens under its properties, where its text begins");
@@ -1002,23 +1002,23 @@ check("a note's front matter is hidden, out of the cursor's reach, shown by ⌘E
 
 check("a note opens again where it was left", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "left.md"), "one\ntwo\nthree\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="left.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="left.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="left.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="left.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("three"));
 	const head = () => app.evaluate("document.querySelector('#editor .cm-content')?.cmTile?.root?.view?.state.selection.main.head");
 	assert.equal(await head(), 0, "a note never left opens at the top");
 	const end = (await editorText(app)).length;
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: ${end} } }); })()`);
-	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="ideas/second.md"]').click()`);
 	await until("the other note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("second"));
-	await app.evaluate(`document.querySelector('#notes button[title="left.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="left.md"]').click()`);
 	await until("back at the end", async () => (await editorStatus(app)) === "saved" && (await head()) === end);
 });
 
 check("the title scrolls away with the note, and the note comes back scrolled where it was left", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "tall.md"), Array.from({ length: 120 }, (_, i) => `line ${i}`).join("\n\n") + "\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="tall.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="tall.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="tall.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="tall.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("line 119"));
 	const titleTop = () => app.evaluate("document.querySelector('#title').getBoundingClientRect().top");
 	const pageTop = await app.evaluate("document.querySelector('#note').getBoundingClientRect().top");
@@ -1026,17 +1026,17 @@ check("the title scrolls away with the note, and the note comes back scrolled wh
 	await app.evaluate("document.querySelector('#note').scrollTop = 600");
 	await until("the title to have gone up with the page", async () => (await titleTop()) < pageTop);
 	// Leave and come back: the page is where it was.
-	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="ideas/second.md"]').click()`);
 	await until("the other note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("second"));
-	await app.evaluate(`document.querySelector('#notes button[title="tall.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="tall.md"]').click()`);
 	await until("back where it was", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.querySelector('#note').scrollTop")) === 600);
 });
 
 check("the properties are rows above the note: a chip added, a property added and filled, ⌘Z, a Backspace that cannot reach them, and a broken block said so", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "rows.md"), "---\ntags: [x]\n---\n\n# body\n");
 	writeFileSync(join(cwd, "broken.md"), "---\ntags: [x\n---\nbody\n");
-	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="rows.md"]') && !!document.querySelector('#notes button[title="broken.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="rows.md"]').click()`);
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="rows.md"]') && !!document.querySelector('#notes button[data-path="broken.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="rows.md"]').click()`);
 	await until("the row", () => app.evaluate(`!!document.querySelector('#properties [data-property="tags"] [data-chip="x"]')`));
 	const file = () => readFileSync(join(cwd, "rows.md"), "utf8");
 	// A chip added keeps the list's shape, and only that line changes.
@@ -1066,7 +1066,7 @@ check("the properties are rows above the note: a chip added, a property added an
 	await app.keys("z");
 	await until("the letter, and the block whole", () => file() === "---\ntags: [x, y]\nstatus:\n---\nz\n# body\n");
 	// A block that does not parse is said so, and offers the source.
-	await app.evaluate(`document.querySelector('#notes button[title="broken.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="broken.md"]').click()`);
 	await until("the warning", () => app.evaluate(`document.querySelector('#properties [role=alert]')?.textContent.includes('could not be read')`));
 	assert.equal(await app.evaluate("!!document.querySelector('#add-property')"), false);
 	assert.equal(readFileSync(join(cwd, "broken.md"), "utf8"), "---\ntags: [x\n---\nbody\n", "left exactly as it was");
@@ -1074,8 +1074,8 @@ check("the properties are rows above the note: a chip added, a property added an
 
 check("a row is drawn by its type — a box, a date, a number — the type is chosen for the name from the row's icon, and a value that does not fit is said so", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "typed.md"), "---\ndone: true\nwhen: 2024-01-01\ncount: 3\nodd: nope\n---\nbody\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="typed.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="typed.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="typed.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="typed.md"]').click()`);
 	await until("the rows", () => app.evaluate(`!!document.querySelector('#properties [data-property="odd"]')`));
 	const file = () => readFileSync(join(cwd, "typed.md"), "utf8");
 	// Guessed from the values.
@@ -1098,8 +1098,8 @@ check("a list item's wrapped lines start where its words do", async ({ app, cwd 
 	const long = "word ".repeat(40).trim();
 	// The continuation is indented to the inner item's words: short of that it would be drawn at the outer item's depth, as typed.
 	writeFileSync(join(cwd, "list.md"), `- ${long}\n    - inner ${long}\n      continued\n- [ ] task ${long}\n\n> - quoted\n`);
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="list.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="list.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="list.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="list.md"]').click()`);
 	await until("the list lines", () => app.evaluate("document.querySelectorAll('#editor .cm-list-line').length === 5"));
 	// The cursor lands on the first line; every other list line hides its indentation.
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
@@ -1135,8 +1135,8 @@ check("a list item's wrapped lines start where its words do", async ({ app, cwd 
 
 check("a mark typed over chosen words wraps them; typed alone it is a letter", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "wrap.md"), "say hi now\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="wrap.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="wrap.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="wrap.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="wrap.md"]').click()`);
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	await app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: 4, head: 6 } })`);
 	await app.keys("*");
@@ -1154,8 +1154,8 @@ check("a mark typed over chosen words wraps them; typed alone it is a letter", a
 
 check("⌘B and ⌘I put a mark around the chosen words and take it off again", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "marks.md"), "say hi now\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="marks.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="marks.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="marks.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="marks.md"]').click()`);
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	await app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: 4, head: 6 } })`);
 	await app.press("b", { meta: true });
@@ -1170,7 +1170,7 @@ check("⌘B and ⌘I put a mark around the chosen words and take it off again", 
 });
 
 check("a < in prose offers no HTML tags", async ({ app }) => {
-	await app.evaluate(`document.querySelector('#notes button[title="ideas/second.md"]').click()`);
+	await app.evaluate(`document.querySelector('#notes button[data-path="ideas/second.md"]').click()`);
 	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
 	await app.press("End", { meta: true });
 	await app.keys(" <di");
@@ -1183,7 +1183,7 @@ check("a < in prose offers no HTML tags", async ({ app }) => {
 
 check("⌘⇧F finds words in any note, and Enter opens the note they are in", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "far.md"), "# far\n\nsomewhere a Haystack-Needle sits\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="far.md"]')`));
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="far.md"]')`));
 	await app.press("f", { meta: true, shift: true });
 	await until("the palette", () => app.evaluate("document.activeElement?.dataset.slot === 'command-input'"));
 	await app.keys("haystack-needle");
@@ -1210,9 +1210,9 @@ check("⌘+click on a link to a heading or a block opens its note at that line",
 	const filler = Array.from({ length: 80 }, (_, i) => `filler ${i}`).join("\n\n");
 	writeFileSync(join(cwd, "long.md"), `# long\n\n${filler}\n\nthe block ^far-block\n\n${filler}\n\n## Far down\n\nend\n`);
 	writeFileSync(join(cwd, "jump.md"), "[[long#Far down]] and [[long#^far-block]]\n");
-	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="jump.md"]') && !!document.querySelector('#notes button[title="long.md"]')`));
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="jump.md"]') && !!document.querySelector('#notes button[data-path="long.md"]')`));
 	for (const [n, line] of [[0, "## Far down"], [1, "the block ^far-block"]]) {
-		await app.evaluate(`document.querySelector('#notes button[title="jump.md"]').click()`);
+		await app.evaluate(`document.querySelector('#notes button[data-path="jump.md"]').click()`);
 		await until("the links", async () => (await app.evaluate("location.hash")) === "#jump.md" && (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink').length")) === 2);
 		await app.click("#editor .cm-wikilink", n, { meta: true });
 		await until(`the cursor on "${line}"`, async () => (await app.evaluate("location.hash")) === "#long.md" && (await caretLine(app))?.text === line);
@@ -1223,8 +1223,8 @@ check("⌘+click on a link to a heading or a block opens its note at that line",
 check("⌘+click on a markdown link opens the note at its path, and a web address in a new window", async ({ app, cwd, api, devtools }) => {
 	const site = `http://127.0.0.1:${api}/?from=markdown-link`;
 	writeFileSync(join(cwd, "ideas", "plain.md"), `[up to jump](../jump.md)\n\n[the site](${site})\n`);
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[title="ideas/plain.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[title="ideas/plain.md"]').click()`);
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="ideas/plain.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="ideas/plain.md"]').click()`);
 	await until("the note", async () => (await app.evaluate("location.hash")) === "#ideas/plain.md" && (await editorStatus(app)) === "saved");
 	// A markdown link is drawn as `[`, the words, `](`, the address, `)`: the fourth is the address.
 	const address = (line) => `#editor .cm-line:nth-child(${line}) > span:nth-child(4)`;
