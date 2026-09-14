@@ -75,6 +75,9 @@ const MARKUP: Record<string, Set<string>> = {
 
 const touches = (ranges: readonly SelectionRange[], from: number, to: number) =>
 	ranges.some((r) => r.from <= to && r.to >= from);
+/** Whether any range reaches strictly inside `from`–`to`: an edge is not inside. */
+const inside = (ranges: readonly SelectionRange[], from: number, to: number) =>
+	ranges.some((r) => r.from < to && r.to > from);
 
 /**
  * Obsidian's callout: a quote whose first line opens with `[!type]`, and
@@ -104,6 +107,12 @@ function isCalloutMark(state: EditorState, link: SyntaxNodeRef): boolean {
  * mark of a node the selection does not touch. A heading's mark takes the
  * space after it too, so the words start where the `#` did. A wikilink with
  * an alias hides its target along with the brackets, leaving the alias.
+ *
+ * A link's URL is the one hidden thing long enough to wrap, so it shows only
+ * with the cursor inside the link, as Typora has it, not at its edges:
+ * touched in passing — the cursor moving down a line and landing beside it
+ * — a long URL would turn one row into three under the cursor. Inside is
+ * where the link is being edited, and there the rows are its own.
  */
 export function hidden(state: EditorState, from: number, to: number, ranges = state.selection.ranges): DecorationSet {
 	const builder = new RangeSetBuilder<Decoration>();
@@ -115,7 +124,7 @@ export function hidden(state: EditorState, from: number, to: number, ranges = st
 			const marks = MARKUP[node.name];
 			if (!marks) return;
 			if (node.name === "Link" && isCalloutMark(state, node)) return false;
-			if (touches(ranges, node.from, node.to)) return false;
+			if ((node.name === "Link" ? inside : touches)(ranges, node.from, node.to)) return false;
 			if (node.name === "Escape") {
 				builder.add(node.from, node.from + 1, hide);
 				return false;

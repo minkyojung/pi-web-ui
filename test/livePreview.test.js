@@ -50,6 +50,17 @@ test("마크다운 링크는 글만 남긴다", () => {
   assert.deepEqual(gone(state("[text](http://x.y)\n")), ["[", "]", "(", "http://x.y", ")"]);
 });
 
+test("링크는 커서가 안에 있을 때만 펼쳐지고, 가장자리에 닿은 것으로는 펼쳐지지 않는다", () => {
+  const doc = "a [text](http://x.y) b\n";
+  const marks = ["[", "]", "(", "http://x.y", ")"];
+  assert.deepEqual(gone(state(doc, 2)), marks, "just before the link: still folded, unlike a heading");
+  assert.deepEqual(gone(state(doc, 20)), marks, "just after it: still folded");
+  assert.deepEqual(gone(state(doc, 3)), [], "inside: shown");
+  assert.deepEqual(gone(state(doc, 19)), [], "inside, before the last mark: shown");
+  const across = EditorState.create({ doc, selection: EditorSelection.range(0, 5), extensions: [markdown({ base: markdownLanguage, extensions: [noteSyntax] })] });
+  assert.deepEqual(gone(across), [], "a selection reaching into it: shown");
+});
+
 test("위키링크는 괄호를 숨기고, 별칭이 있으면 대상도 숨긴다", () => {
   assert.deepEqual(gone(state("[[note]] [[note|shown]]\n")), ["[[", "]]", "[[", "note", "|", "]]"]);
 });
