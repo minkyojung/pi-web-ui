@@ -1,11 +1,12 @@
 # Kept out of package.json so it can say why it is the way it is.
 
-# Provisional: the app has no name yet. Changing it later moves where macOS
-# keeps the app's settings, which starts a user from scratch.
-# productName lives in package.json instead, because electron reads it from
-# there at runtime to decide that path — a dev run and the packaged app have to
-# agree on it.
-appId: local.pi-web-ui.app
+# The reverse of octave.run, and settled: this is what macOS, the signing
+# identity and the updater know the app by, and a change would make it a
+# different app to all three. The folder the app keeps its settings in is a
+# separate matter — Electron names that after productName, which lives in
+# package.json because electron reads it from there at runtime, and a dev run
+# and the packaged app have to agree on it.
+appId: run.octave.app
 
 directories:
   output: release
@@ -31,7 +32,10 @@ files:
 asar: false
 
 mac:
-  category: public.app-category.developer-tools
+  category: public.app-category.productivity
+  # Apple Silicon only. Everything the app leans on the machine for — the
+  # recursive fs.watch, the trash, the e2e's Chrome — has only ever been
+  # checked here, and an Intel build would be a promise nobody has tested.
   target: [dir]
   # Signing needs an Apple Developer identity this build does not have. Unsigned
   # runs, but a first open has to be right-click -> Open.

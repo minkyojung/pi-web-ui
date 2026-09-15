@@ -1,8 +1,8 @@
 {
-  "name": "khartoum",
-  "productName": "pi",
-  "version": "1.0.0",
-  "description": "A local web UI over the pi coding agent",
+  "name": "octave",
+  "productName": "Octave",
+  "version": "0.0.1",
+  "description": "A folder of notes, with the pi coding agent at the table",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,magenta \"tsx watch server.ts\" \"vite\"",
@@ -12,7 +12,7 @@
     "build": "npm run build:client && npm run build:server",
     "app": "npm run build && electron .",
     "app:dev": "DEV_URL=http://localhost:5173 electron .",
-    "pack": "npm run build && electron-builder --mac --dir",
+    "pack": "npm run build && electron-builder --mac --arm64 --dir",
     "test": "node --test",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
     "contrast": "node scripts/contrast.mjs",

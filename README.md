@@ -1,4 +1,4 @@
-# pi-web-ui
+# Octave
 
 A folder of notes, with a coding agent at the table.
 
@@ -45,10 +45,11 @@ it picks. It asks which folder to open on first run and remembers it — a
 packaged app is launched with a working directory of `/`, which is not somewhere
 to point a coding agent. `⌘O` changes it, which relaunches.
 
-The build is **not signed**; that needs an Apple Developer identity. It runs,
-but a first open has to be right-click → Open. `productName` and `appId` are
-provisional, and `appId` decides where macOS keeps the app's settings, so
-changing it later starts a user from scratch.
+The build is **not signed** yet; that needs an Apple Developer identity. It
+runs, but a first open has to be allowed from System Settings. The app is
+`Octave` to macOS and `run.octave.app` to the signing identity and the updater;
+neither changes again, since the first decides where macOS keeps the app's
+settings and the second what the updater thinks is the same app.
 
 Auth comes from `~/.pi/agent/auth.json` (`pi` → `/login`). Sessions are written
 to `~/.pi/agent/sessions/` and survive a restart. With no usable credentials at

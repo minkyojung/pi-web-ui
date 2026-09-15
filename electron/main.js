@@ -325,7 +325,7 @@ async function main() {
 		height: 820,
 		show: false,
 		// The agent acts on this folder, so it should never be a guess.
-		title: devUrl ? "pi — dev" : `pi — ${basename(workdirForTitle)}`,
+		title: devUrl ? "Octave — dev" : `Octave — ${basename(workdirForTitle)}`,
 		// The columns are the app. A title bar above them would be a fourth band
 		// of chrome saying what the folder menu already says, so it is dropped and
 		// the traffic lights are dropped onto the list's own header instead —

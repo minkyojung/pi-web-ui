@@ -21,7 +21,7 @@ test("물음은 브라우저로 나가고, 열린 물음 목록에 있으며, �
 	assert.equal(sent[0].type, "prompt_request");
 	const { id } = sent[0].prompt;
 	assert.ok(id, "an id was given");
-	assert.deepEqual(sent[0].prompt, { ...question, id, pipeline: "pi-web-ui" });
+	assert.deepEqual(sent[0].prompt, { ...question, id, pipeline: "octave" });
 	assert.deepEqual(prompts.open().map((p) => p.id), [id]);
 
 	prompts.answer(id, "b", false);

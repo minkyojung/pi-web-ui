@@ -11,7 +11,7 @@
  */
 import type { PromptRequest, ServerMsg } from "./protocol.ts";
 
-const SOURCE = "pi-web-ui";
+const SOURCE = "octave";
 
 /** How a question ended without an answer: the person closed it, or the session went. */
 export class Cancelled extends Error {
