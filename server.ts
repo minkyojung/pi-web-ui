@@ -32,6 +32,7 @@ import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
 import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, withCreated, writeNote, type WriteResult } from "./vault.ts";
 import { FileIndex } from "./fileIndex.ts";
+import { startLogging } from "./log.ts";
 import { deleteNote, shellTrash } from "./trash.ts";
 import { noteTools } from "./noteEdit.ts";
 import { decide, type Change, mapThrough, moveHistory, reconcile, record, replay, readHistory, trashLog, unreviewed } from "./history.ts";
@@ -61,6 +62,14 @@ import type {
 	SnapshotMsg,
 	UsageMsg,
 } from "./protocol.ts";
+
+/**
+ * What this process says, to a file as well as to the terminal — see log.ts.
+ * First, so that what follows is in it. What it cannot catch is a line printed
+ * while another module was being loaded, since those run before this body
+ * does; in practice that is pi's own extensions announcing themselves.
+ */
+const logFile = startLogging();
 
 const PORT = Number(process.env.PORT ?? 3000);
 /**
@@ -276,6 +285,7 @@ function config(): ConfigMsg {
 		sessionId: s.sessionId,
 		sessionName: s.sessionName ?? null,
 		folder: CWD,
+		log: logFile,
 	};
 }
 
@@ -1408,6 +1418,7 @@ server.listen(PORT, HOST, () => {
 	if (HOST !== "127.0.0.1") console.log(`listening on ${HOST} — anyone who can reach it controls this machine`);
 	console.log(`model: ${session().model?.id ?? "none"}  thinking: ${session().thinkingLevel}`);
 	console.log(`session: ${session().sessionFile ?? "(not persisted)"}`);
+	console.log(`log: ${logFile}`);
 });
 
 let shuttingDown = false;

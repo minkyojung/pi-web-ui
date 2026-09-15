@@ -1828,6 +1828,9 @@ async function main() {
 
 	const cwd = mkdtempSync(join(tmpdir(), "pi-e2e-"));
 	const profile = mkdtempSync(join(tmpdir(), "pi-e2e-chrome-"));
+	// Its own settings directory too, since the server writes a log into one and
+	// a test run has no business in the log the person's own app keeps.
+	const appDir = mkdtempSync(join(tmpdir(), "pi-e2e-app-"));
 	const sessionFile = branchedSession(cwd);
 	// Two notes and a file that is not one, for the sidebar to sort out.
 	mkdirSync(join(cwd, "ideas"));
@@ -1874,7 +1877,7 @@ async function main() {
 		// which is the same variable the server reads to listen on.
 		// The binaries, not npx: npx is a wrapper that outlives nothing and takes
 		// nothing with it, so a signal sent to it leaves the server running.
-		start("server", bin("tsx"), ["server.ts"], { WORKDIR: cwd, PORT: String(api) });
+		start("server", bin("tsx"), ["server.ts"], { WORKDIR: cwd, PORT: String(api), APP_DIR: appDir });
 		start("vite", bin("vite"), ["--port", String(web), "--strictPort"], { PORT: String(api) });
 		start("chrome", chrome, [
 			"--headless=new",
@@ -1949,7 +1952,7 @@ async function main() {
 		await Promise.all(children.map(stop));
 		// The session pi wrote lives beside the working folder, not inside it.
 		const sessionDir = sessionFile ? join(sessionFile, "..") : null;
-		for (const path of [cwd, profile, sessionDir]) {
+		for (const path of [cwd, profile, appDir, sessionDir]) {
 			if (!path) continue;
 			try {
 				rmSync(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });

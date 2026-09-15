@@ -181,6 +181,8 @@ export interface ConfigMsg {
 	sessionName: string | null;
 	/** The folder the agent reads and writes in, in full. See CWD in server.ts. */
 	folder: string;
+	/** Where this server writes down what it says, so that a person can go and read it. See log.ts. */
+	log: string;
 }
 
 export interface UsageMsg {

@@ -39,16 +39,20 @@ const until = async (what, get, ms = 15000) => {
   }
 };
 
-let cwd, server, port, log = "", skip = false;
+let cwd, appDir, server, port, log = "", skip = false;
 let ws, inbox;
 
 test.before(async () => {
   cwd = mkdtempSync(join(tmpdir(), "server-test-"));
   writeFileSync(join(cwd, "a.md"), "# a\n\nfirst\n");
   port = await freePort();
+  // Its own settings directory, as it has its own folder and its own port: the
+  // server writes a log there now, and a test run has no business in the log
+  // the person's own app keeps.
+  appDir = mkdtempSync(join(tmpdir(), "server-test-app-"));
   server = spawn(join(root, "node_modules/.bin/tsx"), ["server.ts"], {
     cwd: root,
-    env: { ...process.env, WORKDIR: cwd, PORT: String(port) },
+    env: { ...process.env, WORKDIR: cwd, PORT: String(port), APP_DIR: appDir },
     stdio: ["ignore", "pipe", "pipe"],
   });
   server.stdout.on("data", (d) => (log += d));
@@ -75,6 +79,7 @@ test.after(async () => {
     await new Promise((r) => { const t = setTimeout(() => { server.kill("SIGKILL"); r(); }, 5000); server.once("exit", () => { clearTimeout(t); r(); }); });
   }
   if (cwd) rmSync(cwd, { recursive: true, force: true });
+  if (appDir) rmSync(appDir, { recursive: true, force: true });
 });
 
 const send = (m) => ws.send(JSON.stringify(m));
@@ -128,6 +133,19 @@ it("읽은 버전 위에 저장하면 그 변경이 내 것으로 모든 탭에 
   assert.equal(changed.changes[0].author, "me");
   assert.equal(readFileSync(join(cwd, "a.md"), "utf8"), "# a\n\nfirst, then mine\n");
   assert.equal(changed.original, undefined, "내 저장은 결정할 것을 만들지 않는다");
+});
+
+it("서버가 한 말은 파일에도 남고, 탭은 그 파일이 어디인지 듣는다", async () => {
+  // 붙는 탭마다 듣는 것이므로, 이 파일의 inbox를 건드리지 않고 새 탭 하나로 묻는다.
+  const second = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  const heard = [];
+  second.onmessage = (e) => heard.push(JSON.parse(e.data));
+  const config = await until("config", () => heard.find((m) => m.type === "config"));
+  second.close();
+  assert.equal(config.log, join(appDir, "logs", "server.log"), "탭이 들은 자리");
+  const written = readFileSync(config.log, "utf8");
+  assert.match(written, /open http:\/\/localhost/, "터미널에 한 말이 그대로");
+  assert.match(written.split("\n")[0], /^\d{4}-\d\d-\d\dT[\d:.]+Z /, "줄마다 언제인지가 앞에");
 });
 
 it("글자만 바뀐 저장은 목록을 다시 보내지 않는다 — 그러려고 폴더를 다시 읽지도 않는다", async () => {
