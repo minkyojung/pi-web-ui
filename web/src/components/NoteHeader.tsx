@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { ChevronRight, MoreHorizontal } from "lucide-react";
 
-import { titleOf } from "../noteSync";
+import { titleOf, wholePath } from "../noteSync";
 import { configStore } from "../serverState";
 import { foldersOf, openFoldersStore, setOpenFolders } from "../tree";
 import { getConnection, subscribe } from "../store";
@@ -49,8 +49,9 @@ function show(folder: string) {
 
 function NoteMenu({ path }: { path: string }) {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
-	const folder = useSyncExternalStore(configStore.subscribe, configStore.get)?.folder;
-	const whole = folder ? `${folder.replace(/\/$/, "")}/${path}` : path;
+	// Read where it is used rather than subscribed to: the folder is wanted at
+	// the moment of a press and never drawn, so nothing here has to redraw for it.
+	const whole = () => wholePath(configStore.get()?.folder, path);
 	return (
 		<DropdownMenu>
 			<Tooltip>
@@ -77,8 +78,8 @@ function NoteMenu({ path }: { path: string }) {
 				>
 					Rename
 				</DropdownMenuItem>
-				<DropdownMenuItem onSelect={() => void navigator.clipboard?.writeText(whole)}>Copy path</DropdownMenuItem>
-				{shell && <DropdownMenuItem onSelect={() => void shell.reveal(whole)}>Reveal in Finder</DropdownMenuItem>}
+				<DropdownMenuItem onSelect={() => void navigator.clipboard?.writeText(whole())}>Copy path</DropdownMenuItem>
+				{shell && <DropdownMenuItem onSelect={() => void shell.reveal(whole())}>Reveal in Finder</DropdownMenuItem>}
 				<DropdownMenuSeparator />
 				{/* To the trash, not gone: the column offers Restore afterwards, so
 				    there is nothing to confirm here. */}

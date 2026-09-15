@@ -57,6 +57,17 @@ export function noteFromHash(hash: string): string | null {
 
 export const hashForNote = (path: string) => `#${encodeURIComponent(path).replace(/%2F/g, "/")}`;
 
+/**
+ * A note's path from the root of the disk, which is what "copy path" means
+ * anywhere it is pasted: a path relative to a folder the other end has never
+ * heard of is not one. The folder is the server's (ConfigMsg.folder) and comes
+ * over the socket, so a browser tab can build this as well as the app can.
+ *
+ * Two menus offer it — the tab's and the note header's — and they used to
+ * answer differently, one whole and one relative. One name, one answer.
+ */
+export const wholePath = (folder: string | undefined, path: string) => (folder ? `${folder.replace(/\/$/, "")}/${path}` : path);
+
 /** The text after the server's changes, applied in order. */
 export function applyChanges(text: string, changes: Change[]): string {
 	for (const c of changes) text = text.slice(0, c.from) + c.inserted + text.slice(c.to);

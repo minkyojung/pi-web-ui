@@ -5,7 +5,8 @@ import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dn
 import { CSS } from "@dnd-kit/utilities";
 import { ChevronDown, Plus, X } from "lucide-react";
 
-import { titleOf } from "../noteSync";
+import { titleOf, wholePath } from "../noteSync";
+import { configStore } from "../serverState";
 import { others, toTheRight } from "../tabs";
 import { Button } from "./ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "./ui/context-menu";
@@ -233,7 +234,7 @@ function NoteTab({
 				</ContextMenuItem>
 				<ContextMenuItem onSelect={() => onCloseMany([path, ...others])}>Close All</ContextMenuItem>
 				<ContextMenuSeparator />
-				<ContextMenuItem onSelect={() => void navigator.clipboard.writeText(path)}>Copy Path</ContextMenuItem>
+				<ContextMenuItem onSelect={() => void navigator.clipboard.writeText(wholePath(configStore.get()?.folder, path))}>Copy Path</ContextMenuItem>
 			</ContextMenuContent>
 		</ContextMenu>
 	);
