@@ -11,7 +11,8 @@
  * the two writers are one person and one agent that works in turns, so this
  * is rare, and rare things are better seen than smoothed over.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync } from "node:fs";
+import { writeAtomic } from "./atomic.ts";
 import { propertiesOf, setProperty, withProperties } from "./properties.ts";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
@@ -177,10 +178,7 @@ export function writeNote(root: string, path: string, text: string, base: number
 	if (current !== base) {
 		return current === null ? { ok: false, reason: "missing" } : { ok: false, reason: "conflict", modified: current };
 	}
-	mkdirSync(dirname(full), { recursive: true });
-	const tmp = `${full}.${process.pid}.tmp`;
-	writeFileSync(tmp, text);
-	renameSync(tmp, full);
+	writeAtomic(full, text);
 	return { ok: true, modified: statSync(full).mtimeMs };
 }
 

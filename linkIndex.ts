@@ -8,8 +8,9 @@
  * server after every write it hears of — its own, pi's, the watcher's —
  * and moved with a rename, dropped with a delete.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { writeAtomic } from "./atomic.ts";
 import { backlinksOf, type Link, type LinkIndex, LINKS_VERSION, linksIn, resolve, tagsIn } from "./links.ts";
 import { listNotes, readNote } from "./vault.ts";
 
@@ -66,9 +67,7 @@ export class LinkStore {
 	}
 
 	private save(): void {
-		const file = join(this.root, LINKS_PATH);
-		mkdirSync(dirname(file), { recursive: true });
-		writeFileSync(file, JSON.stringify({ version: LINKS_VERSION, notes: this.index, tags: this.tags } satisfies Sidecar));
+		writeAtomic(join(this.root, LINKS_PATH), JSON.stringify({ version: LINKS_VERSION, notes: this.index, tags: this.tags } satisfies Sidecar));
 	}
 
 	paths(): string[] {

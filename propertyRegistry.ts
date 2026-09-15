@@ -7,8 +7,9 @@
  * the rest. Read once at startup and written whole on every change; it is
  * small, and nothing else writes it. Unreadable is the same as absent.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { writeAtomic } from "./atomic.ts";
 import { coerceRegistry, isReserved, keyOf, type PropertyType, type Registry } from "./propertyTypes.ts";
 
 export const REGISTRY_PATH = ".pi/properties.json";
@@ -44,8 +45,7 @@ export class PropertyRegistry {
 		if (!key || isReserved(key)) return false;
 		if (type === null) delete this.types[key];
 		else this.types[key] = type;
-		mkdirSync(dirname(this.file), { recursive: true });
-		writeFileSync(this.file, JSON.stringify({ types: this.types }, null, 2) + "\n");
+		writeAtomic(this.file, JSON.stringify({ types: this.types }, null, 2) + "\n");
 		return true;
 	}
 }

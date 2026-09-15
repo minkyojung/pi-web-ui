@@ -10,9 +10,10 @@
  * Read on every use rather than held: a mode changed in the dialog should
  * apply to the next session, not the next restart.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { writeAtomic } from "./atomic.ts";
 import { LOADOUT_SLOTS } from "./models.ts";
 import { DEFAULT_MODE, MODE_IDS, type ToolModeId } from "./toolModes.ts";
 
@@ -76,7 +77,6 @@ export function readSettings(): Settings {
 /** Writes what it read back, so the caller shows the same value the next session will use. */
 export function writeSettings(next: unknown): Settings {
 	const settings = coerce(next);
-	mkdirSync(APP_DIR, { recursive: true });
-	writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n");
+	writeAtomic(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n");
 	return settings;
 }
