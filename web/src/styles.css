@@ -88,13 +88,27 @@
   --selection-foreground: currentColor;
 }
 
+/*
+ * Three surfaces, darkest first: the frame the window is built on, the page of
+ * content laid on it, and whatever is raised off that page again. The order is
+ * the point. A frame *below* its content is what lets the edge between them be
+ * a shared border rather than a drawn line — which is the whole of how Linear
+ * divides a window, and how shadcn's own inset variant is built, its wrapper
+ * taking bg-sidebar and the content bg-background.
+ *
+ * It is also the one thing shadcn's defaults do not settle: they put --sidebar
+ * above --background here and below it in the light theme, because --sidebar is
+ * a second knob rather than an elevation. Read off Linear, which holds 0.027
+ * between its frame and its content and 0.052 between the content and the
+ * hairline round it.
+ */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --background: oklch(0.145 0 0);
+  --background: oklch(0.187 0 0);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
+  --card: oklch(0.215 0 0);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
+  --popover: oklch(0.215 0 0);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
@@ -105,7 +119,10 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
+  /* A rim on a raised surface, not a line drawn between two flat ones: at 5%
+     it lands 0.052 over the page, where Linear draws its own. Ten was twice
+     that. --input keeps its own, being an edge you are meant to aim at. */
+  --border: oklch(1 0 0 / 5%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
   --chart-1: oklch(0.87 0 0);
@@ -113,13 +130,14 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
+  --sidebar: oklch(0.160 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
+  /* The frame went down; what sits on the frame keeps its distance from it. */
+  --sidebar-accent: oklch(0.224 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-border: oklch(1 0 0 / 5%);
   --sidebar-ring: oklch(0.556 0 0);
 }
 
@@ -199,19 +217,21 @@
    where something has to be pressed. Two of the three greys the app draws with
    are the same colour to a rounding — #1E1D1B and #1E1D1C sit at the same
    lightness and 0.002 apart in chroma — so this is two surfaces, not three:
-   #171615 is the window, #1E1D1B is whatever sits on it. Both are flatter
-   against each other than the neutral dark's pair, which is the look; only the
-   rung above them is derived, at the step the neutral dark keeps there, so a
-   hover does not vanish into the card it is on. */
+   #171615 is the window and #1E1D1B is the page of content lying on it, in
+   that order, which is the order the neutral dark keeps and the one an inset
+   layout needs. Both are flatter against each other than the neutral dark's
+   pair, which is the look; the rungs above them are derived, at the step the
+   neutral dark keeps there, so a card does not vanish into the page it is on
+   and a hover does not vanish into the card. */
 :root[data-theme="perplexity-dark"] {
   color-scheme: dark;
   /* #171615 and #1E1D1B. Chroma this low is a warmth, not a colour — which is
      why the hue reads as 68 on one and 85 on the other and neither is seen. */
-  --background: oklch(0.201 0.003 68);
+  --background: oklch(0.231 0.004 85);
   --foreground: oklch(0.984 0.008 99);
-  --card: oklch(0.231 0.004 85);
+  --card: oklch(0.259 0.004 85);
   --card-foreground: oklch(0.984 0.008 99);
-  --popover: oklch(0.231 0.004 85);
+  --popover: oklch(0.259 0.004 85);
   --popover-foreground: oklch(0.984 0.008 99);
   /* Turquoise 300, not True Turquoise: on a page this dark it is the rung that
      carries the page back as its own text, which is how the neutral dark
@@ -237,7 +257,7 @@
   /* The paper at the neutral dark's own alphas, where it used to be turquoise:
      a hairline is the last place to spend a brand colour, and every panel edge
      in the window is one. */
-  --border: oklch(0.984 0.008 99 / 10%);
+  --border: oklch(0.984 0.008 99 / 5%);
   --input: oklch(0.984 0.008 99 / 15%);
   /* True Turquoise, which the base layer draws at half alpha: over this window
      that composites to 1.87 against it, the same as the neutral dark's grey
@@ -249,13 +269,13 @@
   --chart-3: oklch(0.553 0.086 209);
   --chart-4: oklch(0.477 0.073 208);
   --chart-5: oklch(0.393 0.061 206);
-  --sidebar: oklch(0.231 0.004 85);
+  --sidebar: oklch(0.201 0.003 68);
   --sidebar-foreground: oklch(0.984 0.008 99);
   --sidebar-primary: oklch(0.733 0.113 203);
   --sidebar-primary-foreground: oklch(0.201 0.003 68);
-  --sidebar-accent: oklch(0.288 0.004 85);
+  --sidebar-accent: oklch(0.258 0.004 85);
   --sidebar-accent-foreground: oklch(0.984 0.008 99);
-  --sidebar-border: oklch(0.984 0.008 99 / 10%);
+  --sidebar-border: oklch(0.984 0.008 99 / 5%);
   --sidebar-ring: oklch(0.553 0.086 209);
   /* The same as the light pair, the other way up: True Turquoise at a quarter
      is all this window needs to read as marked, and the words go to Turquoise
