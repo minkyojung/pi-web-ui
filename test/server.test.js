@@ -422,11 +422,18 @@ it("고른 부분을 물으면 답이 그 아래에 pi의 글로 들어오고, �
   send({ type: "save_note", path: "ask.md", text: note.text.replace("머리말", "머리말을 더 길게 고쳐 썼다"), base: note.modified });
   await want("note_changed", (m) => m.path === "ask.md" && m.changes.some((c) => c.author === "me"));
   const done = await want("ask_done", (m) => m.id === 7, 180_000);
-  // A model that would not answer — no quota, no network — is about the
-  // machine, like the credentials this whole file skips on.
+  // A model that would not answer is about the machine, like the credentials
+  // this whole file skips on — and it does not answer in one shape but two.
+  // A provider that refuses the call sends a message back that stopped on an
+  // error; a machine with no key for the model never gets that far, and what
+  // the tab is told instead is the server's own error. The second shape is
+  // what a runner with no ~/.pi/agent/auth.json produces, and asserting
+  // through it made the light red for the machine rather than for the code.
   const refused = inbox.find((m) => m.type === "message_end" && m.message?.stopReason === "error");
-  if (done.outcome !== "written" && refused) {
-    t.diagnostic(`모델이 답하지 못했다 — ${String(refused.message.errorMessage).slice(0, 160)}`);
+  const unanswerable = refused ?? inbox.find((m) => m.type === "error");
+  if (done.outcome !== "written" && unanswerable) {
+    const why = refused ? String(refused.message.errorMessage) : String(unanswerable.message);
+    t.diagnostic(`모델이 답하지 못했다 — ${why.slice(0, 160)}`);
     return t.skip("이 기계의 모델이 답하지 못했다");
   }
   assert.equal(done.outcome, "written");
