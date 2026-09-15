@@ -246,6 +246,12 @@ function serveFolders() {
 	});
 	ipcMain.handle("folder:choose", changeWorkdir);
 	ipcMain.handle("folder:open", (_event, path) => openWorkdir(path));
+	// A note in the Finder. The page is told the folder in full by the server
+	// (ConfigMsg.folder) and joins the note's path onto it, which is a better
+	// source than this process has: in a dev run the settings hold no workdir
+	// at all. showItemInFolder on a path that is not there does nothing, which
+	// is the right amount of fuss for a file that was just deleted.
+	ipcMain.handle("file:reveal", (_event, path) => shell.showItemInFolder(path));
 }
 
 function buildMenu(workdir) {

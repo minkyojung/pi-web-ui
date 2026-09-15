@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { ChevronRight, MoreHorizontal } from "lucide-react";
 
 import { titleOf } from "../noteSync";
+import { configStore } from "../serverState";
 import { foldersOf, openFoldersStore, setOpenFolders } from "../tree";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
@@ -22,11 +23,19 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  * only sends you to it, for the same reason a menu carries Rename in a file
  * list where double-clicking the name also works.
  *
- * The path is the one this app means everywhere else — what a row carries in
- * data-path, what open_note is told, what the link index is keyed on. The
- * window does not know what folder the vault is in, and a path that guessed
- * would be worse than one that is honest about being relative.
+ * The path is the whole one. The server says which folder it works in, in
+ * full, and says it over the socket rather than through the shell — so a
+ * browser tab is told as much as the app is, and the note's own path only has
+ * to be joined onto it. A path to paste somewhere else is not much use
+ * relative to a folder the somewhere else has never heard of.
+ *
+ * The Finder is the shell's to open and is not there in a tab, so that item
+ * goes rather than sitting greyed: the same way the folder picker draws a
+ * name and no menu when it is running without a shell.
  */
+
+/** The preload's bridge, absent in a browser tab. */
+const shell = (window as { pi?: { reveal(path: string): Promise<void> } }).pi;
 /** Open a folder in the sidebar and bring it into view, without closing anything. */
 function show(folder: string) {
 	const open = openFoldersStore.get();
@@ -40,6 +49,8 @@ function show(folder: string) {
 
 function NoteMenu({ path }: { path: string }) {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
+	const folder = useSyncExternalStore(configStore.subscribe, configStore.get)?.folder;
+	const whole = folder ? `${folder.replace(/\/$/, "")}/${path}` : path;
 	return (
 		<DropdownMenu>
 			<Tooltip>
@@ -66,7 +77,8 @@ function NoteMenu({ path }: { path: string }) {
 				>
 					Rename
 				</DropdownMenuItem>
-				<DropdownMenuItem onSelect={() => void navigator.clipboard?.writeText(path)}>Copy path</DropdownMenuItem>
+				<DropdownMenuItem onSelect={() => void navigator.clipboard?.writeText(whole)}>Copy path</DropdownMenuItem>
+				{shell && <DropdownMenuItem onSelect={() => void shell.reveal(whole)}>Reveal in Finder</DropdownMenuItem>}
 				<DropdownMenuSeparator />
 				{/* To the trash, not gone: the column offers Restore afterwards, so
 				    there is nothing to confirm here. */}

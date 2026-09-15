@@ -18,4 +18,6 @@ contextBridge.exposeInMainWorld("pi", {
 	choose: () => ipcRenderer.invoke("folder:choose"),
 	/** Open one already known. */
 	open: (path) => ipcRenderer.invoke("folder:open", path),
+	/** Show a file in the Finder. Takes the whole path; the page knows it. */
+	reveal: (path) => ipcRenderer.invoke("file:reveal", path),
 });
