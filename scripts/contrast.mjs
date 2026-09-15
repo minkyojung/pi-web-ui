@@ -128,7 +128,7 @@ const flat = (vars, name, under) => {
 const TEXT = [
 	["--foreground", "--background", "note and page"],
 	["--foreground", "--card", "loadout row, prompt card"],
-	["--foreground", "--popover", "menu, dialog, dock window"],
+	["--foreground", "--popover", "menu, dialog"],
 	["--foreground", "--muted", "editor conflict banner"],
 	["--foreground", "--accent", "hovered row"],
 	["--foreground", "--secondary", "secondary button"],

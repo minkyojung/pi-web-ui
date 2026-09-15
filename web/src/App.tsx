@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { type PanelImperativeHandle, useDefaultLayout } from "react-resizable-panels";
 
 import { Editor } from "./components/Editor";
-import { DockBar, DockWindow } from "./components/Dock";
 import { Pi } from "./components/Pi";
 import { PiToggle } from "./components/PanelHeader";
 import { Sidebar, Steps } from "./components/Sidebar";
@@ -15,7 +14,6 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import type { Place } from "../../links.ts";
 import { hashForNote, noteFromHash } from "./noteSync";
 import { NoteTabs } from "./components/NoteTabs";
-import { layoutStore, shown } from "./piLayout";
 import { bump, forget, readRecent, writeRecent } from "./recent";
 import { back as stepBack, canBack, canForward, forget as forgetStep, forward as stepForward, go, here, type Left, type Nav, read as readNav, remember, replace, write as writeNav } from "./nav";
 import { type Closed, add as addTab, close as closeTabIn, move, neighbour, readTabs, reopen, writeTabs } from "./tabs";
@@ -200,31 +198,13 @@ export function App() {
 	// collapses by drag, by key and by button alike — and reports through
 	// onResize, so the toggle that brings it back can be drawn where it is not.
 	const [piOpen, setPiOpen] = useState(true);
-	// Where pi sits — a setting, see piLayout.ts. In the dock there is no
-	// third column, and the window's own flag is the truth of whether pi is
-	// shown; it opens on arrival, since moving pi somewhere is asking to see
-	// it there. The column needs nothing: a panel is made open.
-	const layout = useSyncExternalStore(layoutStore.subscribe, layoutStore.get);
-	const [dockOpen, setDockOpen] = useState(true);
-	useEffect(() => {
-		if (layout === "dock") setDockOpen((open) => shown(open, "arrive"));
-	}, [layout]);
 	// The columns' widths, and whether pi is folded away, outlive the window:
 	// the shadcn sidebar keeps its open state in a cookie for the same reason.
-	// Two columns and three are two layouts, kept apart by the panels they hold.
-	const columns = useDefaultLayout({
-		id: "columns",
-		storage: localStorage,
-		panelIds: layout === "dock" ? ["sidebar", "main"] : ["sidebar", "main", "pi"],
-	});
+	const columns = useDefaultLayout({ id: "columns", storage: localStorage, panelIds: ["sidebar", "main", "pi"] });
 	const togglePi = useCallback(() => {
-		if (layout === "dock") {
-			setDockOpen((open) => shown(open, "toggle"));
-			return;
-		}
 		const panel = pi.current;
 		if (panel) panel.isCollapsed() ? panel.expand() : panel.collapse();
-	}, [layout]);
+	}, []);
 
 	// Which notes were opened, newest first, for the quick-open list. Follows
 	// a rename and drops a delete, so it never names a note that is not there.
@@ -414,7 +394,7 @@ export function App() {
 					onReorder={(from, to) => setTabs((list) => move(list, from, to))}
 					onNew={online ? () => send({ type: "new_note" }) : undefined}
 				/>
-				<PiToggle open={layout === "dock" ? dockOpen : piOpen} onToggle={togglePi} />
+				<PiToggle open={piOpen} onToggle={togglePi} />
 			</div>
 			<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1" defaultLayout={columns.defaultLayout} onLayoutChanged={columns.onLayoutChanged}>
 				<ResizablePanel id="sidebar" defaultSize="22%" minSize="16%" className="min-w-0">
@@ -475,38 +455,22 @@ export function App() {
 						</div>
 					)}
 				</ResizablePanel>
-				{layout === "column" && (
-					<>
-						<ResizableHandle />
-						<ResizablePanel
-							id="pi"
-							panelRef={pi}
-							defaultSize="30%"
-							minSize="20%"
-							collapsible
-							collapsedSize="0%"
-							className="flex min-w-0 flex-col m-2 ml-0 rounded-xl border bg-background shadow-sm overflow-hidden"
-							onResize={() => setPiOpen(!pi.current?.isCollapsed())}
-						>
-							<Boundary name="conversation">
-								<Pi note={open} raw={raw} />
-							</Boundary>
-						</ResizablePanel>
-					</>
-				)}
+				<ResizableHandle />
+				<ResizablePanel
+					id="pi"
+					panelRef={pi}
+					defaultSize="30%"
+					minSize="20%"
+					collapsible
+					collapsedSize="0%"
+					className="flex min-w-0 flex-col m-2 ml-0 rounded-xl border bg-background shadow-sm overflow-hidden"
+					onResize={() => setPiOpen(!pi.current?.isCollapsed())}
+				>
+					<Boundary name="conversation">
+						<Pi note={open} raw={raw} />
+					</Boundary>
+				</ResizablePanel>
 			</ResizablePanelGroup>
-			{layout === "dock" && (
-				<>
-					<DockBar onPick={() => setDockOpen((open) => shown(open, "pick"))} />
-					{dockOpen && (
-						<DockWindow>
-							<Boundary name="conversation">
-								<Pi note={open} raw={raw} />
-							</Boundary>
-						</DockWindow>
-					)}
-				</>
-			)}
 			</div>
 		</TooltipProvider>
 	);

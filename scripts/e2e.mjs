@@ -1800,51 +1800,6 @@ check("the conversation is named from the pencil in its header, and emptying the
 	await until("the name to come off", async () => (await shown()) === first);
 });
 
-check("chosen in Settings, pi is a row of sessions and a window over the corner, and what is typed survives the window going", async ({ app }) => {
-	const column = () => app.evaluate("!!document.querySelector('[data-slot=resizable-panel][id=pi], #pi')");
-	const window_ = () => app.evaluate("!!document.getElementById('dockWindow')");
-	const pressed = () => app.evaluate("document.getElementById('togglePi')?.getAttribute('aria-pressed')");
-	assert.equal(await app.evaluate("!!document.getElementById('settings')"), true, "pi in its column");
-	assert.equal(await app.evaluate("!!document.getElementById('dock')"), false, "no row under the columns");
-
-	// Chosen in Settings, under Appearance, and drawn as it is chosen.
-	await app.click("button[aria-label=Settings]");
-	await until("the setting", () => app.evaluate("!!document.getElementById('piLayout-dock')"));
-	await app.click("#piLayout-dock");
-	await app.press("Escape");
-	await until("the row and the window", async () => (await app.evaluate("!!document.getElementById('dock')")) && (await window_()));
-	// And kept: the same window, opened again, is in the dock.
-	await app.evaluate("location.reload()");
-	await until("the dock after a reload", async () => (await app.evaluate("!!document.getElementById('dock')")) && (await window_()));
-	assert.equal(await column(), false, "no third column");
-	assert.ok(await app.evaluate("!!document.querySelector('#dockWindow #settings')"), "pi's header is in the window");
-	assert.ok((await app.evaluate("document.querySelectorAll('#dock [role=tab]').length")) >= 1, "the row has the session");
-	assert.equal(await app.evaluate("document.querySelector('#dock [role=tab][data-state=active]')?.textContent"), await app.evaluate("document.getElementById('sessionTitle').textContent"), "the active tab is the session in the window");
-
-	// Typed, then the window is put away and brought back: the window is made
-	// again, and the box in it has what was typed — see draft.ts.
-	await app.click("#dockWindow textarea");
-	await app.keys("kept across");
-	await app.click("#togglePi");
-	await until("the window gone", async () => !(await window_()));
-	assert.equal(await pressed(), "false");
-	await app.click("#togglePi");
-	await until("the window back", window_);
-	assert.equal(await app.evaluate("document.querySelector('#dockWindow textarea').value"), "kept across");
-
-	// A tab on the row opens the window too.
-	await app.click("#togglePi");
-	await until("the window gone again", async () => !(await window_()));
-	await app.click("#dock [role=tab]");
-	await until("the window back from the row", window_);
-
-	await app.click("button[aria-label=Settings]");
-	await until("the setting again", () => app.evaluate("!!document.getElementById('piLayout-column')"));
-	await app.click("#piLayout-column");
-	await app.press("Escape");
-	await until("the column back", () => app.evaluate("!!document.getElementById('settings') && !document.getElementById('dock')"));
-});
-
 check("the bench renders every scenario it knows", async ({ bench }) => {
 	// The list is drawn only while the picker is open, and each entry carries
 	// its id: what is read is the scenario's name, and the name is not the id.
