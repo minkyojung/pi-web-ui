@@ -1931,7 +1931,12 @@ async function main() {
 			"about:blank",
 		]);
 
-		await until("the api server", () => fetch(`http://localhost:${api}/`).then((r) => r.ok));
+		// Answering at all, not answering 200. The page comes from vite below; the
+		// api server is here for its socket, and asking it for / asks whether the
+		// client has been built — which is nothing to do with whether it is up, and
+		// is false on a fresh checkout. That made this wait for thirty seconds and
+		// then blame the server on a runner that had simply never run the bundler.
+		await until("the api server", () => fetch(`http://localhost:${api}/`).then(() => true, () => false));
 		await until("the dev server", () => fetch(`http://localhost:${web}/`).then((r) => r.ok));
 		await until("the browser", () => fetch(`http://localhost:${devtools}/json/version`).then((r) => r.ok));
 
