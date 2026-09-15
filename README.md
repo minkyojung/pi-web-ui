@@ -490,34 +490,23 @@ Vite guide tells you to add one. And `npx ai-elements add` writes to
 be moved into `web/src` and its `@/lib/utils` import repointed at the `cn`
 package the shadcn components already use.
 
-## Questions from extensions
+## Questions from pi
 
-The dashboard extension installed on this machine replaces pi's dialog methods
-with its own PromptBus and sends every `ask_user` question to a dashboard app
-nobody here has open, where it waits out a five-minute timeout — and `abort()`
-waits with it. The same bridge exposes `prompt:register-adapter`, documented in
-its architecture notes and used by its sibling flows plugin, so `prompts.ts`
-registers this server as an answerer: each question is broadcast as
-`prompt_request`, rendered as a card under the waiting tool, and the first
-`prompt_response` from any tab goes back to the bus; every tab then gets
-`prompt_dismiss`. Stop, New and switching sessions cancel open questions first,
-which is what actually lets the abort through; `abortWithin` remains as the
-fallback for anything else that never returns.
+`ask_user` is Octave's own tool (`askUser.ts`): the same name and the same five
+kinds of question pi already knows how to ask, so nothing about pi changes.
+Each question goes out to every tab as `prompt_request`, is drawn as a card
+under the waiting tool, and the first `prompt_response` from any tab settles
+it; every tab then gets `prompt_dismiss` (`prompts.ts`). Nothing waits it out —
+the card stays until it is answered or closed, and Stop, New and switching
+sessions cancel open questions first, which is what lets the abort through.
 
-This leans on a third-party 0.x package's extension point, not on pi. If the hook
-stops answering, the server logs a warning at bind time and questions fall back
-to timing out as before.
-
-The same extension also refused to initialise after New or Resume: pi reloads
-extensions in-process when it replaces the session, and the bridge keeps its
-state on `process` and treats a second load as a subagent, so it registered no
-tools (13 became 8) and, because the state it carried held the previous session's
-context, threw inside its own `session_start`. Before each session is built the
-server retires the previous bridge the way its own initialiser would — cleanup,
-connections, timers — and removes that state, so the reload counts as a first
-load. Internal, undocumented state again; if the key moves this is a no-op and
-the bind-time warning fires. The dashboard server still autostarts unless
-`~/.pi/dashboard/config.json` sets `"autoStart": false`.
+It began as the dashboard extension's tool, reached over that extension's bus,
+and the bus cost a second on every new session and threw on the second load.
+That is the general case of a package installed into someone's own pi: it was
+installed for the terminal, it may not survive being restarted per session,
+and a tool that is there on one machine and not another cannot be documented.
+So the session is built with `noExtensions` — what `~/.pi/agent/settings.json`
+names is not loaded here, and the five inline extensions below are all there is.
 
 ## Events observed
 

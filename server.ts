@@ -187,11 +187,14 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 				// made further down, after this first session is.
 				{ name: "ask", factory: askUser(() => prompts.ask) },
 			],
-			// The dashboard packages in the person's pi are for its terminal
-			// and its own app. Here they cost a second on every new session —
-			// a registration with a gateway that answers slowly for a real
-			// folder — and the one tool of theirs this app needed is now above.
-			extensionsOverride: (loaded) => ({ ...loaded, extensions: loaded.extensions.filter((e) => !e.path.includes("dashboard")) }),
+			// Only the five above. The packages in the person's own pi were
+			// installed for its terminal, and one of them loaded here has cost a
+			// second on every new session, registered nothing, and thrown inside
+			// its own start; a session that fails to open then looks like
+			// Octave's fault, and a tool that appears in one install and not
+			// another is a tool nobody can be told about. So what pi loads from
+			// ~/.pi/agent is not loaded, and what Octave brings is all there is.
+			noExtensions: true,
 		},
 	});
 	return {

@@ -92,14 +92,15 @@ const it = (name, fn) => test(name, async (t) => {
   await fn(t);
 });
 
-it("묻는 도구는 우리 것이고, 대시보드의 것은 실리지 않는다", async () => {
+it("도구는 pi의 것과 우리 것뿐이고, 이 기계의 pi에 설치된 확장은 실리지 않는다", async () => {
   const config = await want("config");
   const names = config.tools.map((t) => t.name);
   assert.ok(names.includes("ask_user"), `ask_user among ${names.join(", ")}`);
-  // The dashboard's other tools would come with its extension; none is here.
-  assert.deepEqual(names.filter((n) => /canvas|role/.test(n)), []);
-  // Its module still prints where its gateway would be as it is read; what
-  // never happens is the session start that would register with it.
+  // pi's built-ins, and the four Octave brings. Whatever ~/.pi/agent/settings.json
+  // names — a dashboard, web access — stays in the terminal it was installed for,
+  // so the same tools are here on every machine.
+  const known = new Set(["read", "grep", "find", "ls", "edit", "write", "bash", "powershell", "note_edit", "note_write", "note_properties", "ask_user"]);
+  assert.deepEqual(names.filter((n) => !known.has(n)), [], `only known tools among ${names.join(", ")}`);
   assert.ok(!log.includes("sendFlowsList"), "the dashboard bridge never started");
   assert.ok(!log.includes("did not answer"), "nothing warned about a missing hook");
 });
