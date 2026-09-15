@@ -12,7 +12,10 @@ import { listNumbers } from "../web/src/features/listNumbers.ts";
 const at = (doc, cursor) => {
   const s = EditorState.create({ doc, selection: EditorSelection.cursor(cursor), extensions: [markdown({ base: markdownLanguage }), indentUnit.of("    "), listNumbers] });
   assert.ok(ensureSyntaxTree(s, s.doc.length, 5000), "parsed whole");
-  return s;
+  // And into the state, which an empty transaction is what takes it: a state holds the tree it was
+  // made with — 3,000 characters, 20ms — and ensureSyntaxTree hands its own back without replacing
+  // that one, so a helper reading the state's tree would read the partial one. See listTree.ts.
+  return s.update({}).state;
 };
 /** The doc and cursor after `command` — as they were, when it used the key up without a change — or null when it passed the key on. */
 const after = (command, state) => {

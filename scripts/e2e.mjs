@@ -806,15 +806,24 @@ check("an empty note says so, and a code block is drawn in a monospace", async (
 	await until("the placeholder", () => app.evaluate("document.querySelector('#editor .cm-placeholder')?.textContent === 'Write here'"));
 	assert.equal(await app.evaluate("document.querySelector('#editor .cm-content')?.getAttribute('aria-label')"), "Note");
 	await app.evaluate(`document.querySelector('#notes button[data-path="code.md"]').click()`);
-	// The cursor lands on "text": the block's fences are gone from the layout, and its one line of code sits in the box, the language in the corner.
-	await until("the code box, one line, fences gone", () => app.evaluate("document.querySelectorAll('#editor .cm-code .cm-line').length === 1 && document.querySelector('#editor .cm-code')?.dataset.lang === 'js'"));
-	assert.ok(!(await shownText(app)).includes("```"), "no fence drawn");
-	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-code'), '::before').content"), '"js"');
+	// The cursor lands on "text": the box holds the block's three lines — the code and both fences, which
+	// stay dimmed rather than going, since the fence names the language and a line that comes back under
+	// the cursor would move the page.
+	await until("the code box, its three lines, two of them fences", () =>
+		app.evaluate("document.querySelectorAll('#editor .cm-code .cm-line').length === 3 && document.querySelectorAll('#editor .cm-code .cm-code-fence').length === 2"),
+	);
+	assert.ok((await shownText(app)).includes("```js"), "the fence is drawn, cursor or not");
 	// "text", the blank under it, and the empty last line after the closing fence.
 	assert.equal(await app.evaluate("[...document.querySelectorAll('#editor .cm-line')].filter((l) => !l.classList.contains('cm-code-line')).length"), 3, "the prose lines are not");
-	// On a line of the block, both fences come back.
+	// Arriving on a line of the block changes nothing — the same lines, and the box the same height,
+	// which is the whole point of leaving the fences in.
+	const boxHeight = await app.evaluate("document.querySelector('#editor .cm-code').getBoundingClientRect().height");
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.line(4).from } }); })()`);
-	await until("the fences back", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-code .cm-line').length")) === 3 && (await shownText(app)).includes("```js"));
+	await until("the cursor on the block", () =>
+		app.evaluate("(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; return v.state.selection.main.head === v.state.doc.line(4).from; })()"),
+	);
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-code .cm-line').length"), 3, "the same three lines");
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-code').getBoundingClientRect().height"), boxHeight, "and the same height, so nothing moved under it");
 	await app.shot("code-box");
 });
 

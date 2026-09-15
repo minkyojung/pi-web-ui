@@ -106,7 +106,10 @@ const parsed = (doc, cursor) => {
   const s = state(doc, cursor);
   // The whole tree, or the test is not one: a partial parse under load would only look like a wrong answer.
   assert.ok(ensureSyntaxTree(s, s.doc.length, 5000), "parsed whole");
-  return s;
+  // And into the state, which an empty transaction is what takes it: a state holds the tree it was
+  // made with — 3,000 characters, 20ms — and ensureSyntaxTree hands its own back without replacing
+  // that one, so a helper reading the state's tree would read the partial one. See listTree.ts.
+  return s.update({}).state;
 };
 /** The block half's and the in-line half's decorations, as one sorted set, as the view shows them. */
 const both = (s, part) => {

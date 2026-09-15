@@ -11,7 +11,10 @@ const parsed = (doc) => {
   const s = EditorState.create({ doc, extensions: [markdown({ base: markdownLanguage })] });
   // The whole tree, or the test is not one: a partial parse under load would only look like a wrong answer.
   assert.ok(ensureSyntaxTree(s, s.doc.length, 5000), "parsed whole");
-  return s;
+  // And into the state, which an empty transaction is what takes it: a state holds the tree it was
+  // made with — 3,000 characters, 20ms — and ensureSyntaxTree hands its own back without replacing
+  // that one, so a helper reading the state's tree would read the partial one. See listTree.ts.
+  return s.update({}).state;
 };
 /** Each decoration as [line, style] for a line, [spaces, width] for the indent's box, or [prefix text] for the marker's box. */
 const drawn = (s, from = 0, to = s.doc.length) => {

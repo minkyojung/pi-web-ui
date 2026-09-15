@@ -1,0 +1,41 @@
+# The tests this repo already has, run by something other than a person
+# remembering to.
+#
+# It was written after the e2e suite sat red for a day and forty-four commits:
+# a check had been left asserting the old shape of a code block, and nothing
+# was watching. What is here is what runs anywhere without credentials.
+#
+# The e2e suite is not here yet, though it could be — it finds Chrome on Linux
+# and the server starts on a credentials file that names a provider, whether or
+# not the key is good, since no check sends a prompt. What holds it back is one
+# check of its own: a note coming back scrolled where it was read times out
+# under load. A job that goes red by chance teaches everyone to ignore the
+# light, which is worse than no light, so it waits until that check is steady.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # What the repo is developed on. `npm test` is node's own runner, so
+          # the version it runs under is the version the tests are written for.
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      # Two projects: the client's and the server's.
+      - run: npm run typecheck
+      # Node's built-in test runner, no dependencies. The tests that ask the
+      # file system about its own behaviour probe for it and skip where it
+      # differs, and server.test.js skips itself where there are no pi
+      # credentials — which is here.
+      - run: npm test
+      # That it still builds is its own answer: a bundler resolves imports a
+      # type check never looks at.
+      - run: npm run build
