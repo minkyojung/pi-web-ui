@@ -9,6 +9,7 @@ import { Sidebar, Steps } from "./components/Sidebar";
 import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
 import { Title } from "./components/Title";
+import { Boundary } from "./components/Boundary";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 import { TooltipProvider } from "./components/ui/tooltip";
 import type { Place } from "../../links.ts";
@@ -391,7 +392,9 @@ export function App() {
 			<div className="flex h-screen flex-col">
 			<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1" defaultLayout={columns.defaultLayout} onLayoutChanged={columns.onLayoutChanged}>
 				<ResizablePanel id="sidebar" defaultSize="22%" minSize="16%" className="min-w-0">
-					<Sidebar open={open} onOpen={setOpen} steps={<Steps back={back} forward={forward} canBack={canBack} canForward={canForward} />} />
+					<Boundary name="list of notes">
+						<Sidebar open={open} onOpen={setOpen} steps={<Steps back={back} forward={forward} canBack={canBack} canForward={canForward} />} />
+					</Boundary>
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col m-2 rounded-xl border bg-background shadow-sm overflow-hidden">
@@ -416,8 +419,13 @@ export function App() {
 					    below, so the last line can be brought up to where the eyes are. */}
 					{open && deleted?.path !== open ? (
 						<div id="note" className="no-scrollbar min-h-0 flex-1 overflow-y-auto pb-[40vh]">
-							<Title path={open} />
-							<Editor key={noteIdentity(open)} path={open} place={place} left={left} onLeave={onLeave} onOpen={setOpen} />
+							{/* Inside the scroller, not around it: #note is what the editor,
+							    the steps and the checks all look up, and it should be there
+							    whether or not what it holds could be drawn. */}
+							<Boundary name="note" hint="What you had typed was written to the file.">
+								<Title path={open} />
+								<Editor key={noteIdentity(open)} path={open} place={place} left={left} onLeave={onLeave} onOpen={setOpen} />
+							</Boundary>
 						</div>
 					) : (
 						<div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
@@ -459,7 +467,9 @@ export function App() {
 							className="flex min-w-0 flex-col m-2 ml-0 rounded-xl border bg-background shadow-sm overflow-hidden"
 							onResize={() => setPiOpen(!pi.current?.isCollapsed())}
 						>
-							<Pi note={open} raw={raw} />
+							<Boundary name="conversation">
+								<Pi note={open} raw={raw} />
+							</Boundary>
 						</ResizablePanel>
 					</>
 				)}
@@ -469,7 +479,9 @@ export function App() {
 					<DockBar onPick={() => setDockOpen((open) => shown(open, "pick"))} />
 					{dockOpen && (
 						<DockWindow>
-							<Pi note={open} raw={raw} />
+							<Boundary name="conversation">
+								<Pi note={open} raw={raw} />
+							</Boundary>
 						</DockWindow>
 					)}
 				</>
