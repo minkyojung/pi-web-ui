@@ -3,7 +3,7 @@ import { type PanelImperativeHandle, useDefaultLayout } from "react-resizable-pa
 
 import { Editor } from "./components/Editor";
 import { Pi } from "./components/Pi";
-import { PiToggle } from "./components/PanelHeader";
+import { PanelHeader, PiToggle } from "./components/PanelHeader";
 import { Sidebar, Steps } from "./components/Sidebar";
 import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
@@ -370,40 +370,51 @@ export function App() {
 			<QuickOpen open={picking} onOpenChange={setPicking} recent={recent} onPick={setOpen} />
 			<Search open={searching} onOpenChange={setSearching} onPick={setOpen} />
 			<div className="flex h-screen flex-col">
-			{/* The window's own row, across the whole of it, on the frame.
-			    Everything in it is true of the window rather than of anything
-			    under it: which note is open, where you have been, whether pi is
-			    showing — and the traffic lights, which macOS pins 16px down and
-			    so fix this row at h-11 and at the very top. That last is why the
-			    row is here and not inside a column: any arrangement that starts
-			    the top row lower has to move trafficLightPosition with it, and
-			    then there are two numbers to keep in step.
+			{/* Every column opens with a row of its own, h-11, drawn on the frame
+			    rather than inside the card below it. Three things fall out of
+			    that, and all three were wanted.
 
-			    No line under it. There is nothing to divide — the frame runs on
-			    below, and the note and pi are cards lying on it. Linear's window
-			    is built the same way; measured, its strip runs the full width
-			    and the sidebar beneath is one unbroken surface. */}
-			<div className="drag-region titlebar-inset flex h-11 shrink-0 items-center gap-0.5 px-2">
-				<Steps back={back} forward={forward} canBack={canBack} canForward={canForward} />
-				<NoteTabs
-					tabs={tabs}
-					open={open}
-					onOpen={setOpen}
-					onClose={closeTab}
-					onCloseMany={closeTabs}
-					onReorder={(from, to) => setTabs((list) => move(list, from, to))}
-					onNew={online ? () => send({ type: "new_note" }) : undefined}
-				/>
-				<PiToggle open={piOpen} onToggle={togglePi} />
-			</div>
+			    The row is laid out by the same engine that decides how wide the
+			    column is, so it cannot spill past it. A single row across the
+			    window could not know where the sidebar ends — the boundary is
+			    the panel group's to compute and the row was its sibling — so the
+			    note tabs were being drawn over the list of notes, by a distance
+			    that changed every time the sidebar was dragged.
+
+			    All three rows start at y=0, because they are above the cards
+			    rather than in them; it was the cards' 8px margin that had pushed
+			    two of the three down and out of line with the sidebar's. And the
+			    traffic lights keep the position macOS pins them at, 16px down,
+			    which is the middle of a 44px row beginning at the top.
+
+			    No lines. A row is frame and the card under it has a rim of its
+			    own, so there is nothing for one to divide. */}
 			<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1" defaultLayout={columns.defaultLayout} onLayoutChanged={columns.onLayoutChanged}>
-				<ResizablePanel id="sidebar" defaultSize="22%" minSize="16%" className="min-w-0">
+				<ResizablePanel id="sidebar" defaultSize="22%" minSize="16%" className="flex min-w-0 flex-col">
+					{/* The traffic lights sit in this one, which is why it holds the
+					    window's own controls and not the column's. */}
+					<div className="drag-region titlebar-inset flex h-11 shrink-0 items-center gap-0.5 px-2">
+						<Steps back={back} forward={forward} canBack={canBack} canForward={canForward} />
+					</div>
 					<Boundary name="list of notes">
 						<Sidebar open={open} onOpen={setOpen} />
 					</Boundary>
 				</ResizablePanel>
 				<ResizableHandle />
-				<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col m-2 rounded-xl border bg-background shadow-sm overflow-hidden">
+				<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
+					<div className="drag-region flex h-11 shrink-0 items-center gap-0.5 px-2">
+						<NoteTabs
+							tabs={tabs}
+							open={open}
+							onOpen={setOpen}
+							onClose={closeTab}
+							onCloseMany={closeTabs}
+							onReorder={(from, to) => setTabs((list) => move(list, from, to))}
+							onNew={online ? () => send({ type: "new_note" }) : undefined}
+						/>
+						<PiToggle open={piOpen} onToggle={togglePi} />
+					</div>
+					<div className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
@@ -454,6 +465,7 @@ export function App() {
 							)}
 						</div>
 					)}
+					</div>
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel
@@ -463,11 +475,14 @@ export function App() {
 					minSize="20%"
 					collapsible
 					collapsedSize="0%"
-					className="flex min-w-0 flex-col m-2 ml-0 rounded-xl border bg-background shadow-sm overflow-hidden"
+					className="flex min-w-0 flex-col"
 					onResize={() => setPiOpen(!pi.current?.isCollapsed())}
 				>
 					<Boundary name="conversation">
-						<Pi note={open} raw={raw} />
+						<PanelHeader />
+						<div className="mr-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
+							<Pi note={open} raw={raw} />
+						</div>
 					</Boundary>
 				</ResizablePanel>
 			</ResizablePanelGroup>
