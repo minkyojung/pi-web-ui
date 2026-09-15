@@ -179,7 +179,20 @@ async function openPage(devtoolsPort, url) {
 	 * selection changed, and an untrusted key event does not get there first.
 	 */
 	const click = async (selector, nth = 0, { meta = false, button = "left" } = {}) => {
-		const box = await evaluate(`(() => { const el = document.querySelectorAll(${JSON.stringify(selector)})[${nth}]; if (!el) return null; const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+		const where = () =>
+			evaluate(`(() => { const el = document.querySelectorAll(${JSON.stringify(selector)})[${nth}]; if (!el) return null; const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+		// Measured, then sent three round trips later, so a box that is still
+		// moving is a box the pointer misses — and it misses silently, since
+		// something else is under it and takes the press instead. Two readings
+		// that agree mean the layout has settled. On an idle machine the first
+		// two agree; on a loaded one this is the difference between a check
+		// that tests the app and a check that tests the weather.
+		let box = await where();
+		for (let i = 0; i < 20 && box; i++) {
+			const again = await where();
+			if (again && again[0] === box[0] && again[1] === box[1]) break;
+			box = again;
+		}
 		if (!box) return false;
 		const [x, y] = box;
 		const modifiers = meta ? 4 : 0;
@@ -1502,19 +1515,14 @@ check("the properties are rows above the note: a chip added, a property added an
 	assert.equal(readFileSync(join(cwd, "broken.md"), "utf8"), "---\ntags: [x\n---\nbody\n", "left exactly as it was");
 });
 
-check("the row's end lists every open tab with the front one marked, picks one, and makes a new note", async ({ app, cwd }) => {
+check("the + at the row's end makes a new note", async ({ app, cwd }) => {
+	// What used to be here as well — a menu at the row's end listing every open
+	// tab — went out with f40280d7, and this check went red and stayed red
+	// because it was not taken out with it. That is the second time a feature
+	// has been removed without its check; the first cost forty-four commits of
+	// a suite nobody could read. It is in CI now, which is the answer to it.
 	const row = () => app.evaluate("[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.path)");
 	const tabs = await row();
-	await app.click('[aria-label="Open tabs"]');
-	await until("the list", () => app.evaluate("!!document.querySelector('[role=menu]')"));
-	const listed = await app.evaluate("[...document.querySelectorAll('[role=menu] [role=menuitemradio]')].map((i) => i.title)");
-	assert.deepEqual(listed, tabs, "every open tab, in the row's order");
-	assert.equal(await app.evaluate("document.querySelector('[role=menu] [role=menuitemradio][data-state=checked]')?.title"), await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.dataset.path"), "the front one is marked");
-	// A note in a folder says its folder beside the name.
-	assert.ok(await app.evaluate(`document.querySelector('[role=menu] [role=menuitemradio][title="ideas/second.md"]')?.textContent.includes("ideas")`));
-	await app.evaluate(`document.querySelector('[role=menu] [role=menuitemradio][title=${JSON.stringify(tabs[0])}]').click()`);
-	await until("the first picked", () => app.evaluate(`document.querySelector('[role=tab][data-state=active]')?.dataset.path === ${JSON.stringify(tabs[0])}`));
-	assert.equal(await app.evaluate("!!document.querySelector('[role=menu]')"), false, "the list went with the choice");
 	// + is ⌘N for the mouse.
 	await app.click('[aria-label="New note"]');
 	await until("a new note in front", async () => (await editorStatus(app)) === "saved" && /Untitled/.test(await app.evaluate("location.hash")));
