@@ -9,6 +9,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 ### Changed
 - The app is called Octave. The agent at the table is still pi.
 - Octave's own settings and log moved from `~/.pi/web-ui/` to `~/.octave/`. What pi keeps — credentials, sessions — stays under `~/.pi/`.
+- A fresh install opens pi on Coding — reading, searching and editing files, but no shell. Full access is one step up in the tool menu, and is remembered once chosen.
 
 ### Added
 - The licence (AGPL-3.0) and the notices of everything the app is built on ship inside it.

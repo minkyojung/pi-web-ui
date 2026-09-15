@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { activeModeId, describeMode, modeToolNames } from "../toolModes.ts";
+import { DEFAULT_MODE, activeModeId, describeMode, modeToolNames } from "../toolModes.ts";
 
 /** What a mac session actually offers: pi's built-ins minus powershell, plus an extension tool. */
 const MAC = ["read", "bash", "edit", "write", "grep", "find", "ls", "ask_user"];
@@ -78,4 +78,10 @@ test("a mode with the note tools on still reads back as that mode", () => {
 	for (const id of ["plan", "coding", "full"]) {
 		assert.equal(activeModeId(modeToolNames(id, WITH_NOTES), WITH_NOTES), id);
 	}
+});
+
+test("새 세션은 셸이 닫힌 채로 시작한다 — pi는 실행 전에 묻지 않으므로", () => {
+	assert.equal(DEFAULT_MODE, "coding");
+	assert.ok(!describeMode(DEFAULT_MODE).tools.includes("bash"));
+	assert.ok(describeMode(DEFAULT_MODE).tools.includes("note_edit"));
 });

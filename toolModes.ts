@@ -47,11 +47,14 @@ export const MODE_IDS = RUNGS.map((r) => r.id);
  * setModel. So the mode is chosen here, the same one every time, rather than
  * accumulated somewhere.
  *
- * Full access because it is pi's own default plus the search tools: everything
- * that worked before still works, and the agent stops shelling out to grep.
- * Starting a rung lower would take the shell away from someone who had it.
+ * Coding rather than full: pi does not ask before it runs a shell command, so
+ * the rung is the only line there is, and the first person to open Octave on
+ * their notes has not been told that the agent at the table can run one. The
+ * shell is one step up, taken on purpose. It was full while the only user was
+ * the one who built it — the setting remembers a change (settings.ts), so
+ * this is only where a fresh install begins.
  */
-export const DEFAULT_MODE: ToolModeId = "full";
+export const DEFAULT_MODE: ToolModeId = "coding";
 
 const LADDER_TOOLS = new Set(RUNGS.flatMap((r) => r.tools));
 
