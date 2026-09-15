@@ -908,6 +908,15 @@ check("the note's menu says who wrote what, and typing takes it back off", async
 	await app.evaluate(`document.querySelector('#editor .cm-content').focus()`);
 	assert.equal(await type(app, "X"), true);
 	await until("the marks gone", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-by-pi').length")) === 0);
+
+	// Off again, and the menu with it. This is a view of the window rather than
+	// of the note, so leaving it on would leave every check after this one
+	// asking the same question of whatever note it opens.
+	await app.click("#noteMenu");
+	await until("the note's menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitemcheckbox]')"));
+	await app.evaluate(`document.querySelector('[role=menu] [role=menuitemcheckbox]').click()`);
+	await app.press("Escape");
+	await until("the menu closed", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
 });
 
 check("a right click in the list acts on that note, open or not", async ({ app, cwd }) => {
