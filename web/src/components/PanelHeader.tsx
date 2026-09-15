@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
-import { Check, History, PanelRight, PanelRightOpen, Pencil, Plus } from "lucide-react";
+import { Check, ChevronDown, PanelRight, PanelRightOpen, Pencil, Plus } from "lucide-react";
 
 import type { SessionInfo } from "../types";
 import { sessionsStore } from "../serverState";
@@ -26,25 +26,22 @@ export const nameOf = (s: SessionInfo) => s.name ?? (s.messageCount === 0 ? "New
 
 /**
  * Every saved session for this folder, newest first, typed over to find one.
- * A popover from its own button rather than a select: a select cannot be
- * searched and has to fit each entry on one line, which is how the header
- * came to show message counts and timestamps.
+ *
+ * A popover over a command list, which is what shadcn calls a combobox — not a
+ * select, which cannot be searched and has to fit each entry on one line, and
+ * these entries carry when they were last written to.
+ *
+ * It hangs off the name rather than a button of its own. The name is already
+ * saying which session is open, and a list of the others is what you want from
+ * it; a second control beside it would have been a second way to ask the same
+ * question.
  */
-function SessionHistory({ sessions, disabled }: { sessions: SessionInfo[]; disabled: boolean }) {
+function Sessions({ sessions, children }: { sessions: SessionInfo[]; children: React.ReactNode }) {
 	const [open, setOpen] = useState(false);
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<PopoverTrigger asChild>
-						<Button id="sessions" variant="ghost" size="icon-xs" aria-label="Session history" className="shrink-0 text-muted-foreground" disabled={disabled}>
-							<History />
-						</Button>
-					</PopoverTrigger>
-				</TooltipTrigger>
-				<TooltipContent side="bottom">Session history</TooltipContent>
-			</Tooltip>
-			<PopoverContent align="end" className="w-80 p-0">
+			<PopoverTrigger asChild>{children}</PopoverTrigger>
+			<PopoverContent align="start" className="w-80 p-0">
 				<Command loop>
 					<CommandInput placeholder="Find a session…" />
 					<CommandList className="max-h-80">
@@ -100,11 +97,12 @@ export function PiToggle({ open, onToggle }: { open: boolean; onToggle: () => vo
 /**
  * The conversation's name, and the pencil that opens it for changing.
  *
- * Two states, drawn as two things. A line of text while it is being read: it
- * can be elided when it is too long, and — the reason it is not an input all
- * the time — it leaves the header draggable, which is how the window is moved
- * now that the shell's title bar is hidden. A field only while it is being
- * changed.
+ * Two states, drawn as two things. A line of text while it is being read, so
+ * it can be elided when it is too long; a field only while it is being
+ * changed. It is a button in the first state, which is also the way to the
+ * other sessions — so that part of the header is no longer somewhere to take
+ * hold of the window by. The rows along the top of the window are, and they
+ * are where a hand goes for that anyway.
  *
  * A conversation nobody has named reads by its first message, which is shown
  * but is not the value: the field opens empty, so a name nobody typed cannot
@@ -113,10 +111,10 @@ export function PiToggle({ open, onToggle }: { open: boolean; onToggle: () => vo
  * name.
  *
  * The pencil appears under the pointer, as the copy and ask-again buttons on
- * a turn do. Double-clicking the name is the other way in, as it is in a file
- * list.
+ * a turn do. It is the only way in now: a double-click on the name cannot be
+ * one when the first click has already opened a list.
  */
-function SessionTitle({ current, online }: { current: SessionInfo | undefined; online: boolean }) {
+function SessionTitle({ sessions, current, online }: { sessions: SessionInfo[]; current: SessionInfo | undefined; online: boolean }) {
 	const [editing, setEditing] = useState(false);
 	const name = current?.name ?? "";
 	const shown = current ? nameOf(current) : "New session";
@@ -124,9 +122,19 @@ function SessionTitle({ current, online }: { current: SessionInfo | undefined; o
 	if (!editing) {
 		return (
 			<>
-				<span id="sessionTitle" className="min-w-0 flex-1 truncate text-sm font-medium" onDoubleClick={() => online && setEditing(true)}>
-					{shown}
-				</span>
+				{/* The chevron is kept until the pointer is here, as the pencil
+				    beside it is: a header that draws every affordance it has at
+				    rest is mostly affordances. */}
+				<Sessions sessions={sessions}>
+					<button
+						id="sessionTitle"
+						type="button"
+						className="group/name -ml-1 flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 py-0.5 text-left text-sm font-medium hover:bg-accent"
+					>
+						<span className="min-w-0 truncate">{shown}</span>
+						<ChevronDown className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/header:opacity-100 group-focus-visible/name:opacity-100" />
+					</button>
+				</Sessions>
 				{/* Nothing can be renamed while the socket is down, and a control that
 				    still looked live would silently do nothing. */}
 				{online && (
@@ -204,7 +212,7 @@ export function PanelHeader() {
 
 	return (
 		<div id="settings" className="group/header drag-region flex h-11 shrink-0 items-center gap-1 pr-2 pl-3">
-			<SessionTitle current={current} online={online} />
+			<SessionTitle sessions={sessions} current={current} online={online} />
 			<Tooltip>
 				<TooltipTrigger asChild>
 					<Button
@@ -221,7 +229,6 @@ export function PanelHeader() {
 				</TooltipTrigger>
 				<TooltipContent side="bottom">New session</TooltipContent>
 			</Tooltip>
-			<SessionHistory sessions={sessions} disabled={!online} />
 		</div>
 	);
 }

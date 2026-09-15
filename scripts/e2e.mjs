@@ -1789,7 +1789,7 @@ check("the conversation is named from the pencil in its header, and emptying the
 	await rename(app, "  Reading list  ");
 	await until("the name pi kept", async () => (await shown()) === "Reading list");
 	// And the session list says the same thing the header does.
-	await app.click("#sessions");
+	await app.click("#sessionTitle");
 	await until("the named session", () =>
 		app.evaluate("[...document.querySelectorAll('[cmdk-item]')].some((i) => i.textContent.includes('Reading list'))"),
 	);
