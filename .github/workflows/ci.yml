@@ -3,14 +3,26 @@
 #
 # It was written after the e2e suite sat red for a day and forty-four commits:
 # a check had been left asserting the old shape of a code block, and nothing
-# was watching. What is here is what runs anywhere without credentials.
+# was watching.
 #
-# The e2e suite is not here yet, though it could be — it finds Chrome on Linux
-# and the server starts on a credentials file that names a provider, whether or
-# not the key is good, since no check sends a prompt. What holds it back is one
-# check of its own: a note coming back scrolled where it was read times out
-# under load. A job that goes red by chance teaches everyone to ignore the
-# light, which is worse than no light, so it waits until that check is steady.
+# On macOS, because that is what the app is. The first run of this went to
+# ubuntu and came back with two failures that were about the runner and not
+# about the code — a write from outside never reached the recursive fs.watch
+# the server hears the disk through, and the one check that spends a model
+# call failed in a shape its own skip did not recognise. Both pass or skip on
+# a Mac, where the app ships, where it is developed, and where the checks that
+# ask the file system about its own habits — whether it opens a.MD as a.md,
+# whether it hides how a name is composed — get a real answer rather than a
+# skip. Public repo, so the runner is free.
+#
+# The e2e suite is not here yet, though it would run: it finds Chrome on the
+# runner, and the server starts on a credentials file that names a provider
+# whether or not the key is any good, since only one check spends a model call
+# and it skips itself when the model will not answer. What holds it back is one
+# check of its own — a note coming back scrolled where it was read — which was
+# seen to time out once under load and has not been reproduced since. A light
+# that goes red by chance teaches everyone to ignore it, which is worse than no
+# light, so it waits until that check is understood.
 name: ci
 
 on:
@@ -19,7 +31,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,10 +43,10 @@ jobs:
       - run: npm ci
       # Two projects: the client's and the server's.
       - run: npm run typecheck
-      # Node's built-in test runner, no dependencies. The tests that ask the
-      # file system about its own behaviour probe for it and skip where it
-      # differs, and server.test.js skips itself where there are no pi
-      # credentials — which is here.
+      # Node's built-in test runner, no dependencies. server.test.js boots the
+      # real server, which starts here — pi lists a model whether or not its
+      # key is good — so what a tab gets back is pinned on the runner too; the
+      # single check that spends a model call skips when it goes unanswered.
       - run: npm test
       # That it still builds is its own answer: a bundler resolves imports a
       # type check never looks at.
