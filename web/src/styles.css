@@ -44,13 +44,22 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  /* Held to what it must clear on the *darkest* surface it lands on rather
+     than on the page. It sits on --muted and --accent as often as on the page
+     — a conflict banner, a code block's header, a hovered row — and at the
+     figure the page alone asked for it read 4.34 there. This is the rule a
+     low-contrast text step is given elsewhere (Radix's step 11): defined
+     against every surface under it, not against the first one. */
+  --muted-foreground: oklch(0.539 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* A focus ring is a non-text indicator, which WCAG asks 3:1 of. The figure
+     shadcn ships reads 2.59 on a page this light — the only one of the four
+     themes where it did; the other three were already clear. */
+  --ring: oklch(0.653 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -64,12 +73,16 @@
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: oklch(0.653 0 0);
   /*
    * Selected text, one pair for the whole window: the layer CodeMirror draws
    * under a note and the ::selection everywhere else read these two, so the
-   * sidebar and the editor highlight alike. Defined once — the wash is a share
-   * of whatever --foreground the theme sets, so the neutral dark follows.
+   * sidebar and the editor highlight alike.
+   *
+   * Not one figure for both neutral themes, though it looked like it could be:
+   * a share of --foreground follows the theme's text colour but not its page,
+   * and on a dark page the wash climbs *toward* the words instead of away from
+   * them. The dark theme sets its own, lower.
    *
    * Not --accent: in the light theme that is nearly the page colour, and a
    * selection that cannot be seen is not one. The text keeps its own colour,
@@ -112,6 +125,8 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  /* 18%, the light theme's share, would leave the words at 4.48 here. */
+  --selection: color-mix(in oklab, var(--foreground) 16%, transparent);
 }
 
 /*
@@ -153,7 +168,9 @@
   --secondary: oklch(0.952 0.015 95);
   --secondary-foreground: oklch(0.192 0.02 196);
   --muted: oklch(0.952 0.015 95);
-  --muted-foreground: oklch(0.54 0.02 200);
+  /* Down the same 0.017 the neutral light went, and for the same reason: this
+     theme is measured against that one. */
+  --muted-foreground: oklch(0.523 0.02 200);
   --accent: oklch(0.952 0.015 95);
   --accent-foreground: oklch(0.192 0.02 196);
   /* Their Warm Red #BF505C, a shade down: as drawn it reads 4.45 on this page,
