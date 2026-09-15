@@ -114,10 +114,14 @@ export function apply(text: string, change: Change): string {
  * Removals ride along, each at its seam, moved the way a place is moved
  * through a change — see mapThrough.
  */
-export function replay(changes: Change[]): { text: string; spans: Span[]; removals: Removal[] } {
-	let text = "";
-	let spans: Span[] = [];
-	let removals: Removal[] = [];
+export type Replayed = { text: string; spans: Span[]; removals: Removal[] };
+
+export function replay(changes: Change[], from?: Replayed): Replayed {
+	let text = from ? from.text : "";
+	// Copied, since what is handed in may be held by whoever handed it in —
+	// a snapshot read once and resumed from more than once.
+	let spans: Span[] = from ? from.spans.map((s) => ({ ...s })) : [];
+	let removals: Removal[] = from ? from.removals.map((r) => ({ ...r })) : [];
 	for (const change of changes) {
 		if (isTouch(change)) {
 			// An older log has no `kept` on its touches, and every touch it holds
@@ -198,9 +202,17 @@ export type Hole = { from: number; to: number; removed: string; accepted?: true 
  * decided about whole, and one from before that was possible waits for a
  * decision that covers it.
  */
-export function unreviewed(changes: Change[]): { text: string; before: string; holes: Hole[] } {
-	let text = "";
-	let holes: Hole[] = [];
+export type Holed = { text: string; holes: Hole[] };
+
+/**
+ * The walk itself, resumable, carrying every hole — including the ones that
+ * are not offered. `unreviewed` is this and then the reading of it; a caller
+ * that wants to stop partway and come back later wants this one, since what
+ * it leaves out is exactly what a later change of pi's may widen.
+ */
+export function holesOf(changes: Change[], from?: Holed): Holed {
+	let text = from ? from.text : "";
+	let holes: Hole[] = from ? from.holes.map((h) => ({ ...h })) : [];
 	for (const change of changes) {
 		if (isTouch(change)) {
 			const kept = change.kept !== false;
@@ -252,6 +264,11 @@ export function unreviewed(changes: Change[]): { text: string; before: string; h
 		}
 		text = apply(text, change);
 	}
+	return { text, holes };
+}
+
+export function unreviewed(changes: Change[], from?: Holed): { text: string; before: string; holes: Hole[] } {
+	const { text, holes } = holesOf(changes, from);
 	// Open, and open to a difference: a hole whose words the person has put
 	// back by hand reads the same either way, and there is nothing in it to
 	// decide. It stays in the log's reading, since a later change of pi's
@@ -463,14 +480,18 @@ export function reconcile(
 	// asked before the note is seeded as new — see reclaimLog.
 	const changes = readHistory(root, path);
 	if (changes.length === 0) changes.push(...(reclaimLog(root, path, onDisk) ?? []));
-	const { text } = replay(changes);
+	const walked = replay(changes);
 	let appended: Change[] = [];
-	if (text !== onDisk) {
-		appended = changesBetween(text, onDisk, origin);
+	if (walked.text !== onDisk) {
+		appended = changesBetween(walked.text, onDisk, origin);
 		appendHistory(root, path, appended);
 		changes.push(...appended);
 	}
-	return { changes, appended, spans: replay(changes).spans };
+	// The walk again is only for what was just appended, and there is usually
+	// nothing: the disk agrees with the log every time but the first of a write
+	// that came from somewhere else. Walking a log twice to learn the same
+	// thing costs what walking it once costs, which on a long one is not little.
+	return { changes, appended, spans: appended.length === 0 ? walked.spans : replay(changes).spans };
 }
 
 /**
