@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { basename, join } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
@@ -123,8 +123,13 @@ function startServer(port, workdir) {
 			WORKDIR: workdir,
 		},
 		cwd: workdir,
-		stdio: ["ignore", "pipe", "pipe"],
+		// The fourth is a channel, which is what the server asks for a deleted
+		// note to go to the machine's trash on — see trash.ts. Its presence is
+		// how the server knows there is a shell at all, so nothing else has to
+		// say which kind of run this is.
+		stdio: ["ignore", "pipe", "pipe", "ipc"],
 	});
+	answerTrashAsks(child, workdir);
 	child.stdout.on("data", (d) => process.stdout.write(`[server] ${d}`));
 	child.stderr.on("data", (d) => {
 		process.stderr.write(`[server] ${d}`);
@@ -143,6 +148,41 @@ function startServer(port, workdir) {
 			serverErrors.length ? serverErrors.join("\n") : `Exit code ${code}. Check the terminal output.`,
 		);
 		app.quit();
+	});
+}
+
+/**
+ * The one thing the server cannot do for itself: put a file in the trash the
+ * person already has.
+ *
+ * Not a folder to move a file into — a file renamed into ~/.Trash is there
+ * with its way home lost, since what Put Back knows is kept by the Finder and
+ * not by the file. It takes the platform's own call, and in Electron that is
+ * shell.trashItem, in this process and no other.
+ *
+ * Inside the folder that was opened, and nowhere else. The server resolves and
+ * contains every path it handles already, so this is the second lock on the
+ * same door: whatever goes wrong upstream, the shell will not throw away
+ * something the person did not point this app at.
+ */
+function answerTrashAsks(server, workdir) {
+	const root = resolve(workdir) + sep;
+	server.on("message", async (message) => {
+		if (message?.ask !== "trash" || typeof message.id !== "number" || typeof message.path !== "string") return;
+		let ok = false;
+		if (resolve(message.path).startsWith(root)) {
+			try {
+				await shell.trashItem(message.path);
+				ok = true;
+			} catch (err) {
+				console.error(`[trash] ${err.message}`);
+			}
+		} else {
+			console.error(`[trash] refused, outside the folder: ${message.path}`);
+		}
+		// The server is waiting on this and falls back to the vault's own trash
+		// without it, so an answer goes back either way.
+		if (server.connected) server.send({ ask: "trash", id: message.id, ok });
 	});
 }
 

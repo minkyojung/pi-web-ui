@@ -72,7 +72,8 @@ What the app keeps for itself goes in `.pi/` beside the notes:
 ```
 .pi/history/<note>.md.jsonl   who wrote which words
 .pi/links.json                who links where
-.pi/trash/notes/              deleted notes, until they are not
+.pi/trash/history/            a deleted note's past, waiting for it to come back
+.pi/trash/notes/              deleted notes, where there is no shell to ask
 ```
 
 pi is told in its system prompt that this is a folder of notes and that `.pi/`
@@ -246,8 +247,37 @@ wrapped line starts where its words do.
 
 The title above the note is the file's name. Typing a slash into it moves the
 note to that folder, and a leading one moves it back to the top; the history and
-the links move with it. Deleting puts a note in `.pi/trash/` and offers it back
-until something else is opened.
+the links move with it.
+
+Deleting puts a note in the trash the machine already has — the one the Finder
+opens, where it can be searched, put back, and emptied on the schedule that was
+chosen for it. It follows from the folder being the truth: deleting is a thing
+that happens to a file, and an app that moves one somewhere only it can see is
+not a window on the folder but a place files hide in. The test that settles it
+is to imagine this app deleted tomorrow. The notes are still there; everything
+ever deleted would be in a dot-folder nobody will open again. Obsidian's
+default is the same, for the same reason.
+
+Only the shell can put a file there. The trash is not a directory to move a
+file into — one renamed into `~/.Trash` sits there with its way home lost,
+since what Put Back knows is kept by the Finder and not by the file — so it
+takes the platform's own call, which in Electron lives in the main process and
+not in this server. The server asks for it over the channel a parent and a
+child already have, and `process.send` being there at all is how it knows there
+is a shell to ask (`trash.ts`). Where there is none — a server started by hand,
+a page in a browser — the note goes to `.pi/trash/notes/` as before, and that
+is the one the app itself can offer back.
+
+A note's past does not go with it either way. It cannot stay where it is, or a
+new note made at the same name would inherit it; it cannot be thrown away,
+since it is the one thing about a note that cannot be rebuilt from the note. So
+it steps aside into `.pi/trash/history/` and waits. When a note appears where
+one was deleted, the log is asked rather than assumed: replaying it gives the
+text the app last knew that note to be, and a log whose replay is exactly what
+is on disk now is this note's. Put Back brings a file home byte for byte, so a
+note that comes back comes back with its authors; a different note that happens
+to take the name replays to something else and starts with a history of its
+own.
 
 Notes name each other with `[[wikilinks]]`, `![[embeds]]`, and ordinary markdown
 links. `linkIndex.ts` keeps who links where, so backlinks are a lookup rather

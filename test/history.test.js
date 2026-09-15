@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { apply, appendHistory, changesBetween, decide, historyPath, mapThrough, moveHistory, readHistory, reconcile, record, replay } from "../history.ts";
+import { apply, appendHistory, changesBetween, decide, historyPath, mapThrough, moveHistory, readHistory, reclaimLog, reconcile, record, replay, trashLog, trashHistoryPath } from "../history.ts";
 
 const me = { author: "me", at: 1 };
 const pi = { author: "pi", at: 2, sessionId: "s1", entryId: "e1" };
@@ -209,6 +209,58 @@ test("받아들임은 글을 바꾸지 않으니 자리도 움직이지 않는�
 
 const DIR = mkdtempSync(join(tmpdir(), "history-"));
 test.after(() => rmSync(DIR, { recursive: true, force: true }));
+
+test("지운 노트의 로그는 비켜난다 — 같은 이름의 새 노트가 남의 과거를 물려받지 않도록", () => {
+  const dir = mkdtempSync(join(tmpdir(), "history-trash-"));
+  try {
+    appendHistory(dir, "a.md", changesBetween("", "one", me));
+    trashLog(dir, "a.md");
+    assert.deepEqual(readHistory(dir, "a.md"), [], "노트 자리에는 로그가 없다");
+    assert.ok(existsSync(trashHistoryPath(dir, "a.md")), "휴지통에서 기다린다");
+    // 같은 이름을 두 번 지우면 뒤엣것은 시각이 붙은 이름으로 기다린다 — 앞엣것을 덮지 않는다.
+    appendHistory(dir, "a.md", changesBetween("", "another note that took the name", me));
+    trashLog(dir, "a.md");
+    const waiting = readdirSync(join(dir, ".pi/trash/history"));
+    assert.equal(waiting.length, 2, `둘 다 남는다: ${waiting.join(", ")}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("휴지통에서 돌아온 노트는 제 과거를 되찾는다 — 재생이 디스크와 정확히 같을 때만", () => {
+  const dir = mkdtempSync(join(tmpdir(), "history-back-"));
+  try {
+    // 사람이 쓰고, pi가 한 마디 보태고, 지운다.
+    reconcile(dir, "a.md", "one\n", 1, me);
+    record(dir, "a.md", "one\n", "one two\n", pi);
+    trashLog(dir, "a.md");
+
+    // 파인더의 Put Back: 같은 바이트가 돌아온다.
+    const { changes } = reconcile(dir, "a.md", "one two\n", 5);
+    assert.equal(replay(changes).text, "one two\n");
+    assert.equal(changes.at(-1).author, "pi", "pi가 쓴 말은 돌아와서도 pi의 것이다");
+    assert.equal(changes.filter((c) => c.author === "outside").length, 0, "바깥에서 온 것으로 새로 씨 뿌리지 않는다");
+    assert.equal(existsSync(trashHistoryPath(dir, "a.md")), false, "휴지통에서 도로 나왔다");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("같은 이름의 다른 노트에게는 그 과거가 가지 않는다", () => {
+  const dir = mkdtempSync(join(tmpdir(), "history-other-"));
+  try {
+    reconcile(dir, "a.md", "one\n", 1, me);
+    trashLog(dir, "a.md");
+    // 이름만 같은 새 노트.
+    const { changes } = reconcile(dir, "a.md", "something else entirely\n", 5);
+    assert.equal(changes.length, 1, "제 과거는 비어 있고, 지금 글이 처음 본 것으로 들어간다");
+    assert.equal(changes[0].author, "outside");
+    assert.ok(existsSync(trashHistoryPath(dir, "a.md")), "앞 노트의 과거는 휴지통에 그대로 있다");
+    assert.equal(reclaimLog(dir, "b.md", "one\n"), null, "다른 이름으로는 찾지 않는다");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test("로그는 노트의 폴더를 따라 .pi/history 아래에 놓인다", () => {
   assert.equal(historyPath(DIR, "ideas/a.md"), join(DIR, ".pi/history/ideas/a.md.jsonl"));

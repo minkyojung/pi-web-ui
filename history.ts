@@ -16,8 +16,8 @@
  * Offsets are UTF-16 code units, which is what both JavaScript strings and
  * CodeMirror count in.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { diffWordsWithSpace } from "diff";
 
 export type Author = "me" | "pi" | "outside";
@@ -344,8 +344,9 @@ export function historyPath(root: string, path: string): string {
 	return join(root, HISTORY_DIR, `${path}.jsonl`);
 }
 
-export function readHistory(root: string, path: string): Change[] {
-	const file = historyPath(root, path);
+export const readHistory = (root: string, path: string): Change[] => readLog(historyPath(root, path));
+
+function readLog(file: string): Change[] {
 	if (!existsSync(file)) return [];
 	const out: Change[] = [];
 	for (const line of readFileSync(file, "utf8").split("\n")) {
@@ -364,9 +365,63 @@ export function moveHistory(root: string, from: string, to: string): void {
 	moveLog(historyPath(root, from), historyPath(root, to));
 }
 
-/** A trashed note's log waits in the trash beside it, under the same name it was trashed as. */
+/** A trashed note's log waits here, under the note's own path — with a time added when that name is taken. */
 export function trashHistoryPath(root: string, trashed: string): string {
 	return join(root, ".pi", "trash", "history", `${trashed}.jsonl`);
+}
+
+/**
+ * A deleted note's log steps aside rather than going with it.
+ *
+ * It cannot stay: a new note made at the same name would inherit the deleted
+ * one's past, and "who wrote which words" would be answering about a note that
+ * is gone. It cannot be thrown away either: the note may come back, from the
+ * machine's trash or from ours, and it is the one thing about a note that
+ * cannot be rebuilt from the note.
+ *
+ * The name it waits under is the note's own, with a time added if a log from
+ * an earlier deletion is already there — the same rule the note itself follows
+ * into `.pi/trash/notes/`.
+ */
+export function trashLog(root: string, path: string, now = new Date()): void {
+	let name = path;
+	if (existsSync(trashHistoryPath(root, name))) name = `${path} ${now.toISOString().replace(/[:.]/g, "-")}`;
+	moveLog(historyPath(root, path), trashHistoryPath(root, name));
+}
+
+/**
+ * A note has appeared where one was deleted. Is it the one that was deleted?
+ *
+ * It is decidable rather than a guess, and the log itself is what decides:
+ * replaying it gives the text the app last knew the note to be, so a log whose
+ * replay is exactly what is on disk now is the log of this note. Put Back in
+ * the Finder brings a file home byte for byte, and that is the case this
+ * answers — the note comes back and its past comes back with it. A different
+ * note that happens to take the name replays to something else, and its own
+ * history starts empty, as it should.
+ *
+ * Only asked when a note has no log at all, and answered with nothing where
+ * there is no trash to look in, which is the usual state of a folder.
+ */
+export function reclaimLog(root: string, path: string, onDisk: string): Change[] | null {
+	const waiting = trashHistoryPath(root, path);
+	const dir = dirname(waiting);
+	if (!existsSync(dir)) return null;
+	const base = basename(path);
+	// The name it waits under is the note's, or the note's with a time added.
+	const mine = (name: string) => name === `${base}.jsonl` || (name.startsWith(`${base} `) && name.endsWith(".jsonl"));
+	const candidates = readdirSync(dir)
+		.filter(mine)
+		.map((name) => join(dir, name))
+		// Newest first: a note deleted twice comes back as the last one deleted.
+		.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+	for (const file of candidates) {
+		const changes = readLog(file);
+		if (replay(changes).text !== onDisk) continue;
+		moveLog(file, historyPath(root, path));
+		return changes;
+	}
+	return null;
 }
 
 export function moveLog(src: string, dst: string): void {
@@ -404,7 +459,10 @@ export function reconcile(
 	at: number,
 	origin: Origin = { author: "outside", at },
 ): { changes: Change[]; appended: Change[]; spans: Span[] } {
+	// A note with no log is either new or back from the trash, and the trash is
+	// asked before the note is seeded as new — see reclaimLog.
 	const changes = readHistory(root, path);
+	if (changes.length === 0) changes.push(...(reclaimLog(root, path, onDisk) ?? []));
 	const { text } = replay(changes);
 	let appended: Change[] = [];
 	if (text !== onDisk) {

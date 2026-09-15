@@ -448,14 +448,21 @@ export function App() {
 									<span>
 										Deleted <span className="text-foreground">{deleted.path.replace(/\.md$/, "")}</span>
 									</span>
-									<Button
-										variant="outline"
-										size="sm"
-										className="h-7 text-xs"
-										onClick={() => send({ type: "restore_note", trashed: deleted.trashed, path: deleted.path })}
-									>
-										Restore
-									</Button>
+									{deleted.to === "vault" ? (
+										<Button
+											variant="outline"
+											size="sm"
+											className="h-7 text-xs"
+											onClick={() => send({ type: "restore_note", trashed: deleted.trashed, path: deleted.path })}
+										>
+											Restore
+										</Button>
+									) : (
+										/* The machine's trash is not ours to reach into — a trash takes things and does
+										   not hand them back — and it does not need to be: the Finder put it there and
+										   Put Back brings it home, long after this row has gone. */
+										<span className="text-xs">In the Trash · Put Back in the Finder brings it here with its history</span>
+									)}
 								</>
 							) : files.length === 0 ? (
 								<div className="max-w-sm text-center leading-relaxed">

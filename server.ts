@@ -30,9 +30,10 @@ import { askForName } from "./sessionName.ts";
 import { askUser } from "./askUser.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, trashNote, withCreated, writeNote, type WriteResult } from "./vault.ts";
+import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, withCreated, writeNote, type WriteResult } from "./vault.ts";
+import { deleteNote, shellTrash } from "./trash.ts";
 import { noteTools } from "./noteEdit.ts";
-import { decide, type Change, historyPath, mapThrough, moveHistory, moveLog, reconcile, record, replay, readHistory, trashHistoryPath, unreviewed } from "./history.ts";
+import { decide, type Change, mapThrough, moveHistory, reconcile, record, replay, readHistory, trashLog, unreviewed } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { type Claim, recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
@@ -1296,17 +1297,19 @@ wss.on("connection", async (ws) => {
 					break;
 				}
 
-				// To the trash, with its history, where restore_note can find it.
+				// To the machine's trash where there is a shell to ask, and to the
+				// vault's own where there is not — see trash.ts. Its log steps
+				// aside either way, and comes back with the note if the note does.
 				case "delete_note": {
 					if (typeof msg.path !== "string") return;
 					known.delete(msg.path);
-					const gone = trashNote(CWD, msg.path);
+					const gone = await deleteNote(CWD, msg.path, systemTrash);
 					if (!gone.ok) {
 						if (gone.reason === "missing") reply({ type: "note_gone", path: msg.path });
 						return;
 					}
-					moveLog(historyPath(CWD, msg.path), trashHistoryPath(CWD, gone.trashed));
-					broadcast({ type: "note_deleted", path: msg.path, trashed: gone.trashed });
+					trashLog(CWD, msg.path);
+					broadcast(gone.to === "vault" ? { type: "note_deleted", path: msg.path, to: "vault", trashed: gone.trashed } : { type: "note_deleted", path: msg.path, to: "system" });
 					broadcast(files());
 					touchedBy(links.remove(msg.path));
 					offered(propertyNames.remove(msg.path));
@@ -1320,7 +1323,9 @@ wss.on("connection", async (ws) => {
 						reply({ type: "error", message: `cannot restore ${msg.path}: ${back.reason}` });
 						return;
 					}
-					moveLog(trashHistoryPath(CWD, msg.trashed), historyPath(CWD, msg.path));
+					// The log comes back the way it does for a note put back in the
+					// Finder: the note is read, and the trash is asked whether the
+					// past waiting there replays to exactly this text.
 					reply({ type: "note_created", path: msg.path });
 					wrote(msg.path, null, []);
 					break;
@@ -1370,6 +1375,13 @@ wss.on("connection", async (ws) => {
 	// dropped without a trace.
 	reply(await sessions());
 });
+
+/**
+ * The way to the machine's trash, or null where this run has no shell to ask.
+ * Made once: it listens for the answers on the channel, and one listener is
+ * enough for all of them.
+ */
+const systemTrash = shellTrash();
 
 // Writes that do not pass through here — see watcher.ts.
 const stopWatching = watchNotes(CWD, noticed);

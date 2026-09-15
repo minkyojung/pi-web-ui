@@ -323,15 +323,20 @@ export interface NoteRenameFailedMsg {
 }
 
 /**
- * A note went to the trash, by someone's choice. `trashed` is its name there,
- * which restore_note needs; a tab with the note open closes it and may offer
- * to bring it back.
+ * A note went to the trash, by someone's choice.
+ *
+ * `to` says which trash, and the two are undone in different places. The
+ * machine's is the one the person already has — the Finder opens it, Put Back
+ * brings a note home, and nothing here can reach in after it. The vault's own
+ * `.pi/trash/` is where a note goes when this run has no shell to ask, and
+ * `trashed` is the name it took there, which restore_note needs.
+ *
+ * A tab with the note open closes it, and offers to bring it back only where
+ * there is a way to from here.
  */
-export interface NoteDeletedMsg {
-	type: "note_deleted";
-	path: string;
-	trashed: string;
-}
+export type NoteDeletedMsg =
+	| { type: "note_deleted"; path: string; to: "system" }
+	| { type: "note_deleted"; path: string; to: "vault"; trashed: string };
 
 /**
  * The note is not on disk. Sent to every tab when the watcher sees it go, and
