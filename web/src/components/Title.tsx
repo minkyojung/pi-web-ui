@@ -1,13 +1,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Trash2 } from "lucide-react";
-
 import { step } from "../features/pageMove";
 import { renameTarget, titleOf } from "../noteSync";
 import { flushSaves } from "../saves";
 import { noteRenameFailedStore } from "../serverState";
 import { send } from "../ws";
-import { Button } from "./ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 const REASONS = {
 	exists: "A note with that name already exists.",
@@ -107,22 +103,6 @@ export function Title({ path }: { path: string }) {
 					{error}
 				</span>
 			)}
-			{/* To the trash, not gone: the column offers Restore afterwards, so
-			    there is nothing to confirm here. */}
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<Button
-						variant="ghost"
-						size="sm"
-						aria-label="Delete note"
-						className="h-7 w-7 shrink-0 p-0 text-muted-foreground"
-						onClick={() => send({ type: "delete_note", path })}
-					>
-						<Trash2 className="size-3.5" />
-					</Button>
-				</TooltipTrigger>
-				<TooltipContent side="bottom">Delete</TooltipContent>
-			</Tooltip>
 		</div>
 	);
 }

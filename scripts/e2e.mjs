@@ -851,10 +851,17 @@ check("a task is a box, cursor or not, ticked by a click or ⌘Enter, and a rule
 	assert.equal(readFileSync(join(cwd, "tasks.md"), "utf8"), "- [x] one\n- [ ] two\n\n---\n\nend\n");
 });
 
+/** Delete is behind the note header's menu now, so it takes opening that first. */
+async function deleteNote(app) {
+	await app.evaluate(`document.getElementById("noteMenu").click()`);
+	await until("the note's menu", () => app.evaluate(`!!document.querySelector('[role=menuitem][aria-label="Delete note"]')`));
+	await app.evaluate(`document.querySelector('[role=menuitem][aria-label="Delete note"]').click()`);
+}
+
 check("deleting a note closes it and offers it back, and Restore brings it back open", async ({ app, cwd }) => {
 	await app.evaluate(`document.querySelector('#notes button[data-path="code.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved");
-	await app.evaluate(`document.querySelector('button[aria-label="Delete note"]').click()`);
+	await deleteNote(app);
 	await until("the column to empty", () => app.evaluate("!document.getElementById('editor') && document.body.textContent.includes('Deleted code')"));
 	assert.equal(existsSync(join(cwd, "code.md")), false);
 	assert.equal(existsSync(join(cwd, ".pi/trash/notes/code.md")), true);
@@ -1355,7 +1362,7 @@ check("a note in the trash keeps its step while it is in front, and is off the w
 	};
 	await open("back-a.md", "A\n");
 	await open("gone-note.md", "G\n");
-	await app.evaluate(`document.querySelector('button[aria-label="Delete note"]').click()`);
+	await deleteNote(app);
 	await until("the offer to bring it back", () => app.evaluate("document.body.textContent.includes('Deleted gone-note')"));
 	// It is still the step we stand on: there is nowhere else to offer it from.
 	assert.equal(await app.evaluate("location.hash"), "#gone-note.md");
