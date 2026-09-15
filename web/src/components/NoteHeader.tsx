@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { ChevronRight, MoreHorizontal } from "lucide-react";
 
 import { titleOf } from "../noteSync";
+import { foldersOf, openFoldersStore, setOpenFolders } from "../tree";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Button } from "./ui/button";
@@ -26,6 +27,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  * window does not know what folder the vault is in, and a path that guessed
  * would be worse than one that is honest about being relative.
  */
+/** Open a folder in the sidebar and bring it into view, without closing anything. */
+function show(folder: string) {
+	const open = openFoldersStore.get();
+	// Its own ancestors too: a folder cannot be seen while the one above it is shut.
+	setOpenFolders(new Set([...open, ...foldersOf(folder), folder]));
+	// After the column has redrawn with it standing open.
+	requestAnimationFrame(() => {
+		document.querySelector(`#notes [data-folder="${CSS.escape(folder)}"]`)?.scrollIntoView({ block: "nearest" });
+	});
+}
+
 function NoteMenu({ path }: { path: string }) {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	return (
@@ -82,17 +94,32 @@ function NoteMenu({ path }: { path: string }) {
  * page under it is what is being read. Nothing in it needs standing up — the
  * name is on the tab above and at the top of the page in a size that means it.
  *
+ * The folders in it are buttons. A breadcrumb that only names the place you
+ * are in is half of one — the other half is that it takes you there — and
+ * taking you there here means the column on the left, where the folder is
+ * opened and brought into view. Not a toggle: this says go, and a second
+ * press should not undo the going.
+ *
  * One height with pi's header, so the two panes of the card start level.
  */
 export function NoteHeader({ path, trailing }: { path: string | null; trailing?: React.ReactNode }) {
-	const folders = path?.includes("/") ? path.slice(0, path.lastIndexOf("/")).split("/") : [];
+	// The same identifiers the sidebar keys its open folders on, so a crumb and
+	// a row are talking about the same folder without either being told.
+	const folders = path ? foldersOf(path) : [];
 	return (
 		<div className="flex h-11 shrink-0 items-center gap-1 pr-2 pl-3 text-sm">
 			<div className="flex min-w-0 flex-1 items-center gap-0.5 truncate text-muted-foreground">
 				{folders.map((folder, i) => (
-					<span key={i} className="flex shrink-0 items-center gap-0.5">
+					<span key={folder} className="flex shrink-0 items-center gap-0.5">
 						{i > 0 && <ChevronRight className="size-3 shrink-0" />}
-						{folder}
+						<button
+							type="button"
+							data-crumb={folder}
+							className="truncate rounded-sm px-1 py-0.5 hover:bg-accent hover:text-accent-foreground"
+							onClick={() => show(folder)}
+						>
+							{folder.slice(folder.lastIndexOf("/") + 1)}
+						</button>
 					</span>
 				))}
 				{path && (
