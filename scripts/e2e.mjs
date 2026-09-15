@@ -962,7 +962,13 @@ check("typing [[ offers the notes, and Enter takes one", async ({ app, cwd }) =>
 	await app.press("End", { meta: true });
 	await app.press("Enter");
 	await app.keys("[[my");
-	await until("the offer", () => app.evaluate("[...document.querySelectorAll('.cm-tooltip-autocomplete li')].map((l) => l.textContent).join(',')").then((t) => t.includes("My note")));
+	// The one Enter will take, not merely the one on the list. Those are two
+	// different things and they only coincide on a machine quick enough that
+	// the list has settled by the time the key lands; on a loaded runner the
+	// source can re-run between them and Enter goes into the note as a newline.
+	await until("the offer, chosen", () =>
+		app.evaluate(`document.querySelector('.cm-tooltip-autocomplete li[aria-selected="true"]')?.textContent ?? ""`).then((t) => t.includes("My note")),
+	);
 	await app.press("Enter");
 	await until("the link", async () => (await editorText(app)).endsWith("[[My note]]"));
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
