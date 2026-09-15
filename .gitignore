@@ -2,3 +2,4 @@ node_modules/
 dist/
 dist-server/
 release/
+THIRD_PARTY_NOTICES.md

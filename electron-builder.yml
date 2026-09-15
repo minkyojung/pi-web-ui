@@ -21,6 +21,10 @@ files:
   - dist/**
   - dist-server/**
   - package.json
+  # Octave's licence, and the licences of everything shipped with it — the
+  # latter written by scripts/notices.mjs at the start of `npm run build`.
+  - LICENSE
+  - THIRD_PARTY_NOTICES.md
 
 # The server runs as a child process, and a child process cannot load an ES
 # module out of an asar archive. Unpacking just the server does not help either:

@@ -51,6 +51,11 @@ runs, but a first open has to be allowed from System Settings. The app is
 neither changes again, since the first decides where macOS keeps the app's
 settings and the second what the updater thinks is the same app.
 
+Octave is AGPL-3.0 (`LICENSE`). Everything it is built on is permissive and
+asks only that its notice be carried, so `npm run build` begins by writing
+`THIRD_PARTY_NOTICES.md` — the licence of every package that ships in the app,
+from both trees — and refuses on one that is not permissive (`scripts/notices.mjs`).
+
 Auth comes from `~/.pi/agent/auth.json` (`pi` → `/login`). Sessions are written
 to `~/.pi/agent/sessions/` and survive a restart. With no usable credentials at
 all the server says so and exits rather than failing on the first prompt.
