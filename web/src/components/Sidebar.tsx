@@ -7,9 +7,12 @@ import { titleOf } from "../noteSync";
 import { filesStore, filesTruncatedStore } from "../serverState";
 import { type Node, openFoldersStore, reveal, setOpenFolders, toggle, treeOf } from "../tree";
 import { FolderPicker } from "./FolderPicker";
+import { noteActions } from "../noteActions";
+import { getConnection, subscribe } from "../store";
 import { Settings } from "./Settings";
 import { Button } from "./ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
@@ -143,12 +146,21 @@ function Tree({
 	openFolders: ReadonlySet<string>;
 	onOpen: (path: string) => void;
 }) {
+	// Nothing goes to the server while the socket is down, and an item that
+	// still looked live would silently do nothing.
+	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	if (node.kind === "file") {
 		const active = node.path === open;
 		return (
 			<li>
+				{/* The same things the header's ⋯ offers, from a right click here —
+				    a list you cannot act on is a list you have to open everything
+				    in. The menu wraps the tooltip rather than the other way round:
+				    both want the row, and only one of them can be asChild of it. */}
+				<ContextMenu>
 				<Tooltip>
 					<TooltipTrigger asChild>
+						<ContextMenuTrigger asChild>
 						<Button
 							variant="ghost"
 							size="sm"
@@ -167,9 +179,27 @@ function Tree({
 							<FileTextIcon className="text-muted-foreground" />
 							<span className="truncate">{titleOf(node.path)}</span>
 						</Button>
+						</ContextMenuTrigger>
 					</TooltipTrigger>
 					<TooltipContent side="right">{node.path}</TooltipContent>
 				</Tooltip>
+				<ContextMenuContent>
+					{noteActions(node.path).map((action, i) =>
+						action === "separator" ? (
+							<ContextMenuSeparator key={i} />
+						) : (
+							<ContextMenuItem
+								key={action.label}
+								variant={action.destructive ? "destructive" : undefined}
+								disabled={action.needsServer && !online}
+								onSelect={action.run}
+							>
+								{action.label}
+							</ContextMenuItem>
+						),
+					)}
+				</ContextMenuContent>
+				</ContextMenu>
 			</li>
 		);
 	}

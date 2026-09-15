@@ -863,6 +863,27 @@ async function deleteNote(app) {
 	await app.evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((i) => i.textContent.trim() === "Delete").click()`);
 }
 
+check("a right click in the list acts on that note, open or not", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "list-a.md"), "A\n");
+	writeFileSync(join(cwd, "list-b.md"), "B\n");
+	await until("both listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="list-a.md"]') && !!document.querySelector('#notes button[data-path="list-b.md"]')`));
+	// Open one, then act on the other: the menu is about the row, not about
+	// whatever happens to be in front.
+	await app.evaluate(`document.querySelector('#notes button[data-path="list-a.md"]').click()`);
+	await until("a in front", async () => (await editorText(app)) === "A\n");
+
+	await app.click(`#notes button[data-path="list-b.md"]`, 0, { button: "right" });
+	await until("the menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitem]')"));
+	const items = await app.evaluate("[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((i) => i.textContent.trim())");
+	assert.ok(items.includes("Rename") && items.includes("Copy path") && items.includes("Delete"), `the header's items, got ${items.join()}`);
+
+	await app.evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((i) => i.textContent.trim() === "Delete").click()`);
+	await until("b gone from the list", () => app.evaluate(`!document.querySelector('#notes button[data-path="list-b.md"]')`));
+	assert.equal(existsSync(join(cwd, "list-b.md")), false, "the one right-clicked went");
+	assert.equal(existsSync(join(cwd, "list-a.md")), true, "the one in front stayed");
+	assert.equal(await app.evaluate("location.hash"), "#list-a.md", "and is still in front");
+});
+
 check("deleting a note closes it and offers it back, and Restore brings it back open", async ({ app, cwd }) => {
 	await app.evaluate(`document.querySelector('#notes button[data-path="code.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved");
