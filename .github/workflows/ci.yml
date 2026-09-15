@@ -15,14 +15,19 @@
 # whether it hides how a name is composed — get a real answer rather than a
 # skip. Public repo, so the runner is free.
 #
-# The e2e suite is not here yet, though it would run: it finds Chrome on the
-# runner, and the server starts on a credentials file that names a provider
-# whether or not the key is any good, since only one check spends a model call
-# and it skips itself when the model will not answer. What holds it back is one
-# check of its own — a note coming back scrolled where it was read — which was
-# seen to time out once under load and has not been reproduced since. A light
-# that goes red by chance teaches everyone to ignore it, which is worse than no
-# light, so it waits until that check is understood.
+# The e2e suite is here now, in a job of its own. What had held it back was one
+# check — a note coming back scrolled where it was read — seen to time out once
+# under load and never again. The runs that were meant to reproduce it had no
+# load on them: this Mac has no `timeout`, so the process that was supposed to
+# make the machine busy never started. Run properly, with twelve spinners on
+# twelve cores and the load average between eleven and thirty, the suite passed
+# 77/77 three times over. That check also says where the page actually was when
+# it gives up now, so a first red would name itself rather than be guessed at.
+#
+# Its own job, not another step on this one, so that a red there does not hide
+# whether the types, the tests and the build are fine. It needs no credentials
+# for the same reason `npm test` needs none: the server lists a model whether
+# or not a key behind it is any good, and no check in the suite spends a call.
 name: ci
 
 on:
@@ -51,3 +56,16 @@ jobs:
       # That it still builds is its own answer: a bundler resolves imports a
       # type check never looks at.
       - run: npm run build
+
+  # The app in a real browser, driven over the DevTools protocol. Chrome is on
+  # the runner already; scripts/e2e.mjs looks for it where macOS keeps it.
+  e2e:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run e2e
