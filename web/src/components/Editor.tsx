@@ -83,7 +83,12 @@ const theme = EditorView.theme({
 	// ==words==: a wash of the text colour, like the selection but lighter, so it reads in both themes.
 	".cm-highlight": { backgroundColor: "color-mix(in oklab, var(--foreground) 12%, transparent)", borderRadius: "2px" },
 	// #tag: set off from the prose the way a link is, without being one yet.
-	".cm-tag": { color: "var(--muted-foreground)", backgroundColor: "color-mix(in oklab, var(--foreground) 6%, transparent)", borderRadius: "4px", padding: "0 0.25em" },
+	// The fill is --muted rather than a wash mixed here, so that it and the
+	// words on it are a pair the themes answer for — a wash of --foreground
+	// under text taken from --muted-foreground is two colours derived apart
+	// and met on screen, and on a dark page they met at 3.5. It is also the
+	// fill every other quiet chip in the window already uses.
+	".cm-tag": { color: "var(--muted-foreground)", backgroundColor: "var(--muted)", borderRadius: "4px", padding: "0 0.25em" },
 	// The search panel, in the app's own chrome rather than CodeMirror's grey.
 	".cm-panels": { backgroundColor: "var(--background)", color: "var(--foreground)", borderColor: "var(--border)" },
 	".cm-panels-top": { borderBottom: "1px solid var(--border)" },
@@ -104,7 +109,23 @@ const theme = EditorView.theme({
 	".cm-panel.cm-search label": { fontSize: "12px", color: "var(--muted-foreground)", marginRight: "0.5rem" },
 	".cm-panel.cm-search [name=close]": { color: "var(--muted-foreground)", border: "none", fontSize: "16px", top: "0.3rem", right: "1rem" },
 	".cm-searchMatch": { backgroundColor: "color-mix(in oklab, var(--foreground) 14%, transparent)" },
-	".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: "color-mix(in oklab, var(--foreground) 28%, transparent)" },
+	// The one the find panel is on. Deepening the wash is how it used to be
+	// told apart, and that is the one direction it cannot go: the darker the
+	// wash, the nearer it comes to the words lying on it, and at the 28% it
+	// took to be seen they read 3.1.
+	//
+	// Nor can it be marked by turning the words over, which is what an editor
+	// usually does. The colour of a word inside a match is not ours to set —
+	// a link, a quote, a comment and a sixth-level heading all carry their own
+	// out of the highlight style, on a span nested with this one, and which of
+	// the two is inside the other is CodeMirror's business and could change
+	// under us. On an opaque fill the ones that kept their colour would read
+	// 2.1.
+	//
+	// So the fill stays where it is and the state is drawn around it, as VS
+	// Code draws findMatchBorder. An outline is a non-text mark, which wants
+	// 3:1 and has 5.3 at worst, and no span nested inside can take it away.
+	".cm-searchMatch.cm-searchMatch-selected": { outline: "1px solid var(--foreground)", borderRadius: "2px" },
 	// The other copies of the selected word, under the selection's own wash.
 	".cm-selectionMatch": { backgroundColor: "color-mix(in oklab, var(--foreground) 10%, transparent)" },
 });

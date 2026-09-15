@@ -144,15 +144,21 @@ const TEXT = [
 
 /**
  * The washes CodeMirror derives from --foreground, and the text read on them.
- * They are written as percentages in Editor.tsx and livePreview.ts rather than
- * as tokens, so they are listed here by hand — if those numbers move, these do.
+ * They are written as percentages in Editor.tsx rather than as tokens, so they
+ * are listed here by hand — if those numbers move, these do.
+ *
+ * Every one that is left carries --foreground on a wash of --foreground, which
+ * is safe only while the wash stays light. A tag and the current search match
+ * used to be here too and took opaque token pairs instead, which the rows
+ * above already cover; a surface invented at the point of use is a surface
+ * nobody has measured.
  */
 const WASHES = [
 	["--foreground", 0.12, "--background", "--foreground", ".cm-highlight"],
-	["--foreground", 0.06, "--background", "--muted-foreground", ".cm-tag"],
 	["--foreground", 0.14, "--background", "--foreground", ".cm-searchMatch"],
-	["--foreground", 0.28, "--background", "--foreground", ".cm-searchMatch-selected"],
 	["--foreground", 0.1, "--background", "--foreground", ".cm-selectionMatch"],
+	// The current match is this same wash with an outline round it, so the row
+	// above is its row too.
 ];
 
 /** Focus rings are UI, not text: WCAG 1.4.11 asks 3.0. */
