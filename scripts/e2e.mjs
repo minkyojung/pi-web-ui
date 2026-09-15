@@ -54,14 +54,19 @@ function freePort() {
 /** Poll until it is true, rather than sleeping for as long as it might take. */
 async function until(what, check, timeout = 30_000) {
 	const deadline = Date.now() + timeout;
+	let last;
 	for (;;) {
 		try {
 			const value = await check();
 			if (value) return value;
-		} catch {
-			// Not up yet, which is the usual reason.
+			last = value;
+		} catch (error) {
+			// Not up yet, which is the usual reason — but say so if it is the reason it ends on.
+			last = error;
 		}
-		if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+		// What it last saw, since a timeout on its own says only that something did not happen. A
+		// check that reads a number reports the number; one that returns false has nothing to add.
+		if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}${last === false || last === undefined ? "" : ` (last: ${last instanceof Error ? last.message : JSON.stringify(last)})`}`);
 		await new Promise((r) => setTimeout(r, 200));
 	}
 }
@@ -1166,7 +1171,12 @@ check("the title scrolls away with the note, and the note comes back scrolled wh
 	await pickNote(app, "ideas/second.md");
 	await until("the other note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("second"));
 	await app.evaluate(`document.querySelector('#notes button[data-path="tall.md"]').click()`);
-	await until("back where it was", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.querySelector('#note').scrollTop")) === 600);
+	await until("back where it was", async () => {
+		if ((await editorStatus(app)) !== "saved") return false;
+		const top = await app.evaluate("document.querySelector('#note').scrollTop");
+		if (top !== 600) throw new Error(`the page is at ${top}`);
+		return true;
+	});
 });
 
 check("a note stood in twice comes back to each step where that step was read", async ({ app, cwd }) => {
@@ -1182,22 +1192,31 @@ check("a note stood in twice comes back to each step where that step was read", 
 		await app.evaluate(`(document.querySelector('#note').scrollTop = ${top})`);
 		await until(`the page at ${top}`, async () => (await page()) === top);
 	};
+	// The note there, and the page where that step was read. A page somewhere else throws rather
+	// than answering no, so the timeout says where it actually was — which is the whole difference
+	// between "the step lost its place" and "the place was put back late".
+	const atPage = async (seen, top) => {
+		if (!(await editorText(app)).includes(seen)) return false;
+		const now = await page();
+		if (now !== top) throw new Error(`the page is at ${now}`);
+		return true;
+	};
 	// Read near the top, left for another note, and read far down on the way back.
 	await openNote("twice.md", "twice 119");
 	await scrollTo(200);
 	await openNote("between.md", "between");
 	await openNote("twice.md", "twice 119");
-	await until("open where it was last read", async () => (await page()) === 200);
+	await until("open where it was last read", async () => atPage("twice 119", 200));
 	await scrollTo(900);
 	await pickNote(app, "ideas/second.md");
 	await until("the other note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("second"));
 	await app.press("[", { meta: true });
-	await until("the step read far down", async () => (await editorText(app)).includes("twice 119") && (await page()) === 900);
+	await until("the step read far down", async () => atPage("twice 119", 900));
 	await app.press("[", { meta: true });
 	await until("the note between them", async () => (await editorText(app)).includes("between"));
 	// The same note, the other step: where that one was read, not where the other was.
 	await app.press("[", { meta: true });
-	await until("the step read near the top", async () => (await editorText(app)).includes("twice 119") && (await page()) === 200);
+	await until("the step read near the top", async () => atPage("twice 119", 200));
 });
 
 check("open notes are tabs in the title bar; a click picks one, its × closes it to the neighbour, and a reload keeps the row", async ({ app, cwd }) => {
