@@ -68,14 +68,14 @@ export function Sidebar({
 			) : (
 				// The rows are inset by the same gutter the foot keeps, so a row's
 				// highlight ends where the settings button does.
-				<ul id="notes" className="no-scrollbar flex-1 overflow-y-auto overscroll-contain px-2 py-1">
+				<ul id="notes" className="no-scrollbar edge-bottom [--edge-over:var(--sidebar)] flex-1 overflow-y-auto overscroll-contain px-2 py-1">
 					{treeOf(files.map((f) => f.path)).map((node) => (
 						<Tree key={node.path} node={node} open={open} openFolders={openFolders} onOpen={onOpen} />
 					))}
 				</ul>
 			)}
 			{/* Not a drag region: the foot of the window is not its title bar. */}
-			<div className="flex h-10 shrink-0 items-center gap-1 border-t border-sidebar-border px-2">
+			<div className="flex h-10 shrink-0 items-center gap-1 px-2">
 				<FolderPicker />
 				<Settings />
 			</div>

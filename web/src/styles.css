@@ -449,6 +449,40 @@
  * The editor is named by its own class because CodeMirror owns that element
  * and there is nowhere to hang a className on it.
  */
+/*
+ * A hairline at the edge of a scrolling box, there only while something has
+ * gone past that edge.
+ *
+ * A header's border-b was there at rest as well, dividing nothing: at the top
+ * of a list there is nothing above it to be divided off. What the line is for
+ * is the moment the words begin sliding under the header, and it can be there
+ * only then. macOS toolbars have done exactly this for years — NSToolbar's
+ * separatorStyle .automatic — and Linear, measured, leaves its own drawn all
+ * the time, which is the one place this window goes further than it.
+ *
+ * Two background layers in the same row of pixels. The line is attached to the
+ * box and stays put. Over it lies a cover in the colour of whatever the box is
+ * drawn on, attached to the *content*, so it rides up out of sight the moment
+ * anything is scrolled and leaves the line showing. No state, no observer, and
+ * nothing to wire between a header and the list beneath it: the box that
+ * scrolls is the box that knows. Lea Verou's scroll shadows, cut to one pixel.
+ *
+ * --edge-over has to be the surface the box is drawn on. A cover in any other
+ * colour is a line of its own.
+ */
+.edge-top,
+.edge-bottom {
+  --edge-over: var(--background);
+  background-repeat: no-repeat;
+  background-size: 100% 1px, 100% 1px;
+  background-attachment: local, scroll;
+  background-image:
+    linear-gradient(var(--edge-over), var(--edge-over)),
+    linear-gradient(var(--border), var(--border));
+}
+.edge-top { background-position: 0 0, 0 0; }
+.edge-bottom { background-position: 0 100%, 0 100%; }
+
 .no-scrollbar,
 .cm-scroller {
   scrollbar-width: none;

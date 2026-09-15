@@ -203,7 +203,7 @@ export function PanelHeader() {
 	const current = sessions.find((s) => s.current);
 
 	return (
-		<div id="settings" className="group/header drag-region flex h-11 shrink-0 items-center gap-1 border-b pr-2 pl-3">
+		<div id="settings" className="group/header drag-region flex h-11 shrink-0 items-center gap-1 pr-2 pl-3">
 			<SessionTitle current={current} online={online} />
 			<Tooltip>
 				<TooltipTrigger asChild>
