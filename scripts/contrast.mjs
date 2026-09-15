@@ -53,8 +53,17 @@ const contrast = (fg, bg) => {
 	return (hi + 0.05) / (lo + 0.05);
 };
 
-/** src over dst. Compositing is linear-light, which is where these colours already are. */
-const over = (src, alpha, dst) => src.map((c, i) => c * alpha + dst[i] * (1 - alpha));
+const toLinear = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+const toGamma = (c) => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055);
+
+/**
+ * src over dst, where a browser does it: on the gamma-encoded sRGB values, not
+ * on the light they stand for. Black at half alpha over white is #808080 on a
+ * screen and #bcbcbc if the arithmetic is done in linear light, and the whole
+ * point of this file is to say what is on the screen.
+ */
+const over = (src, alpha, dst) =>
+	src.map((c, i) => toLinear(toGamma(c) * alpha + toGamma(dst[i]) * (1 - alpha)));
 
 /* ── the stylesheet ─────────────────────────────────────────────────────── */
 
@@ -148,17 +157,16 @@ const TEXT = [
  * are listed here by hand — if those numbers move, these do.
  *
  * Every one that is left carries --foreground on a wash of --foreground, which
- * is safe only while the wash stays light. A tag and the current search match
- * used to be here too and took opaque token pairs instead, which the rows
- * above already cover; a surface invented at the point of use is a surface
- * nobody has measured.
+ * stays safe however dark the wash is made: both ends move together. A tag was
+ * here too and took an opaque token pair instead, which the rows above cover —
+ * it put --muted-foreground on a wash of --foreground, two colours derived
+ * apart and met only on the screen, and that is the shape to avoid.
  */
 const WASHES = [
 	["--foreground", 0.12, "--background", "--foreground", ".cm-highlight"],
 	["--foreground", 0.14, "--background", "--foreground", ".cm-searchMatch"],
+	["--foreground", 0.28, "--background", "--foreground", ".cm-searchMatch-selected"],
 	["--foreground", 0.1, "--background", "--foreground", ".cm-selectionMatch"],
-	// The current match is this same wash with an outline round it, so the row
-	// above is its row too.
 ];
 
 /** Focus rings are UI, not text: WCAG 1.4.11 asks 3.0. */

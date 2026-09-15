@@ -77,12 +77,8 @@
   /*
    * Selected text, one pair for the whole window: the layer CodeMirror draws
    * under a note and the ::selection everywhere else read these two, so the
-   * sidebar and the editor highlight alike.
-   *
-   * Not one figure for both neutral themes, though it looked like it could be:
-   * a share of --foreground follows the theme's text colour but not its page,
-   * and on a dark page the wash climbs *toward* the words instead of away from
-   * them. The dark theme sets its own, lower.
+   * sidebar and the editor highlight alike. Defined once — the wash is a share
+   * of whatever --foreground the theme sets, so the neutral dark follows.
    *
    * Not --accent: in the light theme that is nearly the page colour, and a
    * selection that cannot be seen is not one. The text keeps its own colour,
@@ -125,8 +121,6 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
-  /* 18%, the light theme's share, would leave the words at 4.48 here. */
-  --selection: color-mix(in oklab, var(--foreground) 16%, transparent);
 }
 
 /*
