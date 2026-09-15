@@ -34,7 +34,7 @@ export function DockBar({ onPick }: { onPick: (session: SessionInfo) => void }) 
 			// The value changes only to another session; the window opens on the
 			// click, so the one tab there is opens it too.
 			onValueChange={(path) => send({ type: "resume_session", path })}
-			className="h-8 shrink-0 items-center border-t px-2 data-[orientation=horizontal]:flex-row"
+			className="h-8 shrink-0 items-center px-2 data-[orientation=horizontal]:flex-row"
 		>
 			<TabsList variant="line" className="group-data-[orientation=horizontal]/tabs:h-full no-scrollbar min-w-0 flex-1 justify-start gap-0 overflow-x-auto">
 				{row.map((s) => (
