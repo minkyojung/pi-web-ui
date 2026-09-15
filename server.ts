@@ -35,7 +35,7 @@ import { FileIndex } from "./fileIndex.ts";
 import { startLogging } from "./log.ts";
 import { deleteNote, shellTrash } from "./trash.ts";
 import { noteTools } from "./noteEdit.ts";
-import { decide, type Change, mapThrough, moveHistory, reconcile, record, replay, readHistory, trashLog, unreviewed } from "./history.ts";
+import { decide, type Change, historyOf, type Holed, mapThrough, moveHistory, reconcile, record, readHistory, trashLog, undecided } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { type Claim, recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
@@ -385,9 +385,9 @@ function settleDisk(path: string, text: string, mtime: number, at: number) {
 function note(path: string): NoteMsg | null {
 	const found = readNote(CWD, path);
 	if (!found) return null;
-	const { changes } = settleDisk(path, found.text, found.modified, Date.now());
+	const { holed } = settleDisk(path, found.text, found.modified, Date.now());
 	known.set(path, found.modified);
-	return { type: "note", path, text: found.text, modified: found.modified, original: toDecide(changes), backlinks: links.backlinks(path), tagged: links.tagged(path) };
+	return { type: "note", path, text: found.text, modified: found.modified, original: toDecide(holed), backlinks: links.backlinks(path), tagged: links.tagged(path) };
 }
 
 /**
@@ -479,10 +479,13 @@ function wrote(path: string, base: number | null, changes: Change[]): void {
 		touchedBy(links.update(path, found.text));
 		offered(propertyNames.update(path, found.text));
 	}
-	const log = found ? readHistory(CWD, path) : [];
-	if (found && base !== null && replay(log).text === found.text) {
+	// One read of the log for both questions — whether it agrees with the disk,
+	// and what is left to decide about — and the snapshot beside it means the
+	// walk is only what has been written since. See historyOf.
+	const said = found ? historyOf(CWD, path) : null;
+	if (found && said && base !== null && said.replayed.text === found.text) {
 		known.set(path, found.modified);
-		const msg: NoteChangedMsg = { type: "note_changed", path, base, modified: found.modified, changes, original: toDecide(log) };
+		const msg: NoteChangedMsg = { type: "note_changed", path, base, modified: found.modified, changes, original: toDecide(said.holed) };
 		broadcast(msg);
 	} else {
 		const msg = note(path);
@@ -501,8 +504,8 @@ function wrote(path: string, base: number | null, changes: Change[]): void {
  * has to be remembered: a diff is available whenever there is one to show,
  * to whichever tab opens the note, however long ago pi wrote.
  */
-function toDecide(log: Change[]): string | undefined {
-	const { before, holes } = unreviewed(log);
+function toDecide(holed: Holed): string | undefined {
+	const { before, holes } = undecided(holed);
 	return holes.length ? before : undefined;
 }
 

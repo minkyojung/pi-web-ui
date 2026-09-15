@@ -236,7 +236,8 @@ test("휴지통에서 돌아온 노트는 제 과거를 되찾는다 — 재생�
     trashLog(dir, "a.md");
 
     // 파인더의 Put Back: 같은 바이트가 돌아온다.
-    const { changes } = reconcile(dir, "a.md", "one two\n", 5);
+    reconcile(dir, "a.md", "one two\n", 5);
+    const changes = readHistory(dir, "a.md");
     assert.equal(replay(changes).text, "one two\n");
     assert.equal(changes.at(-1).author, "pi", "pi가 쓴 말은 돌아와서도 pi의 것이다");
     assert.equal(changes.filter((c) => c.author === "outside").length, 0, "바깥에서 온 것으로 새로 씨 뿌리지 않는다");
@@ -252,7 +253,8 @@ test("같은 이름의 다른 노트에게는 그 과거가 가지 않는다", (
     reconcile(dir, "a.md", "one\n", 1, me);
     trashLog(dir, "a.md");
     // 이름만 같은 새 노트.
-    const { changes } = reconcile(dir, "a.md", "something else entirely\n", 5);
+    reconcile(dir, "a.md", "something else entirely\n", 5);
+    const changes = readHistory(dir, "a.md");
     assert.equal(changes.length, 1, "제 과거는 비어 있고, 지금 글이 처음 본 것으로 들어간다");
     assert.equal(changes[0].author, "outside");
     assert.ok(existsSync(trashHistoryPath(dir, "a.md")), "앞 노트의 과거는 휴지통에 그대로 있다");

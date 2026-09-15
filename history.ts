@@ -20,6 +20,8 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renam
 import { basename, dirname, join } from "node:path";
 import { diffWordsWithSpace } from "diff";
 
+import { forgetSnapshot, readSnapshot, writeSnapshot } from "./snapshot.ts";
+
 export type Author = "me" | "pi" | "outside";
 
 /** Where a change came from. Only pi's carry a place in a session. */
@@ -267,17 +269,23 @@ export function holesOf(changes: Change[], from?: Holed): Holed {
 	return { text, holes };
 }
 
-export function unreviewed(changes: Change[], from?: Holed): { text: string; before: string; holes: Hole[] } {
-	const { text, holes } = holesOf(changes, from);
-	// Open, and open to a difference: a hole whose words the person has put
-	// back by hand reads the same either way, and there is nothing in it to
-	// decide. It stays in the log's reading, since a later change of pi's
-	// there may widen it, but it is not offered.
+/**
+ * The reading of a walk: what there is to decide about, and the note as it
+ * would be with all of it put back.
+ *
+ * Open, and open to a difference: a hole whose words the person has put back
+ * by hand reads the same either way, and there is nothing in it to decide. It
+ * stays in the walk's state, since a later change of pi's there may widen it,
+ * but it is not offered.
+ */
+export function undecided({ text, holes }: Holed): { text: string; before: string; holes: Hole[] } {
 	const open = holes.filter((h) => !h.accepted && text.slice(h.from, h.to) !== h.removed);
 	let before = text;
 	for (const h of [...open].reverse()) before = before.slice(0, h.from) + h.removed + before.slice(h.to);
 	return { text, before, holes: open };
 }
+
+export const unreviewed = (changes: Change[], from?: Holed) => undecided(holesOf(changes, from));
 
 /**
  * Where a place in a note has moved to, after the changes since.
@@ -361,20 +369,75 @@ export function historyPath(root: string, path: string): string {
 	return join(root, HISTORY_DIR, `${path}.jsonl`);
 }
 
-export const readHistory = (root: string, path: string): Change[] => readLog(historyPath(root, path));
+export const readHistory = (root: string, path: string): Change[] => readLog(historyPath(root, path)).changes;
 
-function readLog(file: string): Change[] {
+/**
+ * The log's lines and what they say, side by side.
+ *
+ * A line that will not parse is not part of the log — a torn last line from a
+ * crash mid-append — and is left out of both, so that the nth change is the
+ * nth line and a snapshot covering n of one covers n of the other.
+ */
+function readLog(file: string): { raw: string[]; changes: Change[] } {
+	const raw = linesOf(file);
+	const changes: Change[] = [];
+	for (const line of raw) changes.push(JSON.parse(line));
+	return { raw, changes };
+}
+
+/**
+ * The log's lines, the ones that are lines: a blank tail, and a last one torn
+ * by a crash mid-append, are not. Read without parsing, since a line the
+ * snapshot already covers never has to become anything.
+ */
+function linesOf(file: string): string[] {
 	if (!existsSync(file)) return [];
-	const out: Change[] = [];
+	const out: string[] = [];
 	for (const line of readFileSync(file, "utf8").split("\n")) {
 		if (!line) continue;
 		try {
-			out.push(JSON.parse(line));
+			JSON.parse(line);
+			out.push(line);
 		} catch {
 			// A torn last line from a crash mid-append. Everything before it holds.
 		}
 	}
 	return out;
+}
+
+/**
+ * How long a walk has to take before its answer is worth writing down beside
+ * the log. Most notes never reach it and never grow a snapshot; one that does
+ * reaches it once and then walks only what came after.
+ */
+const SLOW_MS = 20;
+
+/** How long the log is, and what it says. */
+export type Read = { lines: number; replayed: Replayed; holed: Holed };
+
+/**
+ * What a note's log says, leaning on the snapshot beside it — see snapshot.ts.
+ *
+ * Both walks, since the two questions are always asked about the same note in
+ * the same breath: what it says and who wrote it, and what is still to decide
+ * about. Walking is where the cost is, and with a snapshot each walk is only
+ * the lines since it.
+ */
+export function historyOf(root: string, path: string, slowMs = SLOW_MS): Read {
+	const file = historyPath(root, path);
+	const raw = linesOf(file);
+	const snap = readSnapshot(file, raw);
+	// Only the lines the snapshot does not cover are turned into changes. On a
+	// long log the parsing is most of what is left once the walk is short, and
+	// a line already answered for never has to become anything.
+	const tail = raw.slice(snap ? snap.lines : 0).map((line) => JSON.parse(line) as Change);
+	const started = performance.now();
+	const replayed = replay(tail, snap ? { text: snap.text, spans: snap.spans, removals: snap.removals } : undefined);
+	const holed = holesOf(tail, snap ? { text: snap.text, holes: snap.holes } : undefined);
+	if (performance.now() - started > slowMs && raw.length > 0) {
+		writeSnapshot(file, raw, { text: replayed.text, spans: replayed.spans, removals: replayed.removals, holes: holed.holes });
+	}
+	return { lines: raw.length, replayed, holed };
 }
 
 /** The log follows its note to a new path. A note with no log yet has nothing to move. */
@@ -433,7 +496,7 @@ export function reclaimLog(root: string, path: string, onDisk: string): Change[]
 		// Newest first: a note deleted twice comes back as the last one deleted.
 		.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
 	for (const file of candidates) {
-		const changes = readLog(file);
+		const { changes } = readLog(file);
 		if (replay(changes).text !== onDisk) continue;
 		moveLog(file, historyPath(root, path));
 		return changes;
@@ -445,6 +508,11 @@ export function moveLog(src: string, dst: string): void {
 	if (!existsSync(src)) return;
 	mkdirSync(dirname(dst), { recursive: true });
 	renameSync(src, dst);
+	// The answer worked out beside a log does not travel with it, and the one
+	// at the far end was about whatever used to be there. Both go: a cache is
+	// cheaper to work out again than to keep right through a move.
+	forgetSnapshot(src);
+	forgetSnapshot(dst);
 }
 
 export function appendHistory(root: string, path: string, changes: Change[]): void {
@@ -475,23 +543,23 @@ export function reconcile(
 	onDisk: string,
 	at: number,
 	origin: Origin = { author: "outside", at },
-): { changes: Change[]; appended: Change[]; spans: Span[] } {
+): { appended: Change[]; spans: Span[]; replayed: Replayed; holed: Holed } {
 	// A note with no log is either new or back from the trash, and the trash is
 	// asked before the note is seeded as new — see reclaimLog.
-	const changes = readHistory(root, path);
-	if (changes.length === 0) changes.push(...(reclaimLog(root, path, onDisk) ?? []));
-	const walked = replay(changes);
+	let read = historyOf(root, path);
+	// A note with no log is either new or back from the trash; reclaiming puts
+	// a log where there was none, so what it says is read again.
+	if (read.lines === 0 && reclaimLog(root, path, onDisk)) read = historyOf(root, path);
+	let { replayed, holed } = read;
 	let appended: Change[] = [];
-	if (walked.text !== onDisk) {
-		appended = changesBetween(walked.text, onDisk, origin);
+	if (replayed.text !== onDisk) {
+		appended = changesBetween(replayed.text, onDisk, origin);
 		appendHistory(root, path, appended);
-		changes.push(...appended);
+		// Only the new lines, on top of what was just worked out.
+		replayed = replay(appended, replayed);
+		holed = holesOf(appended, holed);
 	}
-	// The walk again is only for what was just appended, and there is usually
-	// nothing: the disk agrees with the log every time but the first of a write
-	// that came from somewhere else. Walking a log twice to learn the same
-	// thing costs what walking it once costs, which on a long one is not little.
-	return { changes, appended, spans: appended.length === 0 ? walked.spans : replay(changes).spans };
+	return { appended, spans: replayed.spans, replayed, holed };
 }
 
 /**
@@ -503,7 +571,7 @@ export function reconcile(
  * about nothing leaves no line.
  */
 export function decide(root: string, path: string, from: number, to: number, at: number, kept: boolean): void {
-	const { text, removals } = replay(readHistory(root, path));
+	const { text, removals } = historyOf(root, path).replayed;
 	const words = text.slice(from, to);
 	if (!words && !removals.some((r) => r.pos === from)) return;
 	appendHistory(root, path, [{ author: "me", at, from, to, inserted: words, removed: words, kept }]);
