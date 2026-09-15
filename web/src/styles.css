@@ -54,7 +54,11 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
+  /* The rim, at the distance from the page the dark themes keep theirs at,
+     the other way up — a raised thing here is white and its edge is a shadow
+     rather than a highlight. --input is left where it was: an edge you aim a
+     pointer at is not the same job as an edge that only has to be there. */
+  --border: oklch(0.948 0 0);
   --input: oklch(0.922 0 0);
   /* A focus ring is a non-text indicator, which WCAG asks 3:1 of. The figure
      shadcn ships reads 2.59 on a page this light — the only one of the four
@@ -66,13 +70,17 @@
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
+  /* The frame, below the page as in every theme here. White is the ceiling in
+     a light window, so the ladder is built downward from the content: --card
+     and --popover stay white and say they are raised with a shadow, which is
+     how Material, Apple and Linear all do it. */
+  --sidebar: oklch(0.973 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent: oklch(0.958 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-border: oklch(0.948 0 0);
   --sidebar-ring: oklch(0.653 0 0);
   /*
    * Selected text, one pair for the whole window: the layer CodeMirror draws
@@ -188,7 +196,7 @@
   /* Their Warm Red #BF505C, a shade down: as drawn it reads 4.45 on this page,
      which is under AA, and an error is the one line that has to be legible. */
   --destructive: oklch(0.565 0.143 16);
-  --border: oklch(0.907 0.016 95);
+  --border: oklch(0.932 0.016 95);
   --input: oklch(0.907 0.016 95);
   --ring: oklch(0.553 0.086 209);
   /* Turquoise 200 down to 700, light to dark, the way the neutral ramp runs. */
@@ -197,13 +205,13 @@
   --chart-3: oklch(0.553 0.086 209);
   --chart-4: oklch(0.477 0.073 208);
   --chart-5: oklch(0.393 0.061 206);
-  --sidebar: oklch(0.966 0.013 97);
+  --sidebar: oklch(0.957 0.013 97);
   --sidebar-foreground: oklch(0.192 0.02 196);
   --sidebar-primary: oklch(0.553 0.086 209);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.952 0.015 95);
+  --sidebar-accent: oklch(0.943 0.015 95);
   --sidebar-accent-foreground: oklch(0.192 0.02 196);
-  --sidebar-border: oklch(0.907 0.016 95);
+  --sidebar-border: oklch(0.932 0.016 95);
   --sidebar-ring: oklch(0.553 0.086 209);
   /* Selected text is where this theme spends the ramp on prose, as their own
      product does: True Turquoise washed over the paper, and the words on it
