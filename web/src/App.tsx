@@ -420,8 +420,8 @@ export function App() {
 						/>
 						<PiToggle open={piOpen} onToggle={togglePi} />
 					</div>
-					<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
-					<ResizablePanel id="main" minSize="30%" className="mx-2 mb-2 flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background">
+					<ResizablePanelGroup orientation="horizontal" className="mx-2 mb-2 min-h-0 flex-1 overflow-hidden rounded-xl border bg-background" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
+					<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
@@ -481,7 +481,7 @@ export function App() {
 						minSize="20%"
 						collapsible
 						collapsedSize="0%"
-						className="mr-2 mb-2 flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background"
+						className="m-2 flex min-w-0 flex-col overflow-hidden rounded-lg border bg-sidebar"
 						onResize={() => setPiOpen(!pi.current?.isCollapsed())}
 					>
 						<Boundary name="conversation">

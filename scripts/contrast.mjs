@@ -145,6 +145,8 @@ const TEXT = [
 	["--accent-foreground", "--accent", "selected menu row"],
 	["--sidebar-foreground", "--sidebar", "sidebar row"],
 	["--sidebar-accent-foreground", "--sidebar-accent", "selected note"],
+	["--muted-foreground", "--sidebar-accent", "a hovered row on the frame"],
+	["--foreground", "--sidebar-accent", "a hovered row on the frame"],
 	["--sidebar-primary-foreground", "--sidebar-primary", "sidebar primary"],
 	["--destructive", "--background", "error text"],
 	["--destructive", "--card", "error on a card"],

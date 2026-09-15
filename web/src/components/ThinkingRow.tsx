@@ -30,7 +30,7 @@ export function ThinkingRow({ text }: { text: string }) {
 
 	return (
 		<Collapsible className="-my-1">
-			<CollapsibleTrigger className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-left font-normal hover:bg-muted/60">
+			<CollapsibleTrigger className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-left font-normal hover:bg-sidebar-accent">
 				<BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
 				<span className="shrink-0 text-sm font-normal text-foreground/80">Thinking</span>
 				{preview && <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{preview}</span>}

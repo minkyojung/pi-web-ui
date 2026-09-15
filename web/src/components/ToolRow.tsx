@@ -68,7 +68,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
  */
 function Diff({ diff }: { diff: string }) {
 	return (
-		<div className="max-h-72 overflow-auto rounded-md bg-muted/50 py-1 font-mono text-xs">
+		<div className="max-h-72 overflow-auto rounded-md bg-background py-1 font-mono text-xs">
 			{diff.split("\n").map((line, i) => (
 				<div
 					key={i}
@@ -120,7 +120,7 @@ export function ToolRow({ item }: { item: Item }) {
 			    case, and a caret on every one of eight rows is a column of marks
 			    that has to be looked past. The row highlights when pointed at,
 			    which is the same offer with nothing standing there to make it. */}
-			<CollapsibleTrigger className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-left font-normal hover:bg-muted/60">
+			<CollapsibleTrigger className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-left font-normal hover:bg-sidebar-accent">
 				<Icon className="size-3.5 shrink-0 text-muted-foreground" />
 				{/* Body size, like the assistant's own text: a tool call is part of
 				    the same account of what happened, not a footnote under it. The
@@ -159,7 +159,7 @@ export function ToolRow({ item }: { item: Item }) {
 							<Diff diff={diff} />
 						) : (
 							<CodeBlock
-								className="border-0 bg-muted/50"
+								className="border-0 bg-background"
 								code={JSON.stringify(item.args ?? {}, null, 2)}
 								language="json"
 							/>
@@ -175,7 +175,7 @@ export function ToolRow({ item }: { item: Item }) {
 							<pre
 								className={cn(
 									"max-h-72 overflow-auto rounded-md p-2 whitespace-pre-wrap",
-									item.isError ? "bg-destructive/10 text-destructive" : "bg-muted/50",
+									item.isError ? "bg-destructive/10 text-destructive" : "bg-background",
 								)}
 							>
 								{item.result}

@@ -49,8 +49,10 @@
      — a conflict banner, a code block's header, a hovered row — and at the
      figure the page alone asked for it read 4.34 there. This is the rule a
      low-contrast text step is given elsewhere (Radix's step 11): defined
-     against every surface under it, not against the first one. */
-  --muted-foreground: oklch(0.539 0 0);
+     against every surface under it, not against the first one. The darkest it
+     lands on is no longer --muted: pi's conversation sits on the frame now, so
+     a hovered row under it is --sidebar-accent, a step below that again. */
+  --muted-foreground: oklch(0.531 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -193,7 +195,7 @@
   --muted: oklch(0.952 0.015 95);
   /* Down the same 0.017 the neutral light went, and for the same reason: this
      theme is measured against that one. */
-  --muted-foreground: oklch(0.523 0.02 200);
+  --muted-foreground: oklch(0.519 0.02 200);
   --accent: oklch(0.952 0.015 95);
   --accent-foreground: oklch(0.192 0.02 196);
   /* Their Warm Red #BF505C, a shade down: as drawn it reads 4.45 on this page,
