@@ -31,6 +31,7 @@ import { askUser } from "./askUser.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
 import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, withCreated, writeNote, type WriteResult } from "./vault.ts";
+import { FileIndex } from "./fileIndex.ts";
 import { deleteNote, shellTrash } from "./trash.ts";
 import { noteTools } from "./noteEdit.ts";
 import { decide, type Change, mapThrough, moveHistory, reconcile, record, replay, readHistory, trashLog, unreviewed } from "./history.ts";
@@ -351,7 +352,7 @@ function branches(): BranchesMsg {
 
 /** The notes in the working folder. See vault.ts. */
 function files(): FilesMsg {
-	return { type: "files", files: listNotes(CWD) };
+	return { type: "files", files: notes.all(), truncated: notes.truncated };
 }
 
 /**
@@ -386,6 +387,10 @@ function note(path: string): NoteMsg | null {
  * already says so keeps what it says (vault.ts).
  */
 const born = (text: string) => (readSettings().created ? withCreated(text, new Date()) : text);
+
+/** Which notes the folder holds, so that a save does not read the folder again — see fileIndex.ts. */
+const notes = new FileIndex(CWD);
+notes.load();
 
 /** Every note's links, for "who links here" — see linkIndex.ts. */
 const links = new LinkStore(CWD);
@@ -442,7 +447,7 @@ function noticed(path: string): void {
 		if (known.delete(path)) broadcast({ type: "note_gone", path });
 		touchedBy(links.remove(path));
 		offered(propertyNames.remove(path));
-		broadcast(files());
+		if (notes.remove(path)) broadcast(files());
 		return;
 	}
 	const base = known.get(path) ?? null;
@@ -473,7 +478,10 @@ function wrote(path: string, base: number | null, changes: Change[]): void {
 		const msg = note(path);
 		if (msg) broadcast(msg);
 	}
-	broadcast(files());
+	// The list only hears about a note it did not have. A note's text changing
+	// is not something anything reading that list can see — see fileIndex.ts.
+	const news = found ? notes.saw(path, found.modified) : notes.remove(path);
+	if (news) broadcast(files());
 }
 
 /**
@@ -682,8 +690,10 @@ function onEvent(event: AgentSessionEvent): void {
 	// A finished run is a new branch under whatever it was asked from, so the
 	// message it answered may have just gained a sibling.
 	if (event.type === "agent_settled") broadcast(branches());
-	// And it may have written a note, or renamed one.
-	if (event.type === "agent_settled") broadcast(files());
+	// And it may have written a note, or renamed one, by a route nothing here
+	// hears — a shell command. One walk at the end of a turn, and only if what
+	// it found differs.
+	if (event.type === "agent_settled" && notes.load()) broadcast(files());
 	// The first exchange is the first thing there is to name the session by.
 	if (event.type === "agent_settled") void nameSession();
 }
@@ -963,6 +973,7 @@ wss.on("connection", async (ws) => {
 	reply(contextSources());
 	reply(snapshot());
 	reply(branches());
+	notes.load();
 	reply(files());
 	reply({ type: "property_types", types: propertyTypes.all() });
 	reply({ type: "property_names", ...propertyNames.all() });
@@ -1217,7 +1228,7 @@ wss.on("connection", async (ws) => {
 				// the truth, so a note exists once it is on disk and not before.
 				// Named Untitled; the title field is where it gets a name.
 				case "new_note": {
-					const existing = listNotes(CWD).map((f) => f.path);
+					const existing = notes.paths();
 					let path: string;
 					if (typeof msg.name === "string") {
 						const target = renameTarget("Untitled.md", msg.name);
@@ -1271,6 +1282,7 @@ wss.on("connection", async (ws) => {
 						if (version !== undefined) known.set(msg.to, version);
 					}
 					broadcast({ type: "note_renamed", from: msg.path, to: msg.to });
+					notes.rename(msg.path, msg.to);
 					broadcast(files());
 					if (msg.path !== msg.to) {
 						// The notes that linked to the old name now link to the new one,
@@ -1309,6 +1321,7 @@ wss.on("connection", async (ws) => {
 						return;
 					}
 					trashLog(CWD, msg.path);
+					notes.remove(msg.path);
 					broadcast(gone.to === "vault" ? { type: "note_deleted", path: msg.path, to: "vault", trashed: gone.trashed } : { type: "note_deleted", path: msg.path, to: "system" });
 					broadcast(files());
 					touchedBy(links.remove(msg.path));
@@ -1347,13 +1360,17 @@ wss.on("connection", async (ws) => {
 				// To this tab only: it is an answer to what it typed.
 				case "search_notes": {
 					if (typeof msg.query !== "string" || typeof msg.id !== "number") return;
-					const notes = function* () {
+					// The folder itself, not the list in memory: a search is for every
+					// note on disk, and one written a moment ago by something else has
+					// not reached the list yet. The walk is the small half of this
+					// anyway — every note's text is read from disk below it.
+					const texts = function* () {
 						for (const { path } of listNotes(CWD)) {
 							const found = readNote(CWD, path);
 							if (found) yield found;
 						}
 					};
-					reply({ type: "search_results", id: msg.id, query: msg.query, hits: search(notes(), msg.query) });
+					reply({ type: "search_results", id: msg.id, query: msg.query, hits: search(texts(), msg.query) });
 					break;
 				}
 

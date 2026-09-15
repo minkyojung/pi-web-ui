@@ -223,10 +223,23 @@ export interface SnapshotMsg {
 	items: Item[];
 }
 
-/** The notes in the working folder. See vault.ts. */
+/**
+ * The notes in the working folder. See fileIndex.ts.
+ *
+ * Sent when the set of them changes — a note made, gone, or under a new name —
+ * and not when one is written: nothing that reads this list can see a note's
+ * text or when it was last touched.
+ *
+ * `truncated` says the folder held more than the walk would take, which is a
+ * thing to say rather than to swallow: a note past that point is in the folder
+ * but in no list, and would be missing from the tree and from a search of
+ * every note with nothing to explain it. It means the folder is almost
+ * certainly not a folder of notes.
+ */
 export interface FilesMsg {
 	type: "files";
 	files: NoteFile[];
+	truncated: boolean;
 }
 
 /**

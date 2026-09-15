@@ -26,8 +26,23 @@ export type NoteFile = {
 /** Folders nothing worth listing lives in; `.git` and `.pi` are the two that matter. */
 const SKIP = new Set(["node_modules", "dist", "dist-server", "release", "build", "out"]);
 
-/** Enough to be more than anyone scrolls, few enough that a monorepo cannot stall the server. */
-export const LIMIT = 2000;
+/**
+ * Where the walk gives up, which is a guard against the folder not being a
+ * folder of notes at all — someone picks their home directory, or a monorepo.
+ *
+ * It used to be two thousand, which ordinary vaults pass: people keep ten and
+ * twenty thousand notes, and every one past the two thousandth was in the
+ * folder and in no list. That number was not about how many notes anyone has;
+ * it was there because the list was read again on every save, and the server
+ * is one thread. It is not read on every save any more (fileIndex.ts), so the
+ * guard can sit where it means what it says.
+ *
+ * It counts notes found, not folders looked in, so a folder full of things
+ * that are not notes is bounded by the walk rather than by this. That shows up
+ * as a slow start rather than as a stall, now that starting is one of the
+ * three times the folder is read.
+ */
+export const LIMIT = 50_000;
 
 export function listNotes(root: string): NoteFile[] {
 	const out: NoteFile[] = [];

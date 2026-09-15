@@ -67,6 +67,14 @@ export const branchesStore = createStore<BranchPoint[]>([]);
 /** The notes in the working folder, as the server last listed them. */
 export const filesStore = createStore<NoteFile[]>([]);
 
+/**
+ * The folder held more notes than the walk would take, so this list is not all
+ * of them. Worth a line on screen: a note that is in the folder and in no list
+ * is missing from the tree and from a search of every note, with nothing to
+ * say why.
+ */
+export const filesTruncatedStore = createStore<boolean>(false);
+
 /** The notes that link to each note, as last told, by path. */
 export const backlinksStore = createStore<Record<string, Backlink[]>>({});
 

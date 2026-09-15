@@ -13,6 +13,7 @@ import {
 	configStore,
 	contextSourcesStore,
 	filesStore,
+	filesTruncatedStore,
 	noteChangedStore,
 	noteConflictStore,
 	noteCreatedStore,
@@ -119,6 +120,7 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "files":
 			filesStore.set(msg.files);
+			filesTruncatedStore.set(msg.truncated);
 			return;
 		case "note":
 			setBacklinks(msg.path, msg.backlinks);

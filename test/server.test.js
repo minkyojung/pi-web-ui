@@ -130,6 +130,31 @@ it("읽은 버전 위에 저장하면 그 변경이 내 것으로 모든 탭에 
   assert.equal(changed.original, undefined, "내 저장은 결정할 것을 만들지 않는다");
 });
 
+it("글자만 바뀐 저장은 목록을 다시 보내지 않는다 — 그러려고 폴더를 다시 읽지도 않는다", async () => {
+  clear();
+  send({ type: "open_note", path: "a.md" });
+  const { modified } = await want("note");
+  clear();
+  send({ type: "save_note", path: "a.md", text: "# a\n\nfirst, then again\n", base: modified });
+  await want("note_changed");
+  // 목록이 온다면 그건 폴더를 다시 읽었다는 뜻이다 — 저장 한 번에 볼트 전체를 세는 일.
+  assert.equal(inbox.find((m) => m.type === "files"), undefined, "달라진 것이 없으므로 보낼 것도 없다");
+});
+
+it("새 노트는 목록의 소식이다", async () => {
+  clear();
+  send({ type: "new_note" });
+  const born = await want("note_created");
+  const list = await want("files");
+  assert.ok(list.files.some((f) => f.path === born.path), `${born.path}이 목록에 있다`);
+  assert.equal(list.truncated, false, "이 폴더는 걸릴 만큼 크지 않다");
+  clear();
+  send({ type: "delete_note", path: born.path });
+  await want("note_deleted");
+  const after = await want("files");
+  assert.equal(after.files.some((f) => f.path === born.path), false, "지운 것은 목록에서 빠진다");
+});
+
 it("낡은 버전 위의 저장은 거절되고 아무것도 쓰지 않는다", async () => {
   clear();
   send({ type: "open_note", path: "a.md" });

@@ -4,7 +4,7 @@ import { cn } from "cn";
 import { ChevronLeftIcon, ChevronRightIcon, FileTextIcon, FolderIcon } from "lucide-react";
 
 import { titleOf } from "../noteSync";
-import { filesStore } from "../serverState";
+import { filesStore, filesTruncatedStore } from "../serverState";
 import { type Node, openFoldersStore, reveal, setOpenFolders, toggle, treeOf } from "../tree";
 import { FolderPicker } from "./FolderPicker";
 import { Settings } from "./Settings";
@@ -51,6 +51,7 @@ export function Sidebar({
 	onOpen: (path: string) => void;
 }) {
 	const files = useSyncExternalStore(filesStore.subscribe, filesStore.get);
+	const truncated = useSyncExternalStore(filesTruncatedStore.subscribe, filesTruncatedStore.get);
 	const openFolders = useSyncExternalStore(openFoldersStore.subscribe, openFoldersStore.get);
 
 	// The open note is in view: its folders open as it is opened, or as it is
@@ -72,6 +73,13 @@ export function Sidebar({
 					{treeOf(files.map((f) => f.path)).map((node) => (
 						<Tree key={node.path} node={node} open={open} openFolders={openFolders} onOpen={onOpen} />
 					))}
+					{/* A note that is in the folder and in no list would be missing from
+					    here and from a search of every note, with nothing to say why. */}
+					{truncated && (
+						<li id="truncated" className="px-2 py-3 text-xs leading-relaxed text-muted-foreground">
+							This folder holds more notes than the list takes. The rest are not here, or in a search.
+						</li>
+					)}
 				</ul>
 			)}
 			{/* Not a drag region: the foot of the window is not its title bar. */}
