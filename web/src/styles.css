@@ -338,8 +338,12 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* The window is the frame everything else is laid on, which is the lowest
+     surface a theme has and not the page colour. shadcn hangs this on the
+     SidebarProvider wrapper; here the window is that wrapper. Each panel says
+     for itself which surface it is — nothing inherits a surface any more. */
   body {
-    @apply flex h-screen flex-col bg-background text-sm/relaxed text-foreground;
+    @apply flex h-screen flex-col bg-sidebar text-sm/relaxed text-foreground;
   }
   /* CodeMirror hides the native selection inside a note and draws its own
      background, but it does not touch the colour — so this one rule reaches

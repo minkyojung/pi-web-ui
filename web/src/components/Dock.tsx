@@ -51,7 +51,7 @@ export function DockWindow({ children }: { children: React.ReactNode }) {
 	return (
 		<div
 			id="dockWindow"
-			className="fixed right-3 bottom-11 z-40 flex h-[70vh] w-[420px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border bg-background shadow-lg"
+			className="fixed right-3 bottom-11 z-40 flex h-[70vh] w-[420px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border bg-popover shadow-lg"
 		>
 			{children}
 		</div>

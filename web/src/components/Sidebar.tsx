@@ -64,7 +64,7 @@ export function Sidebar({
 	}, [open]);
 
 	return (
-		<nav className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
+		<nav className="flex h-full flex-col text-sidebar-foreground">
 			<div className="drag-region titlebar-inset flex h-11 shrink-0 items-center justify-end gap-0.5 overflow-hidden border-b border-sidebar-border px-2">
 				{steps}
 			</div>

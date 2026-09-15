@@ -394,7 +394,7 @@ export function App() {
 					<Sidebar open={open} onOpen={setOpen} steps={<Steps back={back} forward={forward} canBack={canBack} canForward={canForward} />} />
 				</ResizablePanel>
 				<ResizableHandle />
-				<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
+				<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col bg-background">
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
@@ -456,7 +456,7 @@ export function App() {
 							minSize="20%"
 							collapsible
 							collapsedSize="0%"
-							className="flex min-w-0 flex-col"
+							className="flex min-w-0 flex-col bg-background"
 							onResize={() => setPiOpen(!pi.current?.isCollapsed())}
 						>
 							<Pi note={open} raw={raw} />
