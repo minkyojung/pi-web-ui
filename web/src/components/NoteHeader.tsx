@@ -77,6 +77,11 @@ function NoteMenu({ path }: { path: string }) {
  * apart here. Linear's card carries a breadcrumb in the same place for the
  * same reason.
  *
+ * The whole line is second-rank and one weight, the leaf included: a
+ * breadcrumb says where you are, which is context and not content, and the
+ * page under it is what is being read. Nothing in it needs standing up — the
+ * name is on the tab above and at the top of the page in a size that means it.
+ *
  * One height with pi's header, so the two panes of the card start level.
  */
 export function NoteHeader({ path, trailing }: { path: string | null; trailing?: React.ReactNode }) {
@@ -93,7 +98,7 @@ export function NoteHeader({ path, trailing }: { path: string | null; trailing?:
 				{path && (
 					<>
 						{folders.length > 0 && <ChevronRight className="size-3 shrink-0" />}
-						<span className="min-w-0 truncate font-medium text-foreground">{titleOf(path)}</span>
+						<span className="min-w-0 truncate">{titleOf(path)}</span>
 					</>
 				)}
 			</div>
