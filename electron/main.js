@@ -146,10 +146,34 @@ function startServer(port, workdir) {
 	});
 }
 
-function stopServer() {
+let stopping = false;
+
+/**
+ * Quitting waits for the server to stop itself.
+ *
+ * kill() sends SIGTERM, which the server answers by retiring its extensions,
+ * cancelling the questions it has open and disposing the session — work that
+ * takes a moment and that nothing else does. The shell used to be gone before
+ * any of it ran, so the clean path was the one only a terminal ever took.
+ *
+ * The first quit is held back until the child has gone. Three seconds later
+ * it is taken out with SIGKILL: a quit that hangs on a server that will not
+ * stop is worse than a hard stop, and by then the cleanup has either happened
+ * or is not going to.
+ */
+async function stopServer(event) {
+	if (stopping || !child) return;
+	stopping = true;
 	exiting = true;
-	child?.kill();
+	event?.preventDefault();
+	const server = child;
+	const gone = new Promise((resolve) => server.once("exit", resolve));
+	server.kill();
+	const hard = setTimeout(() => server.kill("SIGKILL"), 3000);
+	await gone;
+	clearTimeout(hard);
 	child = null;
+	app.quit();
 }
 
 /**
@@ -290,5 +314,6 @@ async function main() {
 
 app.whenReady().then(main);
 app.on("window-all-closed", () => app.quit());
+// Once, on the way out: stopServer holds this quit back, and the one it asks
+// for afterwards finds no child and goes through.
 app.on("before-quit", stopServer);
-app.on("will-quit", stopServer);
