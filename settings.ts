@@ -2,10 +2,12 @@
  * The one setting the app keeps for itself, in a place the settings dialog can
  * write to.
  *
- * Under pi's own directory, beside its sessions, since that is where everything
- * this app depends on already lives. The file does not exist until something is
- * changed — an absent file means the defaults, so a fresh install has nothing
- * to read and nothing to keep in sync.
+ * In a directory of the app's own, ~/.octave, rather than under pi's: what pi
+ * keeps there — credentials, sessions, its settings — is pi's and stays where
+ * pi's CLI expects it, and what Octave keeps for itself should not look like a
+ * corner of pi's. The file does not exist until something is changed — an
+ * absent file means the defaults, so a fresh install has nothing to read and
+ * nothing to keep in sync.
  *
  * Read on every use rather than held: a mode changed in the dialog should
  * apply to the next session, not the next restart.
@@ -17,7 +19,7 @@ import { writeAtomic } from "./atomic.ts";
 import { LOADOUT_SLOTS } from "./models.ts";
 import { DEFAULT_MODE, MODE_IDS, type ToolModeId } from "./toolModes.ts";
 
-export const APP_DIR = process.env.APP_DIR ?? join(homedir(), ".pi", "web-ui");
+export const APP_DIR = process.env.APP_DIR ?? join(homedir(), ".octave");
 export const SETTINGS_PATH = join(APP_DIR, "settings.json");
 
 export interface Settings {

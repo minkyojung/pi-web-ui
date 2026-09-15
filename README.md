@@ -55,7 +55,7 @@ Auth comes from `~/.pi/agent/auth.json` (`pi` → `/login`). Sessions are writte
 to `~/.pi/agent/sessions/` and survive a restart. With no usable credentials at
 all the server says so and exits rather than failing on the first prompt.
 
-What the server says it also writes down, in `~/.pi/web-ui/logs/server.log`,
+What the server says it also writes down, in `~/.octave/logs/server.log`,
 rolled to `server.log.1` at two megabytes. In a terminal the log is beside the
 point — it is on screen — but the desktop app has no terminal, and without it a
 crash that does not happen again is never seen at all, and the safety net for
