@@ -2,11 +2,12 @@ import { useSyncExternalStore } from "react";
 import { ChevronRight, MoreHorizontal } from "lucide-react";
 
 import { noteActions } from "../noteActions";
+import { showAuthorsStore } from "../features/authors";
 import { titleOf } from "../noteSync";
 import { foldersOf, openFoldersStore, setOpenFolders } from "../tree";
 import { getConnection, subscribe } from "../store";
 import { Button } from "./ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** Open a folder in the sidebar and bring it into view, without closing anything. */
@@ -34,6 +35,7 @@ function show(folder: string) {
  */
 function NoteMenu({ path }: { path: string }) {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
+	const showing = useSyncExternalStore(showAuthorsStore.subscribe, showAuthorsStore.get);
 	return (
 		<DropdownMenu>
 			<Tooltip>
@@ -47,6 +49,13 @@ function NoteMenu({ path }: { path: string }) {
 				<TooltipContent side="bottom">This note</TooltipContent>
 			</Tooltip>
 			<DropdownMenuContent align="end">
+				{/* A view of the note rather than a thing done to it, and about the
+				    one that is open rather than any note in the list — so it is here
+				    and not in the actions the list's own menu shares. */}
+				<DropdownMenuCheckboxItem id="whoWrote" checked={showing} onCheckedChange={(on) => showAuthorsStore.set(on)}>
+					Who wrote what
+				</DropdownMenuCheckboxItem>
+				<DropdownMenuSeparator />
 				{noteActions(path).map((action, i) =>
 					action === "separator" ? (
 						<DropdownMenuSeparator key={i} />

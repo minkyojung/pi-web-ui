@@ -87,6 +87,14 @@ export type ClientMsg =
 	| { type: "rename_note"; path: string; to: string }
 	/** Put a note in the trash. Answered with `note_deleted` to every tab. */
 	| { type: "delete_note"; path: string }
+	/**
+	 * Who wrote which words of this note. Answered with `authors` to this tab.
+	 *
+	 * Asked rather than sent with the note: it is a question someone puts, not
+	 * a thing the note is always carrying, and an answer that had to follow
+	 * every keystroke would be a different feature with a different cost.
+	 */
+	| { type: "who_wrote"; path: string }
 	/** Bring a trashed note back to its path. Answered with `note_created` to this tab and `note` to every tab. */
 	| { type: "restore_note"; trashed: string; path: string }
 	/**
@@ -338,6 +346,28 @@ export interface NoteRenameFailedMsg {
 }
 
 /**
+ * A run of the note with one author, in the note as it is on disk.
+ *
+ * `at` is when it was written; `session` is the conversation pi wrote it in,
+ * for the ones pi wrote. What the person wrote themselves is left out — most
+ * of a note is theirs, and a note marked all over says nothing.
+ */
+export interface AuthoredSpan {
+	from: number;
+	to: number;
+	author: Author;
+	at: number;
+	session?: string;
+}
+
+/** Who wrote which words, as asked for by `who_wrote`. */
+export interface AuthorsMsg {
+	type: "authors";
+	path: string;
+	spans: AuthoredSpan[];
+}
+
+/**
  * A note went to the trash, by someone's choice.
  *
  * `to` says which trash, and the two are undone in different places. The
@@ -468,6 +498,7 @@ export type StateMsg =
 	| NoteGoneMsg
 	| NoteDeletedMsg
 	| NoteConflictMsg
+	| AuthorsMsg
 	| SearchResultsMsg
 	| AskDoneMsg
 	| PromptRequestMsg

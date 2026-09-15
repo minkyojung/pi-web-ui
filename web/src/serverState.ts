@@ -8,6 +8,7 @@
 import type { Suggestions } from "../../properties.ts";
 import type { Registry } from "../../propertyTypes.ts";
 import type {
+	AuthorsMsg,
 	Backlink,
 	BranchPoint,
 	ConfigMsg,
@@ -118,6 +119,12 @@ export const noteRenameFailedStore = createStore<NoteRenameFailedMsg | null>(nul
  * back with one press. Replaced by the next; forgotten when restored.
  */
 export const noteDeletedStore = createStore<NoteDeletedMsg | null>(null);
+
+/**
+ * Who wrote which words of a note, as last asked for. One answer at a time:
+ * it is asked about the note in front, and the next question replaces it.
+ */
+export const authorsStore = createStore<AuthorsMsg | null>(null);
 
 /** A note that is not on disk any more. A tab with it open puts it to the person. */
 export const noteGoneStore = createStore<NoteGoneMsg | null>(null);

@@ -876,6 +876,40 @@ async function deleteNote(app) {
 	await app.evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((i) => i.textContent.trim() === "Delete").click()`);
 }
 
+check("the note's menu says who wrote what, and typing takes it back off", async ({ app, cwd }) => {
+	// A note with a past: the person wrote the first half and pi the second. Written
+	// straight to disk with its log beside it, which is the state a note is in when
+	// it is opened days later — the only way to have pi's words here without pi.
+	writeFileSync(join(cwd, "whose.md"), "mine and then pi's\n");
+	mkdirSync(join(cwd, ".pi/history"), { recursive: true });
+	writeFileSync(
+		join(cwd, ".pi/history/whose.md.jsonl"),
+		[
+			{ author: "me", at: Date.now() - 60_000, from: 0, to: 0, inserted: "mine and then ", removed: "" },
+			{ author: "pi", at: Date.now() - 30_000, sessionId: "s", entryId: "e", from: 14, to: 14, inserted: "pi's\n", removed: "" },
+		]
+			.map((c) => JSON.stringify(c))
+			.join("\n") + "\n",
+	);
+	await pickNote(app, "whose.md");
+	await until("the note", async () => (await editorText(app)).includes("mine and then"));
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-by-pi').length"), 0, "off is the ordinary state");
+
+	await app.click("#noteMenu");
+	await until("the note's menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitemcheckbox]')"));
+	await app.evaluate(`document.querySelector('[role=menu] [role=menuitemcheckbox]').click()`);
+	await until("pi's words, marked", () =>
+		app.evaluate("[...document.querySelectorAll('#editor .cm-by-pi')].map((el) => el.textContent).join('')"),
+	).then((marked) => assert.equal(marked.trim(), "pi's", "what pi wrote, and nothing the person wrote"));
+	assert.match(await app.evaluate("document.querySelector('#editor .cm-by-pi').getAttribute('title')"), /^pi · /, "and when");
+
+	// Typing is the person's own words; what was on screen was about the note as
+	// it was written down, so it goes rather than shuffling along under the cursor.
+	await app.evaluate(`document.querySelector('#editor .cm-content').focus()`);
+	assert.equal(await type(app, "X"), true);
+	await until("the marks gone", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-by-pi').length")) === 0);
+});
+
 check("a right click in the list acts on that note, open or not", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "list-a.md"), "A\n");
 	writeFileSync(join(cwd, "list-b.md"), "B\n");

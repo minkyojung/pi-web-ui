@@ -14,6 +14,7 @@ import { linkCompletion } from "../features/linkCompletion";
 import { indentListItem, listBackspace, listEnter, outdentListItem } from "../features/listEdit";
 import { listNumbers } from "../features/listNumbers";
 import { listIndent } from "../features/listIndent";
+import { authors, clearAuthors, paintAuthors, showAuthorsStore } from "../features/authors";
 import { livePreview, toggleLivePreview, toggleTask } from "../features/livePreview";
 import { leaveTextUp } from "../features/pageMove";
 import { properties, propertiesField } from "../features/properties";
@@ -30,10 +31,10 @@ import { tagTag } from "../../../tag.ts";
 import type { Place } from "../../../links.ts";
 import type { Left } from "../nav";
 import type { Backlink, Tagged } from "../types";
-import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, taggedStore } from "../serverState";
+import { authorsStore, backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, taggedStore } from "../serverState";
 import { titleOf } from "../noteSync";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
-import { registerSave } from "../saves";
+import { flushSaves, registerSave } from "../saves";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Properties } from "./Properties";
@@ -286,6 +287,8 @@ export function Editor({
 		const features = [
 			// What pi changed and the person has not decided about, as a diff.
 			review(() => at.current),
+			// Who wrote which words, when the note's menu asks for it.
+			authors,
 			links({
 				notes: () => filesStore.get().map((f) => f.path),
 				here: () => at.current,
@@ -514,6 +517,27 @@ export function Editor({
 		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [note, path]);
+
+	// Turned on from the note's menu: what is unsaved goes down first, since the
+	// answer is about the note on disk, and then the question is asked. Turned
+	// off, or moved to another note, the marks go at once rather than waiting
+	// for an answer about somewhere else.
+	const showAuthors = useSyncExternalStore(showAuthorsStore.subscribe, showAuthorsStore.get);
+	useEffect(() => {
+		const v = view.current;
+		if (!v) return;
+		v.dispatch({ effects: clearAuthors.of(null) });
+		if (!showAuthors) return;
+		flushSaves();
+		send({ type: "who_wrote", path });
+	}, [showAuthors, path]);
+
+	const authored = useSyncExternalStore(authorsStore.subscribe, authorsStore.get);
+	useEffect(() => {
+		const v = view.current;
+		if (!v || !showAuthors || authored?.path !== path) return;
+		v.dispatch({ effects: paintAuthors.of(authored.spans) });
+	}, [authored, showAuthors, path]);
 
 	// A change to the note, from whoever made it, over the version it was made to.
 	const changed = useSyncExternalStore(noteChangedStore.subscribe, noteChangedStore.get);

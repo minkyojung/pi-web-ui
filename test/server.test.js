@@ -173,6 +173,28 @@ it("새 노트는 목록의 소식이다", async () => {
   assert.equal(after.files.some((f) => f.path === born.path), false, "지운 것은 목록에서 빠진다");
 });
 
+it("누가 썼는지 물으면 남이 쓴 자리만 돌아온다", async () => {
+  // 앱을 거치지 않고 쓰인 노트: 통째로 바깥의 글이다.
+  writeFileSync(join(cwd, "whose.md"), "outside wrote all of this\n");
+  clear();
+  send({ type: "open_note", path: "whose.md" });
+  const opened = await want("note", (m) => m.path === "whose.md");
+  clear();
+  send({ type: "who_wrote", path: "whose.md" });
+  const first = await want("authors");
+  assert.equal(first.path, "whose.md");
+  assert.deepEqual(first.spans.map((s) => [s.from, s.to, s.author]), [[0, opened.text.length, "outside"]]);
+
+  // 그 뒤를 내가 이어 쓰면, 내 글은 답에 없다 — 노트는 대부분 제 주인의 것이므로.
+  send({ type: "save_note", path: "whose.md", text: `${opened.text}and then I did\n`, base: opened.modified });
+  await want("note_changed", (m) => m.path === "whose.md");
+  clear();
+  send({ type: "who_wrote", path: "whose.md" });
+  const second = await want("authors");
+  assert.deepEqual(second.spans.map((s) => s.author), ["outside"], "내 것은 표시할 것이 아니다");
+  assert.equal(second.spans[0].to, opened.text.length, "바깥이 쓴 자리는 그대로");
+});
+
 it("낡은 버전 위의 저장은 거절되고 아무것도 쓰지 않는다", async () => {
   clear();
   send({ type: "open_note", path: "a.md" });

@@ -1342,6 +1342,30 @@ wss.on("connection", async (ws) => {
 					break;
 				}
 
+				/**
+				 * Who wrote which words. Asked for rather than always sent, and
+				 * answered about the note as it is on disk — whoever asks writes
+				 * down what they have typed first, the way anything that needs the
+				 * disk current does.
+				 *
+				 * Only what somebody else wrote is worth saying: a note is mostly
+				 * its writer's, and one marked all over says nothing.
+				 */
+				case "who_wrote": {
+					if (typeof msg.path !== "string") return;
+					const found = readNote(CWD, msg.path);
+					if (!found) {
+						reply({ type: "note_gone", path: msg.path });
+						return;
+					}
+					const { replayed } = settleDisk(msg.path, found.text, found.modified, Date.now());
+					const spans = replayed.spans
+						.filter((span) => span.author !== "me")
+						.map((span) => ({ from: span.from, to: span.to, author: span.author, at: span.at, ...(span.sessionId ? { session: span.sessionId } : {}) }));
+					reply({ type: "authors", path: msg.path, spans });
+					break;
+				}
+
 				case "restore_note": {
 					if (typeof msg.trashed !== "string" || typeof msg.path !== "string") return;
 					const back = restoreNote(CWD, msg.trashed, msg.path);
