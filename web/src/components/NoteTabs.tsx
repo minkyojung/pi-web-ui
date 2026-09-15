@@ -96,7 +96,7 @@ export function NoteTabs({
 		<DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToHorizontalAxis]} onDragEnd={onDragEnd}>
 			<SortableContext items={tabs} strategy={horizontalListSortingStrategy}>
 				<Tabs value={open ?? ""} onValueChange={onOpen} className="h-full min-w-0 flex-1 items-center gap-0 data-[orientation=horizontal]:flex-row">
-					<TabsList ref={row} className="group-data-[orientation=horizontal]/tabs:h-8 no-scrollbar min-w-0 flex-1 justify-start gap-0.5 overflow-x-auto bg-transparent p-0">
+					<TabsList ref={row} className="group-data-[orientation=horizontal]/tabs:h-8 no-scrollbar min-w-0 shrink justify-start gap-0.5 overflow-x-auto bg-transparent p-0">
 						{tabs.map((path) => (
 							<NoteTab
 								key={path}
@@ -112,9 +112,14 @@ export function NoteTabs({
 							/>
 						))}
 					</TabsList>
+					<Button variant="ghost" size="icon-xs" aria-label="New note" className="shrink-0 text-muted-foreground" disabled={!onNew} onClick={onNew}>
+						<Plus />
+					</Button>
+					{/* What is left of the row, so the list of tabs is at the far end of it. */}
+					<div className="min-w-0 flex-1" />
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
-							<Button variant="ghost" size="icon-xs" aria-label="Open tabs" className="ml-1 shrink-0 text-muted-foreground">
+							<Button variant="ghost" size="icon-xs" aria-label="Open tabs" className="shrink-0 text-muted-foreground">
 								<ChevronDown />
 							</Button>
 						</DropdownMenuTrigger>
@@ -129,9 +134,6 @@ export function NoteTabs({
 							</DropdownMenuRadioGroup>
 						</DropdownMenuContent>
 					</DropdownMenu>
-					<Button variant="ghost" size="icon-xs" aria-label="New note" className="shrink-0 text-muted-foreground" disabled={!onNew} onClick={onNew}>
-						<Plus />
-					</Button>
 				</Tabs>
 			</SortableContext>
 		</DndContext>

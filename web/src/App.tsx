@@ -396,8 +396,10 @@ export function App() {
 			<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1" defaultLayout={columns.defaultLayout} onLayoutChanged={columns.onLayoutChanged}>
 				<ResizablePanel id="sidebar" defaultSize="22%" minSize="16%" className="flex min-w-0 flex-col">
 					{/* The traffic lights sit in this one, which is why it holds the
-					    window's own controls and not the column's. */}
-					<div className="drag-region titlebar-inset flex h-11 shrink-0 items-center gap-0.5 px-2">
+					    window's own controls and not the column's — and why the way
+					    back is at the far end of it: the near end is theirs, and three
+					    buttons are not to be crowded by a fourth. */}
+					<div className="drag-region titlebar-inset flex h-11 shrink-0 items-center justify-end gap-0.5 px-2">
 						<Steps back={back} forward={forward} canBack={canBack} canForward={canForward} />
 					</div>
 					<Boundary name="list of notes">
