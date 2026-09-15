@@ -390,10 +390,36 @@ export function App() {
 			<QuickOpen open={picking} onOpenChange={setPicking} recent={recent} onPick={setOpen} />
 			<Search open={searching} onOpenChange={setSearching} onPick={setOpen} />
 			<div className="flex h-screen flex-col">
+			{/* The window's own row, across the whole of it, on the frame.
+			    Everything in it is true of the window rather than of anything
+			    under it: which note is open, where you have been, whether pi is
+			    showing — and the traffic lights, which macOS pins 16px down and
+			    so fix this row at h-11 and at the very top. That last is why the
+			    row is here and not inside a column: any arrangement that starts
+			    the top row lower has to move trafficLightPosition with it, and
+			    then there are two numbers to keep in step.
+
+			    No line under it. There is nothing to divide — the frame runs on
+			    below, and the note and pi are cards lying on it. Linear's window
+			    is built the same way; measured, its strip runs the full width
+			    and the sidebar beneath is one unbroken surface. */}
+			<div className="drag-region titlebar-inset flex h-11 shrink-0 items-center gap-0.5 px-2">
+				<Steps back={back} forward={forward} canBack={canBack} canForward={canForward} />
+				<NoteTabs
+					tabs={tabs}
+					open={open}
+					onOpen={setOpen}
+					onClose={closeTab}
+					onCloseMany={closeTabs}
+					onReorder={(from, to) => setTabs((list) => move(list, from, to))}
+					onNew={online ? () => send({ type: "new_note" }) : undefined}
+				/>
+				<PiToggle open={layout === "dock" ? dockOpen : piOpen} onToggle={togglePi} />
+			</div>
 			<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1" defaultLayout={columns.defaultLayout} onLayoutChanged={columns.onLayoutChanged}>
 				<ResizablePanel id="sidebar" defaultSize="22%" minSize="16%" className="min-w-0">
 					<Boundary name="list of notes">
-						<Sidebar open={open} onOpen={setOpen} steps={<Steps back={back} forward={forward} canBack={canBack} canForward={canForward} />} />
+						<Sidebar open={open} onOpen={setOpen} />
 					</Boundary>
 				</ResizablePanel>
 				<ResizableHandle />
@@ -401,18 +427,6 @@ export function App() {
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
-					{/* Always, even with no tab: it is the row the pi toggle lives in, and
-					    the header line that runs across all three columns. */}
-					<NoteTabs
-						tabs={tabs}
-						open={open}
-						onOpen={setOpen}
-						onClose={closeTab}
-						onCloseMany={closeTabs}
-						onReorder={(from, to) => setTabs((list) => move(list, from, to))}
-						onNew={online ? () => send({ type: "new_note" }) : undefined}
-						trailing={<PiToggle open={layout === "dock" ? dockOpen : piOpen} onToggle={togglePi} />}
-					/>
 					{/* The note is one page — its title, its text, what links here —
 					    and the page (#note) is what scrolls, as in Obsidian: the editor
 					    grows to its text and finds this scrolling parent on its own. Room

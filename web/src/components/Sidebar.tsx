@@ -27,13 +27,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  * folders stand open is kept outside React: the list is re-sent after every
  * write, and a folder should not fold because pi saved a note.
  *
- * Its header is the window's own top-left corner: the traffic lights sit in
- * that row, which is why it has a fixed height rather than one its contents
- * decide. The way back through the notes is at the far end of it — going
- * somewhere else is what this column is for, and the near end belongs to the
- * traffic lights, which are three buttons a fourth should not crowd. It
- * arrives as a slot: where you have been is the window's (App.tsx), and the
- * column has no business knowing it.
+ * It has no header. The row the traffic lights sit in belongs to the window
+ * and is drawn there (App.tsx), across the whole of it, which is where Linear
+ * puts its own — measured, that strip runs the full width and the sidebar
+ * under it is one unbroken surface. A column that kept a header of its own
+ * would need a line under it to say where the header ended, and that line is
+ * the thing being got rid of.
  *
  * The foot of the column is what is true of the whole window: which folder
  * this is, and the settings — away from the notes and the moving about, since
@@ -47,12 +46,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 export function Sidebar({
 	open,
 	onOpen,
-	steps,
 }: {
 	open: string | null;
 	onOpen: (path: string) => void;
-	/** Drawn in the header, beside the traffic lights. */
-	steps?: React.ReactNode;
 }) {
 	const files = useSyncExternalStore(filesStore.subscribe, filesStore.get);
 	const openFolders = useSyncExternalStore(openFoldersStore.subscribe, openFoldersStore.get);
@@ -65,15 +61,12 @@ export function Sidebar({
 
 	return (
 		<nav className="flex h-full flex-col text-sidebar-foreground">
-			<div className="drag-region titlebar-inset flex h-11 shrink-0 items-center justify-end gap-0.5 overflow-hidden border-b border-sidebar-border px-2">
-				{steps}
-			</div>
 			{files.length === 0 ? (
 				<div className="flex flex-1 items-center justify-center p-4 text-center text-sm text-muted-foreground">
 					No notes in this folder yet
 				</div>
 			) : (
-				// The rows are inset by the gutter the header keeps, so a row's
+				// The rows are inset by the same gutter the foot keeps, so a row's
 				// highlight ends where the settings button does.
 				<ul id="notes" className="no-scrollbar flex-1 overflow-y-auto overscroll-contain px-2 py-1">
 					{treeOf(files.map((f) => f.path)).map((node) => (

@@ -56,7 +56,6 @@ export function NoteTabs({
 	onCloseMany,
 	onReorder,
 	onNew,
-	trailing,
 }: {
 	tabs: string[];
 	open: string | null;
@@ -66,8 +65,6 @@ export function NoteTabs({
 	onReorder: (from: number, to: number) => void;
 	/** Asks for a new note; absent while there is no server to ask. */
 	onNew?: () => void;
-	/** Drawn at the row's far end, after the tabs' own controls. */
-	trailing?: React.ReactNode;
 }) {
 	// More tabs than fit scroll, and the one just opened may be off the end:
 	// it is brought in as it comes to the front, the way a browser's is.
@@ -98,8 +95,8 @@ export function NoteTabs({
 	return (
 		<DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToHorizontalAxis]} onDragEnd={onDragEnd}>
 			<SortableContext items={tabs} strategy={horizontalListSortingStrategy}>
-				<Tabs value={open ?? ""} onValueChange={onOpen} className="drag-region h-11 shrink-0 items-center gap-0 border-b px-2 data-[orientation=horizontal]:flex-row">
-					<TabsList ref={row} variant="line" className="group-data-[orientation=horizontal]/tabs:h-full no-scrollbar min-w-0 flex-1 justify-start gap-0 overflow-x-auto">
+				<Tabs value={open ?? ""} onValueChange={onOpen} className="h-full min-w-0 flex-1 items-center gap-0 data-[orientation=horizontal]:flex-row">
+					<TabsList ref={row} className="group-data-[orientation=horizontal]/tabs:h-8 no-scrollbar min-w-0 flex-1 justify-start gap-0.5 overflow-x-auto bg-transparent p-0">
 						{tabs.map((path) => (
 							<NoteTab
 								key={path}
@@ -135,7 +132,6 @@ export function NoteTabs({
 					<Button variant="ghost" size="icon-xs" aria-label="New note" className="shrink-0 text-muted-foreground" disabled={!onNew} onClick={onNew}>
 						<Plus />
 					</Button>
-					{trailing}
 				</Tabs>
 			</SortableContext>
 		</DndContext>
