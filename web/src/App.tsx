@@ -420,7 +420,18 @@ export function App() {
 						/>
 						<PiToggle open={piOpen} onToggle={togglePi} />
 					</div>
-					<ResizablePanelGroup orientation="horizontal" className="mx-2 mb-2 min-h-0 flex-1 overflow-hidden rounded-xl border bg-background" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
+					{/* The card's own margin is the wrapper's to give. A group sets
+					    width and height to 100% inline, so a margin on it is added to
+					    that rather than taken out of it: the left one still pushes, the
+					    right one goes over the edge and is clipped. Padding and a border
+					    are fine — those are inside a border box.
+
+					    No padding here, though. The rim is the only boundary left, and
+					    what has to stay off it is the writing, which carries its own
+					    inset already: 1.5rem in the editor's scroller, p-3 down pi's
+					    side. A second one out here only stacked on those. */}
+					<div className="min-h-0 flex-1 px-2 pb-2">
+					<ResizablePanelGroup orientation="horizontal" className="overflow-hidden rounded-xl border bg-background" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
 					<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
@@ -481,14 +492,22 @@ export function App() {
 						minSize="20%"
 						collapsible
 						collapsedSize="0%"
-						className="m-2 flex min-w-0 flex-col overflow-hidden rounded-lg border bg-sidebar"
+						className="flex min-w-0 flex-col"
 						onResize={() => setPiOpen(!pi.current?.isCollapsed())}
 					>
-						<Boundary name="conversation">
-							<Pi note={open} raw={raw} />
-						</Boundary>
+						{/* No fill and no edge: the note stops and the conversation
+						    starts, and eight pixels of the card is all that is between
+						    them. Three floors were tried side by side — the window's own
+						    colour, a rung above the note, and nothing — and nothing read
+						    best. One card, and pi opening inside it. */}
+						<div className="ml-2 flex min-h-0 flex-1 flex-col overflow-hidden">
+							<Boundary name="conversation">
+								<Pi note={open} raw={raw} />
+							</Boundary>
+						</div>
 					</ResizablePanel>
 					</ResizablePanelGroup>
+					</div>
 				</ResizablePanel>
 			</ResizablePanelGroup>
 			</div>

@@ -27,7 +27,7 @@ export function ConversationView({ items, children }: { items: Item[]; children?
 	return (
 		<RunAnswer value={answerAt}>
 			<Scroller className="no-scrollbar relative flex-1 overflow-y-auto">
-				<ConversationContent id="chat" scrollClassName="edge-top [--edge-over:var(--sidebar)]" className="flex flex-col gap-3 p-3">
+				<ConversationContent id="chat" scrollClassName="edge-top" className="flex flex-col gap-3 p-3">
 					{/* Items are only ever appended, never reordered, so the index is a stable key. */}
 					{items.map((item, i) => (
 						<ItemView key={i} item={item} index={i} />
