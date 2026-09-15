@@ -3,7 +3,7 @@ import { type PanelImperativeHandle, useDefaultLayout } from "react-resizable-pa
 
 import { Editor } from "./components/Editor";
 import { Pi } from "./components/Pi";
-import { PanelHeader, PiToggle } from "./components/PanelHeader";
+import { PiToggle } from "./components/PanelHeader";
 import { Sidebar, Steps } from "./components/Sidebar";
 import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
@@ -200,7 +200,11 @@ export function App() {
 	const [piOpen, setPiOpen] = useState(true);
 	// The columns' widths, and whether pi is folded away, outlive the window:
 	// the shadcn sidebar keeps its open state in a cookie for the same reason.
-	const columns = useDefaultLayout({ id: "columns", storage: localStorage, panelIds: ["sidebar", "main", "pi"] });
+	// Two groups, because the window divides twice and the divisions are not
+	// peers: the sidebar is cut off from everything else, and what is left is
+	// cut again into the note and pi. Each keeps its own widths.
+	const columns = useDefaultLayout({ id: "columns", storage: localStorage, panelIds: ["sidebar", "content"] });
+	const panes = useDefaultLayout({ id: "panes", storage: localStorage, panelIds: ["main", "pi"] });
 	const togglePi = useCallback(() => {
 		const panel = pi.current;
 		if (panel) panel.isCollapsed() ? panel.expand() : panel.collapse();
@@ -370,25 +374,25 @@ export function App() {
 			<QuickOpen open={picking} onOpenChange={setPicking} recent={recent} onPick={setOpen} />
 			<Search open={searching} onOpenChange={setSearching} onPick={setOpen} />
 			<div className="flex h-screen flex-col">
-			{/* Every column opens with a row of its own, h-11, drawn on the frame
-			    rather than inside the card below it. Three things fall out of
-			    that, and all three were wanted.
+			{/* Two rows, not three and not one: the window's controls over the
+			    list, and the note tabs over everything else.
 
-			    The row is laid out by the same engine that decides how wide the
-			    column is, so it cannot spill past it. A single row across the
-			    window could not know where the sidebar ends — the boundary is
-			    the panel group's to compute and the row was its sibling — so the
-			    note tabs were being drawn over the list of notes, by a distance
-			    that changed every time the sidebar was dragged.
+			    One row across the whole window could not know where the sidebar
+			    ends — that boundary is the panel group's to compute, and a row
+			    outside the group is only a sibling of it — so the tabs were
+			    drawn over the list of notes, by a distance that changed every
+			    time the sidebar was dragged. A row per column would have fixed
+			    that and cut the tab row off at the note, which is narrower than
+			    the tabs want. So the group is nested instead, and each row sits
+			    inside the panel whose width it is allowed to have.
 
-			    All three rows start at y=0, because they are above the cards
-			    rather than in them; it was the cards' 8px margin that had pushed
-			    two of the three down and out of line with the sidebar's. And the
-			    traffic lights keep the position macOS pins them at, 16px down,
-			    which is the middle of a 44px row beginning at the top.
+			    Both rows start at y=0: they are above the cards rather than in
+			    them, and it was the cards' own margin that used to push them out
+			    of line. The traffic lights keep the spot macOS pins them to,
+			    16px down, the middle of a 44px row that begins at the top.
 
-			    No lines. A row is frame and the card under it has a rim of its
-			    own, so there is nothing for one to divide. */}
+			    No lines under either. A row is frame and the card below it has a
+			    rim of its own, so there is nothing for one to divide. */}
 			<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1" defaultLayout={columns.defaultLayout} onLayoutChanged={columns.onLayoutChanged}>
 				<ResizablePanel id="sidebar" defaultSize="22%" minSize="16%" className="flex min-w-0 flex-col">
 					{/* The traffic lights sit in this one, which is why it holds the
@@ -401,7 +405,7 @@ export function App() {
 					</Boundary>
 				</ResizablePanel>
 				<ResizableHandle />
-				<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
+				<ResizablePanel id="content" className="flex min-w-0 flex-col">
 					<div className="drag-region flex h-11 shrink-0 items-center gap-0.5 px-2">
 						<NoteTabs
 							tabs={tabs}
@@ -414,7 +418,8 @@ export function App() {
 						/>
 						<PiToggle open={piOpen} onToggle={togglePi} />
 					</div>
-					<div className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
+					<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
+					<ResizablePanel id="main" minSize="30%" className="mx-2 mb-2 flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
@@ -465,25 +470,23 @@ export function App() {
 							)}
 						</div>
 					)}
-					</div>
-				</ResizablePanel>
-				<ResizableHandle />
-				<ResizablePanel
-					id="pi"
-					panelRef={pi}
-					defaultSize="30%"
-					minSize="20%"
-					collapsible
-					collapsedSize="0%"
-					className="flex min-w-0 flex-col"
-					onResize={() => setPiOpen(!pi.current?.isCollapsed())}
-				>
-					<Boundary name="conversation">
-						<PanelHeader />
-						<div className="mr-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
+					</ResizablePanel>
+					<ResizableHandle />
+					<ResizablePanel
+						id="pi"
+						panelRef={pi}
+						defaultSize="30%"
+						minSize="20%"
+						collapsible
+						collapsedSize="0%"
+						className="mr-2 mb-2 flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background shadow-sm"
+						onResize={() => setPiOpen(!pi.current?.isCollapsed())}
+					>
+						<Boundary name="conversation">
 							<Pi note={open} raw={raw} />
-						</div>
-					</Boundary>
+						</Boundary>
+					</ResizablePanel>
+					</ResizablePanelGroup>
 				</ResizablePanel>
 			</ResizablePanelGroup>
 			</div>
