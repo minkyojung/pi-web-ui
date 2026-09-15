@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { check } from "../scripts/contrast.mjs";
+import { check, ladder } from "../scripts/contrast.mjs";
 
 /**
  * styles.css claims of its palettes that every pair "clears AA". The claim is
@@ -14,4 +14,13 @@ import { check } from "../scripts/contrast.mjs";
  */
 test("every pair clears AA in all four themes", () => {
 	assert.deepEqual(check(), []);
+});
+
+/**
+ * And the ladder those colours stand on, which is not an AA matter and is the
+ * one thing shadcn's tokens leave open: the frame below the content, nothing
+ * sunk into it, and every rim one rim's distance from its own surface.
+ */
+test("every theme stands on the same ladder", () => {
+	assert.deepEqual(ladder(), []);
 });

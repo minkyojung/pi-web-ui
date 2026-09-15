@@ -231,6 +231,48 @@ export function measure() {
 	});
 }
 
+/**
+ * The ladder the surfaces stand on.
+ *
+ * Nothing here is about whether a word can be read, so none of it is an AA
+ * matter — and it is the one thing shadcn's tokens leave open. Its --sidebar
+ * is a second knob for a second colour, not a rung, and its own defaults put
+ * the sidebar above the content in the dark theme and below it in the light
+ * one. An inset layout cannot be built on that: it rests on the frame being
+ * the lowest surface, so that the edge where the content meets it is two
+ * fills meeting and not a line somebody drew.
+ *
+ * So the ladder is declared here, where it can be contradicted. The figures
+ * come from .context/plans/surface-elevation.md, read off Linear's window.
+ */
+export function ladder() {
+	const out = [];
+	for (const { theme, steps, rims } of measure()) {
+		const step = (token) => steps.find((s) => s.token === token).delta;
+		const rim = (token, where) => rims.find((r) => r.token === token && r.where === where).delta;
+
+		// The frame is the lowest surface there is, in every theme.
+		if (step("--sidebar") > -0.02) out.push(`${theme}: the frame is not below the content — --sidebar ${step("--sidebar").toFixed(3)}, wants -0.02 or less`);
+
+		// White is the ceiling in a light window, so a card is allowed to be
+		// level with the page it is on. Never under it: that is a hole.
+		for (const token of ["--card", "--popover"]) {
+			if (step(token) < 0) out.push(`${theme}: ${token} is sunk into the content — ${step(token).toFixed(3)}, wants 0 or more`);
+		}
+
+		// A rim is one distance from its own surface, and which side of it
+		// depends only on where the light is. Too far and it is a line again.
+		for (const [token, where] of [
+			["--border", "rim on content"],
+			["--sidebar-border", "rim in the sidebar"],
+		]) {
+			const d = Math.abs(rim(token, where));
+			if (d < 0.035 || d > 0.065) out.push(`${theme}: ${token} is ${d < 0.035 ? "too faint to be an edge" : "drawn as a line, not a rim"} — ${rim(token, where).toFixed(3)}, wants 0.035 to 0.065`);
+		}
+	}
+	return out;
+}
+
 /** Only what is under AA. Empty is the stylesheet's promise, kept. */
 export const check = () =>
 	measure().flatMap(({ theme, rows }) =>
@@ -259,6 +301,11 @@ if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.me
 			console.log(`    \x1b[2m${delta >= 0 ? "+" : ""}${delta.toFixed(3)}  ${token.padEnd(18)} ${where}\x1b[0m`);
 		}
 	}
+	const off = ladder();
+	if (off.length && !quiet) {
+		console.log(`\n\x1b[1mladder\x1b[0m  \x1b[31m${off.length} off\x1b[0m`);
+	}
+	off.forEach((o) => fail.push(o));
 	if (fail.length) {
 		console.error(`\n\x1b[31m${fail.length} pair${fail.length > 1 ? "s" : ""} under AA\x1b[0m`);
 		fail.forEach((f) => console.error(`  ${f}`));
