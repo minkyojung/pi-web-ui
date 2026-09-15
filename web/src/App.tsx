@@ -13,6 +13,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./componen
 import { TooltipProvider } from "./components/ui/tooltip";
 import type { Place } from "../../links.ts";
 import { hashForNote, noteFromHash } from "./noteSync";
+import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
 import { bump, forget, readRecent, writeRecent } from "./recent";
 import { back as stepBack, canBack, canForward, forget as forgetStep, forward as stepForward, go, here, type Left, type Nav, read as readNav, remember, replace, write as writeNav } from "./nav";
@@ -418,7 +419,6 @@ export function App() {
 							onReorder={(from, to) => setTabs((list) => move(list, from, to))}
 							onNew={online ? () => send({ type: "new_note" }) : undefined}
 						/>
-						<PiToggle open={piOpen} onToggle={togglePi} />
 					</div>
 					{/* The card's own margin is the wrapper's to give. A group sets
 					    width and height to 100% inline, so a margin on it is added to
@@ -433,6 +433,7 @@ export function App() {
 					<div className="min-h-0 flex-1 px-2 pb-2">
 					<ResizablePanelGroup orientation="horizontal" className="overflow-hidden rounded-xl border bg-background" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
 					<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
+					<NoteHeader path={open} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
@@ -441,7 +442,7 @@ export function App() {
 					    grows to its text and finds this scrolling parent on its own. Room
 					    below, so the last line can be brought up to where the eyes are. */}
 					{open && deleted?.path !== open ? (
-						<div id="note" className="no-scrollbar min-h-0 flex-1 overflow-y-auto pb-[40vh]">
+						<div id="note" className="no-scrollbar edge-top min-h-0 flex-1 overflow-y-auto pb-[40vh]">
 							{/* Inside the scroller, not around it: #note is what the editor,
 							    the steps and the checks all look up, and it should be there
 							    whether or not what it holds could be drawn. */}
