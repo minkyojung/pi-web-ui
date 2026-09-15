@@ -430,7 +430,7 @@ export function App() {
 					    what has to stay off it is the writing, which carries its own
 					    inset already: 1.5rem in the editor's scroller, p-3 down pi's
 					    side. A second one out here only stacked on those. */}
-					<div className="min-h-0 flex-1 px-2 pb-2">
+					<div className="min-h-0 flex-1 pr-2 pb-2">
 					<ResizablePanelGroup orientation="horizontal" className="overflow-hidden rounded-xl border bg-background" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
 					<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
 					<NoteHeader path={open} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />

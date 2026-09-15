@@ -3,14 +3,13 @@ import { closestCenter, DndContext, type DragEndEvent, PointerSensor, useSensor,
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 
 import { titleOf, wholePath } from "../noteSync";
 import { configStore } from "../serverState";
 import { others, toTheRight } from "../tabs";
 import { Button } from "./ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "./ui/context-menu";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -118,23 +117,6 @@ export function NoteTabs({
 					</Button>
 					{/* What is left of the row, so the list of tabs is at the far end of it. */}
 					<div className="min-w-0 flex-1" />
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button variant="ghost" size="icon-xs" aria-label="Open tabs" className="shrink-0 text-muted-foreground">
-								<ChevronDown />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
-							<DropdownMenuRadioGroup value={open ?? ""} onValueChange={onOpen}>
-								{tabs.map((path) => (
-									<DropdownMenuRadioItem key={path} value={path} title={path}>
-										{titleOf(path)}
-										{path.includes("/") && <span className="ml-auto pl-3 text-xs text-muted-foreground">{path.slice(0, path.lastIndexOf("/"))}</span>}
-									</DropdownMenuRadioItem>
-								))}
-							</DropdownMenuRadioGroup>
-						</DropdownMenuContent>
-					</DropdownMenu>
 				</Tabs>
 			</SortableContext>
 		</DndContext>
