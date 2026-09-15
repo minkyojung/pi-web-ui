@@ -1959,8 +1959,15 @@ async function main() {
 
 		// Open the branched session. The answer reaches the page's own socket,
 		// because the server publishes a snapshot to everyone connected.
+		//
+		// Asked again until it answers, rather than once with two and a half
+		// seconds to do it in. That window is plenty on a machine that has the
+		// page warm and vite's dependencies already bundled, and it is not on a
+		// cold runner, where the first load sets the optimiser going and the
+		// page reloads out from under whatever was listening. One shot at the
+		// setup is one shot at every check after it.
 		await until("the conversation", () => page.evaluate("!!document.getElementById('chat')"));
-		const opened = await page.evaluate(`new Promise((done) => {
+		const ask = () => page.evaluate(`new Promise((done) => {
 			const seen = [];
 			const socket = new WebSocket("ws://" + location.host + "/ws");
 			socket.onmessage = (e) => { const m = JSON.parse(e.data); seen.push(m.type === "error" ? "error: " + m.message : m.type === "snapshot" ? "snapshot(" + m.items.length + ")" : m.type); };
@@ -1969,6 +1976,12 @@ async function main() {
 		})`);
 		// What the server said back, so a failure here is about the session and
 		// not about the browser. Everything after this is about the browser.
+		let opened = "";
+		try {
+			await until("the branched session", async () => /snapshot\([1-9]/.test((opened = await ask())));
+		} catch {
+			// Fall through to the message below, which says what it answered.
+		}
 		if (!/snapshot\([1-9]/.test(opened)) {
 			throw new Error(`the branched session did not open — the server answered: ${opened}`);
 		}
