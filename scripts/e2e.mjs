@@ -851,11 +851,16 @@ check("a task is a box, cursor or not, ticked by a click or ⌘Enter, and a rule
 	assert.equal(readFileSync(join(cwd, "tasks.md"), "utf8"), "- [x] one\n- [ ] two\n\n---\n\nend\n");
 });
 
-/** Delete is behind the note header's menu now, so it takes opening that first. */
+/**
+ * Delete is behind the note header's menu now, so it takes opening that first.
+ * The opening is a real click: Radix opens a menu on pointerdown, which a
+ * synthetic .click() never sends. Choosing inside it is synthetic, as the tab
+ * menu's check does.
+ */
 async function deleteNote(app) {
-	await app.evaluate(`document.getElementById("noteMenu").click()`);
-	await until("the note's menu", () => app.evaluate(`!!document.querySelector('[role=menuitem][aria-label="Delete note"]')`));
-	await app.evaluate(`document.querySelector('[role=menuitem][aria-label="Delete note"]').click()`);
+	await app.click("#noteMenu");
+	await until("the note's menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitem]')"));
+	await app.evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((i) => i.textContent.trim() === "Delete").click()`);
 }
 
 check("deleting a note closes it and offers it back, and Restore brings it back open", async ({ app, cwd }) => {
