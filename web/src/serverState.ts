@@ -12,6 +12,7 @@ import type {
 	Backlink,
 	BranchPoint,
 	ConfigMsg,
+	CommandInfo,
 	ContextSourcesMsg,
 	LoginDoneMsg,
 	LoginEvent,
@@ -106,6 +107,8 @@ export function applyLogin(msg: LoginPromptMsg | LoginPromptDismissMsg | LoginEv
 export const usageStore = createStore<UsageMsg | null>(null);
 export const sessionsStore = createStore<SessionInfo[]>([]);
 export const contextSourcesStore = createStore<ContextSourcesMsg | null>(null);
+/** What "/" can name in the composer. See CommandsMsg. */
+export const commandsStore = createStore<CommandInfo[]>([]);
 
 /**
  * The fork points on the conversation being shown, from the server's reading of

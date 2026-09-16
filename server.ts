@@ -57,6 +57,7 @@ import { search } from "./search.ts";
 import type {
 	BranchesMsg,
 	ClientMsg,
+	CommandsMsg,
 	ConfigMsg,
 	ContextSourcesMsg,
 	ErrorMsg,
@@ -392,6 +393,31 @@ function contextSources(): ContextSourcesMsg {
 			oauth: provider ? modelRuntime.isUsingOAuth(provider) : false,
 			subscription: provider ? modelRuntime.isUsingSubscription(provider) : false,
 		},
+	};
+}
+
+/**
+ * What "/" can name, the three kinds and in the order pi's own get_commands
+ * lists them. Read from the session, since an extension's commands are
+ * registered when it is bound to one.
+ */
+function commands(): CommandsMsg {
+	const s = session();
+	return {
+		type: "commands",
+		commands: [
+			...s.extensionRunner.getRegisteredCommands().map((c) => ({
+				name: c.invocationName,
+				description: c.description,
+				source: "extension" as const,
+			})),
+			...s.promptTemplates.map((t) => ({ name: t.name, description: t.description, source: "prompt" as const })),
+			...runtime.services.resourceLoader.getSkills().skills.map((k) => ({
+				name: `skill:${k.name}`,
+				description: k.description,
+				source: "skill" as const,
+			})),
+		],
 	};
 }
 
@@ -945,6 +971,7 @@ async function broadcastAll(): Promise<void> {
 	broadcast(config());
 	broadcast(usage());
 	broadcast(contextSources());
+	broadcast(commands());
 	broadcast(snapshot());
 	for (const msg of diagnostics()) broadcast(msg);
 	broadcast(branches());
@@ -1164,6 +1191,7 @@ wss.on("connection", async (ws) => {
 	reply(providers());
 	reply(usage());
 	reply(contextSources());
+	reply(commands());
 	reply(snapshot());
 	for (const msg of diagnostics()) reply(msg);
 	reply(branches());

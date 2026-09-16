@@ -106,6 +106,16 @@ it("도구는 pi의 것과 우리 것뿐이고, 이 기계의 pi에 설치된 �
   assert.ok(!log.includes("did not answer"), "nothing warned about a missing hook");
 });
 
+it("접속하면 /가 부를 수 있는 것의 목록이 오고, pi-web-access의 커맨드가 그 안에 있다", async () => {
+  const { commands } = await want("commands");
+  const names = commands.filter((c) => c.source === "extension").map((c) => c.name);
+  for (const name of ["websearch", "curator", "google-account", "search"]) assert.ok(names.includes(name), `${name} among ${names.join(", ")}`);
+  for (const c of commands) {
+    assert.ok(["extension", "prompt", "skill"].includes(c.source), `${c.name}: a kind pi lists`);
+    if (c.source === "skill") assert.match(c.name, /^skill:/);
+  }
+});
+
 it("접속하면 제공자 목록이 오고, pi의 /login이 아는 것과 같다 — Anthropic은 두 길, OpenAI는 키 하나", async () => {
   const { providers } = await want("providers");
   const anthropic = providers.find((p) => p.id === "anthropic");

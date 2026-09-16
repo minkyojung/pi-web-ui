@@ -13,6 +13,7 @@ import {
 	configStore,
 	providersStore,
 	applyLogin,
+	commandsStore,
 	contextSourcesStore,
 	authorsStore,
 	filesStore,
@@ -77,6 +78,7 @@ const STATE: Record<StateMsg["type"], true> = {
 	login_done: true,
 	usage: true,
 	context_sources: true,
+	commands: true,
 	branches: true,
 	sessions: true,
 	snapshot: true,
@@ -131,6 +133,9 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "context_sources":
 			contextSourcesStore.set(msg);
+			return;
+		case "commands":
+			commandsStore.set(msg.commands);
 			return;
 		// The shape of the session tree, not something that happened in the
 		// conversation: it must not reach the reducer.

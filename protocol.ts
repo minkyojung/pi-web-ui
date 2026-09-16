@@ -328,6 +328,24 @@ export interface ContextSourcesMsg {
 }
 
 /**
+ * What a line beginning with "/" can name, as pi's own `get_commands` lists
+ * it: a command an extension registered, a prompt template file, a skill (as
+ * `skill:name`). pi's terminal-only commands (/model, /tree, …) are not
+ * commands here, since they would not run if sent. Sent with the session's
+ * state, since extensions are bound per session.
+ */
+export interface CommandInfo {
+	name: string;
+	description?: string;
+	source: "extension" | "prompt" | "skill";
+}
+
+export interface CommandsMsg {
+	type: "commands";
+	commands: CommandInfo[];
+}
+
+/**
  * Where the conversation being shown has alternatives. Computed by the server
  * from the session tree; see branches.ts.
  */
@@ -648,6 +666,7 @@ export type StateMsg =
 	| LoginDoneMsg
 	| UsageMsg
 	| ContextSourcesMsg
+	| CommandsMsg
 	| BranchesMsg
 	| SessionsMsg
 	| SnapshotMsg
