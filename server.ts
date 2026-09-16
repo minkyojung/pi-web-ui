@@ -56,6 +56,7 @@ import { isPropertyType } from "./propertyTypes.ts";
 import { backlinksOf, retarget } from "./links.ts";
 import { search } from "./search.ts";
 import type {
+	Authored,
 	BranchesMsg,
 	ClientMsg,
 	CommandsMsg,
@@ -468,6 +469,24 @@ function files(): FilesMsg {
  * log makes of it — a difference from what it knew is outside's, and a note
  * it never knew is from before (reconcile).
  */
+/**
+ * How much of a note somebody other than the person reading it wrote, from the
+ * spans the log replays to. See Authored in protocol.ts.
+ *
+ * Only pi and outside are counted. `me` is the person's own and `before` is
+ * what was there when the app first saw the note, which nobody was seen to
+ * write — neither is somebody else's hand.
+ */
+function shareOf(spans: { from: number; to: number; author: string }[], total: number): Authored {
+	let pi = 0;
+	let other = 0;
+	for (const span of spans) {
+		if (span.author === "pi") pi += span.to - span.from;
+		else if (span.author === "outside") other += span.to - span.from;
+	}
+	return { pi, other, total };
+}
+
 function settleDisk(path: string, text: string, at: number) {
 	const origin: Origin | undefined = notes.has(path) ? undefined : { author: "outside", at };
 	return reconcile(CWD, path, text, at, origin);
@@ -492,6 +511,7 @@ function note(path: string): NoteMsg | null {
 		original: toDecide(holed),
 		backlinks: links.backlinks(path),
 		tagged: links.tagged(path),
+		authored: shareOf(replayed.spans, found.text.length),
 	};
 }
 
@@ -604,6 +624,7 @@ function wrote(path: string, base: number | null, changes: Change[]): void {
 			lines: said.lines,
 			changes,
 			original: toDecide(said.holed),
+			authored: shareOf(said.replayed.spans, found.text.length),
 		};
 		broadcast(msg);
 	} else {

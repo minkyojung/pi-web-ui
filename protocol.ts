@@ -418,6 +418,30 @@ export interface NoteMsg {
 	backlinks: Backlink[];
 	/** The notes that share a tag with this one, from the index. */
 	tagged: Tagged[];
+	/** How much of it somebody other than you wrote. See Authored. */
+	authored: Authored;
+}
+
+/**
+ * How much of a note was written by somebody other than the person reading it,
+ * in characters of the text on disk.
+ *
+ * A summary, and only a summary. Who wrote which run is asked for (`who_wrote`)
+ * because it is a question somebody puts and an answer that followed every
+ * keystroke would be a different feature; a share is one number, is worked out
+ * from the same reading of the log that the note itself needs, and rides along
+ * with it. `other` is a write from outside the app — vim, a sync client — and
+ * is kept apart from pi's, since a note that is a quarter somebody else's and
+ * one that is a quarter pi's are not the same note.
+ *
+ * As the log last read the disk: it is the note that was written, not the note
+ * being typed. What the person is typing now is their own by definition and
+ * moves the share the moment it is saved.
+ */
+export interface Authored {
+	pi: number;
+	other: number;
+	total: number;
 }
 
 /**
@@ -468,6 +492,8 @@ export interface NoteChangedMsg {
 	/** As on `note`: the log's length after this change. */
 	lines: number;
 	changes: Change[];
+	/** How much of it somebody other than you wrote, now that it has changed. See Authored. */
+	authored: Authored;
 	/** As on `note`: what is left to decide about, after this change. */
 	original?: string;
 }

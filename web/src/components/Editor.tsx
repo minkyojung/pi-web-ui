@@ -29,19 +29,18 @@ import { highlightTag } from "../../../highlight.ts";
 import { inlineCodeTag, noteSyntax } from "../../../syntax.ts";
 import { bodyStart, type Properties as PropertiesRead } from "../../../properties.ts";
 import { tagTag } from "../../../tag.ts";
-import type { Place } from "../../../links.ts";
+import { tagsIn, type Place } from "../../../links.ts";
 import type { Left } from "../nav";
-import type { Backlink, Edit, Tagged } from "../types";
-import { authorsStore, backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, taggedStore } from "../serverState";
+import type { Edit } from "../types";
+import type { Authored } from "../../../protocol.ts";
+import { authorsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
 import { inFrontStore, say as sayInFront } from "../inFront";
-import { titleOf } from "../noteSync";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { flushSaves, registerSave } from "../saves";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Properties } from "./Properties";
 import { Button } from "./ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** How long typing has to stop before it is written down. */
 const AUTOSAVE_MS = 600;
@@ -324,6 +323,8 @@ export function Editor({
 		setStatus("saved");
 	};
 
+
+
 	useEffect(() => {
 		if (!host.current) return;
 		const features = [
@@ -528,7 +529,7 @@ export function Editor({
 				if (!decision.dirty) {
 					settle(note.text, note.modified, note.lines);
 					v.dispatch({ effects: diffFor(note.original ?? null) });
-					askAgain();
+					onDisk(note.text, note.authored);
 				} else {
 					// The echo of the save; what was typed since is still owed.
 					saved.current = note.text;
@@ -539,13 +540,13 @@ export function Editor({
 					dirty.current = !local.current.empty;
 					setStatus(dirty.current ? "unsaved" : "saved");
 					v.dispatch({ effects: diffFor(note.original ?? null) });
-					askAgain();
+					onDisk(note.text, note.authored);
 				}
 				return;
 			case "same":
 				settle(note.text, note.modified, note.lines);
 				v.dispatch({ effects: diffFor(note.original ?? null) });
-				askAgain();
+				onDisk(note.text, note.authored);
 				return;
 			case "replace": {
 				// The first text of a note opened again: back where it was left,
@@ -563,7 +564,7 @@ export function Editor({
 				if (back) scrollBack(was.current!, v, page.current);
 				forgetMoves();
 				settle(note.text, note.modified, note.lines);
-				askAgain();
+				onDisk(note.text, note.authored);
 				if (landing.current) {
 					landOn(v, landing.current);
 					landing.current = null;
@@ -613,6 +614,28 @@ export function Editor({
 		send({ type: "who_wrote", path });
 	}, [path]);
 
+	/**
+	 * The note on screen has just become the note on disk.
+	 *
+	 * Two things want this moment and no other. The marks of who wrote what are
+	 * answered in the disk's coordinates (askAgain, above). The note's tags are
+	 * the vault's reading of it, and the vault has read nothing until the note
+	 * is written — a half-typed `#ag` is not a tag yet. `tagsIn` is a parse of
+	 * the whole note and the one definition of what a note's tags are, shared
+	 * with the index that answers who else has them (links.ts): worth a parse
+	 * here, not worth one per keystroke the way the counts are.
+	 *
+	 * Together, in one place, because there are five roads to this moment and
+	 * putting the tags on one of them is how they were missed on the other
+	 * four — including the echo of this editor's own save, which is how a tag
+	 * somebody typed almost always arrives. A road added later gets both or
+	 * neither.
+	 */
+	const onDisk = (text: string, authored?: Authored) => {
+		sayInFront(at.current, { tags: tagsIn(text), ...(authored ? { authored } : {}) });
+		askAgain();
+	};
+
 	const authored = useSyncExternalStore(authorsStore.subscribe, authorsStore.get);
 	useEffect(() => {
 		const v = view.current;
@@ -645,13 +668,13 @@ export function Editor({
 			dirty.current = !local.current.empty;
 			setStatus(dirty.current ? "unsaved" : "saved");
 			v.dispatch({ effects: diffFor(changed.original ?? null) });
-			askAgain();
+			onDisk(text, changed.authored);
 			return;
 		}
 		if (!dirty.current) {
 			v.dispatch({ changes: theirs, annotations: serverChange, effects: diffFor(changed.original ?? null) });
 			settle(text, changed.modified, changed.lines);
-			askAgain();
+			onDisk(text, changed.authored);
 			return;
 		}
 		const fit = rebase(theirs, local.current);
@@ -792,82 +815,7 @@ export function Editor({
 			)}
 			{/* The text takes what the page has left, whether or not it has the words to fill it — see the theme's min-height. */}
 			<div ref={host} className="flex flex-1 flex-col" />
-			<NoteMeta path={path} onOpen={onOpen} />
 		</div>
 	);
 }
 
-/**
- * What the vault knows about the note, under the note: who links here, and
- * who shares its tags. One block, because they are one thing — the note has
- * ended and this is about it. The space above says so; there used to be a
- * rule, and a second one between these two rows, which said the same thing
- * twice about two halves of one aside.
- *
- * Nothing at all when there is neither, and each row gone when there is none
- * of its own: an empty "Linked from" is a question nobody asked.
- */
-function NoteMeta({ path, onOpen }: { path: string; onOpen?: (path: string) => void }) {
-	const backlinks = useSyncExternalStore(backlinksStore.subscribe, backlinksStore.get)[path] ?? [];
-	const tagged = useSyncExternalStore(taggedStore.subscribe, taggedStore.get)[path] ?? [];
-	if (backlinks.length === 0 && tagged.length === 0) return null;
-	return (
-		// The title's measure, which is the text's: 42rem less 1.5rem of side is
-		// the 39rem column the words are set in, so all three start on one line.
-		// This used to sit against the window's edge, a column of its own about
-		// a note it was nowhere near.
-		<div className="mx-auto mt-6 flex w-full max-w-[42rem] shrink-0 flex-col gap-1 px-6 pb-2 text-xs text-muted-foreground">
-			<Backlinks notes={backlinks} onOpen={onOpen} />
-			<TaggedWith notes={tagged} onOpen={onOpen} />
-		</div>
-	);
-}
-
-/**
- * The notes that link here. From the index, sent with the note and again
- * whenever a write anywhere may have changed it.
- */
-function Backlinks({ notes, onOpen }: { notes: Backlink[]; onOpen?: (path: string) => void }) {
-	if (notes.length === 0) return null;
-	return (
-		<div id="backlinks" className="flex flex-wrap items-center gap-x-3 gap-y-1">
-			<span>Linked from</span>
-			{notes.map((b) => (
-				<Tooltip key={b.path}>
-					<TooltipTrigger asChild>
-						<Button variant="ghost" size="xs" data-path={b.path} className="h-5 cursor-default px-1 font-normal text-foreground" onClick={() => onOpen?.(b.path)}>
-							{titleOf(b.path)}
-							{b.count > 1 && <span className="text-muted-foreground">{b.count}</span>}
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent side="bottom">{b.path}</TooltipContent>
-				</Tooltip>
-			))}
-		</div>
-	);
-}
-
-/**
- * The notes that share a tag with this one, beside the backlinks and from the
- * same index: sent with the note, and again whenever a note's tags changed.
- * Each with the tags shared, since that is why it is here.
- */
-function TaggedWith({ notes, onOpen }: { notes: Tagged[]; onOpen?: (path: string) => void }) {
-	if (notes.length === 0) return null;
-	return (
-		<div id="tagged" className="flex flex-wrap items-center gap-x-3 gap-y-1">
-			<span>Tagged with</span>
-			{notes.map((t) => (
-				<Tooltip key={t.path}>
-					<TooltipTrigger asChild>
-						<Button variant="ghost" size="xs" data-path={t.path} className="h-5 cursor-default px-1 font-normal text-foreground" onClick={() => onOpen?.(t.path)}>
-							{titleOf(t.path)}
-							<span className="text-muted-foreground">{t.tags.map((tag: string) => `#${tag}`).join(" ")}</span>
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent side="bottom">{t.path}</TooltipContent>
-				</Tooltip>
-			))}
-		</div>
-	);
-}

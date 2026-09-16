@@ -15,6 +15,7 @@
  * nothing unless the path it was told is the path that is open.
  */
 import { createStore } from "./serverState";
+import type { Authored } from "../../protocol.ts";
 
 /** Where the note on screen stands with the copy on disk. See Editor.tsx. */
 export type Saved = "loading" | "saved" | "unsaved" | "conflict" | "gone";
@@ -25,9 +26,13 @@ export type InFront = {
 	/** The body's words and characters — the front matter is the note's about, not the note. */
 	words: number;
 	characters: number;
+	/** The note's own tags, as the vault last read them. Written in the note or named in its `tags` property, alike (links.ts). */
+	tags: string[];
+	/** How much of it somebody other than you wrote, as the note was last written down. See Authored in protocol.ts. */
+	authored: Authored | null;
 };
 
-const nothing = { saved: "loading" as Saved, words: 0, characters: 0 };
+const nothing = { saved: "loading" as Saved, words: 0, characters: 0, tags: [] as string[], authored: null };
 
 export const inFrontStore = createStore<InFront | null>(null);
 

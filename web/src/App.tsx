@@ -545,8 +545,15 @@ export function App() {
 					    side. A second one out here only stacked on those. */}
 					{/* The left gap is the list's to give, and with it folded away there
 					    is nobody to give it: the card would sit on the window's own
-					    edge, where the other three sides keep eight pixels off it. */}
-					<div className={`flex min-h-0 flex-1 flex-col pr-2 pb-2 ${sidebarOpen ? "" : "pl-2"}`}>
+					    edge, where the sides keep eight pixels off it.
+
+					    No gap under it. The strip below is the card's bottom boundary,
+					    the way a status bar is the boundary under an editor: eight
+					    pixels there sat above the strip rather than under the card, so
+					    what was in the strip had fourteen pixels over it and six under
+					    and read as hung too low. The strip's own inset is the only gap
+					    on either side of it now. */}
+					<div className={`flex min-h-0 flex-1 flex-col pr-2 ${sidebarOpen ? "" : "pl-2"}`}>
 					<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-background" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
 					<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
 					<NoteHeader path={open} onOpen={setOpen} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
@@ -651,12 +658,21 @@ export function App() {
 						</div>
 					</ResizablePanel>
 					</ResizablePanelGroup>
+					</div>
 					{/* Under the card rather than across the whole window: what it has
 					    to say is about the note, and the list of notes down the left is
 					    not about the note. The card and pi give up its height together,
-					    the way the two columns keep the tabs' strip clear at the top. */}
-					<StatusBar path={open} />
-					</div>
+					    the way the two columns keep the tabs' strip clear at the top.
+
+					    Outside the card's wrapper, and so down on the window's own edge.
+					    Inside it, the wrapper's eight pixels lay under the strip rather
+					    than under the card, and what looked like the foot of the window
+					    was a 28px strip with 8px of nothing beneath it: everything in it
+					    sat centred in the strip and high in the foot. A status bar is
+					    part of the window and reaches its edge, as VS Code's and Zed's
+					    do, and then there is only one place for anything to be centred
+					    in. */}
+					<StatusBar path={open} onOpen={setOpen} />
 				</ResizablePanel>
 			</ResizablePanelGroup>
 			</div>

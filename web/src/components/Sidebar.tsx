@@ -85,8 +85,12 @@ export function Sidebar({
 					)}
 				</ul>
 			)}
-			{/* Not a drag region: the foot of the window is not its title bar. */}
-			<div className="flex h-10 shrink-0 items-center gap-1 px-2">
+			{/* Not a drag region: the foot of the window is not its title bar.
+
+			    Its height is the window's foot, and the strip under the note keeps
+			    the same one (StatusBar.tsx): two rows along the same edge of the
+			    same window that did not agree read as one row that is crooked. */}
+			<div id="foot" className="flex h-10 shrink-0 items-center gap-1 px-2">
 				<FolderPicker />
 				<Settings />
 			</div>

@@ -41,6 +41,9 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - A note fills the page it is on, so the space under the last line is part of the note: click it and the cursor goes to the end, instead of holding Enter until the file has the blank lines to reach down there. The room that used to sit under the text is gone with it.
 - A strip across the foot of the window says whether the note you are looking at has reached the disk. It is the same height whatever it has to say, so nothing above it moves.
 - The strip counts the note as you write it. Press the count to be told in characters instead, and again for words. It counts what you wrote, not the properties above it.
+- The strip says the note's own tags, whether you wrote them in the note or filed them in its properties. Press one to see the other notes that carry it.
+- The notes that link here, and the ones that share a tag, moved out of the page and into the strip as counts. Press a count for the list; take one and it opens.
+- The strip says how much of a note somebody other than you wrote — pi's share and anything written outside Octave, counted apart. A note that is all yours says nothing.
 
 ### Fixed
 - The × that takes a tag off a note is the size of the tag again, so the chip keeps its shape when the properties are open.
