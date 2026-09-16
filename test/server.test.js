@@ -771,3 +771,20 @@ it("목록에서 고른 명령은 실행되고, 확장이 하는 말은 대화�
   assert.ok(said);
   assert.ok(!inbox.some((m) => m.type === "message_start"), "nothing was sent to the model");
 });
+
+
+// A one-pixel PNG, which is enough to see it arrive: the question is on
+// record with the image beside the words, in the shape pi keeps images in.
+// Aborted as soon as it is, like the "/" test above.
+it("붙여넣은 이미지는 글과 함께 pi에 간다", async () => {
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  clear();
+  send({ type: "prompt", text: "what colour is this?", images: [{ data: png, mimeType: "image/png" }] });
+  const started = await want("message_start", (m) => m.message?.role === "user", 30_000);
+  const image = started.message.content.find((c) => c.type === "image");
+  assert.ok(image, "an image part beside the text");
+  assert.equal(image.mimeType, "image/png");
+  assert.equal(image.data, png);
+  send({ type: "abort" });
+  await want("agent_settled", () => true, 30_000);
+});

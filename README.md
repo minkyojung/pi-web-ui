@@ -569,6 +569,12 @@ tool's job, which is why nothing is copied in. The two lists — commands after
 `/`, notes after `@` — are one component (`SuggestMenu`) with two sources
 (`commandMenu.ts`, `noteMention.ts`), and never open together.
 
+An image pasted into the box goes with the message, as pi's `prompt()` takes
+images — base64 and a media type — and is shown above the box until then, with
+the way to take it back out. Pasting is the one way in: the dropzone and the
+button the component brings are not used. A message is words, so an image with
+no words beside it is not sent.
+
 `clear_queue` empties the queue and returns what was in it, so the tab that asked
 can put the text back in its input box. It is all of them at once because that is
 the only queue edit pi has: `clearQueue()` is the whole API, and removing one

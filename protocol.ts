@@ -35,6 +35,8 @@ export type ClientMsg =
 			 * is a character like any other, however it was typed.
 			 */
 			command?: boolean;
+			/** Images pasted into the box: base64 and a media type, as pi's ImageContent has them. */
+			images?: { data: string; mimeType: string }[];
 			/** What to do with it mid-run. Ignored when nothing is running. */
 			behavior?: "steer" | "followUp";
 			/** Asking again: the user message this one is an alternative to. */

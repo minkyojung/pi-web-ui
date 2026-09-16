@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { PencilIcon, TextQuoteIcon, X } from "lucide-react";
 
+import { imagesOf } from "../attachments";
 import { type Chosen as ChosenWords, chosenStore } from "../chosen";
 import { acceptCommand, commandQuery, matchCommands, namesCommand } from "../commandMenu";
 import { draftStore } from "../draft";
@@ -27,6 +28,7 @@ import {
 	PromptInputSubmit,
 	PromptInputTextarea,
 	PromptInputTools,
+	usePromptInputAttachments,
 } from "./ai-elements/prompt-input";
 
 const MOD = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
@@ -51,9 +53,11 @@ function submit(
 	behavior: "followUp" | "steer",
 	note: string | null,
 	chosen: ChosenWords | null,
+	files: { url?: string; mediaType?: string }[] = [],
 ): boolean {
 	const trimmed = text.trim();
 	if (!trimmed) return false;
+	const images = imagesOf(files);
 	flushSaves();
 	// A first word that names a command on the list pi sent is one, and pi is
 	// told so; any other "/" is a character. See commandMenu.ts.
@@ -70,6 +74,7 @@ function submit(
 		// question is about, and the words stay out of the message itself.
 		...(chosen && chosen.path === note ? { chosen: chosen.text } : {}),
 		...(command ? { command } : {}),
+		...(images.length ? { images } : {}),
 		behavior,
 		...(asking ? { entryId: asking.entryId } : {}),
 	});
@@ -137,6 +142,35 @@ function Chosen({ chosen, onDrop }: { chosen: ChosenWords | null; onDrop: () => 
 }
 
 /**
+ * What was pasted into the box, above it, each with the way to take it back
+ * out. Images only: the box accepts nothing else, and pi's models read those.
+ * Pasting is the one way in — a dropzone and a button are what the component
+ * brings and what is deliberately not used here.
+ */
+function Attached() {
+	const attachments = usePromptInputAttachments();
+	if (attachments.files.length === 0) return null;
+	return (
+		<PromptInputHeader id="attached">
+			{attachments.files.map((f) => (
+				<span key={f.id} className="relative inline-flex">
+					<img src={f.url} alt={f.filename ?? "pasted image"} className="size-12 rounded-sm border object-cover" />
+					<Button
+						variant="secondary"
+						size="icon-xs"
+						className="absolute -top-1.5 -right-1.5 size-4 rounded-full"
+						onClick={() => attachments.remove(f.id)}
+						aria-label="Do not send this image"
+					>
+						<X />
+					</Button>
+				</span>
+			))}
+		</PromptInputHeader>
+	);
+}
+
+/**
  * Where you write to pi.
  *
  * What to do with a message typed mid-run used to be a dropdown, which asked
@@ -169,10 +203,16 @@ export function Composer({ note }: { note: string | null }) {
 	// Escape puts the list away for the text as it stands; typing brings it back.
 	const [dismissed, setDismissed] = useState<string | null>(null);
 	const [selected, setSelected] = useState("");
+	// Every send goes through the form, since that is where pasted images are
+	// turned into something that can be sent; the key that steers says so
+	// here first, and the form's submit reads it once.
+	const steering = useRef(false);
 	// Sent, the box is reset by the form, which fires no change: the mirror is
 	// emptied by hand.
-	const send_ = (form: HTMLFormElement, value: string, behavior: "followUp" | "steer") => {
-		if (submit(form, value, behavior, note, pointing)) setText("");
+	const send_ = (form: HTMLFormElement, value: string, files: { url?: string; mediaType?: string }[]) => {
+		const behavior = steering.current ? "steer" : "followUp";
+		steering.current = false;
+		if (submit(form, value, behavior, note, pointing, files)) setText("");
 	};
 	const write = (value: string, cursor = value.length) => {
 		if (!box.current) return;
@@ -243,7 +283,8 @@ export function Composer({ note }: { note: string | null }) {
 			{list && (
 				<SuggestMenu id={list.id} items={list.items} selected={current?.value ?? ""} onSelect={setSelected} onPick={list.pick} />
 			)}
-			<PromptInput onSubmit={(message, event) => send_(event.currentTarget, message.text, "followUp")}>
+			<PromptInput accept="image/*" onSubmit={(message, event) => send_(event.currentTarget, message.text, message.files)}>
+				<Attached />
 				<Chosen chosen={pointing} onDrop={() => setDropped(pointing?.text ?? null)} />
 				<PromptInputBody>
 					{/* The component asks for four lines of empty box; one is enough until
@@ -278,7 +319,8 @@ export function Composer({ note }: { note: string | null }) {
 							// cuts a tool-using run short. Enter alone queues instead.
 							if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
 								e.preventDefault();
-								send_(e.currentTarget.form!, e.currentTarget.value, "steer");
+								steering.current = true;
+								e.currentTarget.form!.requestSubmit();
 							}
 						}}
 					/>

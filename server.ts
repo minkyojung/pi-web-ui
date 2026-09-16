@@ -1330,6 +1330,7 @@ wss.on("connection", async (ws) => {
 						// if the session is streaming and no behavior is given.)
 						await session().prompt(text, {
 							expandPromptTemplates: msg.command === true,
+							...(msg.images?.length ? { images: msg.images.map((i) => ({ type: "image" as const, ...i })) } : {}),
 							...(session().isStreaming ? { streamingBehavior: behavior } : {}),
 						});
 					} catch (err) {
