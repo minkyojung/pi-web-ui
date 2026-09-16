@@ -1,12 +1,15 @@
-import { useSyncExternalStore } from "react";
-import { ChevronRight, Ellipsis, MoreHorizontal } from "lucide-react";
+import { useState, useSyncExternalStore } from "react";
+import { ChevronLeft, ChevronRight, Ellipsis, FileTextIcon, FolderIcon, MoreHorizontal } from "lucide-react";
 
 import { noteActions } from "../noteActions";
 import { showAuthorsStore } from "../features/authors";
 import { titleOf } from "../noteSync";
-import { foldersOf, openFoldersStore, setOpenFolders } from "../tree";
+import { filesStore } from "../serverState";
+import { childrenOf, foldersOf, openFoldersStore, setOpenFolders } from "../tree";
 import { getConnection, subscribe } from "../store";
 import { Button } from "./ui/button";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "./ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -35,26 +38,108 @@ function splitCrumbs(folders: string[]): { head: string[]; hidden: string[]; tai
 	};
 }
 
+/** The leaf of a path: the folder's own name, without the folders above it. */
+const nameOf = (folder: string) => folder.slice(folder.lastIndexOf("/") + 1);
+
 /**
- * One folder in the line, cut to a width rather than allowed any it asks for.
+ * What is in a folder, to pick from: its folders, then its notes.
  *
- * A folder named for a whole book title would otherwise push the rest of the
- * path off the end, and the crumb that matters most — the one you are in — is
- * the last. VS Code's breadcrumb and the Finder's path bar cut each name the
- * same way; the whole of it is still there on hover.
+ * Mounted only while the list is up, so nothing here is built for a note that
+ * is merely being read. A folder in it goes deeper — the list is the folder it
+ * is showing, not the folder it was opened on — and the way back out is the
+ * item at the top. The last item is the old way, kept: show it on the left.
  */
-function FolderCrumb({ folder }: { folder: string }) {
-	const name = folder.slice(folder.lastIndexOf("/") + 1);
+function FolderContents({ root, onOpen, close }: { root: string; onOpen: (path: string) => void; close: () => void }) {
+	const files = useSyncExternalStore(filesStore.subscribe, filesStore.get);
+	const [at, setAt] = useState(root);
+	const children = childrenOf(
+		files.map((f) => f.path),
+		at,
+	);
+	const up = at === root ? null : at.slice(0, at.lastIndexOf("/"));
 	return (
-		<button
-			type="button"
-			data-crumb={folder}
-			title={name}
-			className="max-w-40 truncate rounded-sm px-1 py-0.5 hover:bg-accent hover:text-accent-foreground"
-			onClick={() => show(folder)}
-		>
-			{name}
-		</button>
+		<Command loop>
+			<CommandInput placeholder={`Find in ${nameOf(at)}…`} />
+			<CommandList className="max-h-72">
+				<CommandEmpty>Nothing by that name in here.</CommandEmpty>
+				<CommandGroup>
+					{up !== null && (
+						<CommandItem value={`..${up}`} onSelect={() => setAt(up)}>
+							<ChevronLeft />
+							<span className="truncate">{nameOf(up)}</span>
+						</CommandItem>
+					)}
+					{children.map((node) =>
+						node.kind === "folder" ? (
+							<CommandItem key={node.path} value={node.path} onSelect={() => setAt(node.path)}>
+								<FolderIcon />
+								<span className="truncate">{node.name}</span>
+								<ChevronRight className="ml-auto" />
+							</CommandItem>
+						) : (
+							<CommandItem
+								key={node.path}
+								value={node.path}
+								onSelect={() => {
+									close();
+									onOpen(node.path);
+								}}
+							>
+								<FileTextIcon />
+								<span className="truncate">{titleOf(node.path)}</span>
+							</CommandItem>
+						),
+					)}
+				</CommandGroup>
+				<CommandSeparator />
+				<CommandGroup>
+					<CommandItem
+						value={`show ${at} on the left`}
+						onSelect={() => {
+							close();
+							show(at);
+						}}
+					>
+						Show in sidebar
+					</CommandItem>
+				</CommandGroup>
+			</CommandList>
+		</Command>
+	);
+}
+
+/**
+ * One folder in the line: what it is called, and a door into it.
+ *
+ * Pressing it opens what is inside, so the note beside the one you are reading
+ * is a click away rather than a trip to the column on the left — VS Code's
+ * breadcrumb opens the same list from the same place. It used to open the
+ * folder on the left instead; that is now the last item in the list, since
+ * opening a note from here brings its folder into view anyway.
+ *
+ * The name is cut to a width rather than allowed any it asks for — a folder
+ * named for a whole book title would push the rest of the path off the end —
+ * with the whole of it on hover, as VS Code and the Finder do.
+ */
+function FolderCrumb({ folder, onOpen }: { folder: string; onOpen: (path: string) => void }) {
+	const [open, setOpen] = useState(false);
+	const name = nameOf(folder);
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<button
+					type="button"
+					data-crumb={folder}
+					title={name}
+					className="max-w-40 truncate rounded-sm px-1 py-0.5 hover:bg-accent hover:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
+				>
+					{name}
+				</button>
+			</PopoverTrigger>
+			<PopoverContent align="start" className="w-64 p-0">
+				<FolderContents root={folder} onOpen={onOpen} close={() => setOpen(false)} />
+			</PopoverContent>
+		</Popover>
 	);
 }
 
@@ -80,7 +165,7 @@ function CrumbEllipsis({ folders }: { folders: string[] }) {
 			<DropdownMenuContent align="start">
 				{folders.map((folder) => (
 					<DropdownMenuItem key={folder} onSelect={() => show(folder)}>
-						{folder.slice(folder.lastIndexOf("/") + 1)}
+						{nameOf(folder)}
 					</DropdownMenuItem>
 				))}
 			</DropdownMenuContent>
@@ -166,7 +251,7 @@ function NoteMenu({ path }: { path: string }) {
  *
  * One height with pi's header, so the two panes of the card start level.
  */
-export function NoteHeader({ path, trailing }: { path: string | null; trailing?: React.ReactNode }) {
+export function NoteHeader({ path, onOpen, trailing }: { path: string | null; onOpen: (path: string) => void; trailing?: React.ReactNode }) {
 	// The same identifiers the sidebar keys its open folders on, so a crumb and
 	// a row are talking about the same folder without either being told.
 	const folders = path ? foldersOf(path) : [];
@@ -176,7 +261,7 @@ export function NoteHeader({ path, trailing }: { path: string | null; trailing?:
 			<div className="flex min-w-0 flex-1 items-center gap-0.5 truncate text-muted-foreground">
 				{head.map((folder) => (
 					<span key={folder} className="flex shrink-0 items-center gap-0.5">
-						<FolderCrumb folder={folder} />
+						<FolderCrumb folder={folder} onOpen={onOpen} />
 						<ChevronRight className="size-3 shrink-0" />
 					</span>
 				))}
@@ -189,7 +274,7 @@ export function NoteHeader({ path, trailing }: { path: string | null; trailing?:
 				{tail.map((folder, i) => (
 					<span key={folder} className="flex shrink-0 items-center gap-0.5">
 						{i > 0 && <ChevronRight className="size-3 shrink-0" />}
-						<FolderCrumb folder={folder} />
+						<FolderCrumb folder={folder} onOpen={onOpen} />
 					</span>
 				))}
 				{path && (

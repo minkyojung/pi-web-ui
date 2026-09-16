@@ -48,6 +48,23 @@ export function foldersOf(path: string): string[] {
 }
 
 /**
+ * What is directly inside `folder`: its folders, then its notes.
+ *
+ * Built from the same tree the list on the left is drawn from, so a folder's
+ * contents read the same in both — two orders for one folder would be two
+ * answers to the same question.
+ */
+export function childrenOf(paths: string[], folder: string): Node[] {
+	let nodes = treeOf(paths);
+	for (const step of [...foldersOf(folder), folder]) {
+		const node = nodes.find((n) => n.path === step);
+		if (node?.kind !== "folder") return [];
+		nodes = node.children;
+	}
+	return nodes;
+}
+
+/**
  * `open` with the folders around `path` added, so an opened note is in view.
  * The same set back when nothing needed opening, so nothing redraws.
  */

@@ -443,6 +443,9 @@ const editorStatus = (page) => page.evaluate("document.getElementById('editor')?
 const pickNote = async (page, path) => {
 	const folders = path.split("/").slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join("/"));
 	for (const folder of folders) {
+		// One at a time, and waited for: a folder inside another is not drawn
+		// until the one above it stands open, and a click at nothing is silent.
+		await until(`the row for ${folder}`, () => page.evaluate(`!!document.querySelector('#notes button[data-folder="${folder}"]')`));
 		await page.evaluate(`(() => { const b = document.querySelector('#notes button[data-folder="${folder}"]'); if (b && b.getAttribute("aria-expanded") !== "true") b.click(); })()`);
 	}
 	await until(`the row for ${path}`, () => page.evaluate(`!!document.querySelector('#notes button[data-path="${path}"]')`));
@@ -2234,6 +2237,39 @@ check("the conversation is named from the pencil in its header, and emptying the
 	// Emptied, the name is taken off rather than set to nothing.
 	await rename(app, "");
 	await until("the name to come off", async () => (await shown()) === first);
+});
+
+/**
+ * The path above a note names the folders it is in, and is the way into them.
+ *
+ * Both halves are checked here because they are one line: what it shows when
+ * the note is buried (the ends, and a "…" for the middle), and what pressing
+ * a folder in it does (offers what is in that folder, and opens what is
+ * picked — without a trip to the list on the left).
+ */
+check("the path above a note folds its middle away, and a folder in it opens what is inside", async ({ app, cwd }) => {
+	const folder = "book/The Scaling Era/Chapter 1";
+	mkdirSync(join(cwd, folder), { recursive: true });
+	writeFileSync(join(cwd, `${folder}/translation.md`), "KR\n");
+	writeFileSync(join(cwd, `${folder}/notes.md`), "notes\n");
+	await pickNote(app, `${folder}/translation.md`);
+
+	// Three folders deep: the outermost and the one it is in, with the one
+	// between them behind the "…".
+	const crumbs = () => app.evaluate(`[...document.querySelectorAll("[data-crumb]")].map((b) => b.textContent.trim()).join()`);
+	await until("the crumbs", async () => (await crumbs()) === "book,Chapter 1");
+	assert.ok(await app.evaluate(`!!document.querySelector('[aria-label="Folders in between"]')`), "the middle is folded away, not dropped");
+
+	await app.click(`[data-crumb="${folder}"]`);
+	await until("what is in the folder", () => app.evaluate(`!!document.querySelector("[data-slot=command-item]")`));
+	await app.shot("crumbs");
+	const items = () => app.evaluate(`[...document.querySelectorAll("[data-slot=command-item]")].map((i) => i.textContent.trim())`);
+	assert.deepEqual(await items(), ["notes", "translation", "Show in sidebar"], "the folder's notes, and the old way kept");
+
+	// Picking one opens it, which is the whole of the point.
+	await app.click(`[data-slot=command-item]`, 0);
+	await until("the other note in front", async () => (await app.evaluate(`document.querySelector('#notes button[data-active="true"]')?.dataset.path`)) === `${folder}/notes.md`);
+	await until("the list put away", async () => !(await app.evaluate(`!!document.querySelector("[data-slot=command-item]")`)));
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {

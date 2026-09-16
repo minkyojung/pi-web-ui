@@ -549,7 +549,7 @@ export function App() {
 					<div className={`flex min-h-0 flex-1 flex-col pr-2 pb-2 ${sidebarOpen ? "" : "pl-2"}`}>
 					<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-background" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
 					<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
-					<NoteHeader path={open} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
+					<NoteHeader path={open} onOpen={setOpen} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
