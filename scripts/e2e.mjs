@@ -2556,6 +2556,32 @@ check("typing / in the message box offers pi's commands, and Enter writes the ch
 	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
 });
 
+/**
+ * Type "@" anywhere in the box and the notes are offered; the word narrows
+ * them and Enter writes the chosen note's path in. Octave's own — pi has this
+ * only in its terminal — so what is checked is the whole of it.
+ */
+check("typing @ in the message box offers the notes, and Enter writes the chosen one's path in", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "mentionable.md"), "# mentionable\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="mentionable.md"]')`));
+	const box = () => app.evaluate("document.querySelector('textarea').value");
+	const listed = () => app.evaluate("[...document.querySelectorAll('#mentions [cmdk-item]')].map((i) => i.textContent)");
+	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.focus(); t.value = ''; })()");
+	await app.keys("about @mentio");
+	await until("the list to narrow to the note", async () => (await listed()).some((t) => t.startsWith("mentionable")));
+	assert.equal(await app.evaluate(`(() => {
+		const item = document.querySelector('#mentions [cmdk-item]'); const r = item.getBoundingClientRect();
+		return r.height > 0 && item.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+	})()`), true, "the list is on screen, not clipped by the box");
+	await app.press("Enter");
+	await until("the path written in", async () => (await box()) === "about @mentionable.md ");
+	assert.deepEqual(await listed(), [], "the list has done its part once the word is complete");
+	// A mention is a word among words: what follows types on, and the list stays away.
+	await app.keys("and more");
+	assert.deepEqual(await listed(), []);
+	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+});
+
 check("the bench renders every scenario it knows", async ({ bench }) => {
 	// The list is drawn only while the picker is open, and each entry carries
 	// its id: what is read is the scenario's name, and the name is not the id.

@@ -560,6 +560,15 @@ its `ctx.ui` — its questions come up as ask_user's card, its `notify` goes
 into the conversation, and the terminal it would draw on is taken and put
 nowhere, as pi's own RPC host does (`extensionUI.ts`).
 
+Type `@` — anywhere in the message — and the notes are offered, narrowed by
+the word, and the chosen one goes in as its path (`@folder/note.md`), the way
+pi's own `@file` argument names a file. pi's terminal has this; its library
+does not, so this one is Octave's, over the same note list the sidebar and ⌘P
+read. The words are the mention, not the note: reading it is pi's `read`
+tool's job, which is why nothing is copied in. The two lists — commands after
+`/`, notes after `@` — are one component (`SuggestMenu`) with two sources
+(`commandMenu.ts`, `noteMention.ts`), and never open together.
+
 `clear_queue` empties the queue and returns what was in it, so the tab that asked
 can put the text back in its input box. It is all of them at once because that is
 the only queue edit pi has: `clearQueue()` is the whole API, and removing one

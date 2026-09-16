@@ -6,6 +6,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 ### Added
+- Type `@` anywhere in the message box and your notes are listed; pick one and its path goes in, so pi knows which note you mean.
 - Type `/` in the message box and the commands pi can run are listed — the web search extension's, your prompt templates, your skills. Up and down choose, Enter fills it in, Enter again sends. A command an extension runs can ask you something, and it comes up as the same card pi's questions do.
 
 
