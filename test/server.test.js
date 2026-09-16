@@ -104,6 +104,15 @@ it("도구는 pi의 것과 우리 것뿐이고, 이 기계의 pi에 설치된 �
   assert.ok(!log.includes("did not answer"), "nothing warned about a missing hook");
 });
 
+it("접속하면 제공자 목록이 오고, pi의 /login이 아는 것과 같다 — Anthropic은 두 길, OpenAI는 키 하나", async () => {
+  const { providers } = await want("providers");
+  const anthropic = providers.find((p) => p.id === "anthropic");
+  const openai = providers.find((p) => p.id === "openai");
+  assert.deepEqual(anthropic.methods, ["oauth", "api_key"]);
+  assert.deepEqual(openai.methods, ["api_key"]);
+  for (const p of providers) assert.ok(p.methods.length || p.signedIn, `${p.id}: listed for a reason`);
+});
+
 it("접속하면 서버의 상태가 먼저 온다 — 설정, 목록, 스냅샷", async () => {
   await want("config");
   const files = await want("files");

@@ -16,6 +16,8 @@
  * server's judgement and the tests of it are one thing.
  */
 
+import type { ProviderInfo } from "./protocol.ts";
+
 /**
  * The model pi puts a session on when there is none: a stand-in named
  * unknown/unknown, kept so the session has something to be on, and read by
@@ -24,6 +26,39 @@
  */
 export function isUnknownModel(model: { provider: string; id: string } | undefined): boolean {
 	return !!model && model.provider === "unknown" && model.id === "unknown";
+}
+
+/** As much of pi's Provider as listing it needs. */
+interface SignInAble {
+	id: string;
+	name: string;
+	auth: { oauth?: unknown; apiKey?: { login?: unknown } };
+}
+
+/** pi's AuthStatus: whether a provider is configured, and where from. */
+interface SignInStatus {
+	configured: boolean;
+	source?: string;
+	label?: string;
+}
+
+/**
+ * One provider as the tab is told of it, or null when there is nothing to
+ * tell: no way to sign in from here, and not signed in either. Follows pi's
+ * getLoginProviderOptions — oauth where the provider defines it, api_key only
+ * where it can be asked for (pi's ambient-only providers define apiKey with no
+ * login) — and its status, whose label is the more specific word when there
+ * is one.
+ */
+export function providerInfo(provider: SignInAble, status: SignInStatus, usingOAuth: boolean): ProviderInfo | null {
+	const methods: ProviderInfo["methods"] = [];
+	if (provider.auth.oauth) methods.push("oauth");
+	if (provider.auth.apiKey?.login) methods.push("api_key");
+	const signedIn = status.configured
+		? { method: usingOAuth ? ("oauth" as const) : ("api_key" as const), source: status.label ?? status.source ?? "stored" }
+		: null;
+	if (!methods.length && !signedIn) return null;
+	return { id: provider.id, name: provider.name, methods, signedIn };
 }
 
 /** The providers a list of `provider/model` keys draws on, sorted. */

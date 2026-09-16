@@ -23,6 +23,7 @@ import type {
 	NoteRenameFailedMsg,
 	NoteMsg,
 	PromptRequest,
+	ProviderInfo,
 	SearchResultsMsg,
 	ServerMsg,
 	SessionInfo,
@@ -56,6 +57,8 @@ export function createStore<T>(initial: T): Store<T> {
 }
 
 export const configStore = createStore<ConfigMsg | null>(null);
+/** The providers and who is signed in, as the server last said. See ProvidersMsg. */
+export const providersStore = createStore<ProviderInfo[] | null>(null);
 export const usageStore = createStore<UsageMsg | null>(null);
 export const sessionsStore = createStore<SessionInfo[]>([]);
 export const contextSourcesStore = createStore<ContextSourcesMsg | null>(null);

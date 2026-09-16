@@ -24,7 +24,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { itemsFromMessages, textOf } from "./conversation.js";
 import { modeToolNames } from "./toolModes.ts";
-import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice as modelsNotice_, supportedLevels } from "./models.ts";
+import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice as modelsNotice_, providerInfo, supportedLevels } from "./models.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { askForName } from "./sessionName.ts";
 import { askUser } from "./askUser.ts";
@@ -58,6 +58,7 @@ import type {
 	NoteChangedMsg,
 	NoteMsg,
 	PiEventMsg,
+	ProvidersMsg,
 	ServerMsg,
 	SessionsMsg,
 	SnapshotMsg,
@@ -359,6 +360,20 @@ function contextSources(): ContextSourcesMsg {
 			oauth: provider ? modelRuntime.isUsingOAuth(provider) : false,
 			subscription: provider ? modelRuntime.isUsingSubscription(provider) : false,
 		},
+	};
+}
+
+/**
+ * The providers, as pi's /login screen lists them: which can be signed in to
+ * from here, and which are signed in. Read fresh from pi each time, since it
+ * is pi that reads the credentials file.
+ */
+function providers(): ProvidersMsg {
+	return {
+		type: "providers",
+		providers: modelRuntime
+			.getProviders()
+			.flatMap((p) => providerInfo(p, modelRuntime.getProviderAuthStatus(p.id), modelRuntime.isUsingOAuth(p.id)) ?? []),
 	};
 }
 
@@ -873,6 +888,8 @@ if (!currentModel()) console.error("No model has usable credentials yet; waiting
 let modelsNotice: string | undefined = modelsNotice_([], undefined, availableModels().map(modelKey));
 let refreshing: Promise<void> | null = null;
 let lookedAgain = 0;
+/** The providers as last announced, so a pass that moved none says nothing. */
+let providersSaid = JSON.stringify(providers().providers);
 
 function refreshModels(): Promise<void> {
 	if (refreshing) return refreshing;
@@ -892,6 +909,15 @@ function refreshModels(): Promise<void> {
 		const changed = notice !== modelsNotice || after.join() !== before.join();
 		modelsNotice = notice;
 		if (changed) broadcast(config());
+		// Signing in and out moves this list more often than the model list —
+		// a key that reaches no model is a provider signed in with nothing
+		// offered — so it is judged on its own.
+		const now = providers();
+		const said = JSON.stringify(now.providers);
+		if (said !== providersSaid) {
+			providersSaid = said;
+			broadcast(now);
+		}
 		if (notice && lookedAgain < 2) {
 			lookedAgain++;
 			setTimeout(() => void refreshModels(), 3_000);
@@ -1030,6 +1056,7 @@ wss.on("connection", async (ws) => {
 	/** To this tab only: answers to what it asked, and the state it needs to start. */
 	const reply = (msg: ServerMsg) => ws.send(safeStringify(msg));
 	reply(config());
+	reply(providers());
 	reply(usage());
 	reply(contextSources());
 	reply(snapshot());

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice, providersOf, supportedLevels } from "../models.ts";
+import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice, providerInfo, providersOf, supportedLevels } from "../models.ts";
 
 test("제공자는 모델 키의 앞부분이고, 하나씩, 정렬되어 나온다", () => {
   assert.deepEqual(providersOf(["openai/gpt-5", "anthropic/claude-opus-4-8", "openai/o3"]), ["anthropic", "openai"]);
@@ -19,6 +19,19 @@ test("unknown/unknown은 pi의 자리표시이고, 모델이 없다는 뜻이다
   assert.equal(isUnknownModel({ provider: "unknown", id: "unknown" }), true);
   assert.equal(isUnknownModel({ provider: "openai", id: "gpt-5" }), false);
   assert.equal(isUnknownModel(undefined), false);
+});
+
+test("제공자 한 줄: 로그인할 길이 oauth/api_key로 나뉘고, 물어볼 수 없는 api_key는 길이 아니며, 길도 없고 로그인도 안 됐으면 빠진다", () => {
+  const both = { id: "anthropic", name: "Anthropic", auth: { oauth: {}, apiKey: { login() {} } } };
+  const keyOnly = { id: "openai", name: "OpenAI", auth: { apiKey: { login() {} } } };
+  const ambient = { id: "bedrock", name: "Bedrock", auth: { apiKey: {} } };
+  assert.deepEqual(providerInfo(both, { configured: false }, false), { id: "anthropic", name: "Anthropic", methods: ["oauth", "api_key"], signedIn: null });
+  assert.deepEqual(providerInfo(both, { configured: true, source: "stored" }, true).signedIn, { method: "oauth", source: "stored" });
+  assert.deepEqual(providerInfo(keyOnly, { configured: true, source: "environment", label: "OPENAI_API_KEY" }, false), {
+    id: "openai", name: "OpenAI", methods: ["api_key"], signedIn: { method: "api_key", source: "OPENAI_API_KEY" },
+  }, "환경변수로 들어온 키는 그 변수 이름으로 말한다");
+  assert.equal(providerInfo(ambient, { configured: false }, false), null, "여기서 할 수 있는 것도 없고 된 것도 없으면 줄이 없다");
+  assert.deepEqual(providerInfo(ambient, { configured: true, source: "environment", label: "AWS_PROFILE" }, false).methods, [], "됐지만 여기서 한 것은 아니다");
 });
 
 test("알릴 말: pi의 오류가 먼저, 다음이 빈 목록, 다음이 사라진 제공자, 아니면 아무 말도 없다", () => {

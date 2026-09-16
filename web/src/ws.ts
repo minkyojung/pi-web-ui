@@ -11,6 +11,7 @@ import {
 	setBacklinks,
 	setTagged,
 	configStore,
+	providersStore,
 	contextSourcesStore,
 	authorsStore,
 	filesStore,
@@ -67,6 +68,7 @@ const backoff = () => Math.random() * Math.min(250 * 2 ** attempt, 5000);
  */
 const STATE: Record<StateMsg["type"], true> = {
 	config: true,
+	providers: true,
 	usage: true,
 	context_sources: true,
 	branches: true,
@@ -107,6 +109,9 @@ function receive(msg: ServerMsg): void {
 	switch (msg.type) {
 		case "config":
 			configStore.set(msg);
+			return;
+		case "providers":
+			providersStore.set(msg.providers);
 			return;
 		case "usage":
 			usageStore.set(msg);

@@ -209,6 +209,38 @@ export interface UsageMsg {
 	context: { tokens: number | null; window: number; percent: number | null } | null;
 }
 
+/**
+ * A provider pi could run a model from, and whether it can now. This is what
+ * pi's own /login screen is drawn from — providers.ts in server terms —
+ * carried to the tab so the same screen can be drawn there.
+ */
+export interface ProviderInfo {
+	/** pi's id for it: "anthropic", "openai". What login and logout take. */
+	id: string;
+	/** pi's name for it: "Anthropic". */
+	name: string;
+	/**
+	 * The ways it can be signed in to here. pi's providers offer one or both;
+	 * empty for one that can only be reached by a credential the machine
+	 * already has, an environment variable say, which is then listed only
+	 * while that credential is there.
+	 */
+	methods: ("oauth" | "api_key")[];
+	/**
+	 * Signed in now, and how, or null. `source` is pi's word for where the
+	 * credential came from — "stored" for one it keeps, else the variable or
+	 * file it was found in — so a key set outside the app is seen not to be
+	 * something the app can sign out of.
+	 */
+	signedIn: { method: "oauth" | "api_key"; source: string } | null;
+}
+
+/** Every provider worth listing, in pi's order. Sent on connect and whenever the credentials file moves. */
+export interface ProvidersMsg {
+	type: "providers";
+	providers: ProviderInfo[];
+}
+
 /** Sizes of what fills the context besides the conversation. See contextBreakdown.ts. */
 export interface ContextSourcesMsg {
 	type: "context_sources";
@@ -518,6 +550,7 @@ export interface PiEventMsg {
  */
 export type StateMsg =
 	| ConfigMsg
+	| ProvidersMsg
 	| UsageMsg
 	| ContextSourcesMsg
 	| BranchesMsg
