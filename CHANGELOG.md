@@ -17,7 +17,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - pi's conversation sits on a panel of its own beside the note, inset from the note's page on every side — a shade lighter than the note in the dark themes, a shade darker in the light ones — so where the writing stops and the conversation starts is plain to see.
 - The notes in the sidebar are a quieter grey until you point at one or open it, so the note you are in is the one that stands out.
 - Narrowing pi's column no longer leaves the row under the message box overlapping itself. It gives things up in order instead: the keyboard hint first, then the tool mode's name — its icon stays, and the tooltip still says which mode — then the model's name shortens, and last of all the context ring. Everything comes back as you widen it.
-- The model pi will answer with has a rim and a floor of its own under the message box, so the choice you make most often is the one the row points at. Its name is the strong word in it and the effort beside it stays quiet, which is the difference the two were not making before.
+- The model pi will answer with has a rim and a floor of its own under the message box, so the choice you make most often is the one the row points at, and how hard it thinks sits a shade quieter beside its name — the two used to be the same grey.
 
 ### Added
 - Octave ships as a signed, notarized disk image for Apple Silicon Macs: download, open, drag to Applications, no warnings.

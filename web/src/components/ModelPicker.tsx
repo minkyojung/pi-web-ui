@@ -99,8 +99,8 @@ export function ModelPicker({
 										    is one of fifty names and half of one still says
 										    which. The level does not truncate — three letters
 										    cut down is no level at all. */}
-										<span className="min-w-0 truncate text-foreground" title={current.name}>{current.name}</span>
-										<span className="shrink-0 text-muted-foreground">{levelLabel(current.level)}</span>
+										<span className="min-w-0 truncate" title={current.name}>{current.name}</span>
+										<span className="shrink-0 text-muted-foreground/80">{levelLabel(current.level)}</span>
 									</>
 								) : (
 									"model"
