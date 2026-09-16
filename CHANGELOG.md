@@ -10,6 +10,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - The app is called Octave. The agent at the table is still pi.
 - Octave's own settings and log moved from `~/.pi/web-ui/` to `~/.octave/`. What pi keeps — credentials, sessions — stays under `~/.pi/`.
 - A fresh install opens pi on Coding — reading, searching and editing files, but no shell. Full access is one step up in the tool menu, and is remembered once chosen.
+- The dark theme sits one step lighter: the page you write on, the frame round it and what is raised off it all moved together, so nothing else about it changed.
 - Extensions installed in your own pi (`~/.pi/agent`) are no longer loaded into Octave's sessions; pi's built-in tools and Octave's own are what pi has here.
 - The note's text is a point larger, 16px instead of 15px.
 
