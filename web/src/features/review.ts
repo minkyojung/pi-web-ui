@@ -32,6 +32,7 @@ import { ChangeSet, Compartment, EditorState, type Extension, StateEffect, Text 
 import { type Command, EditorView } from "@codemirror/view";
 import { buttonVariants } from "../components/ui/button";
 import { fromServer } from "./origin";
+import { flushSaves } from "../saves";
 import { send } from "../ws";
 
 /** Whether a diff is being looked over right now. */
@@ -138,13 +139,30 @@ const undoable = invertedEffects.of((tr) =>
 		}),
 );
 
-/** Every decision, however it was reached — a button, a key, ⌘Z — goes to the record from here. */
+/**
+ * Every decision, however it was reached — a button, a key, ⌘Z — goes to the
+ * record from here.
+ *
+ * Through the write barrier, because a decision is a pair of places in the
+ * note and the record keeps the note as it was last written down. Type a word
+ * anywhere above a chunk and press Keep inside the second the autosave waits,
+ * and the places sent name the text on screen while the record still holds the
+ * text on disk — every offset out by the length of what was typed. The touch
+ * then lands beside the words it was about, covers nothing, and the diff comes
+ * straight back: a Keep that did nothing and said nothing.
+ *
+ * So what is typed goes down first, as it does before a prompt and before the
+ * page goes. The socket delivers in order and the server writes a save before
+ * it reads the next message, so by the time the decision is read the text it
+ * names is the text the record has.
+ */
 const record = (path: () => string) =>
 	EditorView.updateListener.of((update) => {
 		for (const tr of update.transactions) {
 			for (const effect of tr.effects) {
 				if (!effect.is(decided)) continue;
 				const { from, to, kept } = effect.value;
+				flushSaves();
 				// Of no width when the chunk only took words away: a decision about
 				// the seam where they were, which the record knows by that place.
 				send({ type: "accept_note", path: path(), from, to, kept });

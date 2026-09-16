@@ -703,6 +703,46 @@ check("what pi changed is a diff to decide about, and ⌘Z takes a decision back
 	await until("no diff", async () => (await chunks(app)) === 0);
 });
 
+check("a decision made in the moment after typing still lands", async ({ app, cwd }) => {
+	// The second the autosave waits in is where this went wrong. The places a
+	// decision names are in the text on screen; the record holds the text on
+	// disk. Type anything above a chunk and press Keep before the save lands,
+	// and every offset is out by the length of what was typed — the touch lands
+	// beside the words it is about, covers nothing, and the diff comes straight
+	// back. On screen that is a Keep that did nothing and said nothing.
+	//
+	// The check above types and waits for the save before deciding, which is why
+	// it never saw this. This one does not wait, and asserts that it did not.
+	const NOTE = "in-the-moment.md";
+	const mine = "# in the moment\n\nwhat I wrote.\n";
+	// A pure insertion, which is what a change of pi's is once it is written
+	// down: the run the log calls pi's is exactly the run the diff draws.
+	writeFileSync(join(cwd, NOTE), `${mine}\npi added a line of its own.\n`);
+	mkdirSync(join(cwd, ".pi/history"), { recursive: true });
+	writeFileSync(
+		join(cwd, `.pi/history/${NOTE}.jsonl`),
+		[
+			{ author: "me", at: Date.now() - 600_000, from: 0, to: 0, inserted: mine, removed: "" },
+			{ author: "pi", at: Date.now() - 60_000, sessionId: "s", entryId: "e", from: mine.length, to: mine.length, inserted: "\npi added a line of its own.\n", removed: "" },
+		]
+			.map((c) => JSON.stringify(c))
+			.join("\n") + "\n",
+	);
+	await pickNote(app, NOTE);
+	await until("the diff", async () => (await chunks(app)) === 1);
+
+	await app.click("#editor .cm-line", 0);
+	assert.equal(await type(app, "X"), true);
+	// The file, not the editor's status: the status is React's and arrives a
+	// render later, while what this is about is whether the record has heard of
+	// the typing yet. It has not, which is the whole point.
+	assert.equal(readFileSync(join(cwd, NOTE), "utf8").includes("X"), false, "inside the window the autosave waits in");
+	await onLastChunk(app, "Keep");
+	await until("no chunk", async () => (await chunks(app)) === 0);
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.equal(await chunks(app), 0, "and it stays gone once everything has been written down");
+});
+
 check("choosing words in a note shows them above the box, and the × takes them off", async ({ app }) => {
 	await app.evaluate(`document.querySelector('#notes button[data-path="first.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved");
