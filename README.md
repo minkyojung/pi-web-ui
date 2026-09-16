@@ -546,6 +546,20 @@ it cuts a tool-using run short but cannot interrupt a single long generation.
 Follow-ups wait for the run to finish. Both are listed above the composer, in
 delivery order, and refresh from `queue_update`.
 
+Type `/` in the box and the commands are offered — what pi's own `get_commands`
+lists, and nothing else: a command an extension registered, a prompt template,
+a skill as `skill:name`. pi's terminal-only commands (`/model`, `/tree`) are not
+on it, since they would not run if sent, and Octave has its own for those. The
+list is a list rather than a popover, because the keys that move through it are
+the box's own; up and down choose, Enter or Tab writes the command in with a
+space for its arguments, and a second Enter sends. Only a first word that names
+a command on that list is sent as one (`command` on the prompt, which turns
+pi's expansion back on for that message); any other `/` is a character,
+however it was typed. That is what makes it safe to have bound an extension
+its `ctx.ui` — its questions come up as ask_user's card, its `notify` goes
+into the conversation, and the terminal it would draw on is taken and put
+nowhere, as pi's own RPC host does (`extensionUI.ts`).
+
 `clear_queue` empties the queue and returns what was in it, so the tab that asked
 can put the text back in its input box. It is all of them at once because that is
 the only queue edit pi has: `clearQueue()` is the whole API, and removing one

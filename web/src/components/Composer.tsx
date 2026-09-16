@@ -3,14 +3,16 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { PencilIcon, TextQuoteIcon, X } from "lucide-react";
 
 import { type Chosen as ChosenWords, chosenStore } from "../chosen";
+import { acceptCommand, commandQuery, matchCommands, namesCommand } from "../commandMenu";
 import { draftStore } from "../draft";
 import { appendRestored } from "../queue";
 import { flushSaves } from "../saves";
-import { askingAgainStore, configStore, promptsStore, restoredStore } from "../serverState";
+import { askingAgainStore, commandsStore, configStore, promptsStore, restoredStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { CommandMenu } from "./CommandMenu";
 import { ContextCard } from "./ContextCard";
 import { ModelPicker } from "./ModelPicker";
 import { QueuedMessages } from "./QueuedMessages";
@@ -42,10 +44,13 @@ function submit(
 	behavior: "followUp" | "steer",
 	note: string | null,
 	chosen: ChosenWords | null,
-) {
+): boolean {
 	const trimmed = text.trim();
-	if (!trimmed) return;
+	if (!trimmed) return false;
 	flushSaves();
+	// A first word that names a command on the list pi sent is one, and pi is
+	// told so; any other "/" is a character. See commandMenu.ts.
+	const command = namesCommand(commandsStore.get(), trimmed);
 	// Where an earlier question is being asked again, its place in the session
 	// tree rides along: the server moves the leaf to just before it and sends
 	// this from there, so the two are alternatives rather than a sequence.
@@ -57,12 +62,14 @@ function submit(
 		// What was chosen in the note, for this turn: pi is told what the
 		// question is about, and the words stay out of the message itself.
 		...(chosen && chosen.path === note ? { chosen: chosen.text } : {}),
+		...(command ? { command } : {}),
 		behavior,
 		...(asking ? { entryId: asking.entryId } : {}),
 	});
 	askingAgainStore.set(null);
 	form.reset();
 	draftStore.set("");
+	return true;
 }
 
 /**
@@ -146,6 +153,28 @@ export function Composer({ note }: { note: string | null }) {
 	// reads it out of the form on submit — so it is written directly, appended
 	// rather than assigned so it cannot overwrite something half-typed.
 	const box = useRef<HTMLTextAreaElement>(null);
+	// What the box holds, kept beside it for the command list: the box is
+	// uncontrolled, so this follows it rather than driving it.
+	const [text, setText] = useState(() => draftStore.get());
+	const commands = useSyncExternalStore(commandsStore.subscribe, commandsStore.get);
+	const query = commandQuery(text);
+	// Escape puts the list away for the text as it stands; typing brings it back.
+	const [dismissed, setDismissed] = useState<string | null>(null);
+	const offered = query !== null && dismissed !== text ? matchCommands(commands, query) : [];
+	const [selected, setSelected] = useState("");
+	const current = offered.find((c) => c.name === selected) ?? offered[0];
+	// Sent, the box is reset by the form, which fires no change: the mirror is
+	// emptied by hand.
+	const send_ = (form: HTMLFormElement, value: string, behavior: "followUp" | "steer") => {
+		if (submit(form, value, behavior, note, pointing)) setText("");
+	};
+	const write = (value: string) => {
+		if (!box.current) return;
+		box.current.value = value;
+		draftStore.set(value);
+		setText(value);
+		box.current.focus();
+	};
 	// What was typed before this box was made, if it was made again elsewhere
 	// — see draft.ts. Written in, not given as a default: a form reset goes
 	// back to the default, and a sent message must leave the box empty.
@@ -155,9 +184,7 @@ export function Composer({ note }: { note: string | null }) {
 	const restored = useSyncExternalStore(restoredStore.subscribe, restoredStore.get);
 	useEffect(() => {
 		if (!restored || !box.current) return;
-		box.current.value = appendRestored(box.current.value, restored);
-		draftStore.set(box.current.value);
-		box.current.focus();
+		write(appendRestored(box.current.value, restored));
 		restoredStore.set(null);
 	}, [restored]);
 
@@ -170,11 +197,15 @@ export function Composer({ note }: { note: string | null }) {
 		<div className="@container/composer p-3">
 			<QueuedMessages />
 			<AskingAgain />
-			<PromptInput
-				onSubmit={(message, event) => submit(event.currentTarget, message.text, "followUp", note, pointing)}
-			>
+			<PromptInput onSubmit={(message, event) => send_(event.currentTarget, message.text, "followUp")}>
 				<Chosen chosen={pointing} onDrop={() => setDropped(pointing?.text ?? null)} />
-				<PromptInputBody>
+				<PromptInputBody className="relative">
+					<CommandMenu
+						commands={offered}
+						selected={current?.name ?? ""}
+						onSelect={setSelected}
+						onPick={(name) => write(acceptCommand(name))}
+					/>
 					{/* The component asks for four lines of empty box; one is enough until
 					    there is something to show, and it grows from there. */}
 					<PromptInputTextarea
@@ -182,14 +213,28 @@ export function Composer({ note }: { note: string | null }) {
 						className="min-h-9"
 						placeholder="Message pi"
 						disabled={!online}
-						onChange={(e) => draftStore.set(e.currentTarget.value)}
+						onChange={(e) => {
+							draftStore.set(e.currentTarget.value);
+							setText(e.currentTarget.value);
+						}}
 						onKeyDown={(e) => {
+							// While commands are offered, the keys that move through a list
+							// are the list's: up and down choose, Enter and Tab take, Escape
+							// puts it away. Anything else types on.
+							if (offered.length > 0 && current && !e.nativeEvent.isComposing) {
+								const at = offered.indexOf(current);
+								const step = (n: number) => setSelected(offered[(at + n + offered.length) % offered.length]!.name);
+								if (e.key === "ArrowDown") return void (e.preventDefault(), step(1));
+								if (e.key === "ArrowUp") return void (e.preventDefault(), step(-1));
+								if (e.key === "Enter" || e.key === "Tab") return void (e.preventDefault(), write(acceptCommand(current.name)));
+								if (e.key === "Escape") return void (e.preventDefault(), setDismissed(text));
+							}
 							// Steering is delivered at the next turn boundary — after the
 							// current turn's tool calls, before the next model call — so it
 							// cuts a tool-using run short. Enter alone queues instead.
 							if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
 								e.preventDefault();
-								submit(e.currentTarget.form!, e.currentTarget.value, "steer", note, pointing);
+								send_(e.currentTarget.form!, e.currentTarget.value, "steer");
 							}
 						}}
 					/>

@@ -2523,6 +2523,33 @@ check("the path above a note folds its middle away, and a folder in it opens wha
 	await until("the list put away", async () => !(await app.evaluate(`!!document.querySelector("[data-slot=command-item]")`)));
 });
 
+/**
+ * Type "/" in the box and the commands are offered; the keys move through
+ * them and take one. What is on the list is pi's — the web search extension
+ * registers "curator" — so this runs against the real server, not a bench.
+ */
+check("typing / in the message box offers pi's commands, and Enter writes the chosen one in", async ({ app }) => {
+	const box = () => app.evaluate("document.querySelector('textarea').value");
+	const listed = () => app.evaluate("[...document.querySelectorAll('#commands [cmdk-item]')].map((i) => i.textContent)");
+	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.focus(); t.value = ''; })()");
+	await app.keys("/cur");
+	await until("the list to narrow to curator", async () => (await listed()).some((t) => t.startsWith("/curator")));
+	// Enter takes it rather than sending: the box holds the command and a
+	// space for its arguments, and nothing went to pi.
+	await app.press("Enter");
+	await until("the command written in", async () => (await box()) === "/curator ");
+	assert.deepEqual(await listed(), [], "the list has done its part once the word is complete");
+	// Escape puts the list away for the text as it stands; typing brings it back.
+	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.focus(); t.value = ''; })()");
+	await app.keys("/");
+	await until("every command offered", async () => (await listed()).length > 1);
+	await app.press("Escape");
+	await until("the list put away", async () => (await listed()).length === 0);
+	await app.keys("c");
+	await until("the list back", async () => (await listed()).length > 0);
+	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+});
+
 check("the bench renders every scenario it knows", async ({ bench }) => {
 	// The list is drawn only while the picker is open, and each entry carries
 	// its id: what is read is the scenario's name, and the name is not the id.

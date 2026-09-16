@@ -5,6 +5,9 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+### Added
+- Type `/` in the message box and the commands pi can run are listed — the web search extension's, your prompt templates, your skills. Up and down choose, Enter fills it in, Enter again sends. A command an extension runs can ask you something, and it comes up as the same card pi's questions do.
+
 
 ### Changed
 - Once pi has answered, the steps it took getting there — what it thought, which tools it reached for — fold into one line saying how many tools it used and how many times it went out and came back, and whether any of it failed. Click the line to read the steps again. While pi is still working they stay open, so you can watch.
