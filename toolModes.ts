@@ -14,10 +14,9 @@
  * the same, and a Plan mode that let the agent rewrite a note, or refile it
  * by its properties, would not be one.
  * Anything else in the registry is an extension tool; it sits outside the
- * ladder and stays on in every mode, because `ask_user` is what makes
- * read-only planning conversational in the first place, and reading the web
- * (pi-web-access, loaded in server.ts) is reading: it writes no file, so the
- * rung that forbids writing has nothing to say about it.
+ * ladder. `ask_user` stays on in every mode, since it is what makes read-only
+ * planning conversational in the first place. The web has a switch of its own
+ * beside the ladder — see WEB_TOOLS below for why it is not a rung.
  *
  * At the repo root, like conversation.js, because the server picks the mode a
  * new session opens on and the browser names the one it is in. One ladder, not
@@ -60,8 +59,52 @@ export const DEFAULT_MODE: ToolModeId = "coding";
 
 const LADDER_TOOLS = new Set(RUNGS.flatMap((r) => r.tools));
 
-/** A tool pi did not build in — an extension's. Outside the ladder, always on. */
+/** A tool pi did not build in — an extension's. Outside the ladder. */
 export const isExtensionTool = (name: string) => !LADDER_TOOLS.has(name);
+
+/**
+ * The web (pi-web-access, loaded in server.ts): a switch beside the ladder
+ * rather than a rung on it.
+ *
+ * The ladder asks what happens to your notes — read, then write, then the
+ * shell — and each rung contains the one below it, which is what lets three
+ * names stand for eight tools. The web asks something else entirely: what
+ * leaves this machine (the words you chose, sent to a search provider) and
+ * what comes back into the conversation (a page somebody else wrote). That is
+ * neither above writing nor below it, so it has no rung: put it in Plan and
+ * every mode has it, put it in Coding and planning with the web is impossible,
+ * put it in Full and a search costs you the shell.
+ *
+ * The same split the rest of the field settled on — Claude Code manages web
+ * access apart from file permissions, Codex and Cursor have a network switch
+ * beside the sandbox, none of them make the network a rung of the write
+ * ladder.
+ *
+ * On by default, since it is on in every mode unless the switch says no, and
+ * off it stays off through a change of mode (ToolModes.tsx).
+ */
+export const WEB_TOOLS = ["web_search", "fetch_content", "source_check", "get_search_content"];
+
+export const isWebTool = (name: string) => WEB_TOOLS.includes(name);
+
+/**
+ * Where the switch stands: on when any of its tools is. One of the four turned
+ * off by hand in the per-tool list is still the web being on.
+ */
+export const isWebOn = (active: string[]) => active.some(isWebTool);
+
+/**
+ * An active set with the switch put where it is asked for.
+ *
+ * It is also how a mode is picked without moving the switch:
+ * `withWeb(modeToolNames(id, available), available, isWebOn(active))`. Modes
+ * are generous with extension tools by design, which on its own would turn the
+ * web back on every time somebody changed rung.
+ */
+export function withWeb(names: string[], available: string[], on: boolean): string[] {
+	if (!on) return names.filter((name) => !isWebTool(name));
+	return [...names, ...available.filter((name) => isWebTool(name) && !names.includes(name))];
+}
 
 export interface ModeDescription {
 	id: ToolModeId;

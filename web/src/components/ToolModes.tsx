@@ -1,6 +1,6 @@
-import { ClipboardListIcon, FilePenIcon, SlidersHorizontalIcon, TerminalIcon } from "lucide-react";
+import { ClipboardListIcon, FilePenIcon, GlobeIcon, SlidersHorizontalIcon, TerminalIcon } from "lucide-react";
 
-import { MODE_IDS, type ToolModeId, activeModeId, describeMode, modeToolNames } from "../../../toolModes";
+import { MODE_IDS, type ToolModeId, activeModeId, describeMode, isWebOn, isWebTool, modeToolNames, withWeb } from "../../../toolModes";
 import { Button } from "./ui/button";
 import {
 	DropdownMenu,
@@ -40,8 +40,12 @@ const Icon = ({ id }: { id: ToolModeId | null }) => {
 /**
  * What a mode allows and withholds. Lives in a tooltip, so the colours are for
  * the inverted surface rather than the page.
+ *
+ * `web` is the switch beside the ladder, given only where the tooltip is about
+ * the state pi is actually in — the button. On a mode in the menu it is left
+ * out, because the web is not that mode's to grant or withhold.
  */
-function Grants({ id }: { id: ToolModeId | null }) {
+function Grants({ id, web }: { id: ToolModeId | null; web?: boolean }) {
 	if (!id) return <span className="text-background/60">A hand-picked set of tools.</span>;
 	const mode = describeMode(id);
 	return (
@@ -52,14 +56,23 @@ function Grants({ id }: { id: ToolModeId | null }) {
 					{line}
 				</span>
 			))}
+			{web !== undefined && (
+				<span className={`flex gap-1.5 ${web ? "" : "text-background/60"}`}>
+					<span className={web ? "text-emerald-400" : ""}>{web ? "✓" : "✗"}</span>
+					{web ? "Search and read the web" : "Search or read the web"}
+				</span>
+			)}
 			{mode.cannot.map((line) => (
 				<span key={line} className="flex gap-1.5 text-background/60">
 					<span>✗</span>
 					{line}
 				</span>
 			))}
-			{/* Nothing withheld — say so, rather than leaving an absence to read. */}
-			{mode.cannot.length === 0 && <span className="pt-0.5 text-background/60">Every tool pi has.</span>}
+			{/* Nothing withheld — say so, rather than leaving an absence to read.
+			    The web off is something withheld, whatever the rung says. */}
+			{mode.cannot.length === 0 && web !== false && (
+				<span className="pt-0.5 text-background/60">Every tool pi has.</span>
+			)}
 		</div>
 	);
 }
@@ -84,6 +97,9 @@ export function ToolModes({
 	// Custom is not a mode you can pick — it is what the checkboxes leave behind.
 	const current = activeModeId(active, available);
 	const name = current ? describeMode(current).name : "Custom";
+	// The switch beside the ladder — see WEB_TOOLS in toolModes.ts.
+	const hasWeb = available.some(isWebTool);
+	const webOn = isWebOn(active);
 
 	return (
 		<DropdownMenu>
@@ -111,13 +127,16 @@ export function ToolModes({
 					</DropdownMenuTrigger>
 				</TooltipTrigger>
 				<TooltipContent side="top">
-					<Grants id={current} />
+					<Grants id={current} web={hasWeb ? webOn : undefined} />
 				</TooltipContent>
 			</Tooltip>
 			<DropdownMenuContent align="start">
 				<DropdownMenuRadioGroup
 					value={current ?? ""}
-					onValueChange={(id) => onSetTools(modeToolNames(id as ToolModeId, available))}
+					// A mode names rungs, not the web, so the switch survives the
+					// change: modeToolNames turns every extension tool on, which
+					// would quietly undo a web turned off.
+					onValueChange={(id) => onSetTools(withWeb(modeToolNames(id as ToolModeId, available), available, webOn))}
 				>
 					{MODE_IDS.map((id) => (
 						// Beside the row rather than in a panel below it: the explanation of
@@ -135,6 +154,24 @@ export function ToolModes({
 						</Tooltip>
 					))}
 				</DropdownMenuRadioGroup>
+				{/* Beside the modes rather than among them, and a checkbox rather
+				    than one more radio: the shape says it is another question, not
+				    a fourth answer to that one. Hidden when the tools are not
+				    there, which is a pi without the extension. */}
+				{hasWeb && (
+					<>
+						<DropdownMenuSeparator />
+						<DropdownMenuCheckboxItem
+							checked={webOn}
+							onSelect={(e) => e.preventDefault()}
+							onCheckedChange={(on) => onSetTools(withWeb(active, available, on))}
+							className="gap-3"
+						>
+							<GlobeIcon className="size-3.5" aria-hidden />
+							Web access
+						</DropdownMenuCheckboxItem>
+					</>
+				)}
 				<DropdownMenuSeparator />
 				<DropdownMenuSub>
 					<DropdownMenuSubTrigger className="text-xs">Individual tools</DropdownMenuSubTrigger>

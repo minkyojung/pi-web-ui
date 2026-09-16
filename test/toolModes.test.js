@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { DEFAULT_MODE, activeModeId, describeMode, modeToolNames } from "../toolModes.ts";
+import { DEFAULT_MODE, activeModeId, describeMode, isWebOn, modeToolNames, withWeb } from "../toolModes.ts";
 
 /** What a mac session actually offers: pi's built-ins minus powershell, plus an extension tool. */
 const MAC = ["read", "bash", "edit", "write", "grep", "find", "ls", "ask_user"];
@@ -84,4 +84,42 @@ test("새 세션은 셸이 닫힌 채로 시작한다 — pi는 실행 전에 �
 	assert.equal(DEFAULT_MODE, "coding");
 	assert.ok(!describeMode(DEFAULT_MODE).tools.includes("bash"));
 	assert.ok(describeMode(DEFAULT_MODE).tools.includes("note_edit"));
+});
+
+/** A session with the web extension loaded, which is every session that has it. */
+const WITH_WEB = [...WITH_NOTES, "web_search", "fetch_content", "source_check", "get_search_content"];
+
+test("웹은 칸이 아니라 스위치다 — 모드는 셋 다 웹을 켠 채로 온다", () => {
+	for (const id of ["plan", "coding", "full"]) {
+		assert.ok(isWebOn(modeToolNames(id, WITH_WEB)), `${id} came without the web`);
+	}
+});
+
+test("웹을 끄면 네 개가 함께 꺼지고, 나머지는 그대로다", () => {
+	const off = withWeb(modeToolNames("coding", WITH_WEB), WITH_WEB, false);
+	assert.equal(isWebOn(off), false);
+	assert.deepEqual(off, modeToolNames("coding", WITH_NOTES));
+	assert.deepEqual(withWeb(off, WITH_WEB, true).slice().sort(), modeToolNames("coding", WITH_WEB).slice().sort());
+});
+
+test("모드를 바꿔도 스위치는 그 자리에 있다 — 확장 도구를 다 켜는 modeToolNames 위에서도", () => {
+	const off = withWeb(modeToolNames("coding", WITH_WEB), WITH_WEB, false);
+	const stillOff = withWeb(modeToolNames("full", WITH_WEB), WITH_WEB, isWebOn(off));
+	assert.equal(isWebOn(stillOff), false);
+	assert.ok(stillOff.includes("bash"), "the rung still changed");
+	assert.ok(stillOff.includes("ask_user"), "ask_user is not the web's to take");
+});
+
+test("웹을 껐다고 모드 이름이 Custom이 되지는 않는다", () => {
+	const off = withWeb(modeToolNames("plan", WITH_WEB), WITH_WEB, false);
+	assert.equal(activeModeId(off, WITH_WEB), "plan");
+});
+
+test("넷 중 하나만 켜져 있어도 스위치는 켜진 것이다", () => {
+	assert.equal(isWebOn(["read", "source_check"]), true);
+	assert.equal(isWebOn(["read", "ask_user"]), false);
+});
+
+test("웹 도구가 없는 세션에서는 스위치를 켜도 켤 것이 없다", () => {
+	assert.deepEqual(withWeb(modeToolNames("plan", MAC), MAC, true), modeToolNames("plan", MAC));
 });

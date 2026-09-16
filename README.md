@@ -472,6 +472,13 @@ three are chosen per message:
   submenu. Turning a tool off genuinely prevents its use; the model is told what
   it has and calls nothing else. Takes effect on the next turn, not the one in
   flight.
+- **Web access** — a checkbox beside those three, not a fourth radio, because it
+  is a different question: the ladder is about what happens to your notes, the
+  web about what leaves this machine and what comes back into the conversation.
+  Every mode comes with it on; turned off it stays off through a change of rung
+  (`withWeb` exists so a mode, which is generous with extension tools, cannot
+  quietly turn it back on). The four tools go together, and the per-tool list
+  below still separates them.
 
 The ladder is in `toolModes.ts` at the repo root, shared like `conversation.js`,
 because the server picks the mode a new session opens on and the browser names
