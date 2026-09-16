@@ -111,6 +111,46 @@ test("구간 하나는 언제나 글자 하나 이상이고 서로 겹치지 않
   assert.equal(last, text.length, "구간들이 본문 전체를 덮는다");
 });
 
+// --- words moved here keep their authors ---
+
+test("옮겨 온 글은 제 저자를 지니고, 그 사이와 둘레는 옮긴 사람 것이다", () => {
+  const log = [
+    ...changesBetween("", "top\n", me),
+    { ...me, at: 9, from: 4, to: 4, inserted: "AA bb CC", removed: "", spans: [{ ...pi, from: 0, to: 2 }, { author: "outside", at: 3, from: 6, to: 8 }] },
+  ];
+  const { text, spans } = replay(log);
+  assert.equal(text, "top\nAA bb CC");
+  assert.deepEqual(spans.map((s) => [s.author, text.slice(s.from, s.to)]), [["me", "top\n"], ["pi", "AA"], ["me", " bb "], ["outside", "CC"]]);
+  assert.equal(spans.find((s) => s.author === "pi").sessionId, "s1", "어느 대화의 것인지도 따라온다");
+  assert.ok(spans.slice(1).every((s) => s.removed === undefined), "옮겨 온 조각은 어느 것도 이 변경이 쓴 것의 전부가 아니다");
+});
+
+test("옮겨 온 글의 구간이 삽입에 맞지 않으면 무시하고 옮긴 사람 것으로 적는다", () => {
+  const bad = (spans) => replay([{ ...me, from: 0, to: 0, inserted: "abc", removed: "", spans }]).spans.map((s) => s.author);
+  assert.deepEqual(bad([{ ...pi, from: 0, to: 9 }]), ["me"], "삽입 밖");
+  assert.deepEqual(bad([{ ...pi, from: 0, to: 2 }, { ...pi, from: 1, to: 3 }]), ["me"], "겹침");
+  assert.deepEqual(bad([{ ...pi, from: 2, to: 2 }]), ["me"], "폭 없음");
+  assert.deepEqual(bad([]), ["me"]);
+});
+
+test("옮겨 온 글 위의 결정은 옮긴 사람의 변경에 대한 것이다 — 저자와 결정은 다른 읽기다", () => {
+  // pi moves the person's words: the diff asks about pi's change, the authorship stays the person's.
+  const log = [
+    ...changesBetween("", "one two\n", me),
+    { ...pi, from: 8, to: 8, inserted: "one", removed: "", spans: [{ ...me, from: 0, to: 3 }] },
+  ];
+  const { holes } = unreviewed(log);
+  assert.deepEqual(holes.map((h) => [h.from, h.to]), [[8, 11]], "pi가 옮긴 것은 결정할 것이다");
+  assert.deepEqual(replay(log).spans.map((s) => s.author), ["me"], "그러나 글은 내내 내 것이다");
+});
+
+test("v:2 줄은 spans를 지니고, v:1 줄처럼 읽힌다", () => {
+  appendHistory(DIR, "v2.md", [{ ...me, from: 0, to: 0, inserted: "ab", removed: "", spans: [{ ...pi, from: 0, to: 1 }] }]);
+  const raw = readFileSync(historyPath(DIR, "v2.md"), "utf8");
+  assert.ok(raw.startsWith('{"v":2,'), raw);
+  assert.deepEqual(readHistory(DIR, "v2.md")[0].spans, [{ ...pi, from: 0, to: 1 }]);
+});
+
 // --- the editor's own account of what it did ---
 
 test("편집기가 말한 대로 적힌다 — 나란한 좌표가 차례 좌표가 되고, 글자 하나면 글자 하나다", () => {
@@ -293,7 +333,7 @@ test("앱 이전이라는 말이 없던 때의 로그는 첫 줄의 바깥을 �
 
 test("지금 적는 줄은 제 모양을 말하고, 폴더에 나타난 노트의 바깥 씨앗은 바깥으로 읽힌다", () => {
   reconcile(DIR, "fresh.md", "appeared\n", 1, { author: "outside", at: 1 });
-  assert.ok(readFileSync(historyPath(DIR, "fresh.md"), "utf8").startsWith('{"v":1,'), "줄마다 v");
+  assert.ok(readFileSync(historyPath(DIR, "fresh.md"), "utf8").startsWith('{"v":2,'), "줄마다 v");
   assert.deepEqual(readHistory(DIR, "fresh.md").map((c) => c.author), ["outside"]);
   assert.equal("v" in readHistory(DIR, "fresh.md")[0], false, "v는 줄의 것이지 변경의 것이 아니다");
 });

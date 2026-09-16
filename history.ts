@@ -44,7 +44,28 @@ export type Origin = { author: Author; at: number; sessionId?: string; entryId?:
  * a decision is unmade by writing its opposite, the way a ledger reverses an
  * entry rather than rubbing one out.
  */
-export type Change = Origin & { from: number; to: number; inserted: string; removed: string; kept?: boolean };
+export type Change = Origin & { from: number; to: number; inserted: string; removed: string; kept?: boolean; spans?: Carried[] };
+
+/**
+ * A run of an insertion that keeps an author of its own: words that were
+ * moved here, with who wrote them where they were. Offsets are within
+ * `inserted`. A change carries these when the writer said the words came from
+ * somewhere and the record could look up whose they were there (fromEdits);
+ * the change's own origin is who moved them, and stands for whatever of the
+ * insertion the runs do not cover.
+ */
+export type Carried = Origin & { from: number; to: number };
+
+/** The runs, if they are runs of this insertion: in order, apart, and inside it. Anything else is ignored rather than drawn wrong. */
+function carriedBy(change: Change): Carried[] {
+	const runs = change.spans ?? [];
+	let at = 0;
+	for (const r of runs) {
+		if (!(Number.isInteger(r.from) && Number.isInteger(r.to)) || r.from < at || r.to <= r.from || r.to > change.inserted.length) return [];
+		at = r.to;
+	}
+	return runs;
+}
 
 /**
  * A run of characters in the current text with one origin.
@@ -134,8 +155,22 @@ export function replay(changes: Change[], from?: Replayed): Replayed {
 			}
 		}
 		if (change.inserted) {
-			const { from: _f, to: _t, inserted: _i, removed, ...origin } = change;
-			next.push({ ...origin, from: change.from, to: change.from + change.inserted.length, removed });
+			const { from: _f, to: _t, inserted: _i, removed, spans: _s, ...origin } = change;
+			const carried = carriedBy(change);
+			if (carried.length === 0) next.push({ ...origin, from: change.from, to: change.from + change.inserted.length, removed });
+			else {
+				// The moved words keep their authors; what is between and around
+				// them is the mover's. None of it is the whole of what this change
+				// wrote, so none of it says what it replaced.
+				let at = 0;
+				for (const run of carried) {
+					const { from: rf, to: rt, ...theirs } = run;
+					if (rf > at) next.push({ ...origin, from: change.from + at, to: change.from + rf });
+					next.push({ ...theirs, from: change.from + rf, to: change.from + rt });
+					at = rt;
+				}
+				if (at < change.inserted.length) next.push({ ...origin, from: change.from + at, to: change.from + change.inserted.length });
+			}
 		}
 		next.sort((a, b) => a.from - b.from);
 		spans = merge(next);
@@ -360,7 +395,7 @@ function readLog(file: string): { raw: string[]; changes: Change[] } {
  * rewritten; what changes is how a line is read, and a reader has to know
  * which shape it is reading. A line with no `v` is from before there was one.
  */
-const LOG_V = 1;
+const LOG_V = 2;
 
 /**
  * One line of the log, as a change. `v` is about the line and not the
@@ -373,6 +408,10 @@ const LOG_V = 1;
  * not a vault whose every note is marked as someone else's. A line with a `v`
  * that says "outside" at the start of a log means it: the note appeared in a
  * folder that did not have it.
+ *
+ * v2 added `spans` on a change, the authors of words moved into it. A v1
+ * reader would have taken them as the mover's, which is what this reader does
+ * with a line that has none; nothing else about a line changed.
  */
 function parseLine(line: string, index: number): Change {
 	const { v, ...change } = JSON.parse(line) as Change & { v?: number };
