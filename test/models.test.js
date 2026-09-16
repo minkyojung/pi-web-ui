@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { clampLevel, loadoutOf, lostProviders, modelsNotice, providersOf, supportedLevels } from "../models.ts";
+import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice, providersOf, supportedLevels } from "../models.ts";
 
 test("제공자는 모델 키의 앞부분이고, 하나씩, 정렬되어 나온다", () => {
   assert.deepEqual(providersOf(["openai/gpt-5", "anthropic/claude-opus-4-8", "openai/o3"]), ["anthropic", "openai"]);
@@ -15,10 +15,19 @@ test("있다가 없어진 제공자만 잃은 것이다 — 새로 생긴 것은
   assert.deepEqual(lostProviders([], ["anthropic/a"]), [], "처음부터 없던 것은 잃은 것이 아니다");
 });
 
-test("알릴 말: pi의 오류가 먼저, 다음이 사라진 제공자, 아니면 아무 말도 없다", () => {
-  assert.equal(modelsNotice([], undefined), undefined);
-  assert.match(modelsNotice(["openai"], undefined), /openai.*could not be read/);
-  assert.equal(modelsNotice(["openai"], "Availability refresh: boom"), "Availability refresh: boom", "pi가 말한 것이 우선");
+test("unknown/unknown은 pi의 자리표시이고, 모델이 없다는 뜻이다", () => {
+  assert.equal(isUnknownModel({ provider: "unknown", id: "unknown" }), true);
+  assert.equal(isUnknownModel({ provider: "openai", id: "gpt-5" }), false);
+  assert.equal(isUnknownModel(undefined), false);
+});
+
+test("알릴 말: pi의 오류가 먼저, 다음이 빈 목록, 다음이 사라진 제공자, 아니면 아무 말도 없다", () => {
+  const some = ["openai/gpt-5"];
+  assert.equal(modelsNotice([], undefined, some), undefined);
+  assert.match(modelsNotice(["openai"], undefined, some), /openai.*could not be read/);
+  assert.equal(modelsNotice(["openai"], "Availability refresh: boom", some), "Availability refresh: boom", "pi가 말한 것이 우선");
+  assert.match(modelsNotice([], undefined, []), /No provider is signed in/, "첫 실행: 아무 제공자도 없다");
+  assert.match(modelsNotice(["openai"], undefined, []), /No provider is signed in/, "전부 사라진 것은 '없다'로 말한다");
 });
 
 test("생각 단계는 모델이 내주는 지도를 따른다 — null은 못 하는 것, 빠진 xhigh/max도 못 하는 것", () => {

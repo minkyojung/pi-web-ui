@@ -24,7 +24,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { itemsFromMessages, textOf } from "./conversation.js";
 import { modeToolNames } from "./toolModes.ts";
-import { clampLevel, loadoutOf, lostProviders, modelsNotice as modelsNotice_, supportedLevels } from "./models.ts";
+import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice as modelsNotice_, supportedLevels } from "./models.ts";
 import { readSettings, writeSettings } from "./settings.ts";
 import { askForName } from "./sessionName.ts";
 import { askUser } from "./askUser.ts";
@@ -220,6 +220,12 @@ const runtime = await createAgentSessionRuntime(createRuntime, {
 
 const session = () => runtime.session;
 
+/** The model the session is on, or undefined when pi has only its stand-in — see isUnknownModel. */
+const currentModel = () => {
+	const model = session().model;
+	return model && !isUnknownModel(model) ? model : undefined;
+};
+
 /** Derived from the session so it stays in sync; pi does not re-export ThinkingLevel. */
 type ThinkingLevel = ReturnType<typeof session>["thinkingLevel"];
 
@@ -255,7 +261,7 @@ function modelInfo(m: AvailableModel, current: string | null): ModelInfo {
  * while it is being read.
  */
 function catalog(): ModelInfo[] {
-	const model = session().model;
+	const model = currentModel();
 	const current = model ? modelKey(model) : null;
 	return availableModels().map((m) => modelInfo(m, current));
 }
@@ -263,7 +269,7 @@ function catalog(): ModelInfo[] {
 /** Everything the settings UI needs. Re-sent whenever any of it changes. */
 function config(): ConfigMsg {
 	const s = session();
-	const model = s.model;
+	const model = currentModel();
 	const current = model ? modelKey(model) : null;
 	const offered = new Map(availableModels().map((m) => [modelKey(m), m]));
 	// The model the session is on belongs on the list even when the snapshot has
@@ -336,7 +342,7 @@ function contextSources(): ContextSourcesMsg {
 	const s = session();
 	const active = new Set(s.getActiveToolNames());
 	const loader = runtime.services.resourceLoader;
-	const provider = s.model?.provider;
+	const provider = currentModel()?.provider;
 	const files = loader.getAgentsFiles().agentsFiles;
 	return {
 		type: "context_sources",
@@ -836,12 +842,11 @@ async function broadcastAll(): Promise<void> {
 await bind();
 openOnDefaultMode();
 
-if (!session().model) {
-	// The desktop shell puts whatever this prints in front of the user, and this
-	// is the one message someone starting out is likely to need.
-	console.error("No model has usable credentials. Run `pi` in a terminal, sign in with /login, then start this again.");
-	process.exit(1);
-}
+// No model is how a first run begins, and pi's own CLI begins the same way:
+// the session opens on nothing and the login dialog is the first thing shown.
+// The server stays up for the same reason, and says so beside the picker (see
+// modelsNotice); a prompt sent meanwhile is refused by pi with its own words.
+if (!currentModel()) console.error("No model has usable credentials yet; waiting for a sign-in.");
 
 /**
  * Keeping the model list true.
@@ -861,7 +866,7 @@ if (!session().model) {
  * the tabs are told why the list may be short, rather than shown a short
  * list as if it were the whole of it.
  */
-let modelsNotice: string | undefined;
+let modelsNotice: string | undefined = modelsNotice_([], undefined, availableModels().map(modelKey));
 let refreshing: Promise<void> | null = null;
 let lookedAgain = 0;
 
@@ -879,7 +884,7 @@ function refreshModels(): Promise<void> {
 			clearTimeout(timeout);
 		}
 		const after = availableModels().map(modelKey);
-		const notice = modelsNotice_(lostProviders(before, after), modelRuntime.getError());
+		const notice = modelsNotice_(lostProviders(before, after), modelRuntime.getError(), after);
 		const changed = notice !== modelsNotice || after.join() !== before.join();
 		modelsNotice = notice;
 		if (changed) broadcast(config());
@@ -1159,7 +1164,7 @@ wss.on("connection", async (ws) => {
 				case "set_thinking": {
 					// setThinkingLevel clamps rather than rejecting, so an unknown
 					// value would silently become "off". Validate first.
-					const model = session().model;
+					const model = currentModel();
 					const levels = model ? supportedLevels(model) : [];
 					if (typeof msg.level !== "string" || !levels.includes(msg.level as ThinkingLevel)) {
 						reply({ type: "error", message: `unsupported thinking level: ${msg.level}` });
@@ -1536,7 +1541,7 @@ const stopWatching = watchNotes(CWD, noticed);
 server.listen(PORT, HOST, () => {
 	console.log(`open http://localhost:${PORT}  (ctrl+c to stop)`);
 	if (HOST !== "127.0.0.1") console.log(`listening on ${HOST} — anyone who can reach it controls this machine`);
-	console.log(`model: ${session().model?.id ?? "none"}  thinking: ${session().thinkingLevel}`);
+	console.log(`model: ${currentModel()?.id ?? "none"}  thinking: ${session().thinkingLevel}`);
 	console.log(`session: ${session().sessionFile ?? "(not persisted)"}`);
 	console.log(`log: ${logFile}`);
 });

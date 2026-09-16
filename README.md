@@ -73,7 +73,8 @@ from both trees — and refuses on one that is not permissive (`scripts/notices.
 
 Auth comes from `~/.pi/agent/auth.json` (`pi` → `/login`). Sessions are written
 to `~/.pi/agent/sessions/` and survive a restart. With no usable credentials at
-all the server says so and exits rather than failing on the first prompt.
+all the server still starts, as pi's own CLI does, on no model: the picker is
+empty and says why beside itself, and pi refuses a prompt in its own words.
 
 What the server says it also writes down, in `~/.octave/logs/server.log`,
 rolled to `server.log.1` at two megabytes. In a terminal the log is beside the

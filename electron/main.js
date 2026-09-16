@@ -108,7 +108,7 @@ let child = null;
 let exiting = false;
 /**
  * The server's last words. It exits deliberately for reasons a person can act
- * on — no credentials yet, a working directory that has been deleted — and
+ * on — a working directory that has been deleted — and
  * those reasons are worth more than the exit code the shell would otherwise
  * have to report.
  */

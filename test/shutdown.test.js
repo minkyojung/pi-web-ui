@@ -22,8 +22,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const root = new URL("..", import.meta.url).pathname;
-const NO_CREDENTIALS = "No model has usable credentials";
-
 function freePort() {
   return new Promise((resolve, reject) => {
     const probe = createServer();
@@ -62,10 +60,9 @@ for (const signal of ["SIGTERM", "SIGINT"]) {
     const up = until("the server", () => fetch(`http://127.0.0.1:${port}/api/settings`).then((r) => r.ok).catch(() => false));
 
     try {
+      // No skip for a machine without pi's credentials: the server starts on
+      // nothing and waits for a sign-in, and leaving is what is tested here.
       if ((await Promise.race([up, ended.then(() => "exited")])) === "exited") {
-        // The same skip as server.test.js, for the same reason: a machine
-        // without pi's credentials cannot start the thing being tested.
-        if (log.includes(NO_CREDENTIALS)) return t.skip(`${NO_CREDENTIALS} — the server cannot start on this machine`);
         throw new Error(`server did not start:\n${log}`);
       }
       server.kill(signal);

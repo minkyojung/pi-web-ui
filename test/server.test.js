@@ -3,9 +3,10 @@
  *
  * Boots server.ts on a free port with a folder of its own and talks to it the
  * way the browser does. No mocks of the file system or of pi: what is pinned
- * here is what a tab actually gets back. It needs what the server needs — pi
- * with usable credentials — and says so and skips rather than failing when
- * that is missing, since the failure would be about the machine, not the code.
+ * here is what a tab actually gets back. The server starts without pi's
+ * credentials, but nothing below can be asked of it then, so on a machine
+ * without them these say so and skip rather than fail, since the failure
+ * would be about the machine, not the code.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -16,7 +17,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 const root = new URL("..", import.meta.url).pathname;
-const NO_CREDENTIALS = "No model has usable credentials";
+const NO_CREDENTIALS = "No provider is signed in";
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -59,17 +60,15 @@ test.before(async () => {
   server.stderr.on("data", (d) => (log += d));
   const exited = new Promise((resolve) => server.once("exit", () => resolve("exited")));
   const up = until("the server", () => fetch(`http://127.0.0.1:${port}/api/settings`).then((r) => r.ok).catch(() => false), 30000);
-  if ((await Promise.race([up, exited])) === "exited") {
-    if (log.includes(NO_CREDENTIALS)) {
-      skip = true;
-      return;
-    }
-    throw new Error(`server did not start:\n${log}`);
-  }
+  if ((await Promise.race([up, exited])) === "exited") throw new Error(`server did not start:\n${log}`);
   ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
   inbox = [];
   ws.onmessage = (e) => inbox.push(JSON.parse(e.data));
   await until("the socket", () => ws.readyState === 1);
+  // The first config says whether pi has a model to run on; without one the
+  // server is up but there is nobody at the table to test against.
+  const first = await until("config", () => inbox.find((m) => m.type === "config"), 30000);
+  if (!first.model) skip = true;
 });
 
 test.after(async () => {

@@ -16,6 +16,16 @@
  * server's judgement and the tests of it are one thing.
  */
 
+/**
+ * The model pi puts a session on when there is none: a stand-in named
+ * unknown/unknown, kept so the session has something to be on, and read by
+ * pi's own CLI as "no model" (its isUnknownModel). Read the same way here, so
+ * a first run's picker does not show it as a choice.
+ */
+export function isUnknownModel(model: { provider: string; id: string } | undefined): boolean {
+	return !!model && model.provider === "unknown" && model.id === "unknown";
+}
+
 /** The providers a list of `provider/model` keys draws on, sorted. */
 export function providersOf(models: readonly string[]): string[] {
 	return [...new Set(models.map((key) => key.slice(0, key.indexOf("/"))))].sort();
@@ -29,11 +39,14 @@ export function lostProviders(before: readonly string[], after: readonly string[
 
 /**
  * What to tell the tabs about the list, or nothing when there is nothing to
- * say. pi's own report of trouble comes first; a provider gone missing is
- * said in the app's words, since pi says nothing about that.
+ * say. pi's own report of trouble comes first; then a list with nothing on
+ * it, which is what a first run sees and what pi's CLI answers with its
+ * login dialog; a provider gone missing is said in the app's words, since pi
+ * says nothing about that.
  */
-export function modelsNotice(lost: readonly string[], error: string | undefined): string | undefined {
+export function modelsNotice(lost: readonly string[], error: string | undefined, offered: readonly string[]): string | undefined {
 	if (error) return error;
+	if (!offered.length) return "No provider is signed in. Run `pi` in a terminal and sign in with /login.";
 	if (lost.length) return `${lost.join(", ")}: not offered just now — the credentials could not be read. Looking again.`;
 	return undefined;
 }
