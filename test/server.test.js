@@ -736,3 +736,16 @@ it("속성의 타입을 고르면 모두에게 알려지고 .pi/properties.json�
   send({ type: "set_property_type", name: "pages", propertyType: null });
   await want("property_types", (m) => !("pages" in m.types));
 });
+
+// Spends the start of a model call, and aborts it as soon as the question is
+// on record. What it pins is that the question went as typed: pi's prompt()
+// reads a leading "/" as a command — /curator is one pi-web-access registers —
+// and would have run it instead of asking, with nothing on screen to say so.
+it("/로 시작하는 글은 명령이 아니라 글로 보내진다", async () => {
+  clear();
+  send({ type: "prompt", text: "/curator" });
+  const started = await want("message_start", (m) => m.message?.role === "user", 30_000);
+  assert.equal(started.message.content.find((c) => c.type === "text")?.text, "/curator");
+  send({ type: "abort" });
+  await want("agent_settled", () => true, 30_000);
+});

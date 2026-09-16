@@ -1197,11 +1197,17 @@ wss.on("connection", async (ws) => {
 					// "steer" redirects the run in progress; "followUp" waits for it to finish.
 					const behavior = msg.behavior === "steer" ? "steer" : "followUp";
 					try {
-						// prompt() throws if the session is streaming and no behavior is given.
-						await session().prompt(
-							text,
-							session().isStreaming ? { streamingBehavior: behavior } : undefined,
-						);
+						// What was typed is what is sent. Left to itself, prompt() reads a
+						// leading "/" as a command — an extension's, a skill's, a prompt
+						// template's — and runs or rewrites it before anyone sees. Nothing
+						// here lists those commands or completes them, so a line that
+						// starts with "/" is a line that starts with "/" until something
+						// does. (prompt() also throws if the session is streaming and no
+						// behavior is given.)
+						await session().prompt(text, {
+							expandPromptTemplates: false,
+							...(session().isStreaming ? { streamingBehavior: behavior } : {}),
+						});
 					} catch (err) {
 						// A prompt that never started a run never settles, and the next
 						// run — which made no branch — would reread the file for it.
@@ -1223,9 +1229,9 @@ wss.on("connection", async (ws) => {
 
 				case "clear_queue": {
 					// pi clears the queue whole or not at all: there is no removing one
-					// message. Re-queueing the survivors is not a substitute, because
-					// steer() expands skill commands and templates again over text it
-					// already expanded once, and throws outright on an extension command.
+					// message, and re-queueing the survivors through steer() would send
+					// them through pi's command expansion, which prompt() above is told
+					// to skip.
 					//
 					// Nothing is lost by clearing: the messages come back, and go to the
 					// tab that asked so they land in the box it was typed in. Every tab
