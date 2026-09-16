@@ -83,6 +83,7 @@ export function ToolModes({
 	const available = tools.map((t) => t.name);
 	// Custom is not a mode you can pick — it is what the checkboxes leave behind.
 	const current = activeModeId(active, available);
+	const name = current ? describeMode(current).name : "Custom";
 
 	return (
 		<DropdownMenu>
@@ -96,9 +97,16 @@ export function ToolModes({
 							id="tools"
 							className="h-7 gap-1.5 px-2 text-xs"
 							disabled={disabled}
+							aria-label={name}
 						>
 							<Icon id={current} />
-							{current ? describeMode(current).name : "Custom"}
+							{/* The word goes before anything else in the row does. There
+							    are three modes and each icon names the capability it
+							    unlocks, so the icon can carry it alone — which is not
+							    true of the model beside it, one of fifty names. The
+							    tooltip says it either way, and aria-label above keeps
+							    the button named when the word is gone. */}
+							<span className="@max-[340px]/composer:hidden">{name}</span>
 						</Button>
 					</DropdownMenuTrigger>
 				</TooltipTrigger>

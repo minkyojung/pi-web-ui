@@ -162,7 +162,12 @@ export function Composer({ note }: { note: string | null }) {
 	}, [restored]);
 
 	return (
-		<div className="p-3">
+		// The footer's controls give up their words as the panel narrows, and
+		// what they have to fit in is this box — not the window, which pi's
+		// column is only a draggable share of. So the measure is a container
+		// query, taken here, where the width the footer actually gets is
+		// settled. See ToolModes and the hint below for what goes first.
+		<div className="@container/composer p-3">
 			<QueuedMessages />
 			<AskingAgain />
 			<PromptInput
@@ -213,23 +218,43 @@ export function Composer({ note }: { note: string | null }) {
 						    at again. So this reports, beside the box it disables, and is
 						    careful not to look like it is asking for something. */}
 						{!online ? (
-							<span id="status" className="px-1 text-xs text-amber-600 dark:text-amber-500">
+							<span
+								id="status"
+								className="min-w-0 truncate px-1 text-xs text-amber-600 dark:text-amber-500"
+								title={connection === "connecting" ? "Connecting…" : "Offline — reconnecting automatically"}
+							>
 								{connection === "connecting" ? "Connecting…" : "Offline — reconnecting automatically"}
 							</span>
 						) : asking ? (
-							<span className="px-1 text-xs text-amber-600 dark:text-amber-500">
+							<span
+								className="min-w-0 truncate px-1 text-xs text-amber-600 dark:text-amber-500"
+								title="pi is waiting for your answer above"
+							>
 								pi is waiting for your answer above
 							</span>
 						) : (
 							streaming && (
-								<span className="px-1 text-xs text-muted-foreground">
+								// Two keys, said once while they are useful. It is the least
+								// of what is on this row — the keys work whether or not it
+								// is drawn — so it is the first thing a narrow panel drops,
+								// before any control gives up its word.
+								<span className="px-1 text-xs text-muted-foreground @max-[480px]/composer:hidden">
 									Enter to queue · {MOD}↵ to steer
 								</span>
 							)
 						)}
 					</PromptInputTools>
-					<span className="flex items-center gap-1">
-						<ContextCard />
+					{/* Never shrunk. Without this the row's only flexible item is this
+					    one, and its children — which are not flexible — get squeezed out
+					    of it and drawn over the controls on the left. */}
+					<span className="flex shrink-0 items-center gap-1">
+						{/* The ring is the last thing to go and the only control that
+						    does: it is glanced at rather than used, and the panel it
+						    would be dropped from is one no message is written in. It
+						    comes back with the width. */}
+						<span className="flex @max-[160px]/composer:hidden">
+							<ContextCard />
+						</span>
 						{/* Becomes a stop button while a run streams, which is where the
 						    settings bar's own stop button went. */}
 						<PromptInputSubmit

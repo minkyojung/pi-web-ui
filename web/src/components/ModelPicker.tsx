@@ -86,16 +86,21 @@ export function ModelPicker({
 	}, [idle, models, model, current, levels]);
 
 	return (
-		<span className="inline-flex items-center">
+		<span className="inline-flex min-w-0 items-center">
 			<DropdownMenu>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<DropdownMenuTrigger asChild>
-							<Button type="button" variant="ghost" size="sm" id="model" className="h-7 gap-1.5 px-2 text-xs" disabled={idle}>
+							<Button type="button" variant="ghost" size="sm" id="model" className="h-7 min-w-0 shrink gap-1.5 px-2 text-xs" disabled={idle}>
 								{current ? (
 									<>
-										{current.name}
-										<span className="text-muted-foreground">{levelLabel(current.level)}</span>
+										{/* The last thing on the row to give anything up, and it
+										    gives up letters rather than the whole word: a model
+										    is one of fifty names and half of one still says
+										    which. The level does not truncate — three letters
+										    cut down is no level at all. */}
+										<span className="min-w-0 truncate" title={current.name}>{current.name}</span>
+										<span className="shrink-0 text-muted-foreground">{levelLabel(current.level)}</span>
 									</>
 								) : (
 									"model"
