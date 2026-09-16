@@ -527,8 +527,8 @@ export function appendHistory(root: string, path: string, changes: Change[]): vo
  * recorded is measured from what is really there. A note with no log yet is
  * seeded whole the same way.
  *
- * Whose that is, the caller says when it knows — pi's shell was running
- * (recorder.ts), or the note appeared in a folder that did not have it. When
+ * Whose that is, the caller says when it knows — the note appeared in a
+ * folder that did not have it (server.ts, settleDisk). When
  * it does not, there are two answers and not one: a difference from what the
  * log knew is "outside", since somebody made it; a note with no log at all is
  * "before", since nobody was seen to. The log is append-only and has no line

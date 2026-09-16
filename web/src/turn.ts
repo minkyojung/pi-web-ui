@@ -109,8 +109,8 @@ export function turnParts({
  * Tool output is left out: someone reaching for a copy button wants the answer,
  * not the work that produced it.
  */
-/** The tools that put words in a note — the app's own three, and the shell, which can (recorder.ts). */
-const WRITERS = new Set(["note_edit", "note_write", "note_properties", "bash", "powershell"]);
+/** The tools that put words in a note: the app's own three. The shell cannot (wall.ts). */
+const WRITERS = new Set(["note_edit", "note_write", "note_properties"]);
 
 /**
  * Did the run above a `done` reach for a tool that writes notes?

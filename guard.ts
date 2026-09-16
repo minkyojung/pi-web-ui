@@ -24,7 +24,7 @@
  *   branch navigated — and what is chosen belongs to the moment even more
  *   than the path does.
  *
- * Inline, like recorder.ts, and bound per session with it.
+ * Inline, like wall.ts and noteEdit.ts, and bound per session with them.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, relative, sep } from "node:path";

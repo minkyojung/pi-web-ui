@@ -11,7 +11,7 @@
  * This file is the pi side of it. The turn is told it is answering into a
  * note; it is kept from writing the note itself, so that the one path a note
  * is written by stays one; and the answer is handed back when the run ends.
- * Inline, like guard.ts and recorder.ts, and bound per session with them.
+ * Inline, like guard.ts and wall.ts, and bound per session with them.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { NOTE_TOOLS } from "./noteEdit.ts";

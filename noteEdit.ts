@@ -20,7 +20,7 @@
  * person wrote — the wrong paragraph silently replaced is worse here than a
  * refusal pi can read and retry.
  *
- * Inline, like guard.ts and recorder.ts, and bound per session with them.
+ * Inline, like guard.ts and wall.ts, and bound per session with them.
  */
 import { type Static, Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";

@@ -281,7 +281,7 @@ test("누구 것인지 말해주면 그 이름으로 기록된다", () => {
 
 test("처음 보는 노트도 말해준 이름으로 통째로 심어진다", () => {
   const { spans } = reconcile(DIR, "seeded-pi.md", "all of it\n", 12, pi);
-  assert.deepEqual(spans.map((s) => s.author), ["pi"], "recorder가 이 경우를 가려내는 근거");
+  assert.deepEqual(spans.map((s) => s.author), ["pi"], "이름을 준 쪽의 말이 그대로 적힌다");
 });
 
 test("따라잡을 것이 없으면 아무것도 붙지 않는다", () => {
@@ -289,7 +289,7 @@ test("따라잡을 것이 없으면 아무것도 붙지 않는다", () => {
   const before = readHistory(DIR, "twice.md").length;
   const { appended } = reconcile(DIR, "twice.md", "once\n", 14, pi);
   assert.deepEqual(appended, []);
-  assert.equal(readHistory(DIR, "twice.md").length, before, "감시기가 이미 한 일을 recorder가 되풀이하지 않는다");
+  assert.equal(readHistory(DIR, "twice.md").length, before, "이미 따라잡은 것을 다시 적지 않는다");
 });
 
 test("기록은 쓴 쪽이 본 것부터 재고, 그 결과가 디스크와 같다", () => {

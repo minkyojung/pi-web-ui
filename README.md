@@ -260,28 +260,29 @@ anyway. The prompt was enough; the block is for when it is not.
 ### And when it came through no door
 
 `bash` names nothing. A command that writes a note cannot be told from one that
-reads it, and there is no parse of a shell line that settles it — so a write made
-there is found the way any write from outside is found, when the disk stops
-agreeing with the log. What `recorder.ts` adds is the answer to whose it was.
+reads it, and there is no parse of a shell line that settles it. The app used to
+answer afterwards, from the clock — a note that changed while a shell call was in
+flight was pi's for ten seconds and then `outside` — which was right almost
+always and wrong in a way nothing could catch. What cannot be told apart is
+better made impossible: pi's shell runs behind a wall (`wall.ts`), a macOS
+sandbox profile that denies writing to `*.md` under the folder and to `.pi/`
+and allows everything else. Reading the notes, building, testing, writing any
+other file — as before. Writing a note — "Operation not permitted", which pi
+reads, and its prompt has already told it where to go instead.
 
-The log is append-only and has no line that changes an earlier line's author, so
-that answer has to be right at the moment the line is written. The watcher is the
-only thing that knows *when* a note changed, so it is left to log as promptly as
-it always did and given a `claim` to ask with instead: while a shell call is in
-flight, a note whose file is newer than the call started is pi's, and carries the
-session and the message it came from. Waiting for the call to end instead would
-be worse than the bug — `npm run dev` runs for minutes, and every save the person
-made meanwhile would come back marked as pi's words in their own editor.
+The wall is the command rewritten in `tool_call`, the way pi documents for
+patching a tool's arguments: `sandbox-exec -f <profile> /bin/bash -c <command>`.
+pi's own shell still spawns it and still kills it on timeout, and the
+conversation still shows the command pi wrote. One consequence is meant: a
+`git checkout` or `git pull` pi runs cannot rewrite notes either. Where
+`sandbox-exec` is not there — another platform — there is no wall, and a note
+the shell writes is found the way any write from outside is, and called so.
 
-Two bounds keep it honest:
-
-- **Time.** A note that changes in the fifth minute of a dev server is the
-  person, not the command. After ten seconds the answer is `outside` again —
-  the cheap wrong answer rather than the expensive one.
-- **What the app knew.** pi may only be named over a difference measured from a
-  state the app had. A note with no log is seeded whole, so naming pi there
-  would hand pi every word the person ever wrote in it — unless the note was not
-  there before the call at all, in which case pi did write every word of it.
+So the log's author is never guessed. The editor's save is `me`; `note_edit`
+and `note_write` are `pi`, with the session and the message; a note that
+appears in a folder that did not have it is `outside`, whole; and a difference
+between the disk and what the log knew is `outside`, or `before` when the log
+knew nothing. Four rules, and no clock.
 
 ## Writing
 

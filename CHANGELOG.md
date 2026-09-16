@@ -7,6 +7,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 ## [Unreleased]
 
 ### Changed
+- pi can no longer change a note from a terminal command: the system refuses the write, and pi is told to use its note tools instead — so everything pi writes in a note is recorded as pi's, and nothing you write is ever mistaken for pi's.
 - With no provider signed in, the app opens instead of quitting with an error box; the model picker says so until you sign in.
 - The app is called Octave. The agent at the table is still pi.
 - Octave's own settings and log moved from `~/.pi/web-ui/` to `~/.octave/`. What pi keeps — credentials, sessions — stays under `~/.pi/`.

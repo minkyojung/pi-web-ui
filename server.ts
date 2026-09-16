@@ -41,7 +41,6 @@ import { claimAppDir } from "./appDir.ts";
 import { wall } from "./wall.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
-import { type Claim, recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
 import { guard, VAULT_PROMPT } from "./guard.ts";
 import { renameTarget } from "./naming.ts";
@@ -154,19 +153,7 @@ let openNote: { path: string; chosen: string | null } | null = null;
  */
 let asking: (Ask & { at: number; done: (outcome: AskOutcome) => void }) | null = null;
 
-/**
- * The way to ask this session's recorder whether a write found on disk is
- * pi's — see recorder.ts. Null between sessions, so a retired recorder cannot
- * still be answering for the one that replaced it.
- */
-let claimant: Claim | null = null;
-
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
-	// Built here rather than in the list below, because what it hears about
-	// pi's shell is also what the watcher asks — and the one that answers has
-	// to be this session's, not the one being replaced.
-	const notes = recorder(CWD, (path, base, changes) => wrote(path, base, changes));
-	claimant = notes.claim;
 	const services = await createAgentSessionServices({
 		cwd,
 		modelRuntime,
@@ -176,7 +163,7 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 			// pi is told this is a folder of notes — see guard.ts.
 			appendSystemPrompt: [VAULT_PROMPT],
 			extensionFactories: [
-				// The guard first: a blocked call never reaches the recorder.
+				// The guard first: a blocked call never reaches anything after it.
 				{ name: "guard", factory: guard(CWD, () => openNote) },
 				// Then the wall: what the guard let through, the shell runs behind
 				// it, where a note cannot be written. See wall.ts.
@@ -184,9 +171,6 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 				// The one pair a note is written by — what the guard above sends
 				// edit and write to when they reach for one. See noteEdit.ts.
 				{ name: "notes", factory: noteTools(CWD, piWrote) },
-				// pi's writes to notes go into their history as they happen, and the
-				// tabs looking at a note hear about it.
-				{ name: "recorder", factory: notes.factory },
 				// A turn that answers about a chosen part of a note says it rather
 				// than writing it; the answer is put in here — see ask.ts.
 				{ name: "answering", factory: answering(() => asking !== null, answered) },
@@ -407,16 +391,16 @@ function files(): FilesMsg {
  * Bring a note's log up to what is on disk, asking whose the difference is.
  *
  * Every place that settles the disk goes through here, because the answer is
- * the same question everywhere. pi's, if its shell was running and this is
- * what it did — which only the recorder knows (recorder.ts). Else outside's,
- * if the note is one the folder did not have when the app listed it: it
- * appeared while the app was running, so every word of it was written by
- * someone, just now, and not through here. Else what the log makes of it —
- * a difference from what it knew is outside's, and a note it never knew is
- * from before (reconcile).
+ * the same question everywhere. Never pi's: pi writes a note by note_edit and
+ * note_write, which say so as they write, and its shell cannot write one at
+ * all (wall.ts). Outside's, if the note is one the folder did not have when
+ * the app listed it: it appeared while the app was running, so every word of
+ * it was written by someone, just now, and not through here. Else what the
+ * log makes of it — a difference from what it knew is outside's, and a note
+ * it never knew is from before (reconcile).
  */
-function settleDisk(path: string, text: string, mtime: number, at: number) {
-	const origin: Origin | undefined = claimant?.(path, mtime) ?? (notes.has(path) ? undefined : { author: "outside", at });
+function settleDisk(path: string, text: string, at: number) {
+	const origin: Origin | undefined = notes.has(path) ? undefined : { author: "outside", at };
 	return reconcile(CWD, path, text, at, origin);
 }
 
@@ -428,7 +412,7 @@ function settleDisk(path: string, text: string, mtime: number, at: number) {
 function note(path: string): NoteMsg | null {
 	const found = readNote(CWD, path);
 	if (!found) return null;
-	const { holed } = settleDisk(path, found.text, found.modified, Date.now());
+	const { holed } = settleDisk(path, found.text, Date.now());
 	known.set(path, found.modified);
 	return { type: "note", path, text: found.text, modified: found.modified, original: toDecide(holed), backlinks: links.backlinks(path), tagged: links.tagged(path) };
 }
@@ -508,7 +492,7 @@ function noticed(path: string): void {
 	}
 	const base = known.get(path) ?? null;
 	if (base === found.modified) return; // This process's own write, already sent.
-	const { appended } = settleDisk(path, found.text, found.modified, Date.now());
+	const { appended } = settleDisk(path, found.text, Date.now());
 	// Touched but not changed still moves the version the next save is measured against.
 	wrote(path, base, appended);
 }
@@ -1516,7 +1500,7 @@ wss.on("connection", async (ws) => {
 						reply({ type: "note_gone", path: msg.path });
 						return;
 					}
-					const { replayed } = settleDisk(msg.path, found.text, found.modified, Date.now());
+					const { replayed } = settleDisk(msg.path, found.text, Date.now());
 					const spans = replayed.spans
 						// Nor what was there before the app: nobody was seen to write it.
 						.filter((span) => span.author !== "me" && span.author !== "before")
@@ -1542,7 +1526,7 @@ wss.on("connection", async (ws) => {
 						reply({ type: "note_gone", path: msg.path });
 						return;
 					}
-					const { replayed } = settleDisk(msg.path, found.text, found.modified, Date.now());
+					const { replayed } = settleDisk(msg.path, found.text, Date.now());
 					const span = replayed.spans.find((s) => s.from <= msg.pos && msg.pos < s.to);
 					if (!span) return;
 					reply({
@@ -1633,7 +1617,7 @@ wss.on("connection", async (ws) => {
 						if (!wroteIn(readHistory(CWD, path), msg.session, msg.from, msg.to)) continue;
 						const found = readNote(CWD, path);
 						if (!found) continue;
-						const { holed } = settleDisk(path, found.text, found.modified, at);
+						const { holed } = settleDisk(path, found.text, at);
 						const { before, holes } = undecided(holed);
 						if (holes.length === 0 || before === found.text) continue;
 						// Over the version just read: a note that moves between the
