@@ -54,6 +54,18 @@ The app is `Octave` to macOS and `run.octave.app` to the signing identity and
 the updater; neither changes again, since the first decides where macOS keeps
 the app's settings and the second what the updater thinks is the same app.
 
+A release is a tag: `node scripts/release.mjs 0.0.2` closes `[Unreleased]` in
+`CHANGELOG.md` as that version — after asking claude what the commits since
+the last tag contain that the notes do not, and refusing an empty section —
+bumps `package.json`, commits and tags. Pushing the tag runs
+`.github/workflows/release.yml`, which builds, signs and notarizes from a
+certificate in the secrets and publishes the disk image, the zip and
+`latest-mac.yml` as a GitHub Release with the section as its notes. The
+installed app (`electron-updater`, in `electron/main.js`) looks there once
+the window is up and every few hours, downloads quietly, and offers the new
+version with those notes when it is ready; the server is stopped before the
+installer's quit, which `before-quit` would otherwise hold back.
+
 Octave is AGPL-3.0 (`LICENSE`). Everything it is built on is permissive and
 asks only that its notice be carried, so `npm run build` begins by writing
 `THIRD_PARTY_NOTICES.md` — the licence of every package that ships in the app,

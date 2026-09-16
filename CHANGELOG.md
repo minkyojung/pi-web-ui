@@ -14,6 +14,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ### Added
 - Octave ships as a signed, notarized disk image for Apple Silicon Macs: download, open, drag to Applications, no warnings.
+- Octave updates itself: a new version is downloaded in the background and offered, with its notes, when it is ready. "Check for Updates…" is in the Octave menu.
 - The licence (AGPL-3.0) and the notices of everything the app is built on ship inside it.
 
 [Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/reader-v1...HEAD

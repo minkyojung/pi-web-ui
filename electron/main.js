@@ -13,6 +13,11 @@ import { basename, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
+import updater from "electron-updater";
+
+// electron-updater is CommonJS and hands autoUpdater out through a getter,
+// which a named import cannot see.
+const { autoUpdater } = updater;
 
 const HOST = "127.0.0.1";
 const here = (path) => fileURLToPath(new URL(path, import.meta.url));
@@ -203,9 +208,15 @@ let stopping = false;
  */
 async function stopServer(event) {
 	if (stopping || !child) return;
+	event?.preventDefault();
+	await endServer();
+	app.quit();
+}
+
+/** The server told to stop, and waited for. The quit that follows is the caller's. */
+async function endServer() {
 	stopping = true;
 	exiting = true;
-	event?.preventDefault();
 	const server = child;
 	const gone = new Promise((resolve) => server.once("exit", resolve));
 	server.kill();
@@ -213,7 +224,57 @@ async function stopServer(event) {
 	await gone;
 	clearTimeout(hard);
 	child = null;
-	app.quit();
+}
+
+/**
+ * The next version, fetched from the GitHub release the app was published to
+ * (publish in electron-builder.yml, which becomes app-update.yml beside the
+ * app). Looked for once the window is up and every few hours after, and
+ * downloaded quietly; only when it is ready is anything shown — the notes
+ * from CHANGELOG.md, and a choice. Restarting goes through endServer first,
+ * since the installer's own quit would be held back by before-quit.
+ *
+ * Only in a packaged app: a dev run has no version to compare and nothing to
+ * replace itself with.
+ */
+function watchForUpdates() {
+	if (!app.isPackaged) return;
+	autoUpdater.autoDownload = true;
+	autoUpdater.on("error", (err) => console.error(`[updater] ${err.message}`));
+	autoUpdater.on("update-downloaded", async (info) => {
+		const notes = typeof info.releaseNotes === "string" ? info.releaseNotes.replace(/<[^>]+>/g, "").trim() : "";
+		const { response } = await dialog.showMessageBox({
+			type: "info",
+			title: `Octave ${info.version}`,
+			message: `Octave ${info.version} is ready to install.`,
+			detail: notes || undefined,
+			buttons: ["Restart now", "Later"],
+			defaultId: 0,
+			cancelId: 1,
+		});
+		if (response !== 0) return;
+		if (child) await endServer();
+		autoUpdater.quitAndInstall();
+	});
+	const check = () => autoUpdater.checkForUpdates().catch(() => {});
+	check();
+	setInterval(check, 4 * 60 * 60 * 1000).unref();
+}
+
+/** The same check, asked for from the menu, which answers either way. */
+async function checkForUpdatesNow() {
+	if (!app.isPackaged) {
+		dialog.showMessageBox({ type: "info", message: "A dev run does not update." });
+		return;
+	}
+	try {
+		const result = await autoUpdater.checkForUpdates();
+		if (!result?.isUpdateAvailable) {
+			dialog.showMessageBox({ type: "info", message: `Octave ${app.getVersion()} is the latest.` });
+		}
+	} catch (err) {
+		dialog.showMessageBox({ type: "warning", message: "Could not check for updates.", detail: err.message });
+	}
 }
 
 /**
@@ -259,7 +320,22 @@ function buildMenu(workdir) {
 	// to be listed or the window loses copy, paste and the developer tools.
 	Menu.setApplicationMenu(
 		Menu.buildFromTemplate([
-			{ role: "appMenu" },
+			// The standard app menu, with one line of ours in it.
+			{
+				role: "appMenu",
+				submenu: [
+					{ role: "about" },
+					{ label: "Check for Updates…", click: checkForUpdatesNow },
+					{ type: "separator" },
+					{ role: "services" },
+					{ type: "separator" },
+					{ role: "hide" },
+					{ role: "hideOthers" },
+					{ role: "unhide" },
+					{ type: "separator" },
+					{ role: "quit" },
+				],
+			},
 			{
 				label: "Folder",
 				submenu: [
@@ -356,6 +432,7 @@ async function main() {
 	window.on("page-title-updated", (e) => e.preventDefault());
 	await window.loadURL(url);
 	window.show();
+	watchForUpdates();
 }
 
 app.whenReady().then(main);
