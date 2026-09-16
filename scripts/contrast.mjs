@@ -147,7 +147,7 @@ const TEXT = [
 	["--primary-foreground", "--primary", "default button"],
 	["--secondary-foreground", "--secondary", "secondary button"],
 	["--accent-foreground", "--accent", "selected menu row"],
-	["--sidebar-foreground", "--sidebar", "sidebar row"],
+	["--sidebar-foreground", "--sidebar", "the column's own text"],
 	["--sidebar-accent-foreground", "--sidebar-accent", "selected note"],
 	["--muted-foreground", "--sidebar-accent", "a hovered row on the frame"],
 	["--foreground", "--sidebar-accent", "a hovered row on the frame"],

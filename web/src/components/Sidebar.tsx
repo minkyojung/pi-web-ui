@@ -126,6 +126,15 @@ export function Steps({ back, forward, canBack, canForward }: { back: () => void
 
 const row = cn(
 	"h-8 w-full cursor-default justify-start px-2 font-normal",
+	// A row at rest is second-rank text; the pointer and the open note raise it
+	// to first. Twenty notes all at the window's brightest is twenty notes
+	// shouting, and the one you are in has only its background left to say so.
+	// The step is the one the window already declares — Apple's secondaryLabel,
+	// Radix's step 11, Linear's tertiary — not a colour invented for this
+	// column. --muted-foreground is held against the darkest surface it lands
+	// on, --sidebar-accent among them, so it clears AA on both the column and a
+	// hovered row in all four themes (4.65 at the tightest).
+	"text-muted-foreground",
 	// The dark hover ghost carries is the page's accent at half alpha, under a
 	// modifier tailwind-merge cannot line up with the one above it, so it is
 	// named again here.
@@ -176,7 +185,9 @@ function Tree({
 								"data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground",
 							)}
 						>
-							<FileTextIcon className="text-muted-foreground" />
+							{/* The icon takes the row's colour, so it is raised with the
+							    label rather than left behind at second rank. */}
+							<FileTextIcon />
 							<span className="truncate">{titleOf(node.path)}</span>
 						</Button>
 						</ContextMenuTrigger>
@@ -213,8 +224,8 @@ function Tree({
 			>
 				<CollapsibleTrigger asChild>
 					<Button variant="ghost" size="sm" data-folder={node.path} className={row}>
-						<ChevronRightIcon className="text-muted-foreground transition-transform" />
-						<FolderIcon className="text-muted-foreground" />
+						<ChevronRightIcon className="transition-transform" />
+						<FolderIcon />
 						<span className="truncate">{node.name}</span>
 					</Button>
 				</CollapsibleTrigger>

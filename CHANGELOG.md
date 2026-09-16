@@ -14,6 +14,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - Extensions installed in your own pi (`~/.pi/agent`) are no longer loaded into Octave's sessions; pi's built-in tools and Octave's own are what pi has here.
 - The note's text is a point larger, 16px instead of 15px.
 - pi's conversation sits on a panel of its own beside the note, inset from the note's page on every side — a shade lighter than the note in the dark themes, a shade darker in the light ones — so where the writing stops and the conversation starts is plain to see.
+- The notes in the sidebar are a quieter grey until you point at one or open it, so the note you are in is the one that stands out.
 
 ### Added
 - Octave ships as a signed, notarized disk image for Apple Silicon Macs: download, open, drag to Applications, no warnings.
