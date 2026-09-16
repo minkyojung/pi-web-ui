@@ -72,7 +72,7 @@ export function Sidebar({
 			) : (
 				// The rows are inset by the same gutter the foot keeps, so a row's
 				// highlight ends where the settings button does.
-				<ul id="notes" className="no-scrollbar edge-bottom [--edge-over:var(--sidebar)] flex-1 overflow-y-auto overscroll-contain px-2 py-1">
+				<ul id="notes" className="no-scrollbar flex-1 overflow-y-auto overscroll-contain px-2 py-1">
 					{treeOf(files.map((f) => f.path)).map((node) => (
 						<Tree key={node.path} node={node} open={open} openFolders={openFolders} onOpen={onOpen} />
 					))}
@@ -87,10 +87,14 @@ export function Sidebar({
 			)}
 			{/* Not a drag region: the foot of the window is not its title bar.
 
-			    Its height is the window's foot, and the strip under the note keeps
-			    the same one (StatusBar.tsx): two rows along the same edge of the
-			    same window that did not agree read as one row that is crooked. */}
-			<div id="foot" className="flex h-10 shrink-0 items-center gap-1 px-2">
+			    One of the window's chrome rows, and the same height as the rest of
+			    them — the strip the tabs sit in, the strip over this list, the one
+			    under the note (StatusBar.tsx). Nothing in it names a height of its
+			    own: the buttons are shadcn's at `sm`, and the gap to the edge of the
+			    row is what is left over. Two rows along one edge that did not agree
+			    read as one row that is crooked, and heights matched by eye drift the
+			    moment either end is touched. */}
+			<div id="foot" className="flex h-11 shrink-0 items-center gap-1 px-2">
 				<FolderPicker />
 				<Settings />
 			</div>

@@ -1724,6 +1724,21 @@ check("the strip reaches the foot of the window, and sits in it the way the tabs
 	// other, and if somebody writes a height onto an item again this is what
 	// notices.
 	assert.equal(Math.round(laid.bar.height), Math.round(laid.topStrip.height), "the strip is a chrome row like the one the tabs sit in");
+
+	// The window's bottom edge carries two rows — this one, and the one the
+	// folder's name and the settings button sit in down the side. They are told
+	// nothing about each other and must still come out alike, because they are
+	// built the same way. Two rows along one edge that disagree read as one row
+	// that is crooked.
+	const feet = await app.evaluate(`(() => {
+		const of = (el) => { const b = el.getBoundingClientRect(); return { height: b.height, middle: (b.top + b.bottom) / 2 }; };
+		return { side: of(document.getElementById('foot')), gear: of(document.querySelector('#foot button:last-of-type')), item: of(document.querySelector('#status button')) };
+	})()`);
+	assert.equal(Math.round(feet.side.height), Math.round(laid.bar.height), "both rows along the window's foot are the same height");
+	assert.ok(
+		Math.abs(feet.item.middle - feet.gear.middle) <= 1,
+		`and what is in them sits on one line: ${Math.round(feet.item.middle - feet.gear.middle)}px between the strip's item and the settings button`,
+	);
 });
 
 check("a tag and a link written in the properties count as much as ones written in the note", async ({ app, cwd }) => {

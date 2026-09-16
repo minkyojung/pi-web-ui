@@ -97,9 +97,9 @@ export function Settings() {
           <DialogTrigger asChild>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon-sm"
               aria-label="Settings"
-              className="h-7 w-7 shrink-0 p-0 text-muted-foreground"
+              className="shrink-0 text-muted-foreground"
             >
               <SettingsIcon className="size-3.5" />
             </Button>

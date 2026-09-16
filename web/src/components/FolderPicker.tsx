@@ -49,7 +49,7 @@ export function FolderPicker() {
 	// No icon: every row above is a folder with a folder's icon, and one more
 	// down here would read as another of them rather than as the whole.
 	const name = <span className="truncate">{nameOf(folder)}</span>;
-	const label = "h-7 min-w-0 flex-1 justify-start gap-1.5 px-1.5 text-xs font-normal text-muted-foreground";
+	const label = "min-w-0 flex-1 justify-start gap-1.5 px-1.5 text-xs font-normal text-muted-foreground";
 
 	// No shell, or a dev run: the name, and nothing that pretends to lead
 	// anywhere.
