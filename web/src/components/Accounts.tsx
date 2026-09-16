@@ -21,10 +21,13 @@ import { Spinner } from "./ui/spinner";
  * Nothing about any provider's login is known here, which is how a provider
  * pi adds tomorrow is signed in to without a change.
  *
- * Two providers first and the rest behind a line, since two is what most people
- * have and forty is a list to search, not read.
+ * Three groups, because the forty rows are three kinds of thing. What is
+ * signed in comes first, since it is what the person came to check. Then the
+ * providers that take an account, which are few and the way most people
+ * start. Then the ones that take only a key — the long tail, behind a line
+ * after the first few, since forty is a list to search, not read.
  */
-const FEATURED = ["anthropic", "openai"];
+const FEATURED = ["openai"];
 
 export function Accounts() {
 	const providers = useSyncExternalStore(providersStore.subscribe, providersStore.get);
@@ -33,11 +36,15 @@ export function Accounts() {
 
 	if (!providers) return <p className="text-xs text-muted-foreground">Reading the providers…</p>;
 
-	const featured = FEATURED.flatMap((id) => providers.filter((p) => p.id === id));
-	const rest = providers.filter((p) => !FEATURED.includes(p.id));
-	// One signed in elsewhere in the list is worth seeing without opening it.
-	const shown = all ? [...featured, ...rest] : [...featured, ...rest.filter((p) => p.signedIn)];
-	const hidden = rest.length - rest.filter((p) => p.signedIn).length;
+	const busy = login !== null && login.done === null;
+	const signedIn = providers.filter((p) => p.signedIn);
+	const out = providers.filter((p) => !p.signedIn);
+	const accounts = out.filter((p) => p.methods.includes("oauth"));
+	const keyed = out.filter((p) => !p.methods.includes("oauth"));
+	// Folded: the featured ones, and enough of the rest that the group does
+	// not read as a heading over a button.
+	const keyedShown = all ? keyed : [...keyed.filter((p) => FEATURED.includes(p.id)), ...keyed.filter((p) => !FEATURED.includes(p.id))].slice(0, Math.max(FEATURED.length, 3));
+	const hidden = keyed.length - keyedShown.length;
 
 	return (
 		<>
@@ -49,20 +56,48 @@ export function Accounts() {
 				</p>
 			</header>
 
-			<ul className="flex flex-col gap-1">
-				{shown.map((p) => (
-					<Row key={p.id} provider={p} busy={login !== null && login.done === null} />
+			<Group title="Signed in" empty="Nobody yet — pick a provider below.">
+				{signedIn.map((p) => (
+					<Row key={p.id} provider={p} busy={busy} />
 				))}
-			</ul>
+			</Group>
 
-			{!all && hidden > 0 && (
-				<Button type="button" variant="ghost" size="sm" className="self-start text-xs text-muted-foreground" onClick={() => setAll(true)}>
-					{hidden} more providers…
-				</Button>
+			{accounts.length > 0 && (
+				<Group title="Sign in with an account">
+					{accounts.map((p) => (
+						<Row key={p.id} provider={p} busy={busy} />
+					))}
+				</Group>
+			)}
+
+			{keyed.length > 0 && (
+				<Group title="With an API key">
+					{keyedShown.map((p) => (
+						<Row key={p.id} provider={p} busy={busy} />
+					))}
+					{!all && hidden > 0 && (
+						<li>
+							<Button type="button" variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => setAll(true)}>
+								{hidden} more providers…
+							</Button>
+						</li>
+					)}
+				</Group>
 			)}
 
 			{login && <SignIn login={login} name={providers.find((p) => p.id === login.provider)?.name ?? login.provider} />}
 		</>
+	);
+}
+
+/** A run of rows under a small heading; `empty` is what stands in for none. */
+function Group({ title, empty, children }: { title: string; empty?: string; children: React.ReactNode }) {
+	const rows = Array.isArray(children) ? children.flat().filter(Boolean) : children ? [children] : [];
+	return (
+		<section className="flex flex-col gap-1">
+			<h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
+			{rows.length ? <ul className="flex flex-col gap-1">{children}</ul> : empty && <p className="px-3 py-2 text-xs text-muted-foreground">{empty}</p>}
+		</section>
 	);
 }
 
@@ -131,7 +166,7 @@ function Row({ provider, busy }: { provider: ProviderInfo; busy: boolean }) {
 	}
 
 	return (
-		<li className="flex min-h-10 items-center gap-3 rounded-md border px-3 py-1.5">
+		<li className={`flex min-h-10 items-center gap-3 rounded-md border px-3 py-1.5 ${signedIn ? "border-transparent bg-muted" : ""}`}>
 			<span className="min-w-0 flex-1 truncate text-sm">{name}</span>
 			{status}
 			<span className="flex shrink-0 gap-1">{actions}</span>
