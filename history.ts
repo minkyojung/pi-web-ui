@@ -45,23 +45,12 @@ export type Change = Origin & { from: number; to: number; inserted: string; remo
  * `removed` is what the change that wrote it replaced, carried while the span
  * is still that whole insertion and dropped once later changes have cut it —
  * it is what putting the words back means, and only means it whole.
- * `accepted` is set when the person has touched the run without changing it,
- * which is how pi's words stop being marked without becoming anyone else's.
- */
-export type Span = Origin & { from: number; to: number; removed?: string; accepted?: true };
-
-/**
- * Words pi took out of the note, and where they stood.
  *
- * A span says who wrote the words that are there. This says what pi took away
- * that nothing replaced — words that left no span, because there is nothing
- * in the text for one to cover. It sits at one place, the seam where they
- * were, and moves with the text as a span does. Only pi's, since those are
- * the ones a person is asked to decide about, and the diff that asks needs
- * the words back to show them. A decision at that exact place, of no width,
- * is what sets `accepted`.
+ * A span says who wrote, and nothing about whether it has been decided about:
+ * that is the other reading of the log, holesOf, which is where what pi took
+ * away and what the person has kept are kept.
  */
-export type Removal = Origin & { pos: number; removed: string; accepted?: true };
+export type Span = Origin & { from: number; to: number; removed?: string };
 
 /** A change that changes nothing: the person deciding about the words at [from, to). */
 export const isTouch = (change: Change) => change.inserted === change.removed;
@@ -113,32 +102,18 @@ export function apply(text: string, change: Change): string {
  * Spans are cut where a change starts and ends, the middle is dropped, the
  * insertion takes its place, and what follows is shifted. Adjacent spans with
  * the same origin are merged so the answer stays as short as the text allows.
- * Removals ride along, each at its seam, moved the way a place is moved
- * through a change — see mapThrough.
+ * A decision (isTouch) changes no text and so changes no span.
  */
-export type Replayed = { text: string; spans: Span[]; removals: Removal[] };
+export type Replayed = { text: string; spans: Span[] };
 
 export function replay(changes: Change[], from?: Replayed): Replayed {
 	let text = from ? from.text : "";
 	// Copied, since what is handed in may be held by whoever handed it in —
 	// a snapshot read once and resumed from more than once.
 	let spans: Span[] = from ? from.spans.map((s) => ({ ...s })) : [];
-	let removals: Removal[] = from ? from.removals.map((r) => ({ ...r })) : [];
 	for (const change of changes) {
-		if (isTouch(change)) {
-			// An older log has no `kept` on its touches, and every touch it holds
-			// was an acceptance; undefined has to read as true.
-			const kept = change.kept !== false;
-			spans = merge(touch(spans, change.from, change.to, kept));
-			removals = removals.map((r) => (change.from <= r.pos && r.pos <= change.to ? decideRemoval(r, kept) : r));
-			continue;
-		}
+		if (isTouch(change)) continue;
 		const delta = change.inserted.length - (change.to - change.from);
-		removals = removals.map((r) => ({ ...r, pos: mapThrough([change], r.pos) }));
-		if (!change.inserted && change.removed && change.author === "pi") {
-			const { from, to: _t, inserted: _i, removed, ...origin } = change;
-			removals.push({ ...origin, pos: from, removed });
-		}
 		const next: Span[] = [];
 		for (const span of spans) {
 			if (span.to <= change.from) next.push(span);
@@ -159,12 +134,7 @@ export function replay(changes: Change[], from?: Replayed): Replayed {
 		spans = merge(next);
 		text = apply(text, change);
 	}
-	return { text, spans, removals };
-}
-
-function decideRemoval(removal: Removal, accepted: boolean): Removal {
-	const { accepted: _was, ...rest } = removal;
-	return accepted ? { ...rest, accepted: true } : rest;
+	return { text, spans };
 }
 
 /**
@@ -308,41 +278,8 @@ export function mapThrough(changes: Change[], pos: number): number {
 	return pos;
 }
 
-/**
- * Say whether what lies in [from, to) is accepted, cutting spans at the edges.
- *
- * A touch that covers a span whole leaves it whole, so what it replaced is
- * still known and taking the acceptance back gives the span back exactly as it
- * was. One that covers part of it cannot: the part is no longer the whole of
- * what its change wrote, and that is true however the decision goes.
- */
-function touch(spans: Span[], from: number, to: number, accepted: boolean): Span[] {
-	const out: Span[] = [];
-	for (const span of spans) {
-		if (span.to <= from || span.from >= to) {
-			out.push(span);
-			continue;
-		}
-		const { removed: _cut, ...rest } = span;
-		const whole = span.from >= from && span.to <= to;
-		if (span.from < from) out.push({ ...rest, to: from });
-		const middle: Span = { ...(whole ? span : rest), from: Math.max(span.from, from), to: Math.min(span.to, to) };
-		if (accepted) middle.accepted = true;
-		else delete middle.accepted;
-		out.push(middle);
-		if (span.to > to) out.push({ ...rest, from: to });
-	}
-	return out;
-}
-
 function same(a: Span, b: Span): boolean {
-	return (
-		a.author === b.author &&
-		a.at === b.at &&
-		a.sessionId === b.sessionId &&
-		a.entryId === b.entryId &&
-		a.accepted === b.accepted
-	);
+	return a.author === b.author && a.at === b.at && a.sessionId === b.sessionId && a.entryId === b.entryId;
 }
 
 function merge(spans: Span[]): Span[] {
@@ -432,10 +369,10 @@ export function historyOf(root: string, path: string, slowMs = SLOW_MS): Read {
 	// a line already answered for never has to become anything.
 	const tail = raw.slice(snap ? snap.lines : 0).map((line) => JSON.parse(line) as Change);
 	const started = performance.now();
-	const replayed = replay(tail, snap ? { text: snap.text, spans: snap.spans, removals: snap.removals } : undefined);
+	const replayed = replay(tail, snap ? { text: snap.text, spans: snap.spans } : undefined);
 	const holed = holesOf(tail, snap ? { text: snap.text, holes: snap.holes } : undefined);
 	if (performance.now() - started > slowMs && raw.length > 0) {
-		writeSnapshot(file, raw, { text: replayed.text, spans: replayed.spans, removals: replayed.removals, holes: holed.holes });
+		writeSnapshot(file, raw, { text: replayed.text, spans: replayed.spans, holes: holed.holes });
 	}
 	return { lines: raw.length, replayed, holed };
 }

@@ -29,7 +29,7 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 
 import { writeAtomic } from "./atomic.ts";
-import type { Hole, Removal, Span } from "./history.ts";
+import type { Hole, Span } from "./history.ts";
 
 export type Snapshot = {
 	/** How many of the log's lines are in it. */
@@ -39,7 +39,6 @@ export type Snapshot = {
 	/** What replay had got to. */
 	text: string;
 	spans: Span[];
-	removals: Removal[];
 	/** What the hole-finding walk had got to — every hole, offered or not. */
 	holes: Hole[];
 };
@@ -77,7 +76,7 @@ export function readSnapshot(logFile: string, lines: string[]): Snapshot | null 
 	try {
 		const snap = JSON.parse(readFileSync(file, "utf8")) as Snapshot;
 		if (typeof snap?.lines !== "number" || typeof snap.hash !== "string" || typeof snap.text !== "string") return null;
-		if (!Array.isArray(snap.spans) || !Array.isArray(snap.removals) || !Array.isArray(snap.holes)) return null;
+		if (!Array.isArray(snap.spans) || !Array.isArray(snap.holes)) return null;
 		if (snap.lines > lines.length) return null;
 		if (hashOf(lines.slice(0, snap.lines).join("\n")) !== snap.hash) return null;
 		return snap;

@@ -13,7 +13,7 @@ import { join } from "node:path";
 
 import { forgetSnapshot, hashOf, readSnapshot, snapshotPath, writeSnapshot } from "../snapshot.ts";
 
-const state = { text: "hello", spans: [{ author: "me", at: 1, from: 0, to: 5 }], removals: [], holes: [] };
+const state = { text: "hello", spans: [{ author: "me", at: 1, from: 0, to: 5 }], holes: [] };
 const dir = () => mkdtempSync(join(tmpdir(), "snapshot-"));
 const logWith = (root, lines) => {
   const file = join(root, "a.md.jsonl");
@@ -151,10 +151,10 @@ test("앞부분은 다시 걷지 않는다 — 답이 그렇다고 말한다", (
     const file = historyPath(root, "a.md");
     // 앞 두 줄까지의 답이라며, 진짜와 다른 글을 적어둔다. 앞 두 줄을 정말로 건너뛰는지는
     // 이 글이 답에 남아 있는지로 알 수 있다 — 다시 걸었다면 흔적도 없을 것이다.
-    writeSnapshot(file, lines.slice(0, 2), { text: "PRETEND ", spans: [], removals: [], holes: [] });
+    writeSnapshot(file, lines.slice(0, 2), { text: "PRETEND ", spans: [], holes: [] });
     const { replayed } = historyOf(root, "a.md");
     const changes = lines.map((l) => JSON.parse(l));
-    assert.deepEqual(replayed, replay(changes.slice(2), { text: "PRETEND ", spans: [], removals: [] }));
+    assert.deepEqual(replayed, replay(changes.slice(2), { text: "PRETEND ", spans: [] }));
     assert.match(replayed.text, /^PRETEND /, "앞 두 줄은 읽히지 않았다");
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -167,7 +167,7 @@ test("장부의 앞부분이 달라졌으면 답을 버리고 처음부터 걷�
     const text = wrote(root, "a.md", ["one ", "one two ", "one two three "]);
     const file = historyPath(root, "a.md");
     const lines = linesOf(root, "a.md");
-    writeSnapshot(file, lines.slice(0, 2), { text: "PRETEND ", spans: [], removals: [], holes: [] });
+    writeSnapshot(file, lines.slice(0, 2), { text: "PRETEND ", spans: [], holes: [] });
     // 앞 줄이 손대어졌다: 해시가 어긋나므로 답은 이 장부의 것이 아니다.
     const tampered = [...lines];
     tampered[0] = JSON.stringify({ ...JSON.parse(lines[0]), inserted: "ONE " });

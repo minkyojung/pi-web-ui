@@ -95,30 +95,6 @@ test("구간은 그 변경이 뺀 글을 통째일 때만 들고 있다", () => 
   assert.ok(left.every((s) => s.removed === undefined));
 });
 
-test("받아들이면 구간은 pi 것인 채로 accepted가 되고, 그 안팎이 갈린다", () => {
-  const log = [
-    ...changesBetween("", "one two three", pi),
-    { ...me, at: 5, from: 4, to: 7, inserted: "two", removed: "two" },
-  ];
-  const { text, spans } = replay(log);
-  assert.equal(text, "one two three");
-  assert.deepEqual(
-    spans.map((s) => [s.author, text.slice(s.from, s.to), s.accepted ?? false]),
-    [["pi", "one ", false], ["pi", "two", true], ["pi", " three", false]],
-  );
-});
-
-test("받아들인 구간은 뒤에 오는 편집을 따라 움직인다", () => {
-  const log = [
-    ...changesBetween("", "one two three", pi),
-    { ...me, at: 5, from: 4, to: 7, inserted: "two", removed: "two" },
-    ...changesBetween("one two three", "ONE one two three", { ...me, at: 6 }),
-  ];
-  const { text, spans } = replay(log);
-  const accepted = spans.find((s) => s.accepted);
-  assert.equal(text.slice(accepted.from, accepted.to), "two");
-});
-
 test("구간 하나는 언제나 글자 하나 이상이고 서로 겹치지 않는다", () => {
   const steps = ["", "abc", "abXc", "aXc", "aXcYZ", "YZ", "Q"];
   const log = [];
@@ -133,50 +109,6 @@ test("구간 하나는 언제나 글자 하나 이상이고 서로 겹치지 않
     last = s.to;
   }
   assert.equal(last, text.length, "구간들이 본문 전체를 덮는다");
-});
-
-// --- removals: what pi took away that nothing replaced ---
-
-test("pi가 지우기만 한 글은 구간은 없지만 자리 하나로 남는다", () => {
-  const log = [...changesBetween("", "one two three", me), ...changesBetween("one two three", "one three", pi)];
-  const { text, spans, removals } = replay(log);
-  assert.equal(text, "one three");
-  assert.deepEqual(spans.map((s) => s.author), ["me"], "구간은 me 것 하나뿐");
-  assert.deepEqual(removals, [{ ...pi, pos: 4, removed: "two " }]);
-});
-
-test("사람이 지운 것과 바꿔 쓴 것은 자리로 남지 않는다 — 결정할 것이 없으니", () => {
-  const cut = [...changesBetween("", "a b c", pi), ...changesBetween("a b c", "a c", me)];
-  assert.deepEqual(replay(cut).removals, []);
-  const swapped = [...changesBetween("", "a b c", me), ...changesBetween("a b c", "a X c", pi)];
-  assert.deepEqual(replay(swapped).removals, [], "바꿔 쓴 것의 뺀 글은 구간이 들고 있다");
-  assert.equal(replay(swapped).spans.find((s) => s.author === "pi").removed, "b");
-});
-
-test("자리는 뒤의 편집을 따라 움직이고, 그 자리를 덮는 편집에는 접힌다", () => {
-  const log = [...changesBetween("", "one two three", me), ...changesBetween("one two three", "one three", pi)];
-  assert.equal(replay([...log, ...changesBetween("one three", "ZERO one three", me)]).removals[0].pos, 4 + "ZERO ".length);
-  assert.equal(replay([...log, ...changesBetween("one three", "one three four", me)]).removals[0].pos, 4, "뒤에서 일어난 편집엔 안 움직인다");
-  assert.equal(replay([...log, ...changesBetween("one three", "X", me)]).removals[0].pos, 1, "덮이면 그 자리 끝으로");
-});
-
-test("폭 없는 결정이 그 자리의 삭제를 수락하고, 반대로 무른다", () => {
-  const log = [...changesBetween("", "one two three", me), ...changesBetween("one two three", "one three", pi)];
-  const at = replay(log).removals[0].pos;
-  const kept = [...log, { ...me, at: 9, from: at, to: at, inserted: "", removed: "", kept: true }];
-  assert.equal(replay(kept).removals[0].accepted, true);
-  const back = [...kept, { ...me, at: 10, from: at, to: at, inserted: "", removed: "", kept: false }];
-  assert.equal(replay(back).removals[0].accepted, undefined);
-  assert.equal(replay(log).spans.length, replay(kept).spans.length, "구간은 건드리지 않는다");
-});
-
-test("범위 있는 결정도 그 안에 놓인 삭제를 함께 결정한다", () => {
-  const log = [...changesBetween("", "one two three", me), ...changesBetween("one two three", "one three", pi)];
-  const at = replay(log).removals[0].pos;
-  const around = [...log, { ...me, at: 9, from: at - 1, to: at + 1, inserted: "e t", removed: "e t", kept: true }];
-  assert.equal(replay(around).removals[0].accepted, true);
-  const elsewhere = [...log, { ...me, at: 9, from: 0, to: 2, inserted: "on", removed: "on", kept: true }];
-  assert.equal(replay(elsewhere).removals[0].accepted, undefined);
 });
 
 test("자리는 앞에서 일어난 변경만큼 밀리고, 뒤에서 일어난 변경에는 안 움직인다", () => {
@@ -343,8 +275,8 @@ test("accept는 지금 글 위의 범위를 빈 교체로 남긴다", () => {
   record(DIR, "acc.md", "", "pi wrote this\n", pi);
   const hole = unreviewedAt(DIR, "acc.md");
   assert.equal(decide(DIR, "acc.md", hole.from, hole.to, 7, true), true);
-  const { spans } = replay(readHistory(DIR, "acc.md"));
-  assert.deepEqual(spans.map((s) => [s.accepted ?? false, s.author]), [[true, "pi"]]);
+  assert.deepEqual(unreviewed(readHistory(DIR, "acc.md")).holes, [], "결정하고 나면 결정할 것이 없다");
+  assert.deepEqual(replay(readHistory(DIR, "acc.md")).spans.map((s) => s.author), ["pi"], "누가 썼는지는 그대로다");
   assert.equal(decide(DIR, "acc.md", 5, 5, 8, true), false);
   assert.equal(readHistory(DIR, "acc.md").length, 2, "빈 범위는 남기지 않는다");
 });
@@ -360,22 +292,25 @@ test("결정할 것을 통째로 담지 못하는 자리는 기록되지 않는�
   assert.equal(decide(DIR, "off.md", hole.from + 2, hole.to - 2, 32, true), false, "일부만");
   assert.equal(decide(DIR, "off.md", 0, 0, 33, true), false, "아무것도 없는 자리");
   assert.equal(lines(), was, "거절된 결정은 장부에 줄을 남기지 않는다");
-  assert.equal(replay(readHistory(DIR, "off.md")).spans.some((s) => s.accepted), false, "엉뚱한 구간을 확인됨으로 표시하지도 않는다");
+  assert.equal(unreviewed(readHistory(DIR, "off.md")).holes.length, 1, "엉뚱한 자리를 결정된 것으로 치지도 않는다");
   // 청크는 홀보다 넓을 수 있다 — 담고 있으면 그것은 결정이다.
   assert.equal(decide(DIR, "off.md", hole.from, hole.to + 1, 34, true), true, "더 넓은 것은 담고 있으므로 결정이다");
 });
 
-test("수락을 되무르면 구간은 결정 전으로 정확히 돌아간다", () => {
+test("수락을 되무르면 결정 전으로 정확히 돌아간다", () => {
   record(DIR, "undo.md", "", "hello world\n", me);
   record(DIR, "undo.md", "hello world\n", "goodbye world\n", pi);
-  const before = replay(readHistory(DIR, "undo.md")).spans;
-  assert.equal(before[0].removed, "hello", "되돌리면 hello가 된다");
+  const spans = replay(readHistory(DIR, "undo.md")).spans;
+  assert.equal(spans[0].removed, "hello", "되돌리면 hello가 된다");
+  const before = unreviewed(readHistory(DIR, "undo.md"));
+  assert.equal(before.holes.length, 1);
 
-  decide(DIR, "undo.md", before[0].from, before[0].to, 10, true);
-  assert.equal(replay(readHistory(DIR, "undo.md")).spans[0].accepted, true);
+  decide(DIR, "undo.md", before.holes[0].from, before.holes[0].to, 10, true);
+  assert.deepEqual(unreviewed(readHistory(DIR, "undo.md")).holes, []);
 
-  decide(DIR, "undo.md", before[0].from, before[0].to, 11, false);
-  assert.deepEqual(replay(readHistory(DIR, "undo.md")).spans, before, "구간이 통째였으니 뺀 글까지 그대로다");
+  decide(DIR, "undo.md", before.holes[0].from, before.holes[0].to, 11, false);
+  assert.deepEqual(unreviewed(readHistory(DIR, "undo.md")), before, "결정할 것도, 되돌릴 글도 그대로다");
+  assert.deepEqual(replay(readHistory(DIR, "undo.md")).spans, spans, "결정은 구간을 건드리지 않는다");
 });
 
 test("폭 없는 결정은 그 자리에 삭제가 있을 때만 남는다", () => {
@@ -383,10 +318,11 @@ test("폭 없는 결정은 그 자리에 삭제가 있을 때만 남는다", () 
   decide(DIR, "gap.md", 4, 4, 20, true);
   assert.equal(readHistory(DIR, "gap.md").length, 1, "지운 것이 없는 자리의 결정은 줄이 되지 않는다");
   record(DIR, "gap.md", "one two three", "one three", pi);
-  const at = replay(readHistory(DIR, "gap.md")).removals[0].pos;
-  decide(DIR, "gap.md", at, at, 21, true);
+  const seam = unreviewedAt(DIR, "gap.md");
+  assert.equal(seam.from, seam.to, "지우기만 한 자리는 폭이 없다");
+  decide(DIR, "gap.md", seam.from, seam.to, 21, true);
   assert.equal(readHistory(DIR, "gap.md").length, 3);
-  assert.equal(replay(readHistory(DIR, "gap.md")).removals[0].accepted, true);
+  assert.deepEqual(unreviewed(readHistory(DIR, "gap.md")).holes, []);
 });
 
 test("결정은 지워지지 않고 반대 줄로 무른다 — 로그는 늘기만 한다", () => {
@@ -396,14 +332,14 @@ test("결정은 지워지지 않고 반대 줄로 무른다 — 로그는 늘기
   decide(DIR, "ledger.md", at.from, at.to, 13, false);
   const log = readHistory(DIR, "ledger.md");
   assert.deepEqual(log.slice(-2).map((c) => c.kept), [true, false]);
-  assert.equal(replay(log).spans.some((s) => s.accepted), false, "마지막 말이 이긴다");
+  assert.equal(unreviewed(log).holes.length, 1, "마지막 말이 이긴다");
 });
 
 test("kept가 없는 옛 줄은 수락으로 읽는다", () => {
   record(DIR, "old.md", "", "one two three", pi);
   // A log written before a decision could be taken back.
-  appendHistory(DIR, "old.md", [{ author: "me", at: 14, from: 4, to: 7, inserted: "two", removed: "two" }]);
-  assert.equal(replay(readHistory(DIR, "old.md")).spans.some((s) => s.accepted), true);
+  appendHistory(DIR, "old.md", [{ author: "me", at: 14, from: 0, to: 13, inserted: "one two three", removed: "one two three" }]);
+  assert.deepEqual(unreviewed(readHistory(DIR, "old.md")).holes, []);
 });
 
 test("같은 노트에 같은 것을 다시 기록해도 로그는 늘지 않는다", () => {
