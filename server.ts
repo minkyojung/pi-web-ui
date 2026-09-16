@@ -35,6 +35,7 @@ import { FileIndex } from "./fileIndex.ts";
 import { startLogging } from "./log.ts";
 import { deleteNote, shellTrash } from "./trash.ts";
 import { noteTools } from "./noteEdit.ts";
+import { claimAppDir } from "./appDir.ts";
 import { decide, type Change, historyOf, type Holed, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { type Claim, recorder } from "./recorder.ts";
@@ -411,6 +412,9 @@ function note(path: string): NoteMsg | null {
  * already says so keeps what it says (vault.ts).
  */
 const born = (text: string) => (readSettings().created ? withCreated(text, new Date()) : text);
+
+// The app's folder, and what git should keep of it — see appDir.ts.
+claimAppDir(CWD);
 
 /** Which notes the folder holds, so that a save does not read the folder again — see fileIndex.ts. */
 const notes = new FileIndex(CWD);

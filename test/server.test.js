@@ -173,6 +173,11 @@ it("새 노트는 목록의 소식이다", async () => {
   assert.equal(after.files.some((f) => f.path === born.path), false, "지운 것은 목록에서 빠진다");
 });
 
+it("앱 폴더는 뜨면서 git에 무엇을 남길지 적어 둔다", () => {
+  const lines = readFileSync(join(cwd, ".pi/.gitignore"), "utf8").split("\n").filter((l) => l && !l.startsWith("#"));
+  assert.deepEqual(lines, ["*.snapshot.json", "links.json", "trash/"]);
+});
+
 it("앱이 켜질 때 폴더에 있던 노트는 누구 것도 아니다 — 물어도 표시할 자리가 없다", async () => {
   // a.md는 서버가 뜨기 전부터 있었고, 아직 아무도 열지 않았다.
   clear();

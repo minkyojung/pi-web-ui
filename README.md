@@ -105,6 +105,12 @@ What the app keeps for itself goes in `.pi/` beside the notes:
 .pi/trash/notes/              deleted notes, where there is no shell to ask
 ```
 
+A folder of notes is often a git repository already, so `.pi/.gitignore` is
+written once, by the app, and says what git should make of the folder: the
+history and the chosen property types travel with the notes, since the notes
+cannot give them back; the snapshots, `links.json` and the trash do not, since
+they can be rebuilt or are this machine's. Edit it and it stays edited.
+
 pi is told in its system prompt that this is a folder of notes and that `.pi/`
 is the app's, and `guard.ts` refuses `edit`, `write` and `bash` that reach into
 it whatever the tool mode, because the instruction is the soft version and the
