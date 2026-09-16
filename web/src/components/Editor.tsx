@@ -53,7 +53,7 @@ const AUTOSAVE_MS = 600;
  */
 const theme = EditorView.theme({
 	// No height: the editor is as tall as its text, and the page (#note) scrolls.
-	"&": { backgroundColor: "var(--background)", color: "var(--foreground)", fontSize: "15px" },
+	"&": { backgroundColor: "var(--background)", color: "var(--foreground)", fontSize: "16px" },
 	// The margin around the text is the scroller's, and the column is the
 	// content element with no padding of its own: the selection is drawn as
 	// wide as .cm-content, so any padding on it is painted as selected past
