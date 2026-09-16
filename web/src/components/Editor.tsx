@@ -15,6 +15,7 @@ import { indentListItem, listBackspace, listEnter, outdentListItem } from "../fe
 import { listNumbers } from "../features/listNumbers";
 import { listIndent } from "../features/listIndent";
 import { authors, clearAuthors, paintAuthors, showAuthorsStore } from "../features/authors";
+import { forget as forgetMoves, observe as observeMoves, take as takeMoves } from "../features/moves";
 import { livePreview, toggleLivePreview, toggleTask } from "../features/livePreview";
 import { leaveTextUp } from "../features/pageMove";
 import { properties, propertiesField } from "../features/properties";
@@ -238,6 +239,8 @@ export function Editor({
 	// The version on disk the doc was read from, the save in flight, and whether
 	// the doc has moved past what is saved. Refs: they change on every keystroke.
 	const base = useRef<number | null>(null);
+	/** The log's length at `saved`: the record's own version of the text, which a moved paste names as where it came from (moves.ts). */
+	const lines = useRef<number | null>(null);
 	/** The server's text at `base`: what the doc was before typing, and what a change from the server is over. */
 	const saved = useRef("");
 	/** Typing since `base`, as one change set — what a change from the server has to fit around. */
@@ -286,8 +289,10 @@ export function Editor({
 		// the record takes the account where it adds up, and reads the change
 		// off the two texts where it does not — so nothing here has to be right
 		// for the save to land, only for the record to be exact.
-		const edits: Edit[] = [];
-		local.current.iterChanges((from, to, _fromB, _toB, inserted) => edits.push({ from, to, insert: inserted.toString() }));
+		const held: (Edit & { fromB: number; toB: number })[] = [];
+		local.current.iterChanges((from, to, fromB, toB, inserted) => held.push({ from, to, insert: inserted.toString(), fromB, toB }));
+		// A paste of words cut from somewhere says so on the edit that holds it.
+		const edits: Edit[] = takeMoves(held).map(({ fromB: _f, toB: _t, ...edit }) => edit);
 		// Only a save that went out is one to expect an echo of. One sent to a
 		// closed socket is dropped, and the doc stays dirty for the next chance.
 		if (!send({ type: "save_note", path: at.current, text, base: base.current, edits })) return false;
@@ -307,9 +312,10 @@ export function Editor({
 	};
 
 	/** The doc is the server's text `text` at version `modified`: nothing typed, nothing owed. */
-	const settle = (text: string, modified: number) => {
+	const settle = (text: string, modified: number, atLines: number) => {
 		saved.current = text;
 		base.current = modified;
+		lines.current = atLines;
 		local.current = ChangeSet.empty(text.length);
 		sinceSent.current = local.current;
 		sent.current = null;
@@ -420,7 +426,12 @@ export function Editor({
 				EditorView.updateListener.of((u) => {
 					if (held.current.length > 0 && !u.view.composing) releaseHeld();
 					if (u.state.field(propertiesField) !== u.startState.field(propertiesField)) setRead(u.state.field(propertiesField));
-					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) onChange(u.changes);
+					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) {
+						// A cut or a paste is seen here, while `local` is still the way
+						// from the saved text to the one this update started from.
+						observeMoves(u, { path: at.current, lines: lines.current, toBase: local.current.invertedDesc });
+						onChange(u.changes);
+					}
 					// Straight to the store rather than through state of this
 					// component's: the strip is the only thing that wants these,
 					// and a render of the editor for every keystroke would take
@@ -460,6 +471,7 @@ export function Editor({
 			unregister();
 			// Nothing is chosen in a note that is not open.
 			chosenStore.set(null);
+			forgetMoves();
 			v.destroy();
 			view.current = null;
 		};
@@ -514,13 +526,14 @@ export function Editor({
 		switch (decision.kind) {
 			case "saved":
 				if (!decision.dirty) {
-					settle(note.text, note.modified);
+					settle(note.text, note.modified, note.lines);
 					v.dispatch({ effects: diffFor(note.original ?? null) });
 					askAgain();
 				} else {
 					// The echo of the save; what was typed since is still owed.
 					saved.current = note.text;
 					base.current = note.modified;
+					lines.current = note.lines;
 					local.current = sinceSent.current;
 					sent.current = null;
 					dirty.current = !local.current.empty;
@@ -530,7 +543,7 @@ export function Editor({
 				}
 				return;
 			case "same":
-				settle(note.text, note.modified);
+				settle(note.text, note.modified, note.lines);
 				v.dispatch({ effects: diffFor(note.original ?? null) });
 				askAgain();
 				return;
@@ -548,7 +561,8 @@ export function Editor({
 					effects: diffFor(note.original ?? null),
 				});
 				if (back) scrollBack(was.current!, v, page.current);
-				settle(note.text, note.modified);
+				forgetMoves();
+				settle(note.text, note.modified, note.lines);
 				askAgain();
 				if (landing.current) {
 					landOn(v, landing.current);
@@ -625,6 +639,7 @@ export function Editor({
 			// The echo of this editor's save, as the change it made.
 			saved.current = text;
 			base.current = changed.modified;
+			lines.current = changed.lines;
 			local.current = sinceSent.current;
 			sent.current = null;
 			dirty.current = !local.current.empty;
@@ -635,7 +650,7 @@ export function Editor({
 		}
 		if (!dirty.current) {
 			v.dispatch({ changes: theirs, annotations: serverChange, effects: diffFor(changed.original ?? null) });
-			settle(text, changed.modified);
+			settle(text, changed.modified, changed.lines);
 			askAgain();
 			return;
 		}
@@ -648,6 +663,7 @@ export function Editor({
 		v.dispatch({ changes: fit.theirs, annotations: serverChange, effects: diffFor(changed.original ?? null) });
 		saved.current = text;
 		base.current = changed.modified;
+		lines.current = changed.lines;
 		local.current = fit.ours;
 		sinceSent.current = fit.ours;
 		if (sent.current !== null) {
@@ -734,7 +750,10 @@ export function Editor({
 	/** Put what is on screen over whatever is there — the version the refusal named, or none if the note is gone. */
 	const overwrite = () => {
 		if (status === "gone") base.current = null;
-		else if (conflict?.path === path) base.current = conflict.modified;
+		else if (conflict?.path === path) {
+			base.current = conflict.modified;
+			lines.current = null;
+		}
 		else if (note?.path === path) base.current = note.modified;
 		else return reload(); // No version to write over is known here; the disk's answer will say.
 		dirty.current = true;

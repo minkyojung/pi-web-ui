@@ -171,6 +171,20 @@ on every account and the only way to know a write from outside; it is no longer
 what the editor's own words are known by. Offsets are UTF-16 code units, which
 is what both JavaScript strings and CodeMirror count in.
 
+One thing that account can say which no diff can: where words came from. A
+paragraph cut and pasted is, to a diff, a paragraph deleted and another
+written, and the one who pasted it becomes its author. The editor saw the cut
+(`moves.ts`) — it is a transaction it can name, as a paste is — so it remembers
+the words and where they stood in the record, and sends a paste of exactly
+those words with that place on it. The record replays the note's log to the
+length it had then, before the cut took the words out, and lays the authors it
+finds over the pasted words; they ride the line as theirs, and `replay` gives
+them back. Nothing is read from the clipboard and nothing is matched by
+resemblance: words from another app are new to the note and the person's,
+which is right. Moving pi's undecided words is the person handling them — where
+they were reads as it did before pi, where they are is where the person put
+them — so nothing is left to decide, and who wrote them still says pi.
+
 There are three authors, and the whole design is in keeping them apart:
 
 | | |

@@ -1053,6 +1053,31 @@ check("the note's menu says who wrote what, and the marks ride the words under t
 	assert.equal(await app.evaluate("document.querySelector('#editor .cm-line').textContent.startsWith('X ')"), true);
 	assert.equal(await app.evaluate("!!document.querySelector('#editor .cm-by-pi, #editor .cm-by-outside')?.textContent.includes('X')"), false, "what was typed is nobody else's");
 
+	// Cut pi's words and paste them at the very front: to a diff of two texts
+	// that is pi's words gone and the person's written, and the underline
+	// would go with them. The editor saw the cut, so they stay pi's where
+	// they land. Done as the editor's own cut and paste transactions — what a
+	// ⌘X and a ⌘V come to inside it — rather than through the machine's
+	// clipboard, which a check has no business writing to.
+	await until("saved before the move", async () => (await editorStatus(app)) === "saved");
+	await app.evaluate(`(() => {
+		const v = document.querySelector('#editor .cm-content').cmTile.root.view;
+		const text = v.state.doc.toString();
+		const from = text.indexOf("pi's"), to = from + 4;
+		v.dispatch({ changes: { from, to, insert: "" }, selection: { anchor: from }, userEvent: "delete.cut" });
+		v.dispatch({ changes: { from: 0, to: 0, insert: "pi's" }, selection: { anchor: 4 }, userEvent: "input.paste" });
+	})()`);
+	await until("saved after the move", async () => (await editorStatus(app)) === "saved");
+	assert.ok((await editorText(app)).startsWith("pi's"), "the words moved to the front");
+	// Two lines for one save, in the order of the text: the paste at the front, then the cut behind it.
+	const tail = readFileSync(join(cwd, ".pi/history/whose.md.jsonl"), "utf8").trim().split("\n").slice(-2).map((l) => JSON.parse(l));
+	const pasted = tail.find((c) => c.inserted === "pi's");
+	assert.ok(pasted && Array.isArray(pasted.spans) && pasted.spans[0].author === "pi", `the record says the moved words are pi's: ${JSON.stringify(tail)}`);
+	await until("pi's words still marked, at the front", async () => {
+		const runs = await app.evaluate("[...document.querySelectorAll('#editor .cm-by-pi')].map((el) => el.textContent)");
+		return runs.length > 0 && runs.join("") === "pi's" && (await app.evaluate("document.querySelector('#editor .cm-line').textContent.startsWith(\"pi's\")"));
+	});
+
 	// Off again, and the menu with it. This is a view of the window rather than
 	// of the note, so leaving it on would leave every check after this one
 	// asking the same question of whatever note it opens.
