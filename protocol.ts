@@ -15,12 +15,12 @@ import type { Suggestions } from "./properties.ts";
 import type { PropertyType, Registry } from "./propertyTypes.ts";
 import type { Ask, AskOutcome } from "./ask";
 import type { BranchPoint } from "./branches";
-import type { Author, Change } from "./history";
+import type { Author, Change, Edit } from "./history";
 import type { NoteFile } from "./vault";
 import type { Backlink, Tagged } from "./linkIndex";
 import type { SearchHit } from "./search";
 
-export type { Ask, AskOutcome, Author, Backlink, BranchPoint, Change, NoteFile, SearchHit, Tagged };
+export type { Ask, AskOutcome, Author, Backlink, BranchPoint, Change, Edit, NoteFile, SearchHit, Tagged };
 
 // ---------------------------------------------------------------------------
 // Browser → server
@@ -66,9 +66,13 @@ export type ClientMsg =
 	/**
 	 * A note's whole text, on top of the version it was read at — `base` is
 	 * that version's `modified`, or null for a note that did not exist yet.
-	 * Answered with `note` to every tab, or `note_conflict` to this one.
+	 * `edits` is what the editor did to that version to get here, in its
+	 * coordinates, side by side; the record takes them as they are when they
+	 * add up to `text`, and reads the change off the two texts when they do
+	 * not (fromEdits in history.ts). Answered with `note` to every tab, or
+	 * `note_conflict` to this one.
 	 */
-	| { type: "save_note"; path: string; text: string; base: number | null }
+	| { type: "save_note"; path: string; text: string; base: number | null; edits?: Edit[] }
 	/**
 	 * What the person decided about the words at [from, to): `kept` absent or
 	 * true for fine as they are, false for back to being looked at, which is

@@ -159,12 +159,17 @@ string gives the text back, which is how a note changed behind the app's back is
 noticed — what the log says the note is and what the disk says differ, and the
 difference is logged too.
 
-Changes are word-level, which is the grain the screen draws at and keeps a
-reworded sentence to one line instead of a dozen. Offsets are UTF-16 code units,
-which is what both JavaScript strings and CodeMirror count in. Every writer is
-recorded the same way, from the text before and the text after: the editor could
-say exactly what it changed and pi's tools could too, but one path is easier to
-trust than three, and a diff of a note is cheap.
+The editor says exactly what it changed — the change set it already keeps for
+the other tabs goes with every save — and the record takes it as said, on one
+condition: applied to the text the editor started from, it must give the text
+it ended with, to the character. An account that does not add up is set aside
+and the change is read off the two texts instead, word-level, which is the
+grain the screen draws at and keeps a reworded sentence to one line. That
+reading is also how anything that did not come through the editor is recorded.
+So the one path of reading a change off two texts is still here, as the check
+on every account and the only way to know a write from outside; it is no longer
+what the editor's own words are known by. Offsets are UTF-16 code units, which
+is what both JavaScript strings and CodeMirror count in.
 
 There are three authors, and the whole design is in keeping them apart:
 

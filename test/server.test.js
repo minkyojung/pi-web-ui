@@ -182,6 +182,23 @@ it("새 노트는 목록의 소식이다", async () => {
   assert.equal(after.files.some((f) => f.path === born.path), false, "지운 것은 목록에서 빠진다");
 });
 
+it("저장은 편집기가 한 말대로 적힌다 — 글자 하나를 고치면 글자 하나", async () => {
+  writeFileSync(join(cwd, "exact.md"), "hello world\n");
+  clear();
+  send({ type: "open_note", path: "exact.md" });
+  const opened = await want("note", (m) => m.path === "exact.md");
+  clear();
+  send({ type: "save_note", path: "exact.md", text: "hello World\n", base: opened.modified, edits: [{ from: 6, to: 7, insert: "W" }] });
+  const changed = await want("note_changed", (m) => m.path === "exact.md");
+  assert.deepEqual(changed.changes.map((c) => [c.from, c.to, c.inserted, c.removed]), [[6, 7, "W", "w"]]);
+  assert.deepEqual(history("exact.md").at(-1).inserted, "W");
+  // An account that does not add up is set aside, and the change is read off the two texts.
+  clear();
+  send({ type: "save_note", path: "exact.md", text: "hello World!\n", base: changed.modified, edits: [{ from: 0, to: 0, insert: "wrong" }] });
+  const again = await want("note_changed", (m) => m.path === "exact.md");
+  assert.deepEqual(again.changes.map((c) => [c.inserted, c.removed]), [["!", ""]]);
+});
+
 it("앱 폴더는 뜨면서 git에 무엇을 남길지 적어 둔다", () => {
   const lines = readFileSync(join(cwd, ".pi/.gitignore"), "utf8").split("\n").filter((l) => l && !l.startsWith("#"));
   assert.deepEqual(lines, ["*.snapshot.json", "links.json", "trash/"]);

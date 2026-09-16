@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { apply, appendHistory, changesBetween, decide, historyPath, mapThrough, moveHistory, readHistory, reclaimLog, reconcile, record, replay, trashLog, trashHistoryPath, wroteIn } from "../history.ts";
+import { apply, appendHistory, changesBetween, decide, historyPath, mapThrough, moveHistory, readHistory, reclaimLog, reconcile, record, replay, trashLog, trashHistoryPath, wroteIn, fromEdits } from "../history.ts";
 
 const me = { author: "me", at: 1 };
 const pi = { author: "pi", at: 2, sessionId: "s1", entryId: "e1" };
@@ -109,6 +109,49 @@ test("구간 하나는 언제나 글자 하나 이상이고 서로 겹치지 않
     last = s.to;
   }
   assert.equal(last, text.length, "구간들이 본문 전체를 덮는다");
+});
+
+// --- the editor's own account of what it did ---
+
+test("편집기가 말한 대로 적힌다 — 나란한 좌표가 차례 좌표가 되고, 글자 하나면 글자 하나다", () => {
+  const before = "one two three";
+  // Two edits side by side in `before`: a letter inside "one", and "three" replaced.
+  const edits = [{ from: 1, to: 2, insert: "N" }, { from: 8, to: 13, insert: "3" }];
+  const after = "oNe two 3";
+  const changes = fromEdits(before, edits, after, me);
+  assert.deepEqual(changes, [
+    { ...me, from: 1, to: 2, inserted: "N", removed: "n" },
+    { ...me, from: 8, to: 13, inserted: "3", removed: "three" },
+  ]);
+  const { spans, text } = replay([...changesBetween("", before, pi), ...changes]);
+  assert.equal(text, after);
+  assert.deepEqual(spans.map((s) => [s.author, text.slice(s.from, s.to)]), [["pi", "o"], ["me", "N"], ["pi", "e two "], ["me", "3"]], "고친 글자만 내 것 — 단어 통째가 아니다");
+});
+
+test("앞의 편집이 뒤의 자리를 옮긴다", () => {
+  const before = "ab";
+  const changes = fromEdits(before, [{ from: 0, to: 0, insert: "XXX" }, { from: 1, to: 2, insert: "" }], "XXXa", me);
+  assert.deepEqual(changes.map((c) => [c.from, c.to, c.inserted]), [[0, 0, "XXX"], [4, 5, ""]]);
+});
+
+test("아무것도 안 바꾼 편집은 줄이 되지 않는다 — 줄이 되면 결정으로 읽히므로", () => {
+  assert.deepEqual(fromEdits("abc", [{ from: 1, to: 2, insert: "b" }], "abc", me), []);
+});
+
+test("말이 맞지 않으면 믿지 않는다 — 결과가 다르거나, 자리가 겹치거나, 글 밖이거나", () => {
+  assert.equal(fromEdits("abc", [{ from: 0, to: 1, insert: "X" }], "abc", me), null, "결과가 다르다");
+  assert.equal(fromEdits("abc", [{ from: 0, to: 2, insert: "X" }, { from: 1, to: 3, insert: "Y" }], "XY", me), null, "겹친다");
+  assert.equal(fromEdits("abc", [{ from: 2, to: 3, insert: "X" }, { from: 0, to: 1, insert: "Y" }], "YbX", me), null, "순서가 거꾸로다");
+  assert.equal(fromEdits("abc", [{ from: 0, to: 9, insert: "X" }], "X", me), null, "글 밖이다");
+  assert.equal(fromEdits("abc", [{ from: 0, to: 1, insert: 5 }], "5bc", me), null, "모양이 아니다");
+});
+
+test("record는 편집기의 말이 맞으면 그대로, 아니면 두 글을 읽어 적는다", () => {
+  record(DIR, "said.md", "", "one two\n", me);
+  record(DIR, "said.md", "one two\n", "oNe two\n", { ...me, at: 3 }, [{ from: 1, to: 2, insert: "N" }]);
+  assert.deepEqual(readHistory(DIR, "said.md").at(-1), { ...me, at: 3, from: 1, to: 2, inserted: "N", removed: "n" }, "글자 하나");
+  record(DIR, "said.md", "oNe two\n", "oNe TWO\n", { ...me, at: 4 }, [{ from: 0, to: 0, insert: "nonsense" }]);
+  assert.deepEqual(readHistory(DIR, "said.md").at(-1), { ...me, at: 4, from: 4, to: 7, inserted: "TWO", removed: "two" }, "맞지 않으니 단어 단위로 읽었다");
 });
 
 test("한 런에 pi가 이 노트에 썼는지는 세션과 시각으로 안다 — 사람의 글도, 결정도 아니다", () => {

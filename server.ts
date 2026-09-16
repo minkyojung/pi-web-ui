@@ -1374,7 +1374,8 @@ wss.on("connection", async (ws) => {
 						else reply({ type: "error", message: `cannot save ${msg.path}` });
 						return;
 					}
-					const changes = record(CWD, msg.path, had?.text ?? "", msg.text, { author: "me", at: Date.now() });
+					const edits = Array.isArray(msg.edits) ? msg.edits : undefined;
+					const changes = record(CWD, msg.path, had?.text ?? "", msg.text, { author: "me", at: Date.now() }, edits);
 					wrote(msg.path, had?.modified ?? null, changes);
 					break;
 				}

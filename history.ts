@@ -604,12 +604,57 @@ export function decide(root: string, path: string, from: number, to: number, at:
 	return true;
 }
 
-/** Log a write that passed through the app, from what it replaced. */
-export function record(root: string, path: string, before: string, after: string, origin: Origin): Change[] {
+/**
+ * One edit as the editor made it: [from, to) of the text it started from
+ * replaced by `insert`. Side by side, all in that one text's coordinates —
+ * the shape CodeMirror's ChangeSet hands out — where a log line is in the
+ * text as it stands when that line is applied.
+ */
+export type Edit = { from: number; to: number; insert: string };
+
+/**
+ * The editor's own account of what it did, as log lines — or null when the
+ * account does not add up.
+ *
+ * The editor knows exactly what it changed, and says so; this is where it is
+ * believed, and the one condition on believing it: applying the edits to the
+ * text it started from must give the text it ended with, to the character.
+ * An account that does not — a tab out of step, an older client — is not
+ * argued with but set aside, and the caller falls back to reading the change
+ * off the two texts. So the record is exact when it can be and never wrong
+ * when it cannot.
+ *
+ * Side-by-side edits become in-order lines by walking them in order: once the
+ * earlier ones are in, the next one's place has moved by what they added and
+ * took, which is the sum kept in `shift`.
+ */
+export function fromEdits(before: string, edits: Edit[], after: string, origin: Origin): Change[] | null {
+	const out: Change[] = [];
+	let shift = 0;
+	let last = 0;
+	for (const e of edits) {
+		if (!(Number.isInteger(e.from) && Number.isInteger(e.to) && typeof e.insert === "string")) return null;
+		if (e.from < last || e.to < e.from || e.to > before.length) return null;
+		const removed = before.slice(e.from, e.to);
+		if (e.insert === removed) continue; // Nothing done; a line of it would read as a decision (isTouch).
+		out.push({ ...origin, from: e.from + shift, to: e.to + shift, inserted: e.insert, removed });
+		shift += e.insert.length - removed.length;
+		last = e.to;
+	}
+	let text = before;
+	for (const c of out) text = apply(text, c);
+	return text === after ? out : null;
+}
+
+/**
+ * Log a write that passed through the app, from what it replaced — and, when
+ * the writer said exactly what it changed, as it said (fromEdits).
+ */
+export function record(root: string, path: string, before: string, after: string, origin: Origin, edits?: Edit[]): Change[] {
 	// `before` is what the writer had; the disk may have moved past it. Settle
 	// that first so this change is measured from the real text.
 	reconcile(root, path, before, origin.at);
-	const changes = changesBetween(before, after, origin);
+	const changes = (edits && fromEdits(before, edits, after, origin)) ?? changesBetween(before, after, origin);
 	appendHistory(root, path, changes);
 	return changes;
 }

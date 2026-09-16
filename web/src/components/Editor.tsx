@@ -30,7 +30,7 @@ import { bodyStart, type Properties as PropertiesRead } from "../../../propertie
 import { tagTag } from "../../../tag.ts";
 import type { Place } from "../../../links.ts";
 import type { Left } from "../nav";
-import type { Backlink, Tagged } from "../types";
+import type { Backlink, Edit, Tagged } from "../types";
 import { authorsStore, backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, taggedStore } from "../serverState";
 import { inFrontStore, say as sayInFront } from "../inFront";
 import { titleOf } from "../noteSync";
@@ -282,9 +282,15 @@ export function Editor({
 		if (timer.current) clearTimeout(timer.current);
 		timer.current = null;
 		const text = v.state.doc.toString();
+		// What was done to the text at `base` to get here, beside the result:
+		// the record takes the account where it adds up, and reads the change
+		// off the two texts where it does not — so nothing here has to be right
+		// for the save to land, only for the record to be exact.
+		const edits: Edit[] = [];
+		local.current.iterChanges((from, to, _fromB, _toB, inserted) => edits.push({ from, to, insert: inserted.toString() }));
 		// Only a save that went out is one to expect an echo of. One sent to a
 		// closed socket is dropped, and the doc stays dirty for the next chance.
-		if (!send({ type: "save_note", path: at.current, text, base: base.current })) return false;
+		if (!send({ type: "save_note", path: at.current, text, base: base.current, edits })) return false;
 		sent.current = text;
 		sinceSent.current = ChangeSet.empty(text.length);
 		return true;
