@@ -31,6 +31,7 @@ import { invertedEffects } from "@codemirror/commands";
 import { ChangeSet, Compartment, EditorState, type Extension, StateEffect, Text } from "@codemirror/state";
 import { type Command, EditorView } from "@codemirror/view";
 import { buttonVariants } from "../components/ui/button";
+import * as colour from "../changed";
 import { fromServer } from "./origin";
 import { flushSaves } from "../saves";
 import { send } from "../ws";
@@ -225,19 +226,19 @@ const keepUp = EditorState.transactionExtender.of((tr) => {
  * green wherever it is drawn.
  */
 const style = EditorView.baseTheme({
-	"&.cm-reviewing.cm-merge-b .cm-changedText": { background: "rgba(80, 200, 120, 0.28)", borderRadius: "2px" },
+	"&.cm-reviewing.cm-merge-b .cm-changedText": { background: colour.added, borderRadius: "2px" },
 	"&.cm-reviewing.cm-merge-b .cm-deletedText": {
-		background: "color-mix(in oklab, var(--destructive) 30%, transparent)",
+		background: colour.removed,
 		textDecoration: "line-through",
-		textDecorationColor: "var(--destructive)",
+		textDecorationColor: colour.removedRule,
 		borderRadius: "2px",
 	},
-	"&.cm-reviewing.cm-merge-b .cm-changedLine, &.cm-reviewing .cm-inlineChangedLine": { backgroundColor: "rgba(80, 200, 120, 0.07)" },
-	"&.cm-reviewing .cm-deletedChunk": { backgroundColor: "color-mix(in oklab, var(--destructive) 10%, transparent)" },
+	"&.cm-reviewing.cm-merge-b .cm-changedLine, &.cm-reviewing .cm-inlineChangedLine": { backgroundColor: colour.addedLine },
+	"&.cm-reviewing .cm-deletedChunk": { backgroundColor: colour.removedLine },
 	"&.cm-reviewing .cm-deletedChunk .cm-deletedText": {
-		background: "color-mix(in oklab, var(--destructive) 30%, transparent)",
+		background: colour.removed,
 		textDecoration: "line-through",
-		textDecorationColor: "var(--destructive)",
+		textDecorationColor: colour.removedRule,
 	},
 	".cm-chunkButtons": { gap: "0.25rem" },
 });

@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { diffWordsWithSpace } from "diff";
 
+import * as colour from "../changed";
 import { askedAtStore, putBack } from "../features/authors";
 import { configStore, sessionsStore, whyStore } from "../serverState";
 import { send } from "../ws";
@@ -147,30 +148,55 @@ function ago(at: number, now = Date.now()): string {
 }
 
 /**
- * What the words were and what they are, as a diff of the two.
+ * What the words were and what they are: the two, one over the other.
  *
- * Word level, as the note's own diff is: a reworded sentence shown as a whole
- * line struck through and a whole line added says less than the sentence does.
- * Drawn on the card's own surface rather than in a box — a box would make it a
- * second thing to look at, and it is a line of the card like the others.
+ * The shape a diff is read in everywhere — the old above the new, a − and a +
+ * down the side — with the difference marked inside each row rather than by
+ * the rows themselves. Line by line is how a diff of code is drawn, and this
+ * is not code: a prose line is where the window happened to wrap, so a
+ * sentence with one word changed would come out as a paragraph taken away and
+ * a paragraph put back, which says less than the sentence does. The note's own
+ * diff made the same choice for the same reason, and wears the same colours,
+ * which come from one place so the two cannot drift apart (changed.ts).
+ *
+ * Trimmed at the ends, since what is being compared is words and a trailing
+ * newline drawn as an empty row is a line about nothing.
  */
 function Changed({ from, to }: { from: string; to: string }) {
+	const parts = diffWordsWithSpace(from.trim(), to.trim());
 	return (
-		<p className="max-h-28 overflow-auto leading-relaxed whitespace-pre-wrap">
-			{diffWordsWithSpace(from, to).map((part, i) => (
-				<span
-					key={i}
-					className={
-						part.added
-							? "bg-[rgba(80,200,120,0.28)] rounded-[2px]"
-							: part.removed
-								? "bg-[color-mix(in_oklab,var(--destructive)_30%,transparent)] rounded-[2px] line-through decoration-[var(--destructive)]"
-								: undefined
-					}
-				>
-					{part.value}
-				</span>
-			))}
-		</p>
+		<div className="flex max-h-32 flex-col gap-0.5 overflow-auto">
+			<Row sign="−" wash={colour.removedLine}>
+				{parts
+					.filter((part) => !part.added)
+					.map((part, i) => (
+						<span
+							key={i}
+							style={part.removed ? { background: colour.removed, textDecoration: "line-through", textDecorationColor: colour.removedRule, borderRadius: "2px" } : undefined}
+						>
+							{part.value}
+						</span>
+					))}
+			</Row>
+			<Row sign="+" wash={colour.addedLine}>
+				{parts
+					.filter((part) => !part.removed)
+					.map((part, i) => (
+						<span key={i} style={part.added ? { background: colour.added, borderRadius: "2px" } : undefined}>
+							{part.value}
+						</span>
+					))}
+			</Row>
+		</div>
+	);
+}
+
+/** One side of it: the mark down the edge, and the words. */
+function Row({ sign, wash, children }: { sign: string; wash: string; children: React.ReactNode }) {
+	return (
+		<div className="flex gap-1.5 rounded-sm px-1 py-0.5 leading-relaxed" style={{ backgroundColor: wash }}>
+			<span className="shrink-0 select-none text-muted-foreground">{sign}</span>
+			<span className="min-w-0 whitespace-pre-wrap">{children}</span>
+		</div>
 	);
 }
