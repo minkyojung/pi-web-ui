@@ -21,6 +21,7 @@ import {
 	SessionManager,
 	type AgentSessionEvent,
 	type CreateAgentSessionRuntimeFactory,
+	readStoredCredential,
 } from "@earendil-works/pi-coding-agent";
 import { itemsFromMessages, textOf } from "./conversation.js";
 import { modeToolNames } from "./toolModes.ts";
@@ -374,7 +375,14 @@ function providers(): ProvidersMsg {
 		type: "providers",
 		providers: modelRuntime
 			.getProviders()
-			.flatMap((p) => providerInfo(p, modelRuntime.getProviderAuthStatus(p.id), modelRuntime.isUsingOAuth(p.id)) ?? []),
+			.flatMap((p) => {
+				const status = modelRuntime.getProviderAuthStatus(p.id);
+				// pi's own read of its file, for the key's tail; only a key pi keeps
+				// has one to show, and pi says so with source "stored".
+				const kept = status.source === "stored" ? readStoredCredential(p.id) : undefined;
+				const key = kept?.type === "api_key" ? kept.key : undefined;
+				return providerInfo(p, status, modelRuntime.isUsingOAuth(p.id), key) ?? [];
+			}),
 	};
 }
 

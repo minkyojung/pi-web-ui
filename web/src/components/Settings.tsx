@@ -31,7 +31,7 @@ type Settings = {
   loadout: string[];
 };
 
-const SECTIONS = ["Appearance", "Agent", "Accounts", "Loadout", "Keys"] as const;
+const SECTIONS = ["Accounts", "Appearance", "Agent", "Loadout", "Keys"] as const;
 type Section = (typeof SECTIONS)[number];
 const isSection = (name: string): name is Section => (SECTIONS as readonly string[]).includes(name);
 
@@ -48,7 +48,7 @@ const isSection = (name: string): name is Section => (SECTIONS as readonly strin
  */
 export function Settings() {
   const [open, setOpen] = useState(false);
-  const [section, setSection] = useState<Section>("Appearance");
+  const [section, setSection] = useState<Section>("Accounts");
 
   // ⌘, is where every mac app keeps this. The button is a small grey icon in a
   // corner, which is the right size for how often it is needed and the wrong

@@ -248,7 +248,12 @@ export interface ProviderInfo {
 	 * file it was found in — so a key set outside the app is seen not to be
 	 * something the app can sign out of.
 	 */
-	signedIn: { method: "oauth" | "api_key"; source: string } | null;
+	signedIn: {
+		method: "oauth" | "api_key";
+		source: string;
+		/** The last characters of a key pi keeps, so the person can tell which one it is; never the key. */
+		keyTail?: string;
+	} | null;
 }
 
 /**

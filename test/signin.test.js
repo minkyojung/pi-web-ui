@@ -105,7 +105,7 @@ test("API 키로 로그인: pi가 키를 묻고, 답하면 저장되고, 제공�
   const auth = JSON.parse(readFileSync(join(agentDir, "auth.json"), "utf8"));
   assert.equal(auth.openai.type, "api_key", "pi가 제 파일에 저장했다");
   const { providers } = await want("providers", (m) => m.providers.find((p) => p.id === "openai")?.signedIn);
-  assert.deepEqual(providers.find((p) => p.id === "openai").signedIn, { method: "api_key", source: "stored" });
+  assert.deepEqual(providers.find((p) => p.id === "openai").signedIn, { method: "api_key", source: "stored", keyTail: "-key" }, "어느 키인지 알 만큼만 보인다");
   const config = await want("config", (m) => m.model !== null);
   assert.match(config.model, /^openai\//, "모델 없던 세션이 그 제공자의 모델에 올랐다");
   assert.equal(config.modelsNotice, undefined, "빈 목록 안내는 사라졌다");

@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { ExternalLinkIcon } from "lucide-react";
+import { ExternalLinkIcon, KeyRoundIcon, UserRoundIcon } from "lucide-react";
 
 import { loginStore, providersStore, type LoginState } from "../serverState";
 import type { LoginEvent, LoginPrompt, ProviderInfo } from "../types";
@@ -66,44 +66,85 @@ export function Accounts() {
 	);
 }
 
+/**
+ * One provider. Two things can stand behind it, and they are drawn as two
+ * things: an account — signed in to, and out of — and a key, which is a
+ * string the person has and can be replaced or removed. A key pi found in the
+ * environment is shown by the variable it came from, and nothing here can be
+ * done to it. Signed out, the ways in are named for what they are.
+ */
 function Row({ provider, busy }: { provider: ProviderInfo; busy: boolean }) {
 	const { id, name, methods, signedIn } = provider;
-	// pi keeps what it was given here; a key it found in the environment is
-	// not its to forget, and Sign out would only seem to.
 	const stored = signedIn?.source === "stored";
-	return (
-		<li className="flex min-h-9 items-center gap-3 rounded-md border px-3 py-1.5">
-			<span className="min-w-0 flex-1 truncate text-sm">{name}</span>
-			{signedIn ? (
-				<Badge variant="secondary" className="text-[11px]">
-					{signedIn.method === "oauth" ? "Signed in" : stored ? "API key" : `Key from ${signedIn.source}`}
-				</Badge>
-			) : (
-				<Badge variant="outline" className="text-[11px] text-muted-foreground">
-					Not signed in
-				</Badge>
-			)}
-			<span className="flex shrink-0 gap-1">
-				{stored ? (
-					<Button type="button" variant="outline" size="sm" className="h-7 text-xs" disabled={busy} onClick={() => send({ type: "logout", provider: id })}>
-						Sign out
+	const login = (method: "oauth" | "api_key") => send({ type: "login", provider: id, method });
+	const logout = () => send({ type: "logout", provider: id });
+	const b = "h-7 text-xs";
+
+	let status: React.ReactNode;
+	let actions: React.ReactNode;
+	if (signedIn?.method === "oauth") {
+		status = (
+			<Badge variant="secondary" className="gap-1 text-[11px]">
+				<UserRoundIcon className="size-3" /> Account
+			</Badge>
+		);
+		actions = (
+			<Button type="button" variant="outline" size="sm" className={b} disabled={busy} onClick={logout}>
+				Sign out
+			</Button>
+		);
+	} else if (signedIn && stored) {
+		status = <Key tail={signedIn.keyTail} />;
+		actions = (
+			<>
+				<Button type="button" variant="outline" size="sm" className={b} disabled={busy} onClick={() => login("api_key")}>
+					Replace
+				</Button>
+				<Button type="button" variant="ghost" size="sm" className={`${b} text-muted-foreground`} disabled={busy} onClick={logout}>
+					Remove
+				</Button>
+			</>
+		);
+	} else if (signedIn) {
+		status = (
+			<Badge variant="outline" className="gap-1 font-mono text-[11px] text-muted-foreground" title="Set outside the app; pi reads it from the environment.">
+				<KeyRoundIcon className="size-3" /> {signedIn.source}
+			</Badge>
+		);
+		actions = null;
+	} else {
+		status = null;
+		actions = (
+			<>
+				{methods.includes("oauth") && (
+					<Button type="button" variant="outline" size="sm" className={`${b} gap-1.5`} disabled={busy} onClick={() => login("oauth")}>
+						<UserRoundIcon className="size-3" /> Sign in with account
 					</Button>
-				) : (
-					<>
-						{methods.includes("oauth") && (
-							<Button type="button" variant="outline" size="sm" className="h-7 text-xs" disabled={busy} onClick={() => send({ type: "login", provider: id, method: "oauth" })}>
-								Sign in
-							</Button>
-						)}
-						{methods.includes("api_key") && (
-							<Button type="button" variant="outline" size="sm" className="h-7 text-xs" disabled={busy} onClick={() => send({ type: "login", provider: id, method: "api_key" })}>
-								Use API key
-							</Button>
-						)}
-					</>
 				)}
-			</span>
+				{methods.includes("api_key") && (
+					<Button type="button" variant={methods.includes("oauth") ? "ghost" : "outline"} size="sm" className={`${b} gap-1.5`} disabled={busy} onClick={() => login("api_key")}>
+						<KeyRoundIcon className="size-3" /> Add API key
+					</Button>
+				)}
+			</>
+		);
+	}
+
+	return (
+		<li className="flex min-h-10 items-center gap-3 rounded-md border px-3 py-1.5">
+			<span className="min-w-0 flex-1 truncate text-sm">{name}</span>
+			{status}
+			<span className="flex shrink-0 gap-1">{actions}</span>
 		</li>
+	);
+}
+
+/** A key as it is shown: a key icon and its tail, in the monospace a key is read in. */
+function Key({ tail }: { tail?: string }) {
+	return (
+		<Badge variant="secondary" className="gap-1 font-mono text-[11px]">
+			<KeyRoundIcon className="size-3" /> {tail ? `…${tail}` : "API key"}
+		</Badge>
 	);
 }
 

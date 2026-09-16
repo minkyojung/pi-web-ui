@@ -26,7 +26,8 @@ test("제공자 한 줄: 로그인할 길이 oauth/api_key로 나뉘고, 물어�
   const keyOnly = { id: "openai", name: "OpenAI", auth: { apiKey: { login() {} } } };
   const ambient = { id: "bedrock", name: "Bedrock", auth: { apiKey: {} } };
   assert.deepEqual(providerInfo(both, { configured: false }, false), { id: "anthropic", name: "Anthropic", methods: ["oauth", "api_key"], signedIn: null });
-  assert.deepEqual(providerInfo(both, { configured: true, source: "stored" }, true).signedIn, { method: "oauth", source: "stored" });
+  assert.deepEqual(providerInfo(both, { configured: true, source: "stored" }, true, "sk-ant-oat-xyz").signedIn, { method: "oauth", source: "stored" }, "OAuth 토큰은 키가 아니니 꼬리가 없다");
+  assert.deepEqual(providerInfo(keyOnly, { configured: true, source: "stored" }, false, "sk-proj-abcdef9f2a").signedIn, { method: "api_key", source: "stored", keyTail: "9f2a" });
   assert.deepEqual(providerInfo(keyOnly, { configured: true, source: "environment", label: "OPENAI_API_KEY" }, false), {
     id: "openai", name: "OpenAI", methods: ["api_key"], signedIn: { method: "api_key", source: "OPENAI_API_KEY" },
   }, "환경변수로 들어온 키는 그 변수 이름으로 말한다");

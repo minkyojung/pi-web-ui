@@ -50,12 +50,16 @@ interface SignInStatus {
  * login) — and its status, whose label is the more specific word when there
  * is one.
  */
-export function providerInfo(provider: SignInAble, status: SignInStatus, usingOAuth: boolean): ProviderInfo | null {
+export function providerInfo(provider: SignInAble, status: SignInStatus, usingOAuth: boolean, storedKey?: string): ProviderInfo | null {
 	const methods: ProviderInfo["methods"] = [];
 	if (provider.auth.oauth) methods.push("oauth");
 	if (provider.auth.apiKey?.login) methods.push("api_key");
+	const method = usingOAuth ? ("oauth" as const) : ("api_key" as const);
+	// Enough of a key to know which one it is, and no more: four characters
+	// of a key several dozen long say nothing about the rest.
+	const keyTail = method === "api_key" && status.source === "stored" && storedKey ? storedKey.slice(-4) : undefined;
 	const signedIn = status.configured
-		? { method: usingOAuth ? ("oauth" as const) : ("api_key" as const), source: status.label ?? status.source ?? "stored" }
+		? { method, source: status.label ?? status.source ?? "stored", ...(keyTail ? { keyTail } : {}) }
 		: null;
 	if (!methods.length && !signedIn) return null;
 	return { id: provider.id, name: provider.name, methods, signedIn };
