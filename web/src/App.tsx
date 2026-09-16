@@ -260,6 +260,18 @@ export function App() {
 		if (panel.isCollapsed()) panel.resize(railWidth === null ? SIDEBAR : `${railWidth}px`);
 		else panel.collapse();
 	}, [railWidth]);
+	// How wide the strip came out. With the list folded it is as wide as the
+	// controls on it and no wider, which is not a number anything here knows —
+	// so it is measured rather than worked out, and the tabs stand off by it.
+	const strip = useRef<HTMLDivElement>(null);
+	const [stripWidth, setStripWidth] = useState<number | null>(null);
+	useEffect(() => {
+		const el = strip.current;
+		if (!el) return;
+		const watch = new ResizeObserver(() => setStripWidth(el.offsetWidth));
+		watch.observe(el);
+		return () => watch.disconnect();
+	}, []);
 
 	// Which notes were opened, newest first, for the quick-open list. Follows
 	// a rename and drops a delete, so it never names a note that is not there.
@@ -462,11 +474,15 @@ export function App() {
 			    to bring it back. So the strip is laid over the group instead, as wide
 			    as the column below it, and the column keeps a gap the height of it. */}
 			<div
+				ref={strip}
 				className="drag-region titlebar-inset absolute top-0 left-0 z-20 flex h-11 items-center gap-0.5 px-2"
-				style={{ width: railWidth ?? undefined }}
+				style={{ width: sidebarOpen ? (railWidth ?? undefined) : undefined }}
 			>
 				<SidebarToggle open={sidebarOpen} onToggle={toggleSidebar} />
-				<div className="flex-1" />
+				{/* The way back sits at the column's far edge while there is a column
+				    to have an edge. Folded, there is no edge to hold it out there and
+				    the gap would be a hole, so the controls close up together. */}
+				{sidebarOpen && <div className="flex-1" />}
 				<Steps back={back} forward={forward} canBack={canBack} canForward={canForward} />
 			</div>
 			<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1" defaultLayout={columns.defaultLayout} onLayoutChanged={columns.onLayoutChanged}>
@@ -504,7 +520,7 @@ export function App() {
 					    the mouse while the keyboard still reached it. */}
 					<div
 						className="drag-region flex h-11 shrink-0 items-center gap-0.5 px-2"
-						style={sidebarOpen ? undefined : { marginLeft: railWidth ?? undefined }}
+						style={sidebarOpen ? undefined : { marginLeft: stripWidth ?? railWidth ?? undefined }}
 					>
 						<NoteTabs
 							tabs={tabs}
