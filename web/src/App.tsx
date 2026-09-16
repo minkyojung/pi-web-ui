@@ -3,7 +3,7 @@ import { type PanelImperativeHandle, useDefaultLayout } from "react-resizable-pa
 
 import { Editor } from "./components/Editor";
 import { Pi } from "./components/Pi";
-import { PiToggle } from "./components/PanelHeader";
+import { PiToggle, SidebarToggle } from "./components/PanelHeader";
 import { Sidebar, Steps } from "./components/Sidebar";
 import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
@@ -185,6 +185,26 @@ noteRenamedStore.subscribe(() => {
 });
 
 /**
+ * The width of the strip along the top, kept the way the columns' own widths
+ * are. A folded column is none wide and the layout remembers it as none, so
+ * without this a window opened folded would have nothing to set the strip by
+ * and would gather the buttons at its edge.
+ */
+const RAIL = "strip-width";
+
+/** The list's share of the window before anyone has dragged it. */
+const SIDEBAR = "22%";
+
+function readRail(): number | null {
+	try {
+		const kept = Number(localStorage.getItem(RAIL));
+		return kept > 0 ? kept : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Three columns: the notes, the open one, and pi. pi is not an assistant off
  * to the side; it is the other person at the table, and the column is its
  * seat. It collapses with ⌘\ so it can be ignored.
@@ -211,6 +231,35 @@ export function App() {
 		const panel = pi.current;
 		if (panel) panel.isCollapsed() ? panel.expand() : panel.collapse();
 	}, []);
+	const sidebar = useRef<PanelImperativeHandle>(null);
+	const [sidebarOpen, setSidebarOpen] = useState(true);
+	// The strip along the top of the window is as wide as the column under it,
+	// so the way back stays at the edge it has always been at — including while
+	// that edge is being dragged. A folded column is none wide and would take
+	// the buttons to the window's edge with it, so the strip keeps the last
+	// width the column had rather than following it to nothing.
+	const [railWidth, setRailWidth] = useState<number | null>(readRail);
+	useEffect(() => {
+		if (railWidth === null) return;
+		try {
+			localStorage.setItem(RAIL, String(railWidth));
+		} catch {
+			// A window with storage blocked forgets, which is all that is lost.
+		}
+	}, [railWidth]);
+	// The width is said outright rather than left to expand(). The panel answers
+	// isCollapsed() on a comparison rounded to three places and acts on expand()
+	// only when its size is exactly the folded one, so a size that rounds to
+	// folded without being it reads as folded and refuses to open — the column
+	// would be shut for good. Saying the width asks nothing of that pair, and it
+	// restores the width the column had: expand() knows only the width it was
+	// folded from, which a window opened folded was never told.
+	const toggleSidebar = useCallback(() => {
+		const panel = sidebar.current;
+		if (!panel) return;
+		if (panel.isCollapsed()) panel.resize(railWidth === null ? SIDEBAR : `${railWidth}px`);
+		else panel.collapse();
+	}, [railWidth]);
 
 	// Which notes were opened, newest first, for the quick-open list. Follows
 	// a rename and drops a delete, so it never names a note that is not there.
@@ -323,6 +372,11 @@ export function App() {
 				e.preventDefault();
 				togglePi();
 			}
+			// The list of notes, as in VS Code, Notion and Obsidian.
+			if ((e.key === "b" || e.key === "B") && mod && !e.shiftKey) {
+				e.preventDefault();
+				toggleSidebar();
+			}
 			// ⌘W closes the tab in front, as in a browser; with none left, the
 			// window, as on a Mac. The shell's menu leaves the key to the page.
 			if ((e.key === "w" || e.key === "W") && mod && !e.shiftKey) {
@@ -356,7 +410,7 @@ export function App() {
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [online, open, tabs, closeTab, reopenTab, setOpen, togglePi, back, forward]);
+	}, [online, open, tabs, closeTab, reopenTab, setOpen, togglePi, toggleSidebar, back, forward]);
 
 	// The side buttons of a mouse, which are back and forward everywhere else.
 	// On mousedown, before the browser makes its own move with them.
@@ -377,7 +431,7 @@ export function App() {
 			<Search open={searching} onOpenChange={setSearching} onPick={setOpen} />
 			{/* Beside the words it is about, when one of them has been asked about. */}
 			<WhyCard />
-			<div className="flex h-screen flex-col">
+			<div className="relative flex h-screen flex-col">
 			{/* Two rows, not three and not one: the window's controls over the
 			    list, and the note tabs over everything else.
 
@@ -397,22 +451,61 @@ export function App() {
 
 			    No lines under either. A row is frame and the card below it has a
 			    rim of its own, so there is nothing for one to divide. */}
+			{/* The traffic lights sit in this one, which is why it holds the window's
+			    own controls and not the column's — and why the way back is at the far
+			    end of it: the near end is theirs, and three buttons are not to be
+			    crowded by a fourth. The fold is the exception, since it is the one
+			    control the traffic lights are a row of.
+
+			    Out here rather than in the column, because a button that folds the
+			    column away cannot be inside it: it would go with it and leave nothing
+			    to bring it back. So the strip is laid over the group instead, as wide
+			    as the column below it, and the column keeps a gap the height of it. */}
+			<div
+				className="drag-region titlebar-inset absolute top-0 left-0 z-20 flex h-11 items-center gap-0.5 px-2"
+				style={{ width: railWidth ?? undefined }}
+			>
+				<SidebarToggle open={sidebarOpen} onToggle={toggleSidebar} />
+				<div className="flex-1" />
+				<Steps back={back} forward={forward} canBack={canBack} canForward={canForward} />
+			</div>
 			<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1" defaultLayout={columns.defaultLayout} onLayoutChanged={columns.onLayoutChanged}>
-				<ResizablePanel id="sidebar" defaultSize="22%" minSize="16%" className="flex min-w-0 flex-col">
-					{/* The traffic lights sit in this one, which is why it holds the
-					    window's own controls and not the column's — and why the way
-					    back is at the far end of it: the near end is theirs, and three
-					    buttons are not to be crowded by a fourth. */}
-					<div className="drag-region titlebar-inset flex h-11 shrink-0 items-center justify-end gap-0.5 px-2">
-						<Steps back={back} forward={forward} canBack={canBack} canForward={canForward} />
-					</div>
+				<ResizablePanel
+					id="sidebar"
+					panelRef={sidebar}
+					defaultSize={SIDEBAR}
+					minSize="16%"
+					collapsible
+					collapsedSize="0%"
+					className="flex min-w-0 flex-col"
+					onResize={(size) => {
+						setSidebarOpen(!sidebar.current?.isCollapsed());
+						if (size.inPixels > 0) setRailWidth(size.inPixels);
+					}}
+				>
+					{/* The strip's own height, kept for it: it is laid over this column
+					    rather than in it, and the list begins below it. */}
+					<div className="h-11 shrink-0" />
 					<Boundary name="list of notes">
 						<Sidebar open={open} onOpen={setOpen} />
 					</Boundary>
 				</ResizablePanel>
 				<ResizableHandle />
 				<ResizablePanel id="content" className="flex min-w-0 flex-col">
-					<div className="drag-region flex h-11 shrink-0 items-center gap-0.5 px-2">
+					{/* With the list folded away this column begins at the window's
+					    edge, under the strip. The tabs start clear of it: the strip is
+					    the one thing that does not move when the fold does.
+
+					    A margin rather than padding, because this is a drag region and
+					    the shell reads those as boxes. Padding moves the tabs but leaves
+					    the box on the window's edge, over the strip — and a drag region
+					    later in the document fills in the holes an earlier one punched
+					    for its buttons, so the fold button under it stopped answering
+					    the mouse while the keyboard still reached it. */}
+					<div
+						className="drag-region flex h-11 shrink-0 items-center gap-0.5 px-2"
+						style={sidebarOpen ? undefined : { marginLeft: railWidth ?? undefined }}
+					>
 						<NoteTabs
 							tabs={tabs}
 							open={open}
@@ -433,7 +526,10 @@ export function App() {
 					    what has to stay off it is the writing, which carries its own
 					    inset already: 1.5rem in the editor's scroller, p-3 down pi's
 					    side. A second one out here only stacked on those. */}
-					<div className="min-h-0 flex-1 pr-2 pb-2">
+					{/* The left gap is the list's to give, and with it folded away there
+					    is nobody to give it: the card would sit on the window's own
+					    edge, where the other three sides keep eight pixels off it. */}
+					<div className={`min-h-0 flex-1 pr-2 pb-2 ${sidebarOpen ? "" : "pl-2"}`}>
 					<ResizablePanelGroup orientation="horizontal" className="overflow-hidden rounded-xl border bg-background" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
 					<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
 					<NoteHeader path={open} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />

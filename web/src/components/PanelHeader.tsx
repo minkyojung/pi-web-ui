@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
-import { Check, ChevronDown, PanelRight, PanelRightOpen, Pencil, Plus } from "lucide-react";
+import { Check, ChevronDown, PanelLeft, PanelLeftOpen, PanelRight, PanelRightOpen, Pencil, Plus } from "lucide-react";
 
 import type { SessionInfo } from "../types";
 import { sessionsStore } from "../serverState";
@@ -90,6 +90,32 @@ export function PiToggle({ open, onToggle }: { open: boolean; onToggle: () => vo
 				</Button>
 			</TooltipTrigger>
 			<TooltipContent side="bottom">{open ? "Hide pi" : "Show pi"} ⌘\</TooltipContent>
+		</Tooltip>
+	);
+}
+
+/**
+ * The same control for the list of notes, and it sits in the strip along the
+ * top of the window for the same reason PiToggle sits in the note's header:
+ * a button inside the column it folds away is folded away with it.
+ */
+export function SidebarToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					id="toggleSidebar"
+					variant="ghost"
+					size="icon-xs"
+					aria-label={open ? "Hide the notes" : "Show the notes"}
+					aria-pressed={open}
+					className="shrink-0 text-muted-foreground"
+					onClick={onToggle}
+				>
+					{open ? <PanelLeft /> : <PanelLeftOpen />}
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent side="bottom">{open ? "Hide the notes" : "Show the notes"} ⌘B</TooltipContent>
 		</Tooltip>
 	);
 }
