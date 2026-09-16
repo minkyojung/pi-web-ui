@@ -1420,6 +1420,54 @@ check("the strip at the foot of the window keeps its height, and says whether th
 	assert.ok(readFileSync(join(cwd, "strip-long.md"), "utf8").includes("MORE"), "which it had");
 });
 
+/**
+ * How much note there is, and the two ways of saying it.
+ *
+ * The count is of the body. A note's front matter is what it is filed under
+ * rather than anything written in it, and six properties over two lines should
+ * not read as eight.
+ */
+check("the strip counts the note's words, and says it in characters instead when asked", async ({ app, cwd }) => {
+	const count = () => app.evaluate("document.getElementById('count')?.textContent ?? ''");
+
+	writeFileSync(join(cwd, "count-me.md"), "---\ntags: [counted]\nstatus: draft\n---\n\none two three\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="count-me.md"]')`));
+	await pickNote(app, "count-me.md");
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("one two three"));
+
+	// Three words: the four lines of front matter are the file's and none of the note's.
+	await until("the count", async () => (await count()).includes("3 words"));
+
+	// Pressed, it says the same note the other way, and stays that way for the
+	// next note: it is how you like to be told, not a fact about one note.
+	assert.equal(await app.evaluate(`(() => { const b = document.getElementById('count')?.closest('button'); if (!b) return false; b.click(); return true; })()`), true);
+	await until("characters", async () => (await count()).includes("13 characters"));
+
+	// And it follows the typing rather than the saving. The cursor is put at the
+	// end first: pressing the count took the focus out of the editor, and words
+	// landing at position 0 would go in front of the `---` and break the block,
+	// which moves what counts as the body and makes this check about that
+	// instead.
+	const toEnd = () => app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); return true; })()`);
+	assert.equal(await toEnd(), true);
+	assert.equal(await type(app, " four"), true);
+	// 19, not 18: the cursor sat after the note's last newline, so what was
+	// typed went on a line of its own and the break between them is a
+	// character like any other.
+	await until("the count to follow the typing", async () => (await count()) !== "13 characters");
+	assert.ok((await count()).includes("19 characters"), `the count follows the typing, and saw: ${await count()}`);
+
+	// A rename moves the path under a live editor. The strip is told about the
+	// note that is open, so a count written under the name it used to have is a
+	// strip that goes blank the moment a note is retitled.
+	await retitle(app, "counted-again");
+	await until("the new address", async () => (await app.evaluate("location.hash")) === "#counted-again.md");
+	assert.equal(await toEnd(), true);
+	assert.equal(await type(app, " five"), true);
+	await until("the count under the new name", async () => (await count()) !== "19 characters");
+	assert.ok((await count()).includes("24 characters"), `the count keeps up with a renamed note, and saw: ${await count()}`);
+});
+
 check("a tag and a link written in the properties count as much as ones written in the note", async ({ app, cwd }) => {
 	// One note says its tag in the text, the other in its properties, and they share it.
 	writeFileSync(join(cwd, "prop-tagged.md"), '---\ntags: [Crew]\nrelated: "[[prop-hub]]"\n---\n\nnothing in the text\n');

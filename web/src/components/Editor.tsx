@@ -32,7 +32,7 @@ import type { Place } from "../../../links.ts";
 import type { Left } from "../nav";
 import type { Backlink, Tagged } from "../types";
 import { authorsStore, backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, taggedStore } from "../serverState";
-import { inFrontStore } from "../inFront";
+import { inFrontStore, say as sayInFront } from "../inFront";
 import { titleOf } from "../noteSync";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { flushSaves, registerSave } from "../saves";
@@ -44,6 +44,27 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** How long typing has to stop before it is written down. */
 const AUTOSAVE_MS = 600;
+
+/**
+ * How much note there is, for the strip at the foot of the window.
+ *
+ * From the body, not the document: the front matter is what the note is filed
+ * under rather than anything written in it, and a note of two lines under six
+ * properties should not read as eight.
+ *
+ * Words are runs between spaces, which is what Korean and English both are
+ * written in. It undercounts the languages that put no spaces between words —
+ * Chinese, Japanese — and there is no honest cheap answer for those; a count
+ * that is right for the writing in front of you beats one that is wrong for
+ * everybody equally.
+ *
+ * Over the whole body at every keystroke. A note is small, and a count that
+ * lagged the typing by a save would read as broken.
+ */
+function counted(text: string): { words: number; characters: number } {
+	const body = text.slice(bodyStart(text)).trim();
+	return { words: body === "" ? 0 : body.split(/\s+/).length, characters: body.length };
+}
 
 /**
  * The editor in the app's own colours, both themes, since the tokens switch
@@ -394,6 +415,11 @@ export function Editor({
 					if (held.current.length > 0 && !u.view.composing) releaseHeld();
 					if (u.state.field(propertiesField) !== u.startState.field(propertiesField)) setRead(u.state.field(propertiesField));
 					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) onChange(u.changes);
+					// Straight to the store rather than through state of this
+					// component's: the strip is the only thing that wants these,
+					// and a render of the editor for every keystroke would take
+					// the properties panel with it.
+					if (u.docChanged || u.startState.doc.length === 0) sayInFront(at.current, counted(u.state.doc.toString()));
 					// What is chosen, for the box under pi's column to point with.
 					if (u.selectionSet || u.docChanged) {
 						const { from, to } = u.state.selection.main;
@@ -665,16 +691,26 @@ export function Editor({
 	}, [conflict, path]);
 
 	// Told to the strip across the foot of the window, which is not in this
-	// tree and cannot be handed it (inFront.ts). Cleared on the way out, since
-	// an editor that has gone has nothing to say — and cleared only if what is
-	// there is still this note's, so the editor being left behind does not wipe
-	// what the one taking its place has already written.
+	// tree and cannot be handed it (inFront.ts).
 	useEffect(() => {
-		inFrontStore.set({ path, saved: status });
+		sayInFront(at.current, { saved: status });
+	}, [path, status]);
+
+	// Cleared on the way out, since an editor that has gone has nothing to say
+	// — and cleared only if what is there is still this note's, so the editor
+	// being left behind does not wipe what the one taking its place has
+	// already written.
+	//
+	// Its own effect, and not the one above. Clearing on every change of
+	// status would take the word count with it every time a keystroke was
+	// saved: the counts are written from the editor's update listener, which
+	// knows nothing of React's renders, and what the two say is only ever put
+	// together in the store.
+	useEffect(() => {
 		return () => {
 			if (inFrontStore.get()?.path === path) inFrontStore.set(null);
 		};
-	}, [path, status]);
+	}, [path]);
 
 	/** Take the disk's version. Everything typed here is given up, and the answer settles the rest. */
 	const reload = () => {

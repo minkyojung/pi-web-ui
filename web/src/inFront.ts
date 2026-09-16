@@ -22,6 +22,27 @@ export type Saved = "loading" | "saved" | "unsaved" | "conflict" | "gone";
 export type InFront = {
 	path: string;
 	saved: Saved;
+	/** The body's words and characters — the front matter is the note's about, not the note. */
+	words: number;
+	characters: number;
 };
 
+const nothing = { saved: "loading" as Saved, words: 0, characters: 0 };
+
 export const inFrontStore = createStore<InFront | null>(null);
+
+/**
+ * Say one thing about the note in front, leaving the rest as it was.
+ *
+ * Two places write here — the save state from a React effect, the counts from
+ * the editor's update listener — and neither knows what the other last said.
+ * A whole value from either would wipe the other's, and the strip would flicker
+ * between half-truths at every keystroke.
+ *
+ * A different path is a different note, so what was there is dropped rather
+ * than merged: a note's word count is not a starting point for the next one's.
+ */
+export function say(path: string, what: Partial<Omit<InFront, "path">>) {
+	const was = inFrontStore.get();
+	inFrontStore.set({ ...(was?.path === path ? was : nothing), ...what, path });
+}
