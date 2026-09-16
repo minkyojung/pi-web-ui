@@ -583,12 +583,12 @@ brings `web_search`, `fetch_content`, `source_check` and `get_search_content`
 — a note is written from what was read, and half of that is on the web. It
 ships TypeScript and names its entry in its own `package.json`, so pi's loader
 transpiles it; importing it into `server.ts` would only put source esbuild
-cannot bundle into the server. The first boot on a machine pays about five
-seconds for that transpile, cached in the temporary directory afterwards; a
-new session pays nothing, since the loaded module is kept for the life of the
-process. Search works with no key of its own — it reaches for the provider pi
-is already signed in to — and `~/.pi/agent/web-search.json` is where a key,
-another provider, or a tool turned off would go.
+cannot bundle into the server. That transpile costs 750ms once and 30ms from
+jiti's disk cache after, and a new session costs nothing at all, the module
+being kept for the life of the process: boot with it and boot without it are
+the same to a stopwatch. Search works with no key of its own — it reaches for
+the provider pi is already signed in to — and `~/.pi/agent/web-search.json` is
+where a key, another provider, or a tool turned off would go.
 
 ## Events observed
 
