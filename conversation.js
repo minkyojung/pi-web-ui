@@ -307,6 +307,11 @@ export function applyEvent(state, event) {
 				// Nothing streamed for this message, so take the finished text.
 				const text = textOf(event.message.content);
 				if (text) add({ kind: "assistant", text });
+			} else if (event.message?.role === "custom" && event.message.display) {
+				// An extension's own message, and one it asked to have shown. It
+				// does not stream, so the whole of it is here.
+				const text = textOf(event.message.content);
+				if (text) add({ kind: "notice", text });
 			}
 			state.openText = null;
 			state.openThinking = null;
@@ -502,6 +507,13 @@ export function itemsFromMessages(messages, entryIdOf) {
 		} else if (message.role === "compactionSummary") {
 			// Left behind by a compaction, in place of the messages it replaced.
 			items.push({ kind: "notice", text: compactionText(message.tokensBefore) });
+		} else if (message.role === "custom") {
+			// An extension's own message. Shown only if it asked to be, as live.
+			const text = textOf(message.content);
+			if (message.display && text) items.push({ kind: "notice", text });
+		} else if (message.role === "branchSummary") {
+			// Left where a branch was left, saying what happened on it.
+			if (message.summary) items.push({ kind: "notice", text: message.summary });
 		} else if (message.role === "toolResult") {
 			const item = toolItems.get(message.toolCallId);
 			if (item) {

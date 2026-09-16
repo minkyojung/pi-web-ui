@@ -7,6 +7,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 ## [Unreleased]
 
 ### Changed
+- A message one of pi's extensions posts to the conversation is shown as a notice, live and after resuming; before, it was dropped. So is the summary pi leaves when a branch is left.
 - A message that starts with `/` is sent to pi as written. Before, pi read it as one of its commands and ran or rewrote it without saying so.
 - Cutting words and pasting them elsewhere — in the same note or another — keeps who wrote them. Before, the words became yours the moment you pasted them.
 - pi can no longer change a note from a terminal command: the system refuses the write, and pi is told to use its note tools instead — so everything pi writes in a note is recorded as pi's, and nothing you write is ever mistaken for pi's.
