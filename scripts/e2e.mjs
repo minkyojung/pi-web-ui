@@ -2534,6 +2534,12 @@ check("typing / in the message box offers pi's commands, and Enter writes the ch
 	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.focus(); t.value = ''; })()");
 	await app.keys("/cur");
 	await until("the list to narrow to curator", async () => (await listed()).some((t) => t.startsWith("/curator")));
+	// Being in the DOM is not being seen: the box clips what is inside it, and
+	// a list drawn there once was. The list must be what is under its own middle.
+	assert.equal(await app.evaluate(`(() => {
+		const item = document.querySelector('#commands [cmdk-item]'); const r = item.getBoundingClientRect();
+		return r.height > 0 && item.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+	})()`), true, "the list is on screen, not clipped by the box");
 	// Enter takes it rather than sending: the box holds the command and a
 	// space for its arguments, and nothing went to pi.
 	await app.press("Enter");

@@ -197,15 +197,19 @@ export function Composer({ note }: { note: string | null }) {
 		<div className="@container/composer p-3">
 			<QueuedMessages />
 			<AskingAgain />
+			{/* The list sits over the box's top edge, so it is placed from out here:
+			    the box clips what is inside it (overflow-hidden), and a list drawn
+			    inside was there and could not be seen. */}
+			<div className="relative">
+			<CommandMenu
+				commands={offered}
+				selected={current?.name ?? ""}
+				onSelect={setSelected}
+				onPick={(name) => write(acceptCommand(name))}
+			/>
 			<PromptInput onSubmit={(message, event) => send_(event.currentTarget, message.text, "followUp")}>
 				<Chosen chosen={pointing} onDrop={() => setDropped(pointing?.text ?? null)} />
-				<PromptInputBody className="relative">
-					<CommandMenu
-						commands={offered}
-						selected={current?.name ?? ""}
-						onSelect={setSelected}
-						onPick={(name) => write(acceptCommand(name))}
-					/>
+				<PromptInputBody>
 					{/* The component asks for four lines of empty box; one is enough until
 					    there is something to show, and it grows from there. */}
 					<PromptInputTextarea
@@ -310,6 +314,7 @@ export function Composer({ note }: { note: string | null }) {
 					</span>
 				</PromptInputFooter>
 			</PromptInput>
+			</div>
 		</div>
 	);
 }
