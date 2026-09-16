@@ -1428,7 +1428,12 @@ wss.on("connection", async (ws) => {
 						author: span.author,
 						at: span.at,
 						text: found.text.slice(span.from, span.to),
-						...(span.removed ? { removed: span.removed } : {}),
+						// Present even when it is empty, which is not the same as absent:
+						// empty says the run replaced nothing, and absent says the run is
+						// no longer the whole of what its change wrote, so what it
+						// replaced is not known any more. A tab that cannot tell those
+						// apart cannot offer to put anything back.
+						...("removed" in span ? { removed: span.removed } : {}),
 						...(span.sessionId ? { session: span.sessionId } : {}),
 						...(span.entryId ? { entry: span.entryId } : {}),
 						...(await turnOf(span.sessionId, span.entryId)),

@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -221,6 +221,22 @@ it("한 자리를 짚으면 누가·언제·무엇을 대신해 썼는지가 온
   assert.equal(why.from, mine.length);
   assert.equal(why.text, added, "지금 그 자리에 있는 글");
   assert.equal(why.removed, "old line.\n", "그 자리에 있던 글");
+
+  // 덧붙이기만 한 자리: 대신한 것이 "없다"는 것과 "모른다"는 것은 다르고, 빈 문자열이
+  // 전자다. 이것이 오지 않으면 탭은 되돌릴 수 있는 것도 되돌릴 수 없다.
+  const plain = "\nand pi added this too.\n";
+  writeFileSync(join(cwd, "why.md"), mine + added + plain);
+  appendFileSync(
+    join(cwd, ".pi/history/why.md.jsonl"),
+    JSON.stringify({ author: "pi", at: 3, sessionId: "s", entryId: "e8", from: (mine + added).length, to: (mine + added).length, inserted: plain, removed: "" }) + "\n",
+  );
+  clear();
+  send({ type: "open_note", path: "why.md" });
+  await want("note", (m) => m.path === "why.md");
+  clear();
+  send({ type: "why_wrote", path: "why.md", pos: (mine + added).length + 2 });
+  const plainly = await want("why");
+  assert.equal(plainly.removed, "", "대신한 것이 없다는 말이 온다 — 빠지지 않는다");
   assert.equal(why.entry, "e7", "어느 턴이었는지");
   // 그 대화는 이 기계에 없다: 모델과 질문은 빈 채로 오고, 나머지는 그대로 온다.
   assert.equal(why.model, undefined);

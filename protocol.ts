@@ -390,7 +390,11 @@ export interface WhyMsg {
 	at: number;
 	/** The words as they are now. */
 	text: string;
-	/** What they replaced, when that is still known. */
+	/**
+	 * What they replaced. Empty when they replaced nothing, which is what a run
+	 * pi only added looks like; absent when the run is no longer the whole of
+	 * what its change wrote and what it replaced is not known any more.
+	 */
 	removed?: string;
 	/** For pi: `provider/model` it was on. */
 	model?: string;

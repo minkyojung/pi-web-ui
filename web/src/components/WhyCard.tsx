@@ -73,19 +73,22 @@ export function WhyCard() {
 				{/* The whole of why it is there, in the words that asked for it. */}
 				{why.prompt && <PopoverDescription className="line-clamp-3">“{why.prompt}”</PopoverDescription>}
 
-				{/* Only when it stands in place of something. The words it is made of
-				    are on screen behind this card — repeating them here would be
-				    saying the same thing twice and calling it a diff. */}
-				{why.removed && (
-					<div className="flex flex-col gap-1">
-						<span className="text-muted-foreground">Replaced</span>
-						<Changed from={why.removed} to={why.text} />
-					</div>
-				)}
+				{/* The change itself, in the shape a diff is read in: what the run
+				    replaced above what it says now, and only the second row when it
+				    replaced nothing, which is what an addition is in any diff. Not a
+				    repetition of the note behind the card — the underline says where
+				    pi wrote, and these say exactly what. Absent rather than empty
+				    means the run has been cut since and what it stood in place of is
+				    not known, so nothing is claimed about it. */}
+				{why.removed !== undefined && <Changed from={why.removed} to={why.text} />}
 
-				{(why.entry || why.removed) && (
+				{(why.entry || why.removed !== undefined) && (
 					<div className="flex justify-end gap-1">
-						{why.removed && (
+						{/* The same word the diff in the note uses for the same thing:
+						    the note back as it was here, which for an addition is the
+						    words gone and for a replacement is the old ones returned.
+						    Offered only where what to go back to is known. */}
+						{why.removed !== undefined && (
 							<Button
 								variant="ghost"
 								size="xs"
@@ -94,7 +97,7 @@ export function WhyCard() {
 									whyStore.set(null);
 								}}
 							>
-								Put it back
+								Undo
 							</Button>
 						)}
 						{why.entry && (
@@ -166,18 +169,22 @@ function Changed({ from, to }: { from: string; to: string }) {
 	const parts = diffWordsWithSpace(from.trim(), to.trim());
 	return (
 		<div className="flex max-h-32 flex-col gap-0.5 overflow-auto">
-			<Row sign="−" wash={colour.removedLine}>
-				{parts
-					.filter((part) => !part.added)
-					.map((part, i) => (
-						<span
-							key={i}
-							style={part.removed ? { background: colour.removed, textDecoration: "line-through", textDecorationColor: colour.removedRule, borderRadius: "2px" } : undefined}
-						>
-							{part.value}
-						</span>
-					))}
-			</Row>
+			{/* Nothing replaced, nothing to draw above: an addition in a diff is the
+			    one row, as it is in every diff. */}
+			{from.trim() !== "" && (
+				<Row sign="−" wash={colour.removedLine}>
+					{parts
+						.filter((part) => !part.added)
+						.map((part, i) => (
+							<span
+								key={i}
+								style={part.removed ? { background: colour.removed, textDecoration: "line-through", textDecorationColor: colour.removedRule, borderRadius: "2px" } : undefined}
+							>
+								{part.value}
+							</span>
+						))}
+				</Row>
+			)}
 			<Row sign="+" wash={colour.addedLine}>
 				{parts
 					.filter((part) => !part.removed)

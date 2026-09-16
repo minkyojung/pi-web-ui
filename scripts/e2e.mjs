@@ -952,8 +952,8 @@ check("the note's menu says who wrote what, and typing takes it back off", async
 	await until("the card", () => app.evaluate("!!document.querySelector('[data-slot=popover-content]')"));
 	const card = await app.evaluate("document.querySelector('[data-slot=popover-content]').textContent");
 	assert.match(card, /^pi/, "who wrote it");
-	assert.ok(card.includes("ours") && card.includes("pi's"), `what it replaced, and what it says now: ${card}`);
-	assert.ok(card.includes("Put it back"), "and the way back");
+	assert.ok(card.includes("−ours") && card.includes("+pi's"), `the old over the new: ${card}`);
+	assert.ok(card.includes("Undo"), "and the way back, in the word the diff in the note uses for it");
 	await app.press("Escape");
 	await until("the card gone", async () => !(await app.evaluate("!!document.querySelector('[data-slot=popover-content]')")));
 
