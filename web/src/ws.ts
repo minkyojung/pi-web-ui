@@ -79,6 +79,7 @@ const STATE: Record<StateMsg["type"], true> = {
 	usage: true,
 	context_sources: true,
 	commands: true,
+	notice: true,
 	branches: true,
 	sessions: true,
 	snapshot: true,
@@ -221,7 +222,9 @@ function receive(msg: ServerMsg): void {
 			pushRaw(msg);
 			removePrompt(msg.id);
 			return;
-		// The server's own error, which the reducer draws like pi's.
+		// The server's own error, and what an extension wanted said: the
+		// reducer draws both like pi's.
+		case "notice":
 		case "error":
 			pushRaw(msg);
 			applyServerEvent(msg);

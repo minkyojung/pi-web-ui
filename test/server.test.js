@@ -759,3 +759,15 @@ it("/로 시작하는 글은 명령이 아니라 글로 보내진다", async () 
   send({ type: "abort" });
   await want("agent_settled", () => true, 30_000);
 });
+
+// /curator is pi-web-access's, and "bogus" is not one of its options: the
+// extension says so through ctx.ui.notify, which is the whole path this pins —
+// a command chosen from the list runs, and what it says arrives in the
+// conversation. No model is asked.
+it("목록에서 고른 명령은 실행되고, 확장이 하는 말은 대화에 들어온다", async () => {
+  clear();
+  send({ type: "prompt", text: "/curator bogus", command: true });
+  const said = await want("error", (m) => /Unknown option: bogus/.test(m.message));
+  assert.ok(said);
+  assert.ok(!inbox.some((m) => m.type === "message_start"), "nothing was sent to the model");
+});

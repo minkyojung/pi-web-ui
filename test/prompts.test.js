@@ -30,6 +30,24 @@ test("물음은 브라우저로 나가고, 열린 물음 목록에 있으며, �
 	assert.deepEqual(sent[1], { type: "prompt_dismiss", id, answer: "b", cancelled: false });
 });
 
+test("묻는 쪽이 기다리기를 그만두면 — 시간이 다하거나 신호가 오면 — 닫은 것과 같이 끝나고 카드가 내려간다", async () => {
+	const { sent, prompts } = bridge();
+	const timed = prompts.ask(question, { timeout: 10 });
+	await assert.rejects(timed, Cancelled);
+	assert.deepEqual(sent[1], { type: "prompt_dismiss", id: sent[0].prompt.id, cancelled: true });
+	assert.deepEqual(prompts.open(), []);
+
+	const controller = new AbortController();
+	const signalled = prompts.ask(question, { signal: controller.signal });
+	controller.abort();
+	await assert.rejects(signalled, Cancelled);
+	assert.deepEqual(prompts.open(), []);
+
+	controller.abort();
+	await assert.rejects(prompts.ask(question, { signal: controller.signal }), Cancelled);
+	assert.equal(sent.filter((m) => m.type === "prompt_request").length, 2, "a question already abandoned is not sent");
+});
+
 test("닫으면 Cancelled로 끝나고, 모든 브라우저가 닫힘을 듣는다", async () => {
 	const { sent, prompts } = bridge();
 	const asked = prompts.ask(question);

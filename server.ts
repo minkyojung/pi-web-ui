@@ -34,6 +34,7 @@ import { readSettings, writeSettings } from "./settings.ts";
 import { askForName } from "./sessionName.ts";
 import { askUser } from "./askUser.ts";
 import { createPromptBridge } from "./prompts.ts";
+import { extensionUI } from "./extensionUI.ts";
 import { branchPoints } from "./branches.ts";
 import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, withCreated, writeNote, type WriteResult } from "./vault.ts";
 import { FileIndex } from "./fileIndex.ts";
@@ -941,10 +942,52 @@ async function nameSession(): Promise<void> {
 
 let unsubscribe: (() => void) | undefined;
 
-/** Rebind after the runtime swaps in a different AgentSession. */
+/**
+ * Rebind after the runtime swaps in a different AgentSession.
+ *
+ * What is bound is what pi's own headless host binds: a screen for an
+ * extension to ask on (extensionUI.ts), the session moves a command may make,
+ * and where an extension's failure is said. A move made from a command swaps
+ * the session under this server the way the browser's own commands do, so it
+ * is followed by the same rebind and the same broadcast.
+ */
 async function bind(): Promise<void> {
 	unsubscribe?.();
-	await session().bindExtensions({});
+	const swapped = async () => {
+		await bind();
+		await broadcastAll();
+	};
+	await session().bindExtensions({
+		uiContext: extensionUI(prompts, broadcast),
+		commandContextActions: {
+			waitForIdle: () => session().waitForIdle(),
+			newSession: async (options) => {
+				const result = await runtime.newSession(options);
+				if (!result.cancelled) await swapped();
+				return result;
+			},
+			fork: async (entryId, options) => {
+				const result = await runtime.fork(entryId, options);
+				if (!result.cancelled) await swapped();
+				return { cancelled: result.cancelled };
+			},
+			navigateTree: async (targetId, options) => {
+				const result = await session().navigateTree(targetId, options);
+				if (!result.cancelled) await broadcastAll();
+				return { cancelled: result.cancelled };
+			},
+			switchSession: async (sessionPath, options) => {
+				const result = await runtime.switchSession(sessionPath, options);
+				if (!result.cancelled) await swapped();
+				return result;
+			},
+			reload: async () => {
+				await session().reload();
+				await broadcastAll();
+			},
+		},
+		onError: (err) => broadcast({ type: "error", message: `Extension "${err.extensionPath}" ${err.event}: ${err.error}` }),
+	});
 	unsubscribe = session().subscribe(onEvent);
 }
 
@@ -1260,13 +1303,12 @@ wss.on("connection", async (ws) => {
 					try {
 						// What was typed is what is sent. Left to itself, prompt() reads a
 						// leading "/" as a command — an extension's, a skill's, a prompt
-						// template's — and runs or rewrites it before anyone sees. Nothing
-						// here lists those commands or completes them, so a line that
-						// starts with "/" is a line that starts with "/" until something
-						// does. (prompt() also throws if the session is streaming and no
-						// behavior is given.)
+						// template's — and runs or rewrites it before anyone sees. Only a
+						// command chosen from the list the server sent (CommandsMsg) is
+						// one; a "/" typed by hand is a character. (prompt() also throws
+						// if the session is streaming and no behavior is given.)
 						await session().prompt(text, {
-							expandPromptTemplates: false,
+							expandPromptTemplates: msg.command === true,
 							...(session().isStreaming ? { streamingBehavior: behavior } : {}),
 						});
 					} catch (err) {

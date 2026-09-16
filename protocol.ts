@@ -29,6 +29,12 @@ export type ClientMsg =
 	| {
 			type: "prompt";
 			text: string;
+			/**
+			 * The text names a command — one from CommandsMsg, chosen from the
+			 * list — and pi is to run or expand it. Without this a leading "/"
+			 * is a character like any other, however it was typed.
+			 */
+			command?: boolean;
 			/** What to do with it mid-run. Ignored when nothing is running. */
 			behavior?: "steer" | "followUp";
 			/** Asking again: the user message this one is an alternative to. */
@@ -634,6 +640,12 @@ export interface QueueClearedMsg {
 	followUp: string[];
 }
 
+/** Something an extension wanted said, drawn in the conversation as a notice. */
+export interface NoticeMsg {
+	type: "notice";
+	text: string;
+}
+
 /** Something the server could not do, said to the one tab that asked. */
 export interface ErrorMsg {
 	type: "error";
@@ -667,6 +679,7 @@ export type StateMsg =
 	| UsageMsg
 	| ContextSourcesMsg
 	| CommandsMsg
+	| NoticeMsg
 	| BranchesMsg
 	| SessionsMsg
 	| SnapshotMsg

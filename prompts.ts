@@ -54,11 +54,21 @@ export function createPromptBridge(broadcast: (payload: ServerMsg) => void) {
 		 * card sends — see promptAnswer.ts in the client — or a Cancelled
 		 * rejection when the person closed it or the session went.
 		 */
-		ask(question: Omit<PromptRequest, "id" | "pipeline">): Promise<string> {
+		ask(question: Omit<PromptRequest, "id" | "pipeline">, opts?: { signal?: AbortSignal; timeout?: number }): Promise<string> {
 			const prompt: PromptRequest = { ...question, id: crypto.randomUUID(), pipeline: SOURCE };
+			// An asker that has stopped waiting — its signal fired, its time ran
+			// out — is answered as a close is, and every tab sees the card go.
+			if (opts?.signal?.aborted) return Promise.reject(new Cancelled());
 			pending.set(prompt.id, prompt);
 			broadcast({ type: "prompt_request", prompt });
-			return new Promise<string>((resolve, reject) => waiting.set(prompt.id, { resolve, reject }));
+			const asked = new Promise<string>((resolve, reject) => waiting.set(prompt.id, { resolve, reject }));
+			const close = () => settle(prompt.id, null);
+			opts?.signal?.addEventListener("abort", close, { once: true });
+			const timer = opts?.timeout ? setTimeout(close, opts.timeout) : undefined;
+			return asked.finally(() => {
+				opts?.signal?.removeEventListener("abort", close);
+				if (timer) clearTimeout(timer);
+			});
 		},
 
 		/**

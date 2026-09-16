@@ -414,6 +414,12 @@ export function applyEvent(state, event) {
 		case "error":
 			add({ kind: "error", text: errorText(event.message) });
 			break;
+
+		// Said by an extension, through the server (extensionUI.ts). Live only,
+		// like a retry: pi keeps no record of it.
+		case "notice":
+			add({ kind: "notice", text: event.text });
+			break;
 	}
 
 	return { added, changed };
