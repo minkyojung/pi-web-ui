@@ -404,10 +404,23 @@ in-flight message it also ships as `message` and `assistantMessageEvent.partial`
 A run that has ended folds its steps away. Thinking and tool rows are the only
 sign anything is happening while a run is in flight, and dead weight the moment
 the answer is on screen, so `rowsOf` gathers each stretch of consecutive ones
-into a line that names what they were — `Thought · ask_user · web_search`, with
-`+12 −4` when the run edited and `2 failed` when it did not go well. What the
-line never carries is a figure the footer under it already has: the duration,
-the clock, the tokens, the cost. Two lines, each saying one thing.
+into a line counting what they were — `2 tools · 2 messages`, and `1 failed`
+when it did not go well. Counts and not names: the names were tried first and
+read as `ls · find · grep · +7 more` on anything but a short run, and a line
+that gives up halfway is worse than one that never started. The row's job is to
+say how much is under it, not to be the thing under it. What the line never
+carries is a figure the footer already has — the duration, the clock, the
+tokens, the cost. Two lines, each saying one thing.
+
+Messages are counted from a mark each step carries (`Item.message`), set in the
+one place items are made so no new kind of step can forget it. It has to be
+recorded rather than worked out: a turn that calls tools is several assistant
+messages, and two thoughts in one message look exactly like two thoughts in two.
+The answer's own message is not among them — the fold holds the work, and the
+message the work was for is the paragraph below it. The recorded `turn-with-tools`
+session is three assistant messages and folds to "2 tools · 2 messages" for that
+reason. `conversation.test.js` compares the mark across both paths, so a live
+run and a resumed one cannot drift on it.
 
 Three rules keep it honest. Only consecutive steps fold, because gathering a
 whole run into one row would hoist its last tool call above the sentence written

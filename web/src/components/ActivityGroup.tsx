@@ -23,28 +23,25 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collap
  * of a few entries; re-rendering every folded run of a long conversation on
  * every delta is what the reducer's one-item-per-event guarantee exists to stop.
  */
+/** "1 tool", "2 tools" — the plural is the only thing that changes. */
+function count(n: number, noun: string): string {
+	return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
 export const ActivityGroup = memo(
 	function ActivityGroup({ items, index }: { items: Item[]; index: number }) {
-		const { thought, tools, more, added, removed, failed } = summarise(items);
-		const Icon = thought ? BrainIcon : WrenchIcon;
+		const { tools, messages, failed } = summarise(items);
+		// The wrench is what the row is mostly made of; a run that only thought
+		// has no tool to speak for it and keeps the brain ThinkingRow uses.
+		const Icon = tools ? WrenchIcon : BrainIcon;
 
 		// Built as pieces rather than a string so the one piece that is not a
-		// figure about the work — that some of it failed — can be the one thing
-		// in the line with a colour.
+		// count — that some of the work failed — can be the one thing in the
+		// line with a colour.
 		const parts: ReactNode[] = [];
-		if (thought) parts.push(<span className="text-foreground/80">Thought</span>);
-		for (const name of tools) parts.push(<span>{name}</span>);
-		if (more) parts.push(<span>+{more} more</span>);
-		if (added || removed) {
-			parts.push(
-				<span className="tabular-nums">
-					+{added} −{removed}
-				</span>,
-			);
-		}
-		if (failed) {
-			parts.push(<span className="text-destructive">{failed === 1 ? "1 failed" : `${failed} failed`}</span>);
-		}
+		if (tools) parts.push(<span>{count(tools, "tool")}</span>);
+		if (messages) parts.push(<span>{count(messages, "message")}</span>);
+		if (failed) parts.push(<span className="text-destructive">{failed} failed</span>);
 
 		return (
 			<Collapsible className="-my-1">

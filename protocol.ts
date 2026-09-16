@@ -169,6 +169,13 @@ export interface Item {
 	stopReason?: string;
 	tokens?: number;
 	cost?: number;
+	/**
+	 * On `thinking` and `tool`: which assistant message this step came from. A
+	 * turn that calls tools is several assistant messages, and counting them is
+	 * the one thing the steps cannot be asked — two thoughts in one message and
+	 * two thoughts in two look identical without it.
+	 */
+	message?: number;
 }
 
 export interface SessionInfo {

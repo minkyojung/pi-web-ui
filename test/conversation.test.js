@@ -32,7 +32,7 @@ function replay(events) {
 const comparable = (items) =>
 	items
 		.filter((item) => item.kind !== "done")
-		.map(({ kind, text, name, args, result, isError }) => ({ kind, text, name, args, result, isError }));
+		.map(({ kind, text, name, args, result, isError, message }) => ({ kind, text, name, args, result, isError, message }));
 
 test("live events and stored messages produce the same conversation", async (t) => {
 	// agent_end carries the run's messages, which for these single-turn

@@ -1,4 +1,3 @@
-import { diffStat } from "./toolDetails.ts";
 import type { Item } from "./types";
 
 /**
@@ -8,51 +7,46 @@ import type { Item } from "./types";
  * answer is on screen those steps are history: worth keeping, not worth the
  * height. So they fold into a single row, and this is what that row says.
  *
- * It says what, never how much — the footer under the run already carries the
- * duration, the clock, the tokens and the cost, and a second line repeating any
- * of them would be two lines saying one thing.
+ * Two counts, not a list of names. The names were tried first and read as
+ * `ls · find · grep · +7 more` on anything but a short run — a line that gives
+ * up halfway is worse than one that never started, and the row's job is to say
+ * how much is under it, not to be the thing under it.
+ *
+ * It says how many, never how much — the footer under the run already carries
+ * the duration, the clock, the tokens and the cost, and a second line repeating
+ * any of them would be two lines saying one thing.
  */
 
-/** Tool names shown before the rest become a count. Three fits the panel's width. */
-const NAMES = 3;
-
 export interface RunSummary {
-	/** Whether the run thought at all. How many times is not worth a word. */
-	thought: boolean;
-	/** The tools it reached for, deduplicated, in the order it reached for them. */
-	tools: string[];
-	/** How many more there were than the row has room to name. */
-	more: number;
-	/** Lines added and removed across every edit in the run. */
-	added: number;
-	removed: number;
+	/** Tool calls, counted per call: two greps are two. */
+	tools: number;
+	/**
+	 * Assistant messages these steps came from — how many times the model went
+	 * out and came back before the answer. Counted from the mark each step
+	 * carries, because a message is not an item and cannot be counted by eye:
+	 * two thoughts in one message look exactly like two thoughts in two.
+	 *
+	 * The answer itself is not among them. This row holds the work, and the
+	 * message the work was for is the paragraph below it, already on screen.
+	 */
+	messages: number;
 	/** Tool calls that came back an error. */
 	failed: number;
 }
 
 export function summarise(items: Item[]): RunSummary {
-	const names: string[] = [];
-	let thought = false;
-	let added = 0;
-	let removed = 0;
+	const messages = new Set<number>();
+	let tools = 0;
 	let failed = 0;
 
 	for (const item of items) {
-		if (item.kind === "thinking") {
-			thought = true;
-			continue;
-		}
+		if (item.message !== undefined) messages.add(item.message);
 		if (item.kind !== "tool") continue;
-		if (item.name && !names.includes(item.name)) names.push(item.name);
+		tools++;
 		if (item.isError) failed++;
-		if (item.details?.diff) {
-			const stat = diffStat(item.details.diff);
-			added += stat.added;
-			removed += stat.removed;
-		}
 	}
 
-	return { thought, tools: names.slice(0, NAMES), more: Math.max(0, names.length - NAMES), added, removed, failed };
+	return { tools, messages: messages.size, failed };
 }
 
 /** An item where it sits, or a stretch of them folded into one row. */

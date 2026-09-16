@@ -7,7 +7,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 ## [Unreleased]
 
 ### Changed
-- Once pi has answered, the steps it took getting there — what it thought, which tools it reached for — fold into one line that names them, along with the lines it changed and anything that failed. Click the line to read the steps again. While pi is still working they stay open, so you can watch.
+- Once pi has answered, the steps it took getting there — what it thought, which tools it reached for — fold into one line saying how many tools it used and how many times it went out and came back, and whether any of it failed. Click the line to read the steps again. While pi is still working they stay open, so you can watch.
 - The path above a note stays one short line however deep the note is or how long its folders are named: the outermost folder, a "…" for anything between, and the folder it is in, each cut to a width with the whole name on hover. Clicking "…" lists the folders it stands for.
 - Settings, skills or a SYSTEM.md in the note folder's own `.pi/` are read by pi only if pi's terminal was told to trust the folder; until then the context card says they were left out. Before, they were read without asking.
 - Anything pi had to complain about while setting up a session — an extension that failed, an option it did not know — now shows in the conversation instead of nowhere.

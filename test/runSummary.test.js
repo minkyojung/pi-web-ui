@@ -4,49 +4,50 @@ import test from "node:test";
 import { applyEvent, createConversation } from "../conversation.js";
 import { rowsOf, summarise } from "../web/src/runSummary.ts";
 
-const thinking = (text) => ({ kind: "thinking", text });
-const tool = (name, extra = {}) => ({ kind: "tool", name, ...extra });
+const thinking = (message, text = "…") => ({ kind: "thinking", text, message });
+const tool = (message, name, extra = {}) => ({ kind: "tool", name, message, ...extra });
 const kinds = (rows) => rows.map((row) => (row.kind === "group" ? `group(${row.items.length})` : "item"));
 
-test("a summary names the tools a run reached for, in order, without repeating one", () => {
-	const summary = summarise([thinking("…"), tool("read"), tool("read"), tool("grep")]);
-	assert.equal(summary.thought, true);
-	assert.deepEqual(summary.tools, ["read", "grep"]);
-	assert.equal(summary.more, 0);
+test("a summary counts the calls and the messages they came from", () => {
+	// Two messages, each thinking and then calling a tool — the shape of the
+	// screenshot this was built for.
+	const summary = summarise([thinking(1), tool(1, "ask_user"), thinking(2), tool(2, "web_search")]);
+	assert.equal(summary.tools, 2);
+	assert.equal(summary.messages, 2);
 });
 
-test("past three tools the rest become a count, so the line still fits", () => {
-	const summary = summarise(["read", "grep", "edit", "bash", "write"].map((name) => tool(name)));
-	assert.deepEqual(summary.tools, ["read", "grep", "edit"]);
-	assert.equal(summary.more, 2);
-	// Five calls of one tool are one name, not five.
-	assert.equal(summarise(["read", "read", "read", "read"].map((name) => tool(name))).more, 0);
+test("two calls in one message are two tools and one message", () => {
+	const summary = summarise([tool(1, "read"), tool(1, "read")]);
+	assert.equal(summary.tools, 2);
+	assert.equal(summary.messages, 1);
 });
 
-test("a run with no thinking in it does not claim to have thought", () => {
-	assert.equal(summarise([tool("read")]).thought, false);
+test("two thoughts in one message do not read as two messages", () => {
+	// The whole reason a step carries the message it came from: by eye these
+	// are indistinguishable from two thoughts in two messages.
+	assert.equal(summarise([thinking(1, "a"), thinking(1, "b")]).messages, 1);
+	assert.equal(summarise([thinking(1, "a"), thinking(2, "b")]).messages, 2);
 });
 
-test("the lines a run changed are totalled across every edit in it", () => {
-	const edit = (diff) => tool("edit", { details: { diff } });
-	const summary = summarise([edit("+1 one\n-2 two\n 3 three"), edit("+4 four\n+5 five")]);
-	assert.equal(summary.added, 3);
-	assert.equal(summary.removed, 1);
+test("a run that only thought has no tools to count", () => {
+	const summary = summarise([thinking(1), thinking(2)]);
+	assert.equal(summary.tools, 0);
+	assert.equal(summary.messages, 2);
 });
 
-test("failures are counted per call, not per tool", () => {
-	const summary = summarise([tool("bash", { isError: true }), tool("bash", { isError: true }), tool("read")]);
+test("failures are counted per call", () => {
+	const summary = summarise([tool(1, "bash", { isError: true }), tool(1, "bash", { isError: true }), tool(2, "read")]);
 	assert.equal(summary.failed, 2);
-	assert.deepEqual(summary.tools, ["bash", "read"]);
+	assert.equal(summary.tools, 3);
 });
 
 test("the steps of a finished run fold into one row", () => {
 	const items = [
 		{ kind: "user", text: "hi" },
-		thinking("…"),
-		tool("ask_user"),
-		thinking("…"),
-		tool("web_search"),
+		thinking(1),
+		tool(1, "ask_user"),
+		thinking(1),
+		tool(2, "web_search"),
 		{ kind: "assistant", text: "the answer" },
 		{ kind: "done" },
 	];
@@ -55,27 +56,27 @@ test("the steps of a finished run fold into one row", () => {
 });
 
 test("a run still in flight is drawn exactly as it was, one row per item", () => {
-	const items = [{ kind: "user", text: "hi" }, thinking("…"), tool("ask_user"), thinking("…")];
+	const items = [{ kind: "user", text: "hi" }, thinking(1), tool(1, "ask_user"), thinking(1)];
 	assert.deepEqual(kinds(rowsOf(items)), ["item", "item", "item", "item"]);
 });
 
 test("the run in flight stays open while the runs above it stay folded", () => {
-	const items = [thinking("…"), tool("read"), { kind: "done" }, { kind: "user", text: "again" }, thinking("…"), tool("grep")];
+	const items = [thinking(1), tool(1, "read"), { kind: "done" }, { kind: "user", text: "again" }, thinking(1), tool(2, "grep")];
 	assert.deepEqual(kinds(rowsOf(items)), ["group(2)", "item", "item", "item", "item"]);
 });
 
 test("a single step does not fold, since the folded line says less than the row", () => {
-	const items = [tool("read"), { kind: "assistant", text: "…" }, tool("grep"), { kind: "done" }];
+	const items = [tool(1, "read"), { kind: "assistant", text: "…" }, tool(2, "grep"), { kind: "done" }];
 	assert.deepEqual(kinds(rowsOf(items)), ["item", "item", "item", "item"]);
 });
 
 test("steps are never hoisted over the words the model wrote between them", () => {
 	const items = [
-		thinking("…"),
-		tool("read"),
+		thinking(1),
+		tool(1, "read"),
 		{ kind: "assistant", text: "let me search" },
-		thinking("…"),
-		tool("grep"),
+		thinking(1),
+		tool(2, "grep"),
 		{ kind: "done" },
 	];
 	// Two groups, with the sentence still between them — not one group above it.
@@ -83,7 +84,7 @@ test("steps are never hoisted over the words the model wrote between them", () =
 });
 
 test("an error stays on screen rather than folding into the line", () => {
-	const items = [thinking("…"), { kind: "error", text: "no" }, tool("read"), { kind: "done" }];
+	const items = [thinking(1), { kind: "error", text: "no" }, tool(1, "read"), { kind: "done" }];
 	assert.deepEqual(kinds(rowsOf(items)), ["item", "item", "item", "item"]);
 });
 
@@ -114,7 +115,10 @@ test("a run folded from real events holds that run's steps and no others", () =>
 	const group = rows.find((row) => row.kind === "group");
 	assert.ok(group, "the finished run's steps fold");
 	const summary = summarise(group.items);
-	assert.equal(summary.thought, true);
-	assert.deepEqual(summary.tools, ["ask_user", "web_search"]);
+	assert.equal(summary.tools, 2);
+	// One message here: the recording streams both thoughts and both calls
+	// without a second message_start, and the count says so rather than
+	// guessing two from the two thoughts.
+	assert.equal(summary.messages, 1);
 	assert.equal(summary.failed, 0);
 });
