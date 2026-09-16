@@ -45,11 +45,14 @@ it picks. It asks which folder to open on first run and remembers it — a
 packaged app is launched with a working directory of `/`, which is not somewhere
 to point a coding agent. `⌘O` changes it, which relaunches.
 
-The build is **not signed** yet; that needs an Apple Developer identity. It
-runs, but a first open has to be allowed from System Settings. The app is
-`Octave` to macOS and `run.octave.app` to the signing identity and the updater;
-neither changes again, since the first decides where macOS keeps the app's
-settings and the second what the updater thinks is the same app.
+`npm run pack` builds the disk image; `scripts/pack-signed.sh` does the same
+signed and notarized, with the credentials read out of 1Password for the one
+run, and `scripts/verify-signed.sh` asks of the result what a person's Mac
+will — codesign, Gatekeeper, the stapled ticket, and that the server still
+starts under `ELECTRON_RUN_AS_NODE`, which is a fuse signing must leave on.
+The app is `Octave` to macOS and `run.octave.app` to the signing identity and
+the updater; neither changes again, since the first decides where macOS keeps
+the app's settings and the second what the updater thinks is the same app.
 
 Octave is AGPL-3.0 (`LICENSE`). Everything it is built on is permissive and
 asks only that its notice be carried, so `npm run build` begins by writing

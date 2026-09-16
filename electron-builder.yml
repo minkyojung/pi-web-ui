@@ -40,7 +40,24 @@ mac:
   # Apple Silicon only. Everything the app leans on the machine for — the
   # recursive fs.watch, the trash, the e2e's Chrome — has only ever been
   # checked here, and an Intel build would be a promise nobody has tested.
-  target: [dir]
-  # Signing needs an Apple Developer identity this build does not have. Unsigned
-  # runs, but a first open has to be right-click -> Open.
-  identity: null
+  # `npm run pack` says --arm64; the disk image is what a person downloads.
+  target: [dmg]
+  # Signed with the Developer ID Application identity in the keychain, found
+  # by name, and notarized with the Apple ID, app-specific password and team
+  # in the environment — scripts/pack-signed.sh puts them there for one run.
+  # The hardened runtime is electron-builder's default and so are the three
+  # entitlements Electron needs under it (allow-jit, unsigned executable
+  # memory, no library validation for the SDK's native clipboard module);
+  # nothing here asks for more, so no entitlements file of our own.
+  #
+  # The server is spawned with ELECTRON_RUN_AS_NODE (electron/main.js). That
+  # is a fuse, on by default, and electron-builder leaves fuses alone unless
+  # `electronFuses` says otherwise — so it is not set here, and
+  # scripts/verify-signed.sh checks the packaged app still starts its server.
+  notarize: true
+
+dmg:
+  # One window, the app and a link to Applications, no background art yet.
+  contents:
+    - { x: 130, y: 220 }
+    - { x: 410, y: 220, type: link, path: /Applications }

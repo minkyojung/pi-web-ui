@@ -12,7 +12,7 @@
     "build": "npm run notices && npm run build:client && npm run build:server",
     "app": "npm run build && electron .",
     "app:dev": "DEV_URL=http://localhost:5173 electron .",
-    "pack": "npm run build && electron-builder --mac --arm64 --dir",
+    "pack": "npm run build && electron-builder --mac --arm64",
     "test": "node --test",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
     "notices": "node scripts/notices.mjs",
