@@ -7,6 +7,7 @@ import { PiToggle } from "./components/PanelHeader";
 import { Sidebar, Steps } from "./components/Sidebar";
 import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
+import { WhyCard } from "./components/WhyCard";
 import { Title } from "./components/Title";
 import { Boundary } from "./components/Boundary";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
@@ -374,6 +375,8 @@ export function App() {
 		<TooltipProvider delayDuration={300}>
 			<QuickOpen open={picking} onOpenChange={setPicking} recent={recent} onPick={setOpen} />
 			<Search open={searching} onOpenChange={setSearching} onPick={setOpen} />
+			{/* Beside the words it is about, when one of them has been asked about. */}
+			<WhyCard />
 			<div className="flex h-screen flex-col">
 			{/* Two rows, not three and not one: the window's controls over the
 			    list, and the note tabs over everything else.

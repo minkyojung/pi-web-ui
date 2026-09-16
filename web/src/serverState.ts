@@ -28,6 +28,7 @@ import type {
 	SessionInfo,
 	Tagged,
 	UsageMsg,
+	WhyMsg,
 } from "./types";
 
 export interface Store<T> {
@@ -125,6 +126,12 @@ export const noteDeletedStore = createStore<NoteDeletedMsg | null>(null);
  * it is asked about the note in front, and the next question replaces it.
  */
 export const authorsStore = createStore<AuthorsMsg | null>(null);
+
+/**
+ * How one run of the note came to be there, as last asked for. One at a time:
+ * it is asked by clicking a run, and clicking another replaces it.
+ */
+export const whyStore = createStore<WhyMsg | null>(null);
 
 /** A note that is not on disk any more. A tab with it open puts it to the person. */
 export const noteGoneStore = createStore<NoteGoneMsg | null>(null);

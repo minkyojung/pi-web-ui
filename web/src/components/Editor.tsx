@@ -14,7 +14,7 @@ import { linkCompletion } from "../features/linkCompletion";
 import { indentListItem, listBackspace, listEnter, outdentListItem } from "../features/listEdit";
 import { listNumbers } from "../features/listNumbers";
 import { listIndent } from "../features/listIndent";
-import { authors, clearAuthors, paintAuthors, showAuthorsStore } from "../features/authors";
+import { authors, clearAuthors, paintAuthors, registerPutBack, showAuthorsStore } from "../features/authors";
 import { livePreview, toggleLivePreview, toggleTask } from "../features/livePreview";
 import { leaveTextUp } from "../features/pageMove";
 import { properties, propertiesField } from "../features/properties";
@@ -287,8 +287,9 @@ export function Editor({
 		const features = [
 			// What pi changed and the person has not decided about, as a diff.
 			review(() => at.current),
-			// Who wrote which words, when the note's menu asks for it.
-			authors,
+			// Who wrote which words, when the note's menu asks for it; a click on
+			// one of them asks how it got there.
+			authors(() => at.current),
 			links({
 				notes: () => filesStore.get().map((f) => f.path),
 				here: () => at.current,
@@ -410,12 +411,15 @@ export function Editor({
 		// The write barrier, in its three forms: before a prompt (whoever sends
 		// one calls flushSaves), before the page goes, and before this box does.
 		const unregister = registerSave(save);
+		// Putting pi's words back, from the card that says what they replaced.
+		const unregisterPutBack = registerPutBack((from, to, text) => v.dispatch({ changes: { from, to, insert: text }, userEvent: "input" }));
 		const onHide = () => save();
 		addEventListener("pagehide", onHide);
 		return () => {
 			save();
 			removeEventListener("pagehide", onHide);
 			unregister();
+			unregisterPutBack();
 			// Nothing is chosen in a note that is not open.
 			chosenStore.set(null);
 			v.destroy();

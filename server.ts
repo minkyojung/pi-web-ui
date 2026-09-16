@@ -605,6 +605,37 @@ function answered(answer: string | null, sessionId: string, entryId?: string): v
 }
 
 /** Saved sessions for this working directory, newest first. */
+/**
+ * The model a turn was on, and the message it began with, out of pi's own
+ * record of the conversation.
+ *
+ * Its entries are a tree and the log holds the id of the one that was being
+ * written at the time, so the branch down to it is the turn's own history:
+ * the last model it was told to use, and the last thing the person said
+ * before it. Nothing here is ours — a session can be deleted, and then this
+ * says nothing rather than guessing.
+ */
+async function turnOf(sessionId?: string, entryId?: string): Promise<{ model?: string; prompt?: string }> {
+	if (!sessionId || !entryId) return {};
+	try {
+		const info = (await SessionManager.list(CWD)).find((s) => s.id === sessionId);
+		if (!info) return {};
+		const manager = await SessionManager.open(info.path);
+		const branch = manager.getBranch(entryId);
+		if (!Array.isArray(branch)) return {};
+		let model: string | undefined;
+		let prompt: string | undefined;
+		for (const entry of branch) {
+			if (entry.type === "model_change" && entry.modelId) model = entry.provider ? `${entry.provider}/${entry.modelId}` : entry.modelId;
+			if (entry.type === "message" && entry.message?.role === "user") prompt = textOf(entry.message.content).trim() || undefined;
+		}
+		return { ...(model ? { model } : {}), ...(prompt ? { prompt } : {}) };
+	} catch {
+		// A session that will not open is a session that has nothing to say here.
+		return {};
+	}
+}
+
 async function sessions(): Promise<SessionsMsg> {
 	const current = session().sessionFile;
 	const list = (await SessionManager.list(CWD))
@@ -1366,6 +1397,42 @@ wss.on("connection", async (ws) => {
 						.filter((span) => span.author !== "me")
 						.map((span) => ({ from: span.from, to: span.to, author: span.author, at: span.at, ...(span.sessionId ? { session: span.sessionId } : {}) }));
 					reply({ type: "authors", path: msg.path, spans });
+					break;
+				}
+
+				/**
+				 * How one run of a note came to be there.
+				 *
+				 * The log says who and when, and what stood there before while the
+				 * run is still the whole of what its change wrote. For pi's own
+				 * writing there is more, in pi's record of the conversation: the
+				 * model it was on and the message the turn began with. That record
+				 * is not ours and a person may have deleted it, so what cannot be
+				 * found is simply left out.
+				 */
+				case "why_wrote": {
+					if (typeof msg.path !== "string" || typeof msg.pos !== "number") return;
+					const found = readNote(CWD, msg.path);
+					if (!found) {
+						reply({ type: "note_gone", path: msg.path });
+						return;
+					}
+					const { replayed } = settleDisk(msg.path, found.text, found.modified, Date.now());
+					const span = replayed.spans.find((s) => s.from <= msg.pos && msg.pos < s.to);
+					if (!span) return;
+					reply({
+						type: "why",
+						path: msg.path,
+						from: span.from,
+						to: span.to,
+						author: span.author,
+						at: span.at,
+						text: found.text.slice(span.from, span.to),
+						...(span.removed ? { removed: span.removed } : {}),
+						...(span.sessionId ? { session: span.sessionId } : {}),
+						...(span.entryId ? { entry: span.entryId } : {}),
+						...(await turnOf(span.sessionId, span.entryId)),
+					});
 					break;
 				}
 

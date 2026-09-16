@@ -925,8 +925,9 @@ check("the note's menu says who wrote what, and typing takes it back off", async
 	writeFileSync(
 		join(cwd, ".pi/history/whose.md.jsonl"),
 		[
-			{ author: "me", at: Date.now() - 60_000, from: 0, to: 0, inserted: "mine and then ", removed: "" },
-			{ author: "pi", at: Date.now() - 30_000, sessionId: "s", entryId: "e", from: 14, to: 14, inserted: "pi's\n", removed: "" },
+			{ author: "me", at: Date.now() - 60_000, from: 0, to: 0, inserted: "mine and then ours\n", removed: "" },
+			// A replacement rather than an insertion, so there is something it stands in place of.
+			{ author: "pi", at: Date.now() - 30_000, sessionId: "s", entryId: "e", from: 14, to: 18, inserted: "pi's", removed: "ours" },
 		]
 			.map((c) => JSON.stringify(c))
 			.join("\n") + "\n",
@@ -942,6 +943,19 @@ check("the note's menu says who wrote what, and typing takes it back off", async
 		app.evaluate("[...document.querySelectorAll('#editor .cm-by-pi')].map((el) => el.textContent).join('')"),
 	).then((marked) => assert.equal(marked.trim(), "pi's", "what pi wrote, and nothing the person wrote"));
 	assert.match(await app.evaluate("document.querySelector('#editor .cm-by-pi').getAttribute('title')"), /^pi · /, "and when");
+
+	// A click on one of them says how it got there: who, when, and what it stands
+	// in place of. The conversation it names is not on this machine, so the model
+	// and the question are left out rather than guessed at — the card is what the
+	// record has, and no more.
+	await app.click("#editor .cm-by-pi");
+	await until("the card", () => app.evaluate("!!document.querySelector('[data-slot=popover-content]')"));
+	const card = await app.evaluate("document.querySelector('[data-slot=popover-content]').textContent");
+	assert.match(card, /^pi/, "who wrote it");
+	assert.ok(card.includes("ours") && card.includes("pi's"), `what it replaced, and what it says now: ${card}`);
+	assert.ok(card.includes("Put it back"), "and the way back");
+	await app.press("Escape");
+	await until("the card gone", async () => !(await app.evaluate("!!document.querySelector('[data-slot=popover-content]')")));
 
 	// Typing is the person's own words; what was on screen was about the note as
 	// it was written down, so it goes rather than shuffling along under the cursor.

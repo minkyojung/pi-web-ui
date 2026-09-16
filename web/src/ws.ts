@@ -14,6 +14,7 @@ import {
 	contextSourcesStore,
 	authorsStore,
 	filesStore,
+	whyStore,
 	filesTruncatedStore,
 	noteChangedStore,
 	noteConflictStore,
@@ -85,6 +86,7 @@ const STATE: Record<StateMsg["type"], true> = {
 	note_deleted: true,
 	note_conflict: true,
 	authors: true,
+	why: true,
 	search_results: true,
 	ask_done: true,
 	prompt_request: true,
@@ -161,6 +163,9 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "authors":
 			authorsStore.set(msg);
+			return;
+		case "why":
+			whyStore.set(msg);
 			return;
 		case "note_deleted":
 			noteDeletedStore.set(msg);

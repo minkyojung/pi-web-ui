@@ -95,6 +95,12 @@ export type ClientMsg =
 	 * every keystroke would be a different feature with a different cost.
 	 */
 	| { type: "who_wrote"; path: string }
+	/**
+	 * Everything about the run of the note at `pos`: who wrote it, when, what
+	 * stood there before, and — for pi — which model and the question the turn
+	 * began with. Asked when someone clicks a marked run. Answered with `why`.
+	 */
+	| { type: "why_wrote"; path: string; pos: number }
 	/** Bring a trashed note back to its path. Answered with `note_created` to this tab and `note` to every tab. */
 	| { type: "restore_note"; trashed: string; path: string }
 	/**
@@ -368,6 +374,34 @@ export interface AuthorsMsg {
 }
 
 /**
+ * One run of the note, and everything there is to say about how it got there.
+ *
+ * `removed` and `model` and `prompt` are each there when they are known. What
+ * stood before is kept only while the run is still the whole of what its
+ * change wrote; the model and the question come from pi's own record of the
+ * conversation, which a person may have deleted since.
+ */
+export interface WhyMsg {
+	type: "why";
+	path: string;
+	from: number;
+	to: number;
+	author: Author;
+	at: number;
+	/** The words as they are now. */
+	text: string;
+	/** What they replaced, when that is still known. */
+	removed?: string;
+	/** For pi: `provider/model` it was on. */
+	model?: string;
+	/** For pi: the message the turn began with. */
+	prompt?: string;
+	/** For pi: the conversation and the turn, so it can be taken there. */
+	session?: string;
+	entry?: string;
+}
+
+/**
  * A note went to the trash, by someone's choice.
  *
  * `to` says which trash, and the two are undone in different places. The
@@ -499,6 +533,7 @@ export type StateMsg =
 	| NoteDeletedMsg
 	| NoteConflictMsg
 	| AuthorsMsg
+	| WhyMsg
 	| SearchResultsMsg
 	| AskDoneMsg
 	| PromptRequestMsg

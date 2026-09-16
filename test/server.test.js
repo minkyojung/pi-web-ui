@@ -196,6 +196,42 @@ it("누가 썼는지 물으면 남이 쓴 자리만 돌아온다", async () => {
   assert.equal(second.spans[0].to, opened.text.length, "바깥이 쓴 자리는 그대로");
 });
 
+it("한 자리를 짚으면 누가·언제·무엇을 대신해 썼는지가 온다", async () => {
+  const mine = "# why\n\nmine.\n";
+  const added = "pi wrote this.\n";
+  writeFileSync(join(cwd, "why.md"), mine + added);
+  mkdirSync(join(cwd, ".pi/history"), { recursive: true });
+  writeFileSync(
+    join(cwd, ".pi/history/why.md.jsonl"),
+    [
+      { author: "me", at: 1, from: 0, to: 0, inserted: mine, removed: "" },
+      { author: "pi", at: 2, sessionId: "no-such-session", entryId: "e7", from: mine.length, to: mine.length, inserted: added, removed: "old line.\n" },
+    ]
+      .map((c) => JSON.stringify(c))
+      .join("\n") + "\n",
+  );
+  clear();
+  send({ type: "open_note", path: "why.md" });
+  await want("note", (m) => m.path === "why.md");
+  clear();
+  send({ type: "why_wrote", path: "why.md", pos: mine.length + 2 });
+  const why = await want("why");
+  assert.equal(why.author, "pi");
+  assert.equal(why.at, 2);
+  assert.equal(why.from, mine.length);
+  assert.equal(why.text, added, "지금 그 자리에 있는 글");
+  assert.equal(why.removed, "old line.\n", "그 자리에 있던 글");
+  assert.equal(why.entry, "e7", "어느 턴이었는지");
+  // 그 대화는 이 기계에 없다: 모델과 질문은 빈 채로 오고, 나머지는 그대로 온다.
+  assert.equal(why.model, undefined);
+  assert.equal(why.prompt, undefined);
+
+  // 내가 쓴 자리를 짚으면 그것도 말해준다 — 표시는 안 하지만 물어볼 수는 있다.
+  clear();
+  send({ type: "why_wrote", path: "why.md", pos: 2 });
+  assert.equal((await want("why")).author, "me");
+});
+
 it("결정할 것을 담지 못하는 자리의 결정은 거절되고, 노트가 되돌아온다", async () => {
   // pi가 쓴 자리가 있는 노트. 장부를 직접 놓는 것은 pi 없이 그 상태를 만드는 유일한 방법이고,
   // 며칠 뒤에 노트를 여는 사람이 보는 상태이기도 하다.
