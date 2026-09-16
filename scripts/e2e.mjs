@@ -1371,6 +1371,55 @@ check("what the vault knows about a short note sits at the foot of the page", as
 	);
 });
 
+/**
+ * The strip across the foot of the window keeps its height whatever is in it.
+ *
+ * That is the whole of what makes it a status bar rather than another panel,
+ * and it is the one thing about it worth a check: everything the strip says is
+ * something that comes and goes — a note with no tags, a note nobody points at,
+ * a note that has just been saved — and if the strip moved for any of them, the
+ * page above it would jump under the hand writing on it.
+ */
+check("the strip at the foot of the window keeps its height, and says whether the note has reached the disk", async ({ app, cwd }) => {
+	const height = () => app.evaluate("document.getElementById('status')?.getBoundingClientRect().height ?? -1");
+	const says = () => app.evaluate("document.getElementById('status')?.textContent ?? ''");
+
+	writeFileSync(join(cwd, "strip-short.md"), "one line\n");
+	writeFileSync(join(cwd, "strip-long.md"), Array.from({ length: 200 }, (_, i) => `line ${i + 1}`).join("\n") + "\n");
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="strip-short.md"]') && !!document.querySelector('#notes button[data-path="strip-long.md"]')`));
+
+	await pickNote(app, "strip-short.md");
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("one line"));
+	const was = await height();
+	assert.ok(was > 0, "the strip is drawn");
+	assert.ok((await says()).includes("Saved"), "a note that is on disk says so");
+
+	// A long note, pi put away and brought back, and the window made smaller:
+	// four things that move everything else in the window, and none of them is
+	// the strip's business.
+	await pickNote(app, "strip-long.md");
+	await until("the long note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("line 200"));
+	assert.equal(await height(), was, "a long note does not move the strip");
+
+	// The button rather than the panel: pi's column is collapsed to nothing
+	// rather than taken out of the page, so #chat is still there either way.
+	// What the button says is the one thing that turns over.
+	const pi = (label) => app.evaluate(`(() => { const b = document.querySelector('button[aria-label=${JSON.stringify(label)}]'); if (!b) return false; b.click(); return true; })()`);
+	assert.equal(await pi("Hide pi"), true);
+	await until("pi to be away", () => app.evaluate(`!!document.querySelector('button[aria-label="Show pi"]')`));
+	assert.equal(await height(), was, "putting pi away does not move the strip");
+	assert.equal(await pi("Show pi"), true);
+	await until("pi to be back", () => app.evaluate(`!!document.querySelector('button[aria-label="Hide pi"]')`));
+	assert.equal(await height(), was, "and bringing it back does not either");
+
+	// Typed and not yet sent, then sent: the strip follows the note to the disk.
+	assert.equal(await type(app, "MORE "), true);
+	await until("the strip to say it is going", async () => (await says()).includes("Saving"));
+	assert.equal(await height(), was, "and neither does a word being typed");
+	await until("the strip to say it has landed", async () => (await says()).includes("Saved"));
+	assert.ok(readFileSync(join(cwd, "strip-long.md"), "utf8").includes("MORE"), "which it had");
+});
+
 check("a tag and a link written in the properties count as much as ones written in the note", async ({ app, cwd }) => {
 	// One note says its tag in the text, the other in its properties, and they share it.
 	writeFileSync(join(cwd, "prop-tagged.md"), '---\ntags: [Crew]\nrelated: "[[prop-hub]]"\n---\n\nnothing in the text\n');

@@ -5,6 +5,7 @@ import { Editor } from "./components/Editor";
 import { Pi } from "./components/Pi";
 import { PiToggle, SidebarToggle } from "./components/PanelHeader";
 import { Sidebar, Steps } from "./components/Sidebar";
+import { StatusBar } from "./components/StatusBar";
 import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
 import { WhyCard } from "./components/WhyCard";
@@ -545,8 +546,8 @@ export function App() {
 					{/* The left gap is the list's to give, and with it folded away there
 					    is nobody to give it: the card would sit on the window's own
 					    edge, where the other three sides keep eight pixels off it. */}
-					<div className={`min-h-0 flex-1 pr-2 pb-2 ${sidebarOpen ? "" : "pl-2"}`}>
-					<ResizablePanelGroup orientation="horizontal" className="overflow-hidden rounded-xl border bg-background" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
+					<div className={`flex min-h-0 flex-1 flex-col pr-2 pb-2 ${sidebarOpen ? "" : "pl-2"}`}>
+					<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-background" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
 					<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
 					<NoteHeader path={open} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
 					{/* A different note is a different editor, with its own history,
@@ -650,6 +651,11 @@ export function App() {
 						</div>
 					</ResizablePanel>
 					</ResizablePanelGroup>
+					{/* Under the card rather than across the whole window: what it has
+					    to say is about the note, and the list of notes down the left is
+					    not about the note. The card and pi give up its height together,
+					    the way the two columns keep the tabs' strip clear at the top. */}
+					<StatusBar path={open} />
 					</div>
 				</ResizablePanel>
 			</ResizablePanelGroup>

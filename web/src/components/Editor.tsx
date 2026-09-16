@@ -32,6 +32,7 @@ import type { Place } from "../../../links.ts";
 import type { Left } from "../nav";
 import type { Backlink, Tagged } from "../types";
 import { authorsStore, backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, taggedStore } from "../serverState";
+import { inFrontStore } from "../inFront";
 import { titleOf } from "../noteSync";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { flushSaves, registerSave } from "../saves";
@@ -662,6 +663,18 @@ export function Editor({
 		sent.current = null;
 		setStatus("conflict");
 	}, [conflict, path]);
+
+	// Told to the strip across the foot of the window, which is not in this
+	// tree and cannot be handed it (inFront.ts). Cleared on the way out, since
+	// an editor that has gone has nothing to say — and cleared only if what is
+	// there is still this note's, so the editor being left behind does not wipe
+	// what the one taking its place has already written.
+	useEffect(() => {
+		inFrontStore.set({ path, saved: status });
+		return () => {
+			if (inFrontStore.get()?.path === path) inFrontStore.set(null);
+		};
+	}, [path, status]);
 
 	/** Take the disk's version. Everything typed here is given up, and the answer settles the rest. */
 	const reload = () => {

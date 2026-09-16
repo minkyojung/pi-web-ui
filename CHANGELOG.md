@@ -27,6 +27,8 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - Octave updates itself: a new version is downloaded in the background and offered, with its notes, when it is ready. "Check for Updates…" is in the Octave menu.
 - The licence (AGPL-3.0) and the notices of everything the app is built on ship inside it.
 - The list of notes folds away, by the button next to the traffic lights or with ⌘B, and the note takes the room it leaves. The way back and forward keep the list's edge while there is a list, and close up beside the fold button when there is not.
+- A note fills the page it is on, so the space under the last line is part of the note: click it and the cursor goes to the end, instead of holding Enter until the file has the blank lines to reach down there. The room that used to sit under the text is gone with it.
+- A strip across the foot of the window says whether the note you are looking at has reached the disk. It is the same height whatever it has to say, so nothing above it moves.
 
 ### Fixed
 - The × that takes a tag off a note is the size of the tag again, so the chip keeps its shape when the properties are open.
