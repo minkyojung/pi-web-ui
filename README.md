@@ -139,7 +139,9 @@ resolving, so a symlink pointing out of the folder is refused too.
 
 Every character of a note has an author. `history.ts` keeps one append-only log
 per note, one line per change: the first seeds it with the whole text as first
-seen, and every line after replaces one range. Replaying the lines from an empty
+seen, and every line after replaces one range. Each line says which shape it
+is (`v`), since the log is never rewritten and only how a line is read can
+change. Replaying the lines from an empty
 string gives the text back, which is how a note changed behind the app's back is
 noticed — what the log says the note is and what the disk says differ, and the
 difference is logged too.
@@ -158,6 +160,14 @@ There are three authors, and the whole design is in keeping them apart:
 | `me` | the person, through this app |
 | `pi` | the agent, with the session and the message it said so in |
 | `outside` | someone else's editor, a sync client, a `git checkout` |
+
+And one word for what is not a writer: `before`, the words a note had when
+the app first read it. A note the app did not know cannot have its change told
+from its text, so the whole of it is seeded as `before`, and `before` is
+never marked — the alternative is a folder of old notes underlined from end to
+end as someone else's. A note that appears in the folder while the app is
+running is different: nobody had it, so every word of it was written just now,
+and it is seeded as `outside`.
 
 ### Deciding about what pi wrote
 

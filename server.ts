@@ -35,7 +35,7 @@ import { FileIndex } from "./fileIndex.ts";
 import { startLogging } from "./log.ts";
 import { deleteNote, shellTrash } from "./trash.ts";
 import { noteTools } from "./noteEdit.ts";
-import { decide, type Change, historyOf, type Holed, mapThrough, moveHistory, reconcile, record, readHistory, trashLog, undecided } from "./history.ts";
+import { decide, type Change, historyOf, type Holed, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { type Claim, recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
@@ -372,12 +372,17 @@ function files(): FilesMsg {
  * Bring a note's log up to what is on disk, asking whose the difference is.
  *
  * Every place that settles the disk goes through here, because the answer is
- * the same question everywhere: a write that missed the app is the person's,
- * unless pi's shell was running and this is what it did — which only the
- * recorder knows. See recorder.ts.
+ * the same question everywhere. pi's, if its shell was running and this is
+ * what it did — which only the recorder knows (recorder.ts). Else outside's,
+ * if the note is one the folder did not have when the app listed it: it
+ * appeared while the app was running, so every word of it was written by
+ * someone, just now, and not through here. Else what the log makes of it —
+ * a difference from what it knew is outside's, and a note it never knew is
+ * from before (reconcile).
  */
 function settleDisk(path: string, text: string, mtime: number, at: number) {
-	return reconcile(CWD, path, text, at, claimant?.(path, mtime) ?? { author: "outside", at });
+	const origin: Origin | undefined = claimant?.(path, mtime) ?? (notes.has(path) ? undefined : { author: "outside", at });
+	return reconcile(CWD, path, text, at, origin);
 }
 
 /**
@@ -1382,8 +1387,8 @@ wss.on("connection", async (ws) => {
 				 * down what they have typed first, the way anything that needs the
 				 * disk current does.
 				 *
-				 * Only what somebody else wrote is worth saying: a note is mostly
-				 * its writer's, and one marked all over says nothing.
+				 * Only what somebody else was seen to write is worth saying: a note
+				 * is mostly its writer's, and one marked all over says nothing.
 				 */
 				case "who_wrote": {
 					if (typeof msg.path !== "string") return;
@@ -1394,7 +1399,8 @@ wss.on("connection", async (ws) => {
 					}
 					const { replayed } = settleDisk(msg.path, found.text, found.modified, Date.now());
 					const spans = replayed.spans
-						.filter((span) => span.author !== "me")
+						// Nor what was there before the app: nobody was seen to write it.
+						.filter((span) => span.author !== "me" && span.author !== "before")
 						.map((span) => ({ from: span.from, to: span.to, author: span.author, at: span.at, ...(span.sessionId ? { session: span.sessionId } : {}) }));
 					reply({ type: "authors", path: msg.path, spans });
 					break;

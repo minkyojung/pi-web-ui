@@ -31,7 +31,15 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { writeAtomic } from "./atomic.ts";
 import type { Hole, Span } from "./history.ts";
 
+/**
+ * The shape of the answer. Bumped when what a walk works out changes meaning,
+ * so that an answer worked out by an older reading is not resumed from: it is
+ * a cache, and the walk it saves is the fallback.
+ */
+export const SNAPSHOT_V = 2;
+
 export type Snapshot = {
+	v: number;
 	/** How many of the log's lines are in it. */
 	lines: number;
 	/** Of exactly those lines. See hashOf. */
@@ -75,7 +83,7 @@ export function readSnapshot(logFile: string, lines: string[]): Snapshot | null 
 	if (!existsSync(file)) return null;
 	try {
 		const snap = JSON.parse(readFileSync(file, "utf8")) as Snapshot;
-		if (typeof snap?.lines !== "number" || typeof snap.hash !== "string" || typeof snap.text !== "string") return null;
+		if (snap?.v !== SNAPSHOT_V || typeof snap.lines !== "number" || typeof snap.hash !== "string" || typeof snap.text !== "string") return null;
 		if (!Array.isArray(snap.spans) || !Array.isArray(snap.holes)) return null;
 		if (snap.lines > lines.length) return null;
 		if (hashOf(lines.slice(0, snap.lines).join("\n")) !== snap.hash) return null;
@@ -85,8 +93,8 @@ export function readSnapshot(logFile: string, lines: string[]): Snapshot | null 
 	}
 }
 
-export function writeSnapshot(logFile: string, lines: string[], state: Omit<Snapshot, "lines" | "hash">): void {
-	const snap: Snapshot = { lines: lines.length, hash: hashOf(lines.join("\n")), ...state };
+export function writeSnapshot(logFile: string, lines: string[], state: Omit<Snapshot, "v" | "lines" | "hash">): void {
+	const snap: Snapshot = { v: SNAPSHOT_V, lines: lines.length, hash: hashOf(lines.join("\n")), ...state };
 	writeAtomic(snapshotPath(logFile), JSON.stringify(snap));
 }
 

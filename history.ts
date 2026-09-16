@@ -22,7 +22,14 @@ import { diffWordsWithSpace } from "diff";
 
 import { forgetSnapshot, readSnapshot, writeSnapshot } from "./snapshot.ts";
 
-export type Author = "me" | "pi" | "outside";
+/**
+ * Who wrote. `before` is the one that is not a writer: the words a note had
+ * when the app first read it, which nobody was seen to write. A note the app
+ * did not know cannot have its change told from its text, so the whole of it
+ * is seeded as `before` and none of it is marked — the cheap wrong answer,
+ * beside handing every word the person ever wrote to "outside".
+ */
+export type Author = "me" | "pi" | "outside" | "before";
 
 /** Where a change came from. Only pi's carry a place in a session. */
 export type Origin = { author: Author; at: number; sessionId?: string; entryId?: string };
@@ -317,9 +324,34 @@ export const readHistory = (root: string, path: string): Change[] => readLog(his
  */
 function readLog(file: string): { raw: string[]; changes: Change[] } {
 	const raw = linesOf(file);
-	const changes: Change[] = [];
-	for (const line of raw) changes.push(JSON.parse(line));
-	return { raw, changes };
+	return { raw, changes: raw.map(parseLine) };
+}
+
+/**
+ * The shape of a line, written on every line from now on and read off it.
+ *
+ * The log is the one thing in the vault that cannot be rebuilt, so it is never
+ * rewritten; what changes is how a line is read, and a reader has to know
+ * which shape it is reading. A line with no `v` is from before there was one.
+ */
+const LOG_V = 1;
+
+/**
+ * One line of the log, as a change. `v` is about the line and not the
+ * change, and is read off here.
+ *
+ * Before `before` was a word, a note the app found was seeded as "outside",
+ * whole. Such a line is the first, says it seeded — it starts at nothing —
+ * and has no `v`. It reads as `before` now, as a touch with no `kept` reads
+ * as an acceptance, so that a vault opened for the first time a year ago is
+ * not a vault whose every note is marked as someone else's. A line with a `v`
+ * that says "outside" at the start of a log means it: the note appeared in a
+ * folder that did not have it.
+ */
+function parseLine(line: string, index: number): Change {
+	const { v, ...change } = JSON.parse(line) as Change & { v?: number };
+	if (v === undefined && index === 0 && change.author === "outside" && change.from === 0 && change.to === 0) return { ...change, author: "before" };
+	return change;
 }
 
 /**
@@ -367,7 +399,8 @@ export function historyOf(root: string, path: string, slowMs = SLOW_MS): Read {
 	// Only the lines the snapshot does not cover are turned into changes. On a
 	// long log the parsing is most of what is left once the walk is short, and
 	// a line already answered for never has to become anything.
-	const tail = raw.slice(snap ? snap.lines : 0).map((line) => JSON.parse(line) as Change);
+	const skip = snap ? snap.lines : 0;
+	const tail = raw.slice(skip).map((line, i) => parseLine(line, skip + i));
 	const started = performance.now();
 	const replayed = replay(tail, snap ? { text: snap.text, spans: snap.spans } : undefined);
 	const holed = holesOf(tail, snap ? { text: snap.text, holes: snap.holes } : undefined);
@@ -456,7 +489,7 @@ export function appendHistory(root: string, path: string, changes: Change[]): vo
 	if (changes.length === 0) return;
 	const file = historyPath(root, path);
 	mkdirSync(dirname(file), { recursive: true });
-	appendFileSync(file, changes.map((c) => JSON.stringify(c)).join("\n") + "\n");
+	appendFileSync(file, changes.map((c) => JSON.stringify({ v: LOG_V, ...c })).join("\n") + "\n");
 }
 
 /**
@@ -468,18 +501,20 @@ export function appendHistory(root: string, path: string, changes: Change[]): vo
  * recorded is measured from what is really there. A note with no log yet is
  * seeded whole the same way.
  *
- * Whose that difference is, the caller says. "outside" is the answer when
- * nobody claims it, and the only one this file can work out on its own; a
- * caller that knows pi's shell was running says so instead — see recorder.ts.
- * The log is append-only and has no line that changes an earlier line's
- * author, so the answer has to be right as it is written.
+ * Whose that is, the caller says when it knows — pi's shell was running
+ * (recorder.ts), or the note appeared in a folder that did not have it. When
+ * it does not, there are two answers and not one: a difference from what the
+ * log knew is "outside", since somebody made it; a note with no log at all is
+ * "before", since nobody was seen to. The log is append-only and has no line
+ * that changes an earlier line's author, so the answer has to be right as it
+ * is written.
  */
 export function reconcile(
 	root: string,
 	path: string,
 	onDisk: string,
 	at: number,
-	origin: Origin = { author: "outside", at },
+	origin?: Origin,
 ): { appended: Change[]; spans: Span[]; replayed: Replayed; holed: Holed } {
 	// A note with no log is either new or back from the trash, and the trash is
 	// asked before the note is seeded as new — see reclaimLog.
@@ -490,7 +525,7 @@ export function reconcile(
 	let { replayed, holed } = read;
 	let appended: Change[] = [];
 	if (replayed.text !== onDisk) {
-		appended = changesBetween(replayed.text, onDisk, origin);
+		appended = changesBetween(replayed.text, onDisk, origin ?? { author: read.lines === 0 ? "before" : "outside", at });
 		appendHistory(root, path, appended);
 		// Only the new lines, on top of what was just worked out.
 		replayed = replay(appended, replayed);

@@ -153,7 +153,8 @@ test("앞부분은 다시 걷지 않는다 — 답이 그렇다고 말한다", (
     // 이 글이 답에 남아 있는지로 알 수 있다 — 다시 걸었다면 흔적도 없을 것이다.
     writeSnapshot(file, lines.slice(0, 2), { text: "PRETEND ", spans: [], holes: [] });
     const { replayed } = historyOf(root, "a.md");
-    const changes = lines.map((l) => JSON.parse(l));
+    // `v` is the line's, not the change's: what the walk is handed has none.
+    const changes = lines.map((l) => { const { v: _v, ...c } = JSON.parse(l); return c; });
     assert.deepEqual(replayed, replay(changes.slice(2), { text: "PRETEND ", spans: [] }));
     assert.match(replayed.text, /^PRETEND /, "앞 두 줄은 읽히지 않았다");
   } finally {

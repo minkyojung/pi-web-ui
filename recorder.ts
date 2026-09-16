@@ -21,7 +21,7 @@
  * would come back marked as pi's words in their own editor.
  *
  * A claim is bounded: a note that changes in the fifth minute of a dev server
- * is the person, not the command, so after CLAIM_MS the answer is "outside"
+ * is the person, not the command, so after CLAIM_MS the answer is nobody's
  * again — the cheap wrong answer rather than the expensive one.
  *
  * Runs inside pi's extension runner, like the reader's set_gist did, so it is
@@ -41,7 +41,7 @@ export type OnNoteWritten = (path: string, base: number | null, changes: Change[
 
 /**
  * Whose a change to a note is, asked by whoever is about to log it. Null is
- * "not pi's" — the caller keeps its own answer, which is "outside".
+ * "not pi's" — the caller keeps its own answer (see reconcile).
  */
 export type Claim = (path: string, mtimeMs: number) => Origin | null;
 
@@ -81,11 +81,11 @@ export function recorder(root: string, onWritten: OnNoteWritten): { factory: (pi
 	 * which case pi did write every word of it. A truncated listing cannot
 	 * tell the two apart, and says so.
 	 */
-	const authorOf = (path: string, shell: Shell, at: number): Origin => {
+	const authorOf = (path: string, shell: Shell, at: number): Origin | null => {
 		const logged = readHistory(root, path).length > 0;
 		const there = shell.notes.has(path);
 		if (logged || (!there && !shell.capped)) return { author: "pi", at, sessionId: shell.sessionId, entryId: shell.entryId };
-		return { author: "outside", at };
+		return null;
 	};
 
 	const claimAt = (path: string, mtimeMs: number, at: number): Origin | null => {
@@ -94,7 +94,7 @@ export function recorder(root: string, onWritten: OnNoteWritten): { factory: (pi
 			if (mtimeMs < shell.startedAt) continue;
 			if (at - shell.startedAt > CLAIM_MS) continue;
 			const origin = authorOf(path, shell, at);
-			if (origin.author === "pi") return origin;
+			if (origin) return origin;
 		}
 		return null;
 	};
@@ -121,8 +121,7 @@ export function recorder(root: string, onWritten: OnNoteWritten): { factory: (pi
 			if (shell.notes.get(file.path) === file.modified) continue;
 			const found = readNote(root, file.path);
 			if (!found) continue; // Gone between the listing and the read; the watcher has it.
-			const origin = claimAt(file.path, file.modified, at) ?? { author: "outside" as const, at };
-			const { appended } = reconcile(root, file.path, found.text, at, origin);
+			const { appended } = reconcile(root, file.path, found.text, at, claimAt(file.path, file.modified, at) ?? undefined);
 			if (appended.length) onWritten(file.path, shell.notes.get(file.path) ?? null, appended);
 		}
 	};

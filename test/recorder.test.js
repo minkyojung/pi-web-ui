@@ -117,7 +117,7 @@ test("호출 전부터 있던, 로그 없는 노트는 통째로 pi의 것이 �
   await emit("tool_call", call());
   note("old.md", "글쓴이의 문장\npi가 붙인 줄\n", before + 1000);
   await emit("tool_execution_end", ended());
-  assert.deepEqual(readHistory(dir, "old.md").map((c) => c.author), ["outside"]);
+  assert.deepEqual(readHistory(dir, "old.md").map((c) => c.author), ["before"], "pi도 바깥도 아니다 — 아무도 쓰는 것을 보지 못했다");
 });
 
 test("호출 중에 생긴 노트는 통째로 pi의 것이 맞다", async (t) => {

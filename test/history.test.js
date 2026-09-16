@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -188,7 +188,7 @@ test("같은 이름의 다른 노트에게는 그 과거가 가지 않는다", (
     reconcile(dir, "a.md", "something else entirely\n", 5);
     const changes = readHistory(dir, "a.md");
     assert.equal(changes.length, 1, "제 과거는 비어 있고, 지금 글이 처음 본 것으로 들어간다");
-    assert.equal(changes[0].author, "outside");
+    assert.equal(changes[0].author, "before");
     assert.ok(existsSync(trashHistoryPath(dir, "a.md")), "앞 노트의 과거는 휴지통에 그대로 있다");
     assert.equal(reclaimLog(dir, "b.md", "one\n"), null, "다른 이름으로는 찾지 않는다");
   } finally {
@@ -215,10 +215,31 @@ test("찢어진 마지막 줄은 버리고 그 앞은 살린다", () => {
   assert.equal(readHistory(DIR, "torn.md").length, 1);
 });
 
-test("처음 보는 노트는 통째로 바깥 것으로 심어진다", () => {
+test("처음 보는 노트는 통째로 앱 이전의 글로 심어진다 — 아무도 쓰는 것을 보지 못했으니", () => {
   const { spans } = reconcile(DIR, "seed.md", "already here\n", 5);
-  assert.deepEqual(spans, [{ author: "outside", at: 5, from: 0, to: 13, removed: "" }]);
+  assert.deepEqual(spans, [{ author: "before", at: 5, from: 0, to: 13, removed: "" }]);
   assert.equal(existsSync(historyPath(DIR, "seed.md")), true);
+});
+
+test("앱 이전이라는 말이 없던 때의 로그는 첫 줄의 바깥을 앱 이전으로 읽는다 — 로그는 고치지 않는다", () => {
+  // Written as the app wrote it then: no `v` on a line.
+  const raw = [
+    { author: "outside", at: 1, from: 0, to: 0, inserted: "old words\n", removed: "" },
+    { author: "outside", at: 2, from: 0, to: 0, inserted: "vim: ", removed: "" },
+  ].map((c) => JSON.stringify(c)).join("\n") + "\n";
+  mkdirSync(join(DIR, ".pi/history"), { recursive: true });
+  writeFileSync(historyPath(DIR, "old-seed.md"), raw);
+  assert.deepEqual(readHistory(DIR, "old-seed.md").map((c) => c.author), ["before", "outside"], "첫 줄만, 씨앗인 줄만");
+  assert.equal(readFileSync(historyPath(DIR, "old-seed.md"), "utf8"), raw, "파일은 그대로다");
+  const { spans } = reconcile(DIR, "old-seed.md", "vim: old words\n", 3);
+  assert.deepEqual(spans.map((s) => s.author), ["outside", "before"]);
+});
+
+test("지금 적는 줄은 제 모양을 말하고, 폴더에 나타난 노트의 바깥 씨앗은 바깥으로 읽힌다", () => {
+  reconcile(DIR, "fresh.md", "appeared\n", 1, { author: "outside", at: 1 });
+  assert.ok(readFileSync(historyPath(DIR, "fresh.md"), "utf8").startsWith('{"v":1,'), "줄마다 v");
+  assert.deepEqual(readHistory(DIR, "fresh.md").map((c) => c.author), ["outside"]);
+  assert.equal("v" in readHistory(DIR, "fresh.md")[0], false, "v는 줄의 것이지 변경의 것이 아니다");
 });
 
 test("앱을 거치지 않은 편집은 바깥 것으로 기록된다", () => {

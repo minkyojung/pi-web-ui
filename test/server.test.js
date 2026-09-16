@@ -174,8 +174,20 @@ it("새 노트는 목록의 소식이다", async () => {
   assert.equal(after.files.some((f) => f.path === born.path), false, "지운 것은 목록에서 빠진다");
 });
 
+it("앱이 켜질 때 폴더에 있던 노트는 누구 것도 아니다 — 물어도 표시할 자리가 없다", async () => {
+  // a.md는 서버가 뜨기 전부터 있었고, 아직 아무도 열지 않았다.
+  clear();
+  send({ type: "open_note", path: "a.md" });
+  await want("note", (m) => m.path === "a.md");
+  clear();
+  send({ type: "who_wrote", path: "a.md" });
+  const answer = await want("authors");
+  assert.deepEqual(answer.spans, [], "앱 이전의 글은 밑줄이 없다");
+  assert.equal(history("a.md")[0].author, "before");
+});
+
 it("누가 썼는지 물으면 남이 쓴 자리만 돌아온다", async () => {
-  // 앱을 거치지 않고 쓰인 노트: 통째로 바깥의 글이다.
+  // 앱이 도는 동안 폴더에 나타난 노트: 폴더에 없던 것이니 통째로 바깥의 글이다.
   writeFileSync(join(cwd, "whose.md"), "outside wrote all of this\n");
   clear();
   send({ type: "open_note", path: "whose.md" });
