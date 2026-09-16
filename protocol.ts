@@ -319,6 +319,12 @@ export interface ContextSourcesMsg {
 	skills: number;
 	memoryFiles: { count: number; chars: number };
 	login: { oauth: boolean; subscription: boolean };
+	/**
+	 * The folder has a `.pi/` of its own — settings, skills, prompts, a
+	 * SYSTEM.md — that pi reads only from a project it has been told to trust,
+	 * and this one has not been. So none of it is in the context.
+	 */
+	untrusted: boolean;
 }
 
 /**

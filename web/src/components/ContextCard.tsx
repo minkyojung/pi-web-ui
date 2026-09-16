@@ -88,6 +88,7 @@ export function ContextCard() {
 				<Section>
 					<Row label="Provider" value={provider} />
 					<Row label="Login" value={login} />
+					{sources?.untrusted && <Row label="This folder's .pi" value="Not read — not trusted" />}
 				</Section>
 			</HoverCardContent>
 		</HoverCard>

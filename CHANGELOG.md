@@ -7,6 +7,8 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 ## [Unreleased]
 
 ### Changed
+- Settings, skills or a SYSTEM.md in the note folder's own `.pi/` are read by pi only if pi's terminal was told to trust the folder; until then the context card says they were left out. Before, they were read without asking.
+- Anything pi had to complain about while setting up a session — an extension that failed, an option it did not know — now shows in the conversation instead of nowhere.
 - A message one of pi's extensions posts to the conversation is shown as a notice, live and after resuming; before, it was dropped. So is the summary pi leaves when a branch is left.
 - A message that starts with `/` is sent to pi as written. Before, pi read it as one of its commands and ran or rewrote it without saying so.
 - Cutting words and pasting them elsewhere — in the same note or another — keeps who wrote them. Before, the words became yours the moment you pasted them.

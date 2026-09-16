@@ -19,7 +19,9 @@ import {
 	createAgentSessionRuntime,
 	createAgentSessionServices,
 	getAgentDir,
+	hasTrustRequiringProjectResources,
 	ModelRuntime,
+	ProjectTrustStore,
 	SessionManager,
 	type AgentSessionEvent,
 	type CreateAgentSessionRuntimeFactory,
@@ -57,6 +59,7 @@ import type {
 	ClientMsg,
 	ConfigMsg,
 	ContextSourcesMsg,
+	ErrorMsg,
 	FilesMsg,
 	ModelInfo,
 	NoteChangedMsg,
@@ -171,7 +174,21 @@ let asking: (Ask & { at: number; done: (outcome: AskOutcome) => void }) | null =
  */
 const WEB_ACCESS = dirname(createRequire(import.meta.url).resolve("pi-web-access/package.json"));
 
+/**
+ * Whether pi may read the vault's own `.pi/` — its settings.json, skills,
+ * prompts, SYSTEM.md — the way it reads a project's. pi's terminal asks the
+ * person the first time and remembers the answer in its trust file; nothing
+ * here asks yet, so the answer is what that file says, and no unless it says
+ * otherwise. A vault with none of those has nothing to trust and is read as
+ * before. Left to the SDK, the answer is yes without asking.
+ */
+function projectTrusted(cwd: string): boolean {
+	if (!hasTrustRequiringProjectResources(cwd)) return true;
+	return new ProjectTrustStore(getAgentDir()).get(cwd) ?? false;
+}
+
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
+	const trusted = projectTrusted(cwd);
 	const services = await createAgentSessionServices({
 		cwd,
 		modelRuntime,
@@ -210,6 +227,7 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 			// line about *whose* extensions rather than about having none.
 			additionalExtensionPaths: [WEB_ACCESS],
 		},
+		resourceLoaderReloadOptions: { resolveProjectTrust: async () => trusted },
 	});
 	return {
 		// No `model`: pi picks it the way the CLI does — the one the session was
@@ -368,6 +386,8 @@ function contextSources(): ContextSourcesMsg {
 		})),
 		skills: loader.getSkills().skills.length,
 		memoryFiles: { count: files.length, chars: files.reduce((n, f) => n + f.content.length, 0) },
+		// The vault has a .pi/ pi would read as a project's, and was not let to.
+		untrusted: hasTrustRequiringProjectResources(CWD) && !s.settingsManager.isProjectTrusted(),
 		login: {
 			oauth: provider ? modelRuntime.isUsingOAuth(provider) : false,
 			subscription: provider ? modelRuntime.isUsingSubscription(provider) : false,
@@ -926,9 +946,21 @@ async function broadcastAll(): Promise<void> {
 	broadcast(usage());
 	broadcast(contextSources());
 	broadcast(snapshot());
+	for (const msg of diagnostics()) broadcast(msg);
 	broadcast(branches());
 	broadcast(files());
 	broadcast(await sessions());
+}
+
+/**
+ * What pi had to say while setting the session up — an extension that failed
+ * to register a provider, a flag it did not know. pi's terminal prints these
+ * under its header; here they go after the snapshot, as errors in the
+ * conversation, since a snapshot replaces what came before it. Information
+ * is not a problem, so only what is.
+ */
+function diagnostics(): ErrorMsg[] {
+	return runtime.diagnostics.filter((d) => d.type !== "info").map((d) => ({ type: "error", message: d.message }));
 }
 
 await bind();
@@ -1133,6 +1165,7 @@ wss.on("connection", async (ws) => {
 	reply(usage());
 	reply(contextSources());
 	reply(snapshot());
+	for (const msg of diagnostics()) reply(msg);
 	reply(branches());
 	notes.load();
 	reply(files());

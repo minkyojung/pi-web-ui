@@ -601,7 +601,12 @@ where a key, another provider, or a tool turned off would go.
 
 The app's own extensions are inline in `server.ts` rather than files under
 `.pi/extensions/`: that path needs the project trusted, and the desktop shell's
-working directory is wherever it was opened. They are built per session and
+working directory is wherever it was opened. Trust is pi's own — the answer
+its terminal remembered in `~/.pi/agent/trust.json` when it asked — and a
+vault it never asked about is not trusted, so a `.pi/settings.json`, a skill
+or a `SYSTEM.md` in the vault is not read. The context card says so. Left to
+pi's SDK the vault would be trusted without asking, which is the one place its
+defaults are not taken. They are built per session and
 retired with it — `guard` first, since a blocked call never reaches the ones
 after it.
 
