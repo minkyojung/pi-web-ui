@@ -201,6 +201,15 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button, clickCount: 1, modifiers });
 		return true;
 	};
+	/**
+	 * A click at a place rather than on a thing — for asking what is at a
+	 * point, when the answer being tested is which element is there at all.
+	 */
+	const clickAt = async (x, y) => {
+		await call("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+		await call("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+	};
 	/** Choosing words with the mouse: press at one end of an element and let go at the other. */
 	const drag = async (selector, nth = 0) => {
 		const box = await evaluate(`(() => { const el = document.querySelectorAll(${JSON.stringify(selector)})[${nth}]; if (!el) return null; const r = el.getBoundingClientRect(); return [r.left + 1, r.top + r.height / 2, r.right - 1]; })()`);
@@ -252,7 +261,7 @@ async function openPage(devtoolsPort, url) {
 	};
 	/** A syllable half typed and left so: the composition is open, nothing committed. */
 	const compose = (text) => call("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length });
-	return { evaluate, shot, errors, click, drag, dragTo, press, keys, ime, compose, close: () => socket.close() };
+	return { evaluate, shot, errors, click, clickAt, drag, dragTo, press, keys, ime, compose, close: () => socket.close() };
 }
 
 /**
@@ -290,6 +299,25 @@ function stop(child) {
 
 const checks = [];
 const check = (name, run) => checks.push({ name, run });
+
+/**
+ * While working on one thing: `node scripts/e2e.mjs "at the foot"` runs the
+ * checks whose names hold that, and the rest are not run at all.
+ *
+ * This is for the loop from red to green, not for a verdict. The checks share
+ * one browser and one folder in the order they are written, so a check run on
+ * its own starts from somewhere the full run never puts it. What was left
+ * behind — source mode, a panel's width, where the page was scrolled — is part
+ * of what a check is run against. Nothing is called done until `npm run e2e`
+ * says so with nothing skipped.
+ */
+const only = process.argv[2] ?? "";
+const chosen = () => {
+	if (!only) return checks;
+	const some = checks.filter(({ name }) => name.includes(only));
+	if (some.length === 0) throw new Error(`no check's name holds ${JSON.stringify(only)}`);
+	return some;
+};
 
 /**
  * The conversation as text, which is what the arrows are read against.
@@ -1263,6 +1291,86 @@ check("under a note, the notes that share its tags", async ({ app, cwd }) => {
 	await until("the strip to go", () => app.evaluate("!document.querySelector('#tagged')"));
 });
 
+/**
+ * A note is as tall as the page it is on, not as tall as its text.
+ *
+ * The editor used to end with the last line, and the space under it belonged
+ * to the scroller, which is nobody: a click there put no cursor anywhere, and
+ * the only way to move anything down the page was to hold Enter until the file
+ * had the blank lines to push it — a note changed on disk to move something on
+ * screen.
+ */
+check("a short note fills the page, and the space under its last line is the editor", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "short-a.md"), "one short line\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="short-a.md"]')`));
+	await pickNote(app, "short-a.md");
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("one short line"));
+
+	/**
+	 * Where the last line ends is asked of the editor, not of the box around
+	 * the text: once the editor fills the page, .cm-content reaches the foot
+	 * whether or not there are words that far down, and the empty part of it
+	 * is the whole point. `coordsAtPos` at the end of the doc is the only
+	 * thing here that means "where the writing stops".
+	 */
+	const box = await app.evaluate(`(() => {
+		const box = document.querySelector('#editor .cm-editor').getBoundingClientRect();
+		const content = document.querySelector('#editor .cm-content').getBoundingClientRect();
+		const view = document.querySelector('#editor .cm-content').cmTile.root.view;
+		const last = view.coordsAtPos(view.state.doc.length);
+		return { boxBottom: box.bottom, textBottom: last.bottom, textMid: (content.left + content.right) / 2 };
+	})()`);
+
+	const spot = (box.textBottom + box.boxBottom) / 2;
+	assert.ok(spot > box.textBottom + 8, `there is room under the last line to click: ${Math.round(box.boxBottom - box.textBottom)}px`);
+	await app.clickAt(box.textMid, spot);
+	const caret = await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; return { head: v.state.selection.main.head, end: v.state.doc.length, focused: v.hasFocus }; })()`);
+	assert.ok(caret.focused, "a click under the text gives the editor the focus");
+	assert.equal(caret.head, caret.end, "and leaves the cursor at the end of the text");
+
+	// Nothing was written to the file to make room to click in.
+	assert.equal(readFileSync(join(cwd, "short-a.md"), "utf8"), "one short line\n");
+
+	// A floor under the editor must not become a ceiling over it: a long note
+	// is still the page scrolling, not a box of text scrolling inside a page
+	// that stays put. This is what giving the editor a `height` would cost.
+	writeFileSync(join(cwd, "long.md"), Array.from({ length: 200 }, (_, i) => `line ${i + 1}`).join("\n") + "\n");
+	await until("the long note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="long.md"]')`));
+	await pickNote(app, "long.md");
+	await until("the long note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("line 200"));
+	const scrolls = await app.evaluate(`(() => {
+		const page = document.getElementById('note');
+		const box = document.querySelector('#editor .cm-scroller');
+		return { page: page.scrollHeight - page.clientHeight, editor: box.scrollHeight - box.clientHeight };
+	})()`);
+	assert.ok(scrolls.page > 0, "a long note gives the page something to scroll");
+	assert.ok(scrolls.editor <= 1, `and the editor scrolls nothing of its own (${Math.round(scrolls.editor)}px)`);
+});
+
+/**
+ * What the vault knows about the note sits at the foot of the page rather than
+ * against the end of the text, where it used to float halfway up the window.
+ */
+check("what the vault knows about a short note sits at the foot of the page", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "foot-a.md"), "#pair one short line\n");
+	writeFileSync(join(cwd, "foot-b.md"), "also #pair\n");
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="foot-a.md"]') && !!document.querySelector('#notes button[data-path="foot-b.md"]')`));
+	await pickNote(app, "foot-a.md");
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("#pair"));
+	await until("the tagged strip", () => app.evaluate("document.querySelector('#tagged')?.textContent ?? ''").then((t) => t.includes("foot-b")));
+
+	const box = await app.evaluate(`(() => {
+		const page = document.getElementById('note').getBoundingClientRect();
+		const strip = document.getElementById('tagged').getBoundingClientRect();
+		return { pageTop: page.top, pageBottom: page.bottom, stripTop: strip.top, stripBottom: strip.bottom };
+	})()`);
+	assert.ok(box.stripBottom <= box.pageBottom + 1, "what the vault knows is on the page, not below its foot");
+	assert.ok(
+		box.stripTop > box.pageTop + (box.pageBottom - box.pageTop) * (2 / 3),
+		`the strip sits at the foot: ${Math.round(box.pageBottom - box.stripBottom)}px of page under it, of ${Math.round(box.pageBottom - box.pageTop)}`,
+	);
+});
+
 check("a tag and a link written in the properties count as much as ones written in the note", async ({ app, cwd }) => {
 	// One note says its tag in the text, the other in its properties, and they share it.
 	writeFileSync(join(cwd, "prop-tagged.md"), '---\ntags: [Crew]\nrelated: "[[prop-hub]]"\n---\n\nnothing in the text\n');
@@ -2146,7 +2254,9 @@ async function main() {
 		}
 
 		let failed = 0;
-		for (const { name, run } of checks) {
+		const running = chosen();
+		if (only) console.log(`  (only the ${running.length} of ${checks.length} checks whose names hold ${JSON.stringify(only)})`);
+		for (const { name, run } of running) {
 			try {
 				await run({ app: page, bench, cwd, api, devtools });
 				console.log(`  ok  ${name}`);
@@ -2157,7 +2267,7 @@ async function main() {
 			}
 		}
 
-		console.log(`\n${checks.length - failed}/${checks.length} passed`);
+		console.log(`\n${running.length - failed}/${running.length} passed`);
 		if (failed) {
 			dump();
 			process.exitCode = 1;

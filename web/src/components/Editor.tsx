@@ -52,8 +52,16 @@ const AUTOSAVE_MS = 600;
  * that says who wrote a word.
  */
 const theme = EditorView.theme({
-	// No height: the editor is as tall as its text, and the page (#note) scrolls.
-	"&": { backgroundColor: "var(--background)", color: "var(--foreground)", fontSize: "16px" },
+	// A floor, not a height. The page (#note) is what scrolls, so the editor
+	// must never be given a height: that makes .cm-scroller scroll inside
+	// itself, and a long note would move within a page that stays put.
+	//
+	// `flex: 1` down the column from #note gives it the room the title and the
+	// links leave, while the default `min-height: auto` that comes with it
+	// leaves it free to grow past that room with its text. So a short note
+	// reaches the foot of the page and a long one runs off it, which is what
+	// both of them should do.
+	"&": { backgroundColor: "var(--background)", color: "var(--foreground)", fontSize: "16px", flex: "1" },
 	// The margin around the text is the scroller's, and the column is the
 	// content element with no padding of its own: the selection is drawn as
 	// wide as .cm-content, so any padding on it is painted as selected past
@@ -683,7 +691,7 @@ export function Editor({
 	};
 
 	return (
-		<div id="editor" data-status={status}>
+		<div id="editor" data-status={status} className="flex flex-1 flex-col">
 			{status === "conflict" && (
 				<div role="alert" className="sticky top-0 z-10 flex items-center gap-2 bg-muted px-4 py-2 text-xs">
 					<span className="flex-1">This note changed on disk while you were editing it.</span>
@@ -708,7 +716,8 @@ export function Editor({
 					</Button>
 				</div>
 			)}
-			<div ref={host} />
+			{/* The text takes what the page has left, whether or not it has the words to fill it — see the theme's min-height. */}
+			<div ref={host} className="flex flex-1 flex-col" />
 			<NoteMeta path={path} onOpen={onOpen} />
 		</div>
 	);
@@ -729,7 +738,11 @@ function NoteMeta({ path, onOpen }: { path: string; onOpen?: (path: string) => v
 	const tagged = useSyncExternalStore(taggedStore.subscribe, taggedStore.get)[path] ?? [];
 	if (backlinks.length === 0 && tagged.length === 0) return null;
 	return (
-		<div className="mt-6 flex shrink-0 flex-col gap-1 px-6 pb-2 text-xs text-muted-foreground">
+		// The title's measure, which is the text's: 42rem less 1.5rem of side is
+		// the 39rem column the words are set in, so all three start on one line.
+		// This used to sit against the window's edge, a column of its own about
+		// a note it was nowhere near.
+		<div className="mx-auto mt-6 flex w-full max-w-[42rem] shrink-0 flex-col gap-1 px-6 pb-2 text-xs text-muted-foreground">
 			<Backlinks notes={backlinks} onOpen={onOpen} />
 			<TaggedWith notes={tagged} onOpen={onOpen} />
 		</div>

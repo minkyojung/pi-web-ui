@@ -554,10 +554,20 @@ export function App() {
 					    is the same one, so the key is the note's identity, not its path. */}
 					{/* The note is one page — its title, its text, what links here —
 					    and the page (#note) is what scrolls, as in Obsidian: the editor
-					    grows to its text and finds this scrolling parent on its own. Room
-					    below, so the last line can be brought up to where the eyes are. */}
+					    grows to its text and finds this scrolling parent on its own.
+
+					    A column, so the page has a foot for the editor to reach: the
+					    editor takes whatever the title and the links leave, and a note
+					    of three lines is still a page you can click the bottom of.
+
+					    There used to be 40vh of padding here, to leave room to bring
+					    the last line up to where the eyes are. Room below the text and
+					    what the vault knows sitting at the foot of the page cannot both
+					    be had, and the room was the one to go: a note short enough for
+					    this to matter is a note that does not scroll, and room to scroll
+					    into is nothing to a page that has nowhere to go. */}
 					{open && deleted?.path !== open ? (
-						<div id="note" className="no-scrollbar edge-top min-h-0 flex-1 overflow-y-auto pb-[40vh]">
+						<div id="note" className="no-scrollbar edge-top flex min-h-0 flex-1 flex-col overflow-y-auto">
 							{/* Inside the scroller, not around it: #note is what the editor,
 							    the steps and the checks all look up, and it should be there
 							    whether or not what it holds could be drawn. */}
