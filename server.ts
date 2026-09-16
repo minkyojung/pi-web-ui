@@ -423,7 +423,6 @@ function note(path: string): NoteMsg | null {
 		original: toDecide(holed),
 		backlinks: links.backlinks(path),
 		tagged: links.tagged(path),
-		authored: shareOf(replayed.spans, found.text.length),
 	};
 }
 
@@ -536,7 +535,6 @@ function wrote(path: string, base: number | null, changes: Change[]): void {
 			lines: said.lines,
 			changes,
 			original: toDecide(said.holed),
-			authored: shareOf(said.replayed.spans, found.text.length),
 		};
 		broadcast(msg);
 	} else {

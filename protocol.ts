@@ -438,8 +438,6 @@ export interface NoteChangedMsg {
 	/** As on `note`: the log's length after this change. */
 	lines: number;
 	changes: Change[];
-	/** How much of it somebody other than you wrote, now that it has changed. See Authored. */
-	authored: Authored;
 	/** As on `note`: what is left to decide about, after this change. */
 	original?: string;
 }
