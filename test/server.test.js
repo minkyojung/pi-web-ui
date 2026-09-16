@@ -196,6 +196,45 @@ it("누가 썼는지 물으면 남이 쓴 자리만 돌아온다", async () => {
   assert.equal(second.spans[0].to, opened.text.length, "바깥이 쓴 자리는 그대로");
 });
 
+it("결정할 것을 담지 못하는 자리의 결정은 거절되고, 노트가 되돌아온다", async () => {
+  // pi가 쓴 자리가 있는 노트. 장부를 직접 놓는 것은 pi 없이 그 상태를 만드는 유일한 방법이고,
+  // 며칠 뒤에 노트를 여는 사람이 보는 상태이기도 하다.
+  const mine = "# whose\n\nmine.\n";
+  const added = "\npi wrote this.\n";
+  writeFileSync(join(cwd, "decide.md"), mine + added);
+  mkdirSync(join(cwd, ".pi/history"), { recursive: true });
+  const log = join(cwd, ".pi/history/decide.md.jsonl");
+  writeFileSync(
+    log,
+    [
+      { author: "me", at: 1, from: 0, to: 0, inserted: mine, removed: "" },
+      { author: "pi", at: 2, sessionId: "s", entryId: "e", from: mine.length, to: mine.length, inserted: added, removed: "" },
+    ]
+      .map((c) => JSON.stringify(c))
+      .join("\n") + "\n",
+  );
+  clear();
+  send({ type: "open_note", path: "decide.md" });
+  const opened = await want("note", (m) => m.path === "decide.md");
+  assert.ok(opened.original, "결정할 것이 있다");
+  const lines = () => readFileSync(log, "utf8").split("\n").filter(Boolean).length;
+  const was = lines();
+
+  // 탭이 한 글자 앞서 있을 때 보내는 모양: 같은 범위, 전부 한 칸씩 밀림.
+  clear();
+  send({ type: "accept_note", path: "decide.md", from: mine.length + 1, to: mine.length + added.length + 1, kept: true });
+  const back = await want("note", (m) => m.path === "decide.md");
+  assert.ok(back.original, "결정할 것은 그대로 남아 있다 — 화면도 그렇게 그린다");
+  assert.equal(lines(), was, "장부에는 아무것도 적히지 않는다");
+
+  // 맞는 자리로 보내면 결정된다.
+  clear();
+  send({ type: "accept_note", path: "decide.md", from: mine.length, to: mine.length + added.length, kept: true });
+  const done = await want("note_changed", (m) => m.path === "decide.md");
+  assert.equal(done.original, undefined, "더 결정할 것이 없다");
+  assert.equal(lines(), was + 1, "결정 한 줄만 늘었다");
+});
+
 it("낡은 버전 위의 저장은 거절되고 아무것도 쓰지 않는다", async () => {
   clear();
   send({ type: "open_note", path: "a.md" });

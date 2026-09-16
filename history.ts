@@ -563,18 +563,47 @@ export function reconcile(
 }
 
 /**
- * Log what the person decided about the words at [from, to): `kept` for fine as
- * they are, false for back to being looked at.
+ * Does a decision at [from, to) hold a whole hole?
  *
- * A range of no width is a decision about words that are not there — the
- * removal at that place — and is written only if there is one, so a decision
- * about nothing leaves no line.
+ * The same question the log's own reading asks when it closes one, and asked
+ * here for a different reason: to find out whether these two places are places
+ * in the note the record has. Every decision the app can make is made on a
+ * chunk of the diff, and a chunk holds the holes under it whole — so a pair of
+ * places that holds none is not a decision about part of something, it is a
+ * pair of places from a different text. A tab one keystroke ahead of the
+ * record sends exactly that: the same chunk, every offset out by one, holding
+ * the hole all but its first character.
+ *
+ * Wider than a hole is fine — a chunk can be wider, and can hold two. Narrower
+ * or shifted is not, and that is the whole of the check.
+ *
+ * Every hole rather than the offered ones, since a decision may also be one
+ * taken back, and that lands on a hole which is closed at the time. A hole of
+ * no width is where pi took words away and put none back: a decision about one
+ * is about the seam, so it is held when the seam is inside the range.
  */
-export function decide(root: string, path: string, from: number, to: number, at: number, kept: boolean): void {
-	const { text, removals } = historyOf(root, path).replayed;
-	const words = text.slice(from, to);
-	if (!words && !removals.some((r) => r.pos === from)) return;
+const decides = (holes: Hole[], from: number, to: number): boolean =>
+	holes.some((h) => (h.from === h.to ? from <= h.from && h.from <= to : from <= h.from && h.to <= to));
+
+/**
+ * Log what the person decided about the words at [from, to): `kept` for fine as
+ * they are, false for back to being looked at. False when those places name
+ * nothing to decide, and then nothing is written.
+ *
+ * Checked rather than taken, because the places come from a tab and name
+ * positions in the note as that tab has it. A tab a keystroke ahead of the
+ * record sends places a character out, and the line that would be written then
+ * is a decision about the wrong words: it closes nothing, so the diff comes
+ * straight back, and it stays in the log for good — marking words as looked at
+ * that nobody looked at. The log is the one thing here that cannot be rebuilt,
+ * so what goes into it is checked against what it already says.
+ */
+export function decide(root: string, path: string, from: number, to: number, at: number, kept: boolean): boolean {
+	const { replayed, holed } = historyOf(root, path);
+	if (!decides(holed.holes, from, to)) return false;
+	const words = replayed.text.slice(from, to);
 	appendHistory(root, path, [{ author: "me", at, from, to, inserted: words, removed: words, kept }]);
+	return true;
 }
 
 /** Log a write that passed through the app, from what it replaced. */

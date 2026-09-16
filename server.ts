@@ -1388,7 +1388,19 @@ wss.on("connection", async (ws) => {
 				case "accept_note": {
 					if (typeof msg.path !== "string" || typeof msg.from !== "number" || typeof msg.to !== "number") return;
 					if (!readNote(CWD, msg.path)) return;
-					decide(CWD, msg.path, msg.from, msg.to, Date.now(), msg.kept !== false);
+					if (!decide(CWD, msg.path, msg.from, msg.to, Date.now(), msg.kept !== false)) {
+						// Those places name nothing to decide about, so this tab and the
+						// record do not agree about the note — it is a keystroke ahead,
+						// or something wrote while the button was being pressed. Nothing
+						// is recorded, and the note goes back as it stands, which is the
+						// answer to a tab that has it wrong. Said out loud too: it should
+						// not happen, since a decision goes down after the typing it was
+						// made over, and a log is where a should-not is worth reading.
+						console.warn(`[decide] ${msg.path} ${msg.from}–${msg.to} decides nothing; the tab is out of step`);
+						const again = note(msg.path);
+						if (again) reply(again);
+						return;
+					}
 					// Nothing in the text moved: the spans are the whole of the news.
 					const found = readNote(CWD, msg.path)!;
 					wrote(msg.path, found.modified, []);

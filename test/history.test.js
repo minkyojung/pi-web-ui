@@ -336,13 +336,33 @@ test("기록은 쓴 쪽이 본 것부터 재고, 그 결과가 디스크와 같�
   assert.deepEqual(spans.map((s) => s.author), ["me", "pi", "me"]);
 });
 
+/** 그 노트에서 지금 결정을 기다리는 자리. 화면의 청크가 가리키는 것과 같은 범위다. */
+const unreviewedAt = (dir, path) => unreviewed(readHistory(dir, path)).holes[0];
+
 test("accept는 지금 글 위의 범위를 빈 교체로 남긴다", () => {
   record(DIR, "acc.md", "", "pi wrote this\n", pi);
-  decide(DIR, "acc.md", 3, 8, 7, true);
+  const hole = unreviewedAt(DIR, "acc.md");
+  assert.equal(decide(DIR, "acc.md", hole.from, hole.to, 7, true), true);
   const { spans } = replay(readHistory(DIR, "acc.md"));
-  assert.deepEqual(spans.map((s) => [s.accepted ?? false, s.author]), [[false, "pi"], [true, "pi"], [false, "pi"]]);
-  decide(DIR, "acc.md", 5, 5, 8, true);
+  assert.deepEqual(spans.map((s) => [s.accepted ?? false, s.author]), [[true, "pi"]]);
+  assert.equal(decide(DIR, "acc.md", 5, 5, 8, true), false);
   assert.equal(readHistory(DIR, "acc.md").length, 2, "빈 범위는 남기지 않는다");
+});
+
+test("결정할 것을 통째로 담지 못하는 자리는 기록되지 않는다", () => {
+  record(DIR, "off.md", "", "pi wrote this\n", pi);
+  const hole = unreviewedAt(DIR, "off.md");
+  const lines = () => readHistory(DIR, "off.md").length;
+  const was = lines();
+  // 탭이 한 글자 앞서 있을 때 보내는 것이 정확히 이 모양이다: 같은 청크, 전부 한 칸씩.
+  assert.equal(decide(DIR, "off.md", hole.from + 1, hole.to + 1, 30, true), false, "앞으로 밀림");
+  assert.equal(decide(DIR, "off.md", hole.from - 1, hole.to - 1, 31, true), false, "뒤로 밀림");
+  assert.equal(decide(DIR, "off.md", hole.from + 2, hole.to - 2, 32, true), false, "일부만");
+  assert.equal(decide(DIR, "off.md", 0, 0, 33, true), false, "아무것도 없는 자리");
+  assert.equal(lines(), was, "거절된 결정은 장부에 줄을 남기지 않는다");
+  assert.equal(replay(readHistory(DIR, "off.md")).spans.some((s) => s.accepted), false, "엉뚱한 구간을 확인됨으로 표시하지도 않는다");
+  // 청크는 홀보다 넓을 수 있다 — 담고 있으면 그것은 결정이다.
+  assert.equal(decide(DIR, "off.md", hole.from, hole.to + 1, 34, true), true, "더 넓은 것은 담고 있으므로 결정이다");
 });
 
 test("수락을 되무르면 구간은 결정 전으로 정확히 돌아간다", () => {
@@ -371,7 +391,7 @@ test("폭 없는 결정은 그 자리에 삭제가 있을 때만 남는다", () 
 
 test("결정은 지워지지 않고 반대 줄로 무른다 — 로그는 늘기만 한다", () => {
   record(DIR, "ledger.md", "", "one two three", pi);
-  const at = { from: 4, to: 7 };
+  const at = unreviewedAt(DIR, "ledger.md");
   decide(DIR, "ledger.md", at.from, at.to, 12, true);
   decide(DIR, "ledger.md", at.from, at.to, 13, false);
   const log = readHistory(DIR, "ledger.md");
