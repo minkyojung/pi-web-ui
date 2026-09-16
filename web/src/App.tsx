@@ -520,7 +520,7 @@ export function App() {
 					    for its buttons, so the fold button under it stopped answering
 					    the mouse while the keyboard still reached it. */}
 					<div
-						className="drag-region flex h-11 shrink-0 items-center gap-0.5 px-2"
+						className="drag-region flex h-11 shrink-0 items-center gap-0.5 pr-2"
 						style={sidebarOpen ? undefined : { marginLeft: stripWidth ?? railWidth ?? undefined }}
 					>
 						<NoteTabs
