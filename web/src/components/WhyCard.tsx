@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { diffWordsWithSpace } from "diff";
 
 import * as colour from "../changed";
-import { askedAtStore, putBack } from "../features/authors";
+import { askedAtStore } from "../features/authors";
 import { configStore, sessionsStore, whyStore } from "../serverState";
 import { send } from "../ws";
 import { Button } from "./ui/button";
@@ -16,6 +16,12 @@ import { Popover, PopoverAnchor, PopoverContent, PopoverDescription, PopoverHead
  * the time, what stood there before, and for pi the model it was on and the
  * message the turn began with. A run of pi's is the only one with a
  * conversation behind it, so it is the only one that offers to open it.
+ *
+ * It says and does not do. Deciding about pi's words is the diff's, in the
+ * note, where Undo means putting an undecided change back; a run here may be
+ * one decided about long ago, or one that was never pi's, and a second Undo
+ * that meant "the note as it was, whoever wrote it" would be the same word
+ * for a different thing. What the words replaced is shown, and that is all.
  *
  * A popover rather than a panel: it belongs to the words it is about and goes
  * when you look away, which is how long the question lasts.
@@ -82,40 +88,22 @@ export function WhyCard() {
 				    not known, so nothing is claimed about it. */}
 				{why.removed !== undefined && <Changed from={why.removed} to={why.text} />}
 
-				{(why.entry || why.removed !== undefined) && (
-					<div className="flex justify-end gap-1">
-						{/* The same word the diff in the note uses for the same thing:
-						    the note back as it was here, which for an addition is the
-						    words gone and for a replacement is the old ones returned.
-						    Offered only where what to go back to is known. */}
-						{why.removed !== undefined && (
-							<Button
-								variant="ghost"
-								size="xs"
-								onClick={() => {
-									putBack(why.from, why.to, why.removed!);
-									whyStore.set(null);
-								}}
-							>
-								Undo
-							</Button>
-						)}
-						{why.entry && (
-							<Button
-								variant="secondary"
-								size="xs"
-								onClick={() => {
-									// In another conversation: go there first. The socket
-									// delivers in order, so the turn is looked for in the
-									// session that has it.
-									if (conversation && why.session !== config?.sessionId) send({ type: "resume_session", path: conversation.path });
-									send({ type: "navigate", entryId: why.entry! });
-									whyStore.set(null);
-								}}
-							>
-								Open conversation
-							</Button>
-						)}
+				{why.entry && (
+					<div className="flex justify-end">
+						<Button
+							variant="secondary"
+							size="xs"
+							onClick={() => {
+								// In another conversation: go there first. The socket
+								// delivers in order, so the turn is looked for in the
+								// session that has it.
+								if (conversation && why.session !== config?.sessionId) send({ type: "resume_session", path: conversation.path });
+								send({ type: "navigate", entryId: why.entry! });
+								whyStore.set(null);
+							}}
+						>
+							Open conversation
+						</Button>
 					</div>
 				)}
 			</PopoverContent>

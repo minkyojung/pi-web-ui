@@ -50,23 +50,13 @@ export const paintAuthors = StateEffect.define<AuthoredSpan[]>();
 /** Turned off, or the note changed under it. */
 export const clearAuthors = StateEffect.define<null>();
 
-const marks = new Map<string, Decoration>();
-/** One decoration per (author, when), since a note has few writings and many words. */
-function mark(span: AuthoredSpan): Decoration {
-	const key = `${span.author}:${span.at}:${span.session ?? ""}`;
-	let found = marks.get(key);
-	if (!found) {
-		const when = new Date(span.at).toLocaleString();
-		found = Decoration.mark({
-			class: span.author === "pi" ? "cm-by-pi" : "cm-by-outside",
-			// The native tooltip: a card here would be a second thing to build
-			// and a second thing to dismiss, for a line of text.
-			attributes: { title: span.author === "pi" ? `pi · ${when}` : `outside this app · ${when}` },
-		});
-		marks.set(key, found);
-	}
-	return found;
-}
+/**
+ * One decoration per author. The mark says only who; a click on it says the
+ * rest (WhyCard.tsx), so there is no tooltip — two answers to one question
+ * with one of them shorter is one too many.
+ */
+const marks = { pi: Decoration.mark({ class: "cm-by-pi" }), other: Decoration.mark({ class: "cm-by-outside" }) };
+const mark = (span: AuthoredSpan): Decoration => (span.author === "pi" ? marks.pi : marks.other);
 
 function shown(spans: AuthoredSpan[], length: number): DecorationSet {
 	// The answer is about the note as it is on disk, and it is only asked for
@@ -119,25 +109,5 @@ const look = EditorView.theme({
 	".cm-by-outside": { borderBottom: "1px dashed color-mix(in oklab, var(--foreground) 35%, transparent)", cursor: "pointer" },
 });
 
-/**
- * Putting words back is an edit, and only the editor can make one.
- *
- * Registered the way a save is (saves.ts): the card that offers it is drawn
- * outside the editor and has no view to dispatch on, and reaching into the
- * editor's DOM for one would be reaching for something that is only there for
- * the browser checks. One editor at a time; a second registration replaces the
- * first.
- */
-let putter: ((from: number, to: number, text: string) => void) | null = null;
-
-export function registerPutBack(fn: (from: number, to: number, text: string) => void): () => void {
-	putter = fn;
-	return () => {
-		if (putter === fn) putter = null;
-	};
-}
-
-/** Put the words at [from, to) back to what they were. An edit of the person's, saved and logged as one. */
-export const putBack = (from: number, to: number, text: string): void => putter?.(from, to, text);
 
 export const authors = (path: () => string): Extension => [field, look, asking(path)];

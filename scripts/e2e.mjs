@@ -942,7 +942,6 @@ check("the note's menu says who wrote what, and the marks ride the words under t
 	await until("pi's words, marked", () =>
 		app.evaluate("[...document.querySelectorAll('#editor .cm-by-pi')].map((el) => el.textContent).join('')"),
 	).then((marked) => assert.equal(marked.trim(), "pi's", "what pi wrote, and nothing the person wrote"));
-	assert.match(await app.evaluate("document.querySelector('#editor .cm-by-pi').getAttribute('title')"), /^pi · /, "and when");
 
 	// A click on one of them says how it got there: who, when, and what it stands
 	// in place of. The conversation it names is not on this machine, so the model
@@ -953,7 +952,7 @@ check("the note's menu says who wrote what, and the marks ride the words under t
 	const card = await app.evaluate("document.querySelector('[data-slot=popover-content]').textContent");
 	assert.match(card, /^pi/, "who wrote it");
 	assert.ok(card.includes("−ours") && card.includes("+pi's"), `the old over the new: ${card}`);
-	assert.ok(card.includes("Undo"), "and the way back, in the word the diff in the note uses for it");
+	assert.equal(card.includes("Undo"), false, "it says, and does not do: deciding is the diff's");
 	await app.press("Escape");
 	await until("the card gone", async () => !(await app.evaluate("!!document.querySelector('[data-slot=popover-content]')")));
 
