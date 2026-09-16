@@ -38,6 +38,7 @@ export const VAULT_PROMPT = [
 	"Read notes with read, grep, find and ls; change them with note_edit, or note_write for a new note. Keep a note's existing style, headings and links.",
 	"A note may open with a `---` block of properties — its tags, its dates, what it is filed by. Change those with note_properties, never by editing that block as text: it is YAML, and a quote or an indent out of place there takes the note out of the app's index without saying so.",
 	"edit and write are refused on a note, because what they write could not be told from the person's own words; they are for every other file here.",
+	"bash cannot write a note either, or anything under .pi/: the operating system refuses it. Read with bash all you like; change a note with note_edit.",
 	`The folder ${APP_DIR_NAME}/ belongs to the app that shows these notes — it holds the record of who wrote what — and must not be read as notes, written, or removed; tools that try are refused.`,
 	"When you refer to a note, use its path relative to this folder.",
 ].join(" ");

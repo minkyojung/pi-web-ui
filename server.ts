@@ -38,6 +38,7 @@ import { deleteNote, shellTrash } from "./trash.ts";
 import { createLoginBridge } from "./login.ts";
 import { noteTools } from "./noteEdit.ts";
 import { claimAppDir } from "./appDir.ts";
+import { wall } from "./wall.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { type Claim, recorder } from "./recorder.ts";
@@ -177,6 +178,9 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 			extensionFactories: [
 				// The guard first: a blocked call never reaches the recorder.
 				{ name: "guard", factory: guard(CWD, () => openNote) },
+				// Then the wall: what the guard let through, the shell runs behind
+				// it, where a note cannot be written. See wall.ts.
+				{ name: "wall", factory: wall(CWD) },
 				// The one pair a note is written by — what the guard above sends
 				// edit and write to when they reach for one. See noteEdit.ts.
 				{ name: "notes", factory: noteTools(CWD, piWrote) },
