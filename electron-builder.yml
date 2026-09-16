@@ -40,8 +40,10 @@ mac:
   # Apple Silicon only. Everything the app leans on the machine for — the
   # recursive fs.watch, the trash, the e2e's Chrome — has only ever been
   # checked here, and an Intel build would be a promise nobody has tested.
-  # `npm run pack` says --arm64; the disk image is what a person downloads.
-  target: [dmg]
+  # `npm run pack` says --arm64. The disk image is what a person downloads;
+  # the zip is what electron-updater downloads, since on macOS it updates
+  # from a zip and not a dmg, and latest-mac.yml beside it is what it reads.
+  target: [dmg, zip]
   # Signed with the Developer ID Application identity in the keychain, found
   # by name, and notarized with the Apple ID, app-specific password and team
   # in the environment — scripts/pack-signed.sh puts them there for one run.
@@ -61,3 +63,13 @@ dmg:
   contents:
     - { x: 130, y: 220 }
     - { x: 410, y: 220, type: link, path: /Applications }
+
+# Where the release job puts the artifacts and where the app looks for the
+# next version: the GitHub Releases of this repository. A release, not a
+# draft, so the updater sees it the moment the job ends; the notes for it are
+# the version's section of CHANGELOG.md, which the job attaches afterwards.
+publish:
+  provider: github
+  owner: minkyojung
+  repo: pi-web-ui
+  releaseType: release
