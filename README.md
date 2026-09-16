@@ -573,7 +573,22 @@ That is the general case of a package installed into someone's own pi: it was
 installed for the terminal, it may not survive being restarted per session,
 and a tool that is there on one machine and not another cannot be documented.
 So the session is built with `noExtensions` — what `~/.pi/agent/settings.json`
-names is not loaded here, and the five inline extensions below are all there is.
+names is not loaded here.
+
+`noExtensions` is about whose extensions, not about having none. The five
+inline ones below are Octave's, and one more is loaded from a file:
+`pi-web-access`, a dependency of ours in our own `node_modules`, handed to pi
+as a path (`additionalExtensionPaths`, which that flag does not cover). It
+brings `web_search`, `fetch_content`, `source_check` and `get_search_content`
+— a note is written from what was read, and half of that is on the web. It
+ships TypeScript and names its entry in its own `package.json`, so pi's loader
+transpiles it; importing it into `server.ts` would only put source esbuild
+cannot bundle into the server. The first boot on a machine pays about five
+seconds for that transpile, cached in the temporary directory afterwards; a
+new session pays nothing, since the loaded module is kept for the life of the
+process. Search works with no key of its own — it reaches for the provider pi
+is already signed in to — and `~/.pi/agent/web-search.json` is where a key,
+another provider, or a tool turned off would go.
 
 ## Events observed
 

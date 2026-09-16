@@ -95,10 +95,12 @@ it("도구는 pi의 것과 우리 것뿐이고, 이 기계의 pi에 설치된 �
   const config = await want("config");
   const names = config.tools.map((t) => t.name);
   assert.ok(names.includes("ask_user"), `ask_user among ${names.join(", ")}`);
-  // pi's built-ins, and the four Octave brings. Whatever ~/.pi/agent/settings.json
-  // names — a dashboard, web access — stays in the terminal it was installed for,
+  assert.ok(names.includes("web_search"), `web_search among ${names.join(", ")}`);
+  // pi's built-ins, the four Octave brings, and the four of pi-web-access —
+  // which is a dependency of ours, loaded from our own node_modules. Whatever
+  // ~/.pi/agent/settings.json names stays in the terminal it was installed for,
   // so the same tools are here on every machine.
-  const known = new Set(["read", "grep", "find", "ls", "edit", "write", "bash", "powershell", "note_edit", "note_write", "note_properties", "ask_user"]);
+  const known = new Set(["read", "grep", "find", "ls", "edit", "write", "bash", "powershell", "note_edit", "note_write", "note_properties", "ask_user", "web_search", "fetch_content", "source_check", "get_search_content"]);
   assert.deepEqual(names.filter((n) => !known.has(n)), [], `only known tools among ${names.join(", ")}`);
   assert.ok(!log.includes("sendFlowsList"), "the dashboard bridge never started");
   assert.ok(!log.includes("did not answer"), "nothing warned about a missing hook");

@@ -15,7 +15,9 @@
  * by its properties, would not be one.
  * Anything else in the registry is an extension tool; it sits outside the
  * ladder and stays on in every mode, because `ask_user` is what makes
- * read-only planning conversational in the first place.
+ * read-only planning conversational in the first place, and reading the web
+ * (pi-web-access, loaded in server.ts) is reading: it writes no file, so the
+ * rung that forbids writing has nothing to say about it.
  *
  * At the repo root, like conversation.js, because the server picks the mode a
  * new session opens on and the browser names the one it is in. One ladder, not

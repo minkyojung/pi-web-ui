@@ -9,6 +9,8 @@
 
 import { existsSync, watch } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createServer, type IncomingMessage } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -153,6 +155,22 @@ let openNote: { path: string; chosen: string | null } | null = null;
  */
 let asking: (Ask & { at: number; done: (outcome: AskOutcome) => void }) | null = null;
 
+/**
+ * The one extension Octave loads from a file rather than writing itself:
+ * pi-web-access, which is where web_search, fetch_content, source_check and
+ * get_search_content come from. A note app whose agent cannot read a page is
+ * missing half of what a note is written from.
+ *
+ * A dependency of ours, resolved out of our own node_modules, rather than the
+ * copy in the person's pi: that is the whole point of noExtensions below, and
+ * a tool that is there on one machine and not the next is still one nobody can
+ * be told about. The package names its entry in package.json (`pi.extensions`)
+ * and ships it as TypeScript, so it is handed to pi as a path and pi's loader
+ * transpiles it — importing it here would only put source esbuild cannot
+ * bundle into the server.
+ */
+const WEB_ACCESS = dirname(createRequire(import.meta.url).resolve("pi-web-access/package.json"));
+
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
 	const services = await createAgentSessionServices({
 		cwd,
@@ -187,6 +205,10 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 			// another is a tool nobody can be told about. So what pi loads from
 			// ~/.pi/agent is not loaded, and what Octave brings is all there is.
 			noExtensions: true,
+			// Which noExtensions does not cover: these are loaded whatever it
+			// says (resource-loader.js), and that is what makes the line above a
+			// line about *whose* extensions rather than about having none.
+			additionalExtensionPaths: [WEB_ACCESS],
 		},
 	});
 	return {
