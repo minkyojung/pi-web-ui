@@ -140,6 +140,10 @@ const TEXT = [
 	["--muted-foreground", "--muted", "banner, code block header"],
 	["--muted-foreground", "--accent", "second-rank on a hover"],
 	["--muted-foreground", "--sidebar", "sidebar, unselected"],
+	["--foreground", "--panel", "pi's conversation"],
+	["--muted-foreground", "--panel", "a timestamp, a tool's name"],
+	["--foreground", "--panel-muted", "a tool's output, a queued message"],
+	["--muted-foreground", "--panel-muted", "second-rank on pi's wash"],
 	["--primary-foreground", "--primary", "default button"],
 	["--secondary-foreground", "--secondary", "secondary button"],
 	["--accent-foreground", "--accent", "selected menu row"],
@@ -176,6 +180,7 @@ const UI = [
 	["--ring", "--background", "focus ring on the page"],
 	["--ring", "--card", "focus ring on a card"],
 	["--ring", "--popover", "focus ring in a menu"],
+	["--ring", "--panel", "focus ring in the composer"],
 ];
 
 /** Not pass or fail — the elevation the surfaces actually have, which is the thing being redesigned. */
@@ -184,12 +189,15 @@ const STEPS = [
 	["--card", "--background", "card against content"],
 	["--popover", "--background", "popover against content"],
 	["--muted", "--background", "muted fill against content"],
+	["--panel", "--background", "pi against content"],
+	["--panel-muted", "--background", "pi's wash against content"],
 ];
 const RIMS = [
 	["--border", "--background", "rim on content"],
 	["--border", "--card", "rim on a card"],
 	["--border", "--popover", "rim on a popover"],
 	["--sidebar-border", "--sidebar", "rim in the sidebar"],
+	["--border", "--panel", "rim round pi"],
 ];
 
 /* ── run ────────────────────────────────────────────────────────────────── */
@@ -261,6 +269,21 @@ export function ladder() {
 		for (const token of ["--card", "--popover"]) {
 			if (step(token) < 0) out.push(`${theme}: ${token} is sunk into the content — ${step(token).toFixed(3)}, wants 0 or more`);
 		}
+
+		// pi is not the note, and the eye should not have to be told twice.
+		// Which way it steps is the theme's: a light window has nowhere to go
+		// but down, a dark one nowhere but up. Far enough to be seen, near
+		// enough that it is still the same window.
+		const up = theme.includes("dark") ? 1 : -1;
+		const panel = step("--panel") * up;
+		if (panel < 0.02 || panel > 0.04) {
+			out.push(`${theme}: --panel ${panel < 0.02 ? "is not a floor of its own" : "has left the window"} — ${step("--panel").toFixed(3)}, wants ${up > 0 ? "+" : "-"}0.02 to ${up > 0 ? "+" : "-"}0.04`);
+		}
+
+		// And what is laid on pi's floor goes on past it, never back toward
+		// the note: a wash that crosses its own surface is a hole.
+		const wash = (step("--panel-muted") - step("--panel")) * up;
+		if (wash < 0.01) out.push(`${theme}: --panel-muted does not read on --panel — ${(wash * up).toFixed(3)}, wants ${up > 0 ? "+0.01 or more" : "-0.01 or less"}`);
 
 		// A rim is one distance from its own surface, and which side of it
 		// depends only on where the light is. Too far and it is a line again.

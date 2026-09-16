@@ -64,14 +64,33 @@
   --input: oklch(0.922 0 0);
   /* A focus ring is a non-text indicator, which WCAG asks 3:1 of. The figure
      shadcn ships reads 2.59 on a page this light — the only one of the four
-     themes where it did; the other three were already clear. */
-  --ring: oklch(0.653 0 0);
+     themes where it did; the other three were already clear. Down again now
+     that a control can be focused on pi's floor as well as on the page: the
+     figure is held to the lower of the two, which is what the rule already
+     was — this theme simply grew a second surface to keep it on. */
+  --ring: oklch(0.644 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
+  /*
+   * pi's side of the card. The note is the page; the conversation beside it is
+   * not the same page, so it takes a surface of its own — and which way it
+   * steps off the note is the theme's business, not one value's. A light
+   * window has nowhere to go but down, so pi sits where the frame sits, a
+   * step below the note it is next to; a dark window has nowhere to go but up,
+   * so pi is raised the same step a card is. Same distance either way, read
+   * off the ladder each theme already declares — no new rung is invented here.
+   */
+  --panel: oklch(0.973 0 0);
+  /* What is laid on that floor — a tool's output, a hovered row, a badge.
+     It steps off --panel the way --sidebar-accent steps off --sidebar, not
+     the way --muted steps off the page: a wash on a frame is a shorter step
+     than a wash on paper, and taking the page's step twice put second-rank
+     text under AA. */
+  --panel-muted: oklch(0.958 0 0);
   /* The frame, below the page as in every theme here. White is the ceiling in
      a light window, so the ladder is built downward from the content: --card
      and --popover stay white and say they are raised with a shadow, which is
@@ -143,6 +162,9 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* Raised, the step a card takes off this page. */
+  --panel: oklch(0.238 0 0);
+  --panel-muted: oklch(0.302 0 0);
   --sidebar: oklch(0.183 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -210,6 +232,9 @@
   --chart-3: oklch(0.553 0.086 209);
   --chart-4: oklch(0.477 0.073 208);
   --chart-5: oklch(0.393 0.061 206);
+  /* Down to where the frame is, as in every light window here. */
+  --panel: oklch(0.957 0.013 97);
+  --panel-muted: oklch(0.943 0.015 95);
   --sidebar: oklch(0.957 0.013 97);
   --sidebar-foreground: oklch(0.192 0.02 196);
   --sidebar-primary: oklch(0.553 0.086 209);
@@ -282,6 +307,9 @@
   --chart-3: oklch(0.553 0.086 209);
   --chart-4: oklch(0.477 0.073 208);
   --chart-5: oklch(0.393 0.061 206);
+  /* Raised, the step a card takes off this page. */
+  --panel: oklch(0.259 0.004 85);
+  --panel-muted: oklch(0.316 0.004 85);
   --sidebar: oklch(0.201 0.003 68);
   --sidebar-foreground: oklch(0.984 0.008 99);
   --sidebar-primary: oklch(0.733 0.113 203);
@@ -354,6 +382,29 @@
     background-color: var(--selection);
     color: var(--selection-foreground);
   }
+}
+
+/*
+ * pi's floor, and everything on it moved with it.
+ *
+ * The conversation does not sit on the note's page, so inside this class
+ * "the page" is --panel: --background is rebound, and the wash and the hover
+ * surface that are defined against the page are rebound with it. That is the
+ * whole of the change — a tool's output, a code block, a queued message, a
+ * hovered row and a badge all keep the exact distance from the floor under
+ * them that they were drawn with, without one of them being edited.
+ *
+ * Rebinding rather than a second set of names is the difference between this
+ * and the sidebar, which shadcn gives its own --sidebar-* tokens and its own
+ * markup. Nothing in here is built for pi; it is shared with the note, and a
+ * shared component cannot be asked which panel it happens to be in.
+ */
+.surface-panel {
+  --background: var(--panel);
+  --muted: var(--panel-muted);
+  --accent: var(--panel-muted);
+  --secondary: var(--panel-muted);
+  background-color: var(--background);
 }
 
 /* React mounts here; without this the div would become the flex child that

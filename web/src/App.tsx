@@ -499,12 +499,29 @@ export function App() {
 						className="flex min-w-0 flex-col"
 						onResize={() => setPiOpen(!pi.current?.isCollapsed())}
 					>
-						{/* No fill and no edge: the note stops and the conversation
-						    starts, and eight pixels of the card is all that is between
-						    them. Three floors were tried side by side — the window's own
-						    colour, a rung above the note, and nothing — and nothing read
-						    best. One card, and pi opening inside it. */}
-						<div className="ml-2 flex min-h-0 flex-1 flex-col overflow-hidden">
+						{/* A floor of its own, laid inside the card rather than up
+						    against it: the note is the page, the conversation beside it
+						    is not the same page, and --panel steps off the note — up in
+						    a dark window, down in a light one, the same distance either
+						    way. The eight pixels all round are what the two surfaces are
+						    read against: the note's page runs behind pi on every side,
+						    so the panel is a thing on the page and not the other half of
+						    it, and no line has to be drawn to say so.
+
+						    The corner is the card's own less the gap — 14px round the
+						    outside, 8px of page, 6px here — which is what keeps two
+						    curves this close from reading as a mistake. Tailwind has
+						    that number already: --radius-sm is --radius-xl less 8.
+
+						    And --border round it, the token every other rim in the
+						    window uses. It is a rim on a surface rather than a line
+						    between two, which is the one job that token has: in the
+						    dark themes it is white at 5%, so it lands the same 0.047
+						    off pi's floor that the card's rim lands off the page, and
+						    in the light ones it is fainter against pi than against the
+						    card — which is what is wanted, since a floor that is already
+						    a step down does not need saying twice. */}
+						<div className="surface-panel m-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-sm border">
 							<Boundary name="conversation">
 								<Pi note={open} raw={raw} />
 							</Boundary>
