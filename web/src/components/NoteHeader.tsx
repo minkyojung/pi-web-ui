@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { ChevronRight, MoreHorizontal } from "lucide-react";
+import { ChevronRight, Ellipsis, MoreHorizontal } from "lucide-react";
 
 import { noteActions } from "../noteActions";
 import { showAuthorsStore } from "../features/authors";
@@ -19,6 +19,63 @@ function show(folder: string) {
 	requestAnimationFrame(() => {
 		document.querySelector(`#notes [data-folder="${CSS.escape(folder)}"]`)?.scrollIntoView({ block: "nearest" });
 	});
+}
+
+/** How much of a deep path the crumb line spells out before folding the middle away. */
+const CRUMB_HEAD = 1;
+const CRUMB_TAIL = 2;
+
+/** `folders`, split into what stays at each end and what collapses behind `…`. */
+function splitCrumbs(folders: string[]): { head: string[]; hidden: string[]; tail: string[] } {
+	if (folders.length <= CRUMB_HEAD + CRUMB_TAIL) return { head: [], hidden: [], tail: folders };
+	return {
+		head: folders.slice(0, CRUMB_HEAD),
+		hidden: folders.slice(CRUMB_HEAD, folders.length - CRUMB_TAIL),
+		tail: folders.slice(folders.length - CRUMB_TAIL),
+	};
+}
+
+function FolderCrumb({ folder }: { folder: string }) {
+	return (
+		<button
+			type="button"
+			data-crumb={folder}
+			className="truncate rounded-sm px-1 py-0.5 hover:bg-accent hover:text-accent-foreground"
+			onClick={() => show(folder)}
+		>
+			{folder.slice(folder.lastIndexOf("/") + 1)}
+		</button>
+	);
+}
+
+/**
+ * The folders a deep path hides between its ends, behind one "…".
+ *
+ * Same shape as the crumbs either side of it: a button that opens a menu
+ * rather than jumping straight there, because there is more than one folder
+ * under it and a click has to say which.
+ */
+function CrumbEllipsis({ folders }: { folders: string[] }) {
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<button
+					type="button"
+					aria-label="Folders in between"
+					className="rounded-sm px-1 py-0.5 hover:bg-accent hover:text-accent-foreground"
+				>
+					<Ellipsis className="size-3" />
+				</button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="start">
+				{folders.map((folder) => (
+					<DropdownMenuItem key={folder} onSelect={() => show(folder)}>
+						{folder.slice(folder.lastIndexOf("/") + 1)}
+					</DropdownMenuItem>
+				))}
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
 }
 
 /**
@@ -103,20 +160,26 @@ export function NoteHeader({ path, trailing }: { path: string | null; trailing?:
 	// The same identifiers the sidebar keys its open folders on, so a crumb and
 	// a row are talking about the same folder without either being told.
 	const folders = path ? foldersOf(path) : [];
+	const { head, hidden, tail } = splitCrumbs(folders);
 	return (
 		<div className="flex h-11 shrink-0 items-center gap-1 pr-2 pl-3 text-sm">
 			<div className="flex min-w-0 flex-1 items-center gap-0.5 truncate text-muted-foreground">
-				{folders.map((folder, i) => (
+				{head.map((folder) => (
+					<span key={folder} className="flex shrink-0 items-center gap-0.5">
+						<FolderCrumb folder={folder} />
+						<ChevronRight className="size-3 shrink-0" />
+					</span>
+				))}
+				{hidden.length > 0 && (
+					<span className="flex shrink-0 items-center gap-0.5">
+						<CrumbEllipsis folders={hidden} />
+						<ChevronRight className="size-3 shrink-0" />
+					</span>
+				)}
+				{tail.map((folder, i) => (
 					<span key={folder} className="flex shrink-0 items-center gap-0.5">
 						{i > 0 && <ChevronRight className="size-3 shrink-0" />}
-						<button
-							type="button"
-							data-crumb={folder}
-							className="truncate rounded-sm px-1 py-0.5 hover:bg-accent hover:text-accent-foreground"
-							onClick={() => show(folder)}
-						>
-							{folder.slice(folder.lastIndexOf("/") + 1)}
-						</button>
+						<FolderCrumb folder={folder} />
 					</span>
 				))}
 				{path && (
