@@ -15,12 +15,12 @@ import type { Suggestions } from "./properties.ts";
 import type { PropertyType, Registry } from "./propertyTypes.ts";
 import type { Ask, AskOutcome } from "./ask";
 import type { BranchPoint } from "./branches";
-import type { Author, Change, Edit } from "./history";
+import type { Author, Change, Edit, Moved } from "./history";
 import type { NoteFile } from "./vault";
 import type { Backlink, Tagged } from "./linkIndex";
 import type { SearchHit } from "./search";
 
-export type { Ask, AskOutcome, Author, Backlink, BranchPoint, Change, Edit, NoteFile, SearchHit, Tagged };
+export type { Ask, AskOutcome, Author, Backlink, BranchPoint, Change, Edit, Moved, NoteFile, SearchHit, Tagged };
 
 // ---------------------------------------------------------------------------
 // Browser → server
@@ -371,6 +371,13 @@ export interface NoteMsg {
 	text: string;
 	modified: number;
 	/**
+	 * How long the note's log is at this text: the record's own version of
+	 * it, which is what an edit that moved words names as where they came
+	 * from (Moved). The disk's `modified` is a time; this is a place in the
+	 * log, and the log is what is asked.
+	 */
+	lines: number;
+	/**
 	 * The note as it would be with every undecided change of pi's put back,
 	 * when there are any — see unreviewed in history.ts. The editor shows the
 	 * two as a diff to be decided about a chunk at a time; absent, there is
@@ -428,7 +435,11 @@ export interface NoteChangedMsg {
 	path: string;
 	base: number;
 	modified: number;
+	/** As on `note`: the log's length after this change. */
+	lines: number;
 	changes: Change[];
+	/** How much of it somebody other than you wrote, now that it has changed. See Authored. */
+	authored: Authored;
 	/** As on `note`: what is left to decide about, after this change. */
 	original?: string;
 }

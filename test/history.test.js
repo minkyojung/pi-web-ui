@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { apply, appendHistory, changesBetween, decide, historyPath, mapThrough, moveHistory, readHistory, reclaimLog, reconcile, record, replay, trashLog, trashHistoryPath, wroteIn, fromEdits } from "../history.ts";
+import { apply, appendHistory, changesBetween, decide, historyPath, mapThrough, moveHistory, readHistory, reclaimLog, reconcile, record, replay, trashLog, trashHistoryPath, wroteIn, fromEdits, carriedFrom } from "../history.ts";
 
 const me = { author: "me", at: 1 };
 const pi = { author: "pi", at: 2, sessionId: "s1", entryId: "e1" };
@@ -149,6 +149,45 @@ test("v:2 줄은 spans를 지니고, v:1 줄처럼 읽힌다", () => {
   const raw = readFileSync(historyPath(DIR, "v2.md"), "utf8");
   assert.ok(raw.startsWith('{"v":2,'), raw);
   assert.deepEqual(readHistory(DIR, "v2.md")[0].spans, [{ ...pi, from: 0, to: 1 }]);
+});
+
+// --- words moved: where they came from, and whose they were there ---
+
+test("옮겨 온 자리의 저자를 그때의 로그에서 꺼내 온다 — 잘라낸 뒤의 로그가 아니라", () => {
+  // Planted line by line, so that pi's run is exactly "PIPI" and not the spaces a word diff would give it.
+  appendHistory(DIR, "src.md", [{ ...me, from: 0, to: 0, inserted: "aa  bb\n", removed: "" }, { ...pi, from: 3, to: 3, inserted: "PIPI", removed: "" }]);
+  const lines = readHistory(DIR, "src.md").length;
+  // The cut is saved, and the words are gone from the record's text.
+  record(DIR, "src.md", "aa PIPI bb\n", "aa  bb\n", me);
+  assert.deepEqual(carriedFrom(DIR, { path: "src.md", from: 3, to: 7, lines }, "PIPI"), [{ ...pi, from: 0, to: 4 }]);
+  assert.deepEqual(carriedFrom(DIR, { path: "src.md", from: 3, to: 7, lines }, "xx PIPI yy"), [{ ...pi, from: 3, to: 7 }], "붙여넣은 글에 이어 쓴 것이 있어도 그 자리를 찾는다");
+  assert.deepEqual(carriedFrom(DIR, { path: "src.md", from: 1, to: 5, lines }, "a PI"), [{ ...me, from: 0, to: 2 }, { ...pi, from: 2, to: 4 }], "경계에 걸친 구간은 잘린다");
+});
+
+test("그 자리의 글이 이 글이 아니면 아무것도 꺼내지 않는다", () => {
+  record(DIR, "src2.md", "", "one two\n", me);
+  const lines = readHistory(DIR, "src2.md").length;
+  assert.equal(carriedFrom(DIR, { path: "src2.md", from: 0, to: 3, lines }, "two"), null, "다른 글");
+  assert.equal(carriedFrom(DIR, { path: "src2.md", from: 0, to: 3, lines }, "one one"), null, "두 번 있으면 어느 것인지 모른다");
+  assert.equal(carriedFrom(DIR, { path: "src2.md", from: 0, to: 3, lines: lines + 5 }, "one"), null, "없는 길이");
+  assert.equal(carriedFrom(DIR, { path: "src2.md", from: 0, to: 99, lines }, "one"), null, "글 밖");
+  assert.equal(carriedFrom(DIR, { path: "nope.md", from: 0, to: 3, lines: 0 }, "one"), null, "없는 노트");
+});
+
+test("record는 옮겨 온 글에 그 저자를 실어 적고, 다시 재생하면 그대로다", () => {
+  appendHistory(DIR, "mv.md", [{ ...me, from: 0, to: 0, inserted: "aa  bb\n", removed: "" }, { ...pi, from: 3, to: 3, inserted: "PIPI", removed: "" }]);
+  const lines = readHistory(DIR, "mv.md").length;
+  // Cut and paste to the end, in one save: two edits in the coordinates of the text before both.
+  record(DIR, "mv.md", "aa PIPI bb\n", "aa  bb\nPIPI", { ...me, at: 30 }, [
+    { from: 3, to: 7, insert: "" },
+    { from: 11, to: 11, insert: "PIPI", moved: { path: "mv.md", from: 3, to: 7, lines } },
+  ]);
+  const { text, spans } = replay(readHistory(DIR, "mv.md"));
+  assert.equal(text, "aa  bb\nPIPI");
+  assert.deepEqual(spans.map((s) => [s.author, text.slice(s.from, s.to)]), [["me", "aa  bb\n"], ["pi", "PIPI"]], "옮겨도 pi의 글이다");
+  // Moving pi's undecided words is the person handling them: where they were reads as it did before pi,
+  // and where they are is where the person put them. Nothing is left to decide; who wrote them still says pi.
+  assert.deepEqual(unreviewed(readHistory(DIR, "mv.md")).holes, [], "옮기고 나면 결정할 것은 없다");
 });
 
 // --- the editor's own account of what it did ---

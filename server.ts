@@ -412,9 +412,19 @@ function settleDisk(path: string, text: string, at: number) {
 function note(path: string): NoteMsg | null {
 	const found = readNote(CWD, path);
 	if (!found) return null;
-	const { holed } = settleDisk(path, found.text, Date.now());
+	const { holed, replayed, lines } = settleDisk(path, found.text, Date.now());
 	known.set(path, found.modified);
-	return { type: "note", path, text: found.text, modified: found.modified, original: toDecide(holed), backlinks: links.backlinks(path), tagged: links.tagged(path) };
+	return {
+		type: "note",
+		path,
+		text: found.text,
+		modified: found.modified,
+		lines,
+		original: toDecide(holed),
+		backlinks: links.backlinks(path),
+		tagged: links.tagged(path),
+		authored: shareOf(replayed.spans, found.text.length),
+	};
 }
 
 /**
@@ -515,7 +525,19 @@ function wrote(path: string, base: number | null, changes: Change[]): void {
 	const said = found ? historyOf(CWD, path) : null;
 	if (found && said && base !== null && said.replayed.text === found.text) {
 		known.set(path, found.modified);
-		const msg: NoteChangedMsg = { type: "note_changed", path, base, modified: found.modified, changes, original: toDecide(said.holed) };
+		// From the reading of the log this already needed: a share costs nothing
+		// on top of it, and a note that pi has just written in should not have
+		// to be reopened before the strip says so.
+		const msg: NoteChangedMsg = {
+			type: "note_changed",
+			path,
+			base,
+			modified: found.modified,
+			lines: said.lines,
+			changes,
+			original: toDecide(said.holed),
+			authored: shareOf(said.replayed.spans, found.text.length),
+		};
 		broadcast(msg);
 	} else {
 		const msg = note(path);

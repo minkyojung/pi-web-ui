@@ -580,7 +580,7 @@ export function reconcile(
 	onDisk: string,
 	at: number,
 	origin?: Origin,
-): { appended: Change[]; spans: Span[]; replayed: Replayed; holed: Holed } {
+): { appended: Change[]; spans: Span[]; replayed: Replayed; holed: Holed; lines: number } {
 	// A note with no log is either new or back from the trash, and the trash is
 	// asked before the note is seeded as new — see reclaimLog.
 	let read = historyOf(root, path);
@@ -596,7 +596,7 @@ export function reconcile(
 		replayed = replay(appended, replayed);
 		holed = holesOf(appended, holed);
 	}
-	return { appended, spans: replayed.spans, replayed, holed };
+	return { appended, spans: replayed.spans, replayed, holed, lines: read.lines + appended.length };
 }
 
 /**
@@ -649,7 +649,42 @@ export function decide(root: string, path: string, from: number, to: number, at:
  * the shape CodeMirror's ChangeSet hands out — where a log line is in the
  * text as it stands when that line is applied.
  */
-export type Edit = { from: number; to: number; insert: string };
+export type Edit = { from: number; to: number; insert: string; moved?: Moved };
+
+/**
+ * Where an insertion's words came from: a place in a note's text as the
+ * record had it when its log was `lines` long. The editor says this of a
+ * paste whose words are the words it cut, in the coordinates of the text it
+ * was given with that log length — so the record can look up whose the words
+ * were there, at that moment, before the cut took them out.
+ */
+export type Moved = { path: string; from: number; to: number; lines: number };
+
+/**
+ * The authors of the words at a place in a note, as the record stood at a
+ * length of its log, laid over `insert` — or null when the words there were
+ * not these words.
+ *
+ * The log is replayed to that length, from the start: a move is rare and a
+ * walk is cheap beside being right. The words are found in `insert` by
+ * equality and only if they are there once; typing joined to a paste inside
+ * one save leaves the pasted words where they are, and where they are is
+ * the one thing this has to know.
+ */
+export function carriedFrom(root: string, moved: Moved, insert: string): Carried[] | null {
+	const { path, from, to, lines } = moved;
+	if (!(Number.isInteger(from) && Number.isInteger(to) && Number.isInteger(lines)) || from < 0 || to <= from || lines < 0) return null;
+	const log = readHistory(root, path);
+	if (lines > log.length) return null;
+	const { text, spans } = replay(log.slice(0, lines));
+	if (to > text.length) return null;
+	const words = text.slice(from, to);
+	const at = insert.indexOf(words);
+	if (at < 0 || insert.indexOf(words, at + 1) >= 0) return null;
+	return spans
+		.filter((s) => s.from < to && from < s.to)
+		.map(({ from: sf, to: st, removed: _r, ...origin }) => ({ ...origin, from: Math.max(sf, from) - from + at, to: Math.min(st, to) - from + at }));
+}
 
 /**
  * The editor's own account of what it did, as log lines — or null when the
@@ -666,8 +701,12 @@ export type Edit = { from: number; to: number; insert: string };
  * Side-by-side edits become in-order lines by walking them in order: once the
  * earlier ones are in, the next one's place has moved by what they added and
  * took, which is the sum kept in `shift`.
+ *
+ * An edit that says where its words came from is asked about with `source`;
+ * what it answers rides on the line as the words' own authors (Carried), and
+ * a null answer leaves the words the writer's, as any insertion is.
  */
-export function fromEdits(before: string, edits: Edit[], after: string, origin: Origin): Change[] | null {
+export function fromEdits(before: string, edits: Edit[], after: string, origin: Origin, source?: (moved: Moved, insert: string) => Carried[] | null): Change[] | null {
 	const out: Change[] = [];
 	let shift = 0;
 	let last = 0;
@@ -676,7 +715,8 @@ export function fromEdits(before: string, edits: Edit[], after: string, origin: 
 		if (e.from < last || e.to < e.from || e.to > before.length) return null;
 		const removed = before.slice(e.from, e.to);
 		if (e.insert === removed) continue; // Nothing done; a line of it would read as a decision (isTouch).
-		out.push({ ...origin, from: e.from + shift, to: e.to + shift, inserted: e.insert, removed });
+		const spans = e.moved && source ? source(e.moved, e.insert) : null;
+		out.push({ ...origin, from: e.from + shift, to: e.to + shift, inserted: e.insert, removed, ...(spans?.length ? { spans } : {}) });
 		shift += e.insert.length - removed.length;
 		last = e.to;
 	}
@@ -693,7 +733,7 @@ export function record(root: string, path: string, before: string, after: string
 	// `before` is what the writer had; the disk may have moved past it. Settle
 	// that first so this change is measured from the real text.
 	reconcile(root, path, before, origin.at);
-	const changes = (edits && fromEdits(before, edits, after, origin)) ?? changesBetween(before, after, origin);
+	const changes = (edits && fromEdits(before, edits, after, origin, (moved, insert) => carriedFrom(root, moved, insert))) ?? changesBetween(before, after, origin);
 	appendHistory(root, path, changes);
 	return changes;
 }

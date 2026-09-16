@@ -182,6 +182,37 @@ it("새 노트는 목록의 소식이다", async () => {
   assert.equal(after.files.some((f) => f.path === born.path), false, "지운 것은 목록에서 빠진다");
 });
 
+it("잘라 붙인 글은 제 저자를 지닌 채 옮겨진다 — 로그의 길이가 어디서 왔는지의 기준이다", async () => {
+  mkdirSync(join(cwd, ".pi/history"), { recursive: true });
+  writeFileSync(join(cwd, "mv.md"), "aa PIPI bb\n");
+  writeFileSync(join(cwd, ".pi/history/mv.md.jsonl"), [
+    { author: "me", at: 1, from: 0, to: 0, inserted: "aa  bb\n", removed: "" },
+    { author: "pi", at: 2, sessionId: "s", entryId: "e", from: 3, to: 3, inserted: "PIPI", removed: "" },
+  ].map((c) => JSON.stringify(c)).join("\n") + "\n");
+  clear();
+  send({ type: "open_note", path: "mv.md" });
+  const opened = await want("note", (m) => m.path === "mv.md");
+  assert.equal(opened.lines, 2, "노트와 함께 로그의 길이가 온다");
+  // The cut, saved on its own — the words leave the record's text.
+  clear();
+  send({ type: "save_note", path: "mv.md", text: "aa  bb\n", base: opened.modified, edits: [{ from: 3, to: 7, insert: "" }] });
+  const cut = await want("note_changed", (m) => m.path === "mv.md");
+  assert.equal(cut.lines, 3);
+  // The paste, a save later, into another note: it names where the words were when the log was 2 long.
+  writeFileSync(join(cwd, "dst.md"), "x\n");
+  clear();
+  send({ type: "open_note", path: "dst.md" });
+  const dst = await want("note", (m) => m.path === "dst.md");
+  clear();
+  send({ type: "save_note", path: "dst.md", text: "x\nPIPI", base: dst.modified, edits: [{ from: 2, to: 2, insert: "PIPI", moved: { path: "mv.md", from: 3, to: 7, lines: 2 } }] });
+  await want("note_changed", (m) => m.path === "dst.md");
+  clear();
+  send({ type: "who_wrote", path: "dst.md" });
+  const who = await want("authors");
+  // dst.md appeared while the app ran, so its own words are outside's (Phase A); the moved words are pi's, from the same conversation.
+  assert.deepEqual(who.spans.map((s) => [s.from, s.to, s.author, s.session]), [[0, 2, "outside", undefined], [2, 6, "pi", "s"]], "다른 노트로 옮겨서도 pi의 글, 같은 대화");
+});
+
 it("저장은 편집기가 한 말대로 적힌다 — 글자 하나를 고치면 글자 하나", async () => {
   writeFileSync(join(cwd, "exact.md"), "hello world\n");
   clear();
