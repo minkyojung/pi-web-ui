@@ -135,6 +135,7 @@ function startServer(port, workdir) {
 		stdio: ["ignore", "pipe", "pipe", "ipc"],
 	});
 	answerTrashAsks(child, workdir);
+	openUrlAsks(child);
 	child.stdout.on("data", (d) => process.stdout.write(`[server] ${d}`));
 	child.stderr.on("data", (d) => {
 		process.stderr.write(`[server] ${d}`);
@@ -188,6 +189,24 @@ function answerTrashAsks(server, workdir) {
 		// The server is waiting on this and falls back to the vault's own trash
 		// without it, so an answer goes back either way.
 		if (server.connected) server.send({ ask: "trash", id: message.id, ok });
+	});
+}
+
+/**
+ * The other thing the server cannot do for itself: put a page in front of the
+ * person. A sign-in (login.ts) hands the server a URL to open, and a page from
+ * a child process is this process's to open — in the browser the person
+ * already has, not in a window of ours. http(s) only: what pi hands over is a
+ * web address, and anything else is not something to run.
+ */
+function openUrlAsks(server) {
+	server.on("message", (message) => {
+		if (message?.ask !== "open" || typeof message.url !== "string") return;
+		if (!/^https?:\/\//.test(message.url)) {
+			console.error(`[open] refused, not a web address: ${message.url}`);
+			return;
+		}
+		void shell.openExternal(message.url);
 	});
 }
 

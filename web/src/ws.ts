@@ -12,6 +12,7 @@ import {
 	setTagged,
 	configStore,
 	providersStore,
+	applyLogin,
 	contextSourcesStore,
 	authorsStore,
 	filesStore,
@@ -31,6 +32,7 @@ import {
 	pushRaw,
 	removePrompt,
 	restoredStore,
+	runUndoneStore,
 	searchResultsStore,
 	sessionsStore,
 	usageStore,
@@ -69,6 +71,10 @@ const backoff = () => Math.random() * Math.min(250 * 2 ** attempt, 5000);
 const STATE: Record<StateMsg["type"], true> = {
 	config: true,
 	providers: true,
+	login_prompt: true,
+	login_prompt_dismiss: true,
+	login_event: true,
+	login_done: true,
 	usage: true,
 	context_sources: true,
 	branches: true,
@@ -90,6 +96,7 @@ const STATE: Record<StateMsg["type"], true> = {
 	authors: true,
 	why: true,
 	search_results: true,
+	run_undone: true,
 	ask_done: true,
 	prompt_request: true,
 	prompt_dismiss: true,
@@ -112,6 +119,12 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "providers":
 			providersStore.set(msg.providers);
+			return;
+		case "login_prompt":
+		case "login_prompt_dismiss":
+		case "login_event":
+		case "login_done":
+			applyLogin(msg);
 			return;
 		case "usage":
 			usageStore.set(msg);
@@ -177,6 +190,9 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "search_results":
 			searchResultsStore.set(msg);
+			return;
+		case "run_undone":
+			runUndoneStore.set(msg);
 			return;
 		case "snapshot":
 			// A snapshot means the server's session may not be the one these

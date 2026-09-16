@@ -110,7 +110,21 @@ export type ClientMsg =
 	 */
 	| { type: "search_notes"; query: string; id: number }
 	/** Choose what kind of thing the property `name` holds, vault-wide; null lets it be guessed from its values again. */
-	| { type: "set_property_type"; name: string; propertyType: PropertyType | null };
+	| { type: "set_property_type"; name: string; propertyType: PropertyType | null }
+	/** Sign in to a provider one of the ways `providers` says it can be. What pi then asks comes as login_prompt. See login.ts. */
+	| { type: "login"; provider: string; method: "oauth" | "api_key" }
+	/** A tab's answer to a login_prompt, or — `cancelled` — the whole sign-in given up. */
+	| { type: "login_answer"; id: string; value?: string; cancelled?: boolean }
+	/** Forget the credential pi keeps for a provider. One it found elsewhere (an environment variable) is not pi's to forget. */
+	| { type: "logout"; provider: string }
+	/**
+	 * Put back what pi wrote in one run: every note pi wrote to in `session`
+	 * between `from` and `to` (ms) has its undecided changes of pi's put
+	 * back, as one edit of the person's per note. What the person has kept,
+	 * and what they wrote themselves, stays. Answered with `run_undone` to
+	 * this tab, and `note_changed` to every tab for each note that moved.
+	 */
+	| { type: "undo_run"; session: string; from: number; to: number };
 
 export type ClientMsgType = ClientMsg["type"];
 
@@ -233,6 +247,51 @@ export interface ProviderInfo {
 	 * something the app can sign out of.
 	 */
 	signedIn: { method: "oauth" | "api_key"; source: string } | null;
+}
+
+/**
+ * A question pi asks on the way to signing in — pi's AuthPrompt, with the
+ * provider it is about and an id to answer by. `secret` is a key and is not to
+ * be shown as typed; `manual_code` is what a person pastes back from a browser
+ * when the callback did not reach pi; `select` chooses by option id.
+ */
+export type LoginPrompt = { id: string; provider: string; message: string; placeholder?: string } & (
+	| { type: "text" }
+	| { type: "secret" }
+	| { type: "manual_code" }
+	| { type: "select"; options: { id: string; label: string; description?: string }[] }
+);
+
+/** Something pi says on the way, not asked: the URL to open, a code to type at it, how it is going. pi's AuthEvent. */
+export type LoginEvent =
+	| { type: "info"; message: string; links?: { url: string; label?: string }[] }
+	| { type: "auth_url"; url: string; instructions?: string }
+	| { type: "device_code"; userCode: string; verificationUri: string; intervalSeconds?: number; expiresInSeconds?: number }
+	| { type: "progress"; message: string };
+
+export interface LoginPromptMsg {
+	type: "login_prompt";
+	prompt: LoginPrompt;
+}
+
+/** pi no longer needs the answer — the callback arrived first, say. */
+export interface LoginPromptDismissMsg {
+	type: "login_prompt_dismiss";
+	id: string;
+}
+
+export interface LoginEventMsg {
+	type: "login_event";
+	provider: string;
+	event: LoginEvent;
+}
+
+/** The sign-in ended. Not ok and no error is a cancel; `providers` follows when the credentials moved. */
+export interface LoginDoneMsg {
+	type: "login_done";
+	provider: string;
+	ok: boolean;
+	error?: string;
 }
 
 /** Every provider worth listing, in pi's order. Sent on connect and whenever the credentials file moves. */
@@ -471,6 +530,12 @@ export interface NoteConflictMsg {
 }
 
 /** The lines that say what search_notes asked for, in the notes' list order. See search.ts. */
+/** The notes a run's undo put back — none, when there was nothing left to decide in any of them. */
+export interface RunUndoneMsg {
+	type: "run_undone";
+	notes: string[];
+}
+
 export interface SearchResultsMsg {
 	type: "search_results";
 	id: number;
@@ -551,6 +616,10 @@ export interface PiEventMsg {
 export type StateMsg =
 	| ConfigMsg
 	| ProvidersMsg
+	| LoginPromptMsg
+	| LoginPromptDismissMsg
+	| LoginEventMsg
+	| LoginDoneMsg
 	| UsageMsg
 	| ContextSourcesMsg
 	| BranchesMsg
@@ -572,6 +641,7 @@ export type StateMsg =
 	| AuthorsMsg
 	| WhyMsg
 	| SearchResultsMsg
+	| RunUndoneMsg
 	| AskDoneMsg
 	| PromptRequestMsg
 	| PromptDismissMsg

@@ -444,6 +444,49 @@ check("a row in the sidebar opens its note in the middle", async ({ app }) => {
 	await app.shot("editor");
 });
 
+/**
+ * A drag region swallows every click inside it, and the stylesheet punches a
+ * hole for each control so they stay pressable. Chromium builds those regions
+ * by walking the document in order, so a drag region that comes later fills in
+ * the holes an earlier one made for its buttons — and a control under it is
+ * dead to the mouse while the keyboard still reaches it.
+ *
+ * Nothing else here would catch that. A browser ignores app-region entirely,
+ * and the clicks this file sends are put into the page underneath the shell
+ * that reads it, so every one of them lands whatever the regions say. It went
+ * unnoticed once already: folding the list let the tab row's box reach the
+ * window's edge and cover the fold button, which then could not be pressed to
+ * bring the list back. So it is checked as geometry, which needs no mouse.
+ */
+check("no drag region covers a control of one drawn before it, with the list of notes open or folded", async ({ app }) => {
+	const covered = () => app.evaluate(`(() => {
+		const regions = [...document.querySelectorAll(".drag-region")];
+		const holds = (over, el) => {
+			const a = over.getBoundingClientRect(), b = el.getBoundingClientRect();
+			return b.width > 0 && b.height > 0 && a.left <= b.left && a.right >= b.right && a.top <= b.top && a.bottom >= b.bottom;
+		};
+		const buried = [];
+		regions.forEach((region, i) => {
+			for (const control of region.querySelectorAll("a, button, input, select, textarea, label, [role=button], [role=tab]")) {
+				for (const later of regions.slice(i + 1)) {
+					if (holds(later, control)) buried.push(control.id || control.getAttribute("aria-label") || control.tagName);
+				}
+			}
+		});
+		return [...new Set(buried)].join(", ");
+	})()`);
+
+	assert.equal(await covered(), "", "buried while the list of notes is open");
+	const folded = (want) => until(`the list ${want ? "folded away" : "back"}`, async () =>
+		(await app.evaluate(`document.getElementById("toggleSidebar").getAttribute("aria-pressed")`)) === (want ? "false" : "true"));
+	await app.click("#toggleSidebar");
+	await folded(true);
+	assert.equal(await covered(), "", "buried while the list of notes is folded away");
+	// Put back: the checks after this one share the window with it.
+	await app.click("#toggleSidebar");
+	await folded(false);
+});
+
 check("a heading's marks are hidden until the cursor is on it, and ⌘E shows them all", async ({ app }) => {
 	// The cursor is on the first line after opening; move it off the heading.
 	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);

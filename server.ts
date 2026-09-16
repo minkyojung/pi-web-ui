@@ -34,6 +34,7 @@ import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, w
 import { FileIndex } from "./fileIndex.ts";
 import { startLogging } from "./log.ts";
 import { deleteNote, shellTrash } from "./trash.ts";
+import { createLoginBridge } from "./login.ts";
 import { noteTools } from "./noteEdit.ts";
 import { claimAppDir } from "./appDir.ts";
 import { decide, type Change, historyOf, type Holed, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided } from "./history.ts";
@@ -724,6 +725,35 @@ function broadcast(payload: ServerMsg): void {
 const prompts = createPromptBridge(broadcast);
 
 /**
+ * Signing in, through pi — see login.ts. A URL pi wants opened goes to the
+ * shell when there is one (electron/main.js opens it in the person's browser);
+ * in a terminal run the tab shows it and the person clicks.
+ */
+const logins = createLoginBridge(
+	broadcast,
+	(provider, method, interaction) => modelRuntime.login(provider, method, interaction),
+	process.send ? (url) => process.send!({ ask: "open", url }) : null,
+);
+
+/**
+ * After a sign-in: bring the models up to date, and — when the session was on
+ * nothing — put it on one of the new provider's, as pi's CLI does after its
+ * own login (completeProviderAuthentication). pi's CLI takes the provider's
+ * named default; that table is not exported, so this takes the first the
+ * provider offers, which the picker can change in one keystroke. A session
+ * already on a model is left on it.
+ */
+async function afterSignIn(provider: string): Promise<void> {
+	await refreshModels();
+	if (!currentModel()) {
+		const first = availableModels().find((m) => m.provider === provider);
+		if (first) await session().setModel(first, { persist: true });
+	}
+	broadcast(config());
+	broadcast(contextSources());
+}
+
+/**
  * The wire form of a session event, matching what pi's own print and rpc modes
  * send. A `message_update` ships the whole message being streamed twice — as
  * `message` and again as `assistantMessageEvent.partial` — and both are
@@ -1067,6 +1097,8 @@ wss.on("connection", async (ws) => {
 	reply({ type: "property_names", ...propertyNames.all() });
 	// A tab opened while a question is waiting should see it too.
 	for (const prompt of prompts.open()) reply({ type: "prompt_request", prompt });
+	const asking = logins.open();
+	if (asking) reply({ type: "login_prompt", prompt: asking });
 
 	ws.on("message", async (data) => {
 		// Typed as what the browser sends, which is what lets each case below
@@ -1187,6 +1219,40 @@ wss.on("connection", async (ws) => {
 					// persist writes it to pi's own settings, so the next session — here
 					// or in the CLI — opens on it; without it the choice lasts one session.
 					await session().setModel(next, { persist: true });
+					broadcast(config());
+					broadcast(contextSources());
+					break;
+				}
+
+				case "login": {
+					if (typeof msg.provider !== "string" || (msg.method !== "oauth" && msg.method !== "api_key")) return;
+					const known = providers().providers.find((p) => p.id === msg.provider);
+					if (!known?.methods.includes(msg.method)) {
+						reply({ type: "error", message: `${msg.provider} cannot be signed in to with ${msg.method === "oauth" ? "OAuth" : "an API key"} here.` });
+						return;
+					}
+					const busy = logins.busy();
+					if (busy) {
+						reply({ type: "error", message: `Already signing in to ${busy}. Finish or cancel that first.` });
+						return;
+					}
+					// Waits for the whole sign-in, and that is fine: each message from
+					// the socket is its own event, so the answers arrive meanwhile.
+					if (await logins.start(msg.provider, msg.method)) await afterSignIn(msg.provider);
+					break;
+				}
+
+				case "login_answer":
+					if (typeof msg.id !== "string") return;
+					logins.answer(msg.id, typeof msg.value === "string" ? msg.value : undefined, msg.cancelled === true);
+					break;
+
+				case "logout": {
+					if (typeof msg.provider !== "string") return;
+					// pi forgets the credential it kept; one it found elsewhere is left
+					// where it was, and providers() will go on saying so.
+					await modelRuntime.logout(msg.provider, { signal: AbortSignal.timeout(15_000) });
+					await refreshModels();
 					broadcast(config());
 					broadcast(contextSources());
 					break;
@@ -1583,6 +1649,7 @@ async function shutdown(): Promise<void> {
 	shuttingDown = true;
 	stopWatching();
 	prompts.cancelAll();
+	logins.cancel();
 	await runtime.dispose();
 	// server.close() waits for open connections, and an upgraded WebSocket is
 	// one of them. ws does not close them for us when the http server was

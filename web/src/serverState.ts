@@ -13,6 +13,12 @@ import type {
 	BranchPoint,
 	ConfigMsg,
 	ContextSourcesMsg,
+	LoginDoneMsg,
+	LoginEvent,
+	LoginEventMsg,
+	LoginPrompt,
+	LoginPromptDismissMsg,
+	LoginPromptMsg,
 	NoteChangedMsg,
 	NoteConflictMsg,
 	NoteCreatedMsg,
@@ -24,6 +30,7 @@ import type {
 	NoteMsg,
 	PromptRequest,
 	ProviderInfo,
+	RunUndoneMsg,
 	SearchResultsMsg,
 	ServerMsg,
 	SessionInfo,
@@ -59,6 +66,43 @@ export function createStore<T>(initial: T): Store<T> {
 export const configStore = createStore<ConfigMsg | null>(null);
 /** The providers and who is signed in, as the server last said. See ProvidersMsg. */
 export const providersStore = createStore<ProviderInfo[] | null>(null);
+
+/**
+ * The sign-in under way, as the server tells it: which provider, the question
+ * waiting if one is, what pi has said so far, and how it ended. Null when none
+ * is. See login.ts.
+ */
+export interface LoginState {
+	provider: string;
+	prompt: LoginPrompt | null;
+	events: LoginEvent[];
+	done: { ok: boolean; error?: string } | null;
+}
+export const loginStore = createStore<LoginState | null>(null);
+
+/** Fold one of the server's login messages into loginStore. */
+export function applyLogin(msg: LoginPromptMsg | LoginPromptDismissMsg | LoginEventMsg | LoginDoneMsg): void {
+	const was = loginStore.get();
+	switch (msg.type) {
+		case "login_prompt": {
+			const provider = msg.prompt.provider;
+			const same = was && was.provider === provider && !was.done ? was : { provider, prompt: null, events: [], done: null };
+			loginStore.set({ ...same, prompt: msg.prompt });
+			return;
+		}
+		case "login_prompt_dismiss":
+			if (was?.prompt?.id === msg.id) loginStore.set({ ...was, prompt: null });
+			return;
+		case "login_event": {
+			const same = was && was.provider === msg.provider && !was.done ? was : { provider: msg.provider, prompt: null, events: [], done: null };
+			loginStore.set({ ...same, events: [...same.events, msg.event] });
+			return;
+		}
+		case "login_done":
+			loginStore.set({ provider: msg.provider, prompt: null, events: was?.provider === msg.provider ? was.events : [], done: { ok: msg.ok, error: msg.error } });
+			return;
+	}
+}
 export const usageStore = createStore<UsageMsg | null>(null);
 export const sessionsStore = createStore<SessionInfo[]>([]);
 export const contextSourcesStore = createStore<ContextSourcesMsg | null>(null);
@@ -144,6 +188,9 @@ export const noteConflictStore = createStore<NoteConflictMsg | null>(null);
 
 /** The last search answer this tab got. The palette shows it only if it answers the latest ask. */
 export const searchResultsStore = createStore<SearchResultsMsg | null>(null);
+
+/** What the last "put back this run" came to. One at a time: the footer that asked reads it. */
+export const runUndoneStore = createStore<RunUndoneMsg | null>(null);
 
 /**
  * Text a cleared queue handed back, waiting to be put in the composer. Emptied
