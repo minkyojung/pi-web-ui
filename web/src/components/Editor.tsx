@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { deleteMarkupBackward, insertNewlineContinueMarkup, markdown, markdownLanguage } from "@codemirror/lang-markdown";
@@ -478,6 +478,7 @@ export function Editor({
 				if (!decision.dirty) {
 					settle(note.text, note.modified);
 					v.dispatch({ effects: diffFor(note.original ?? null) });
+					askAgain();
 				} else {
 					// The echo of the save; what was typed since is still owed.
 					saved.current = note.text;
@@ -487,11 +488,13 @@ export function Editor({
 					dirty.current = !local.current.empty;
 					setStatus(dirty.current ? "unsaved" : "saved");
 					v.dispatch({ effects: diffFor(note.original ?? null) });
+					askAgain();
 				}
 				return;
 			case "same":
 				settle(note.text, note.modified);
 				v.dispatch({ effects: diffFor(note.original ?? null) });
+				askAgain();
 				return;
 			case "replace": {
 				// The first text of a note opened again: back where it was left,
@@ -508,6 +511,7 @@ export function Editor({
 				});
 				if (back) scrollBack(was.current!, v, page.current);
 				settle(note.text, note.modified);
+				askAgain();
 				if (landing.current) {
 					landOn(v, landing.current);
 					landing.current = null;
@@ -532,9 +536,30 @@ export function Editor({
 		if (!v) return;
 		v.dispatch({ effects: clearAuthors.of(null) });
 		if (!showAuthors) return;
+		// A note not yet here asks for itself when it arrives (askAgain, on the
+		// first whole text); this is for the toggle turned on over a note.
+		if (base.current === null) return;
 		flushSaves();
 		send({ type: "who_wrote", path });
 	}, [showAuthors, path]);
+
+	/**
+	 * The one rule for when the marks are asked for again: whenever the note
+	 * on screen has just become the note on disk. The answer is in the disk's
+	 * coordinates, so while there is typing not yet written down it is about
+	 * a text that is not the one on screen, and is not asked for — the save
+	 * that follows brings the screen back to the disk and asks then. Between,
+	 * the marks ride the words (authors.ts).
+	 *
+	 * Every road to that state calls this after settling: the first whole text,
+	 * the echo of a save, a change from elsewhere landing on a clean note.
+	 * Read off the store rather than a prop, since it is called from inside
+	 * the note's own effect, where a prop would be the one it was made with.
+	 */
+	const askAgain = useCallback(() => {
+		if (dirty.current || !showAuthorsStore.get()) return;
+		send({ type: "who_wrote", path });
+	}, [path]);
 
 	const authored = useSyncExternalStore(authorsStore.subscribe, authorsStore.get);
 	useEffect(() => {
@@ -567,11 +592,13 @@ export function Editor({
 			dirty.current = !local.current.empty;
 			setStatus(dirty.current ? "unsaved" : "saved");
 			v.dispatch({ effects: diffFor(changed.original ?? null) });
+			askAgain();
 			return;
 		}
 		if (!dirty.current) {
 			v.dispatch({ changes: theirs, annotations: serverChange, effects: diffFor(changed.original ?? null) });
 			settle(text, changed.modified);
+			askAgain();
 			return;
 		}
 		const fit = rebase(theirs, local.current);

@@ -17,10 +17,15 @@
  * and a write that came from outside the app — vim, a sync client, a checkout —
  * carries a dashed one, since those are two different things to find out.
  *
- * Typing takes the marks away rather than moving them along. What is on screen
- * is about the note as it was last written down, the words being typed are the
- * person's own by definition, and a mark that shuffles along under a cursor
- * would be claiming to know something it does not. Asking again is one click.
+ * The marks move with the words, whoever changes them. The answer is about
+ * the note as it was last written down, and typing does not change who wrote
+ * what was there: the words being typed are the person's own by definition,
+ * and those carry no mark. So the marks are carried to where their words went
+ * — what a decoration does on its own — and asked for again whenever the note
+ * on screen is the note on disk once more (Editor.tsx), which is what a
+ * language client does with the diagnostics a server sent it. The one place
+ * this is a frame out is a word typed into the middle of a marked run, whose
+ * mark widens to take it in until the next answer splits it.
  */
 import { StateEffect, StateField, type Extension } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView } from "@codemirror/view";
@@ -63,15 +68,16 @@ function mark(span: AuthoredSpan): Decoration {
 	return found;
 }
 
-const shown = (spans: AuthoredSpan[], length: number): DecorationSet =>
-	Decoration.set(
-		spans
-			// The answer is about the note as it is on disk; anything past the end
-			// of what is on screen is not this note's to mark.
-			.filter((span) => span.from < span.to && span.to <= length)
-			.map((span) => mark(span).range(span.from, span.to)),
-		true,
-	);
+function shown(spans: AuthoredSpan[], length: number): DecorationSet {
+	// The answer is about the note as it is on disk, and it is only asked for
+	// when the note on screen is that note — so a run past the end of what is
+	// on screen is a question asked at the wrong moment, not a run to draw.
+	// Left out rather than drawn wrong, and said out loud, since it should not
+	// happen and a log is where a should-not is worth reading.
+	const fit = spans.filter((span) => span.from < span.to && span.to <= length);
+	if (fit.length !== spans.length) console.warn(`[authors] ${spans.length - fit.length} run(s) past the end of the note on screen; the answer was about another text`);
+	return Decoration.set(fit.map((span) => mark(span).range(span.from, span.to)), true);
+}
 
 const field = StateField.define<DecorationSet>({
 	create: () => Decoration.none,
@@ -80,7 +86,7 @@ const field = StateField.define<DecorationSet>({
 			if (effect.is(paintAuthors)) return shown(effect.value, tr.state.doc.length);
 			if (effect.is(clearAuthors)) return Decoration.none;
 		}
-		return tr.docChanged ? Decoration.none : current.map(tr.changes);
+		return current.map(tr.changes);
 	},
 	provide: (f) => EditorView.decorations.from(f),
 });

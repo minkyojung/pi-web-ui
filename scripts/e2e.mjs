@@ -916,7 +916,7 @@ async function deleteNote(app) {
 	await app.evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((i) => i.textContent.trim() === "Delete").click()`);
 }
 
-check("the note's menu says who wrote what, and typing takes it back off", async ({ app, cwd }) => {
+check("the note's menu says who wrote what, and the marks ride the words under typing", async ({ app, cwd }) => {
 	// A note with a past: the person wrote the first half and pi the second. Written
 	// straight to disk with its log beside it, which is the state a note is in when
 	// it is opened days later — the only way to have pi's words here without pi.
@@ -957,11 +957,31 @@ check("the note's menu says who wrote what, and typing takes it back off", async
 	await app.press("Escape");
 	await until("the card gone", async () => !(await app.evaluate("!!document.querySelector('[data-slot=popover-content]')")));
 
-	// Typing is the person's own words; what was on screen was about the note as
-	// it was written down, so it goes rather than shuffling along under the cursor.
-	await app.evaluate(`document.querySelector('#editor .cm-content').focus()`);
-	assert.equal(await type(app, "X"), true);
-	await until("the marks gone", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-by-pi').length")) === 0);
+	// The note changing under the marks is not the marks going. What pi writes —
+	// or, here, what something outside the app writes, which arrives by the same
+	// road — is exactly when who wrote what is worth having, so the marks stay
+	// and the question is put again: the new words come back marked as well.
+	writeFileSync(join(cwd, "whose.md"), `${readFileSync(join(cwd, "whose.md"), "utf8").trimEnd()} and vim.\n`);
+	await until("the write from outside", async () => (await editorText(app)).includes("and vim"));
+	await until("the marks still there, and the new words among them", async () =>
+		(await app.evaluate("document.querySelectorAll('#editor .cm-by-pi').length")) > 0 &&
+		(await app.evaluate("document.querySelectorAll('#editor .cm-by-outside').length")) > 0,
+	);
+
+	// Typing is the person's own words, which carry no mark, and it changes
+	// nothing about who wrote the words already there — so the marks stay on
+	// their words and move with them, the way a mark in an editor does. Typed at
+	// the very front, so that every marked word has to move to still be right.
+	const marked = () => app.evaluate("[...document.querySelectorAll('#editor .cm-by-pi')].map((el) => el.textContent).join('')");
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.focus(); v.dispatch({ selection: { anchor: 0 } }); })()`);
+	assert.equal(await type(app, "X "), true);
+	assert.equal((await marked()).trim(), "pi's", "still pi's words, two characters along");
+	assert.ok((await editorText(app)).startsWith("X "), "and the typed words are there, unmarked");
+	// The save brings the answer again, about the note as it now is on disk: the same marks, from the record this time.
+	await until("saved", async () => (await editorStatus(app)) === "saved");
+	await until("the answer again", async () => (await marked()).trim() === "pi's" && (await app.evaluate("document.querySelectorAll('#editor .cm-by-outside').length")) > 0);
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-line').textContent.startsWith('X ')"), true);
+	assert.equal(await app.evaluate("!!document.querySelector('#editor .cm-by-pi, #editor .cm-by-outside')?.textContent.includes('X')"), false, "what was typed is nobody else's");
 
 	// Off again, and the menu with it. This is a view of the window rather than
 	// of the note, so leaving it on would leave every check after this one
