@@ -1,7 +1,9 @@
 import { useCallback, useRef } from "react";
 
+import { rowsOf } from "../runSummary";
 import { answerAbove, wroteNotesAbove } from "../turn";
 import type { Item } from "../types";
+import { ActivityGroup } from "./ActivityGroup";
 import { Conversation as Scroller, ConversationContent, ConversationScrollButton } from "./ai-elements/conversation";
 import { ItemView } from "./Item";
 import { RunAnswer, RunWrote } from "./TurnFooter";
@@ -30,10 +32,15 @@ export function ConversationView({ items, children }: { items: Item[]; children?
 		<RunWrote value={wroteAt}>
 			<Scroller className="no-scrollbar relative flex-1 overflow-y-auto">
 				<ConversationContent id="chat" scrollClassName="edge-top" className="flex flex-col gap-3 p-3">
-					{/* Items are only ever appended, never reordered, so the index is a stable key. */}
-					{items.map((item, i) => (
-						<ItemView key={i} item={item} index={i} />
-					))}
+					{/* Items are only ever appended, never reordered, so the index of a row's
+					    first item is a stable key, whether the row holds one item or many. */}
+					{rowsOf(items).map((row) =>
+						row.kind === "group" ? (
+							<ActivityGroup key={row.index} items={row.items} index={row.index} />
+						) : (
+							<ItemView key={row.index} item={items[row.index]} index={row.index} />
+						),
+					)}
 					{children}
 				</ConversationContent>
 				<ConversationScrollButton />

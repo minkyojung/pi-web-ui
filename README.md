@@ -401,6 +401,27 @@ rendered view is wrong. Events go out in the same shape pi's own print and rpc
 modes use: a `message_update` carries its delta, not the two full copies of the
 in-flight message it also ships as `message` and `assistantMessageEvent.partial`.
 
+A run that has ended folds its steps away. Thinking and tool rows are the only
+sign anything is happening while a run is in flight, and dead weight the moment
+the answer is on screen, so `rowsOf` gathers each stretch of consecutive ones
+into a line that names what they were — `Thought · ask_user · web_search`, with
+`+12 −4` when the run edited and `2 failed` when it did not go well. What the
+line never carries is a figure the footer under it already has: the duration,
+the clock, the tokens, the cost. Two lines, each saying one thing.
+
+Three rules keep it honest. Only consecutive steps fold, because gathering a
+whole run into one row would hoist its last tool call above the sentence written
+before that call was made. Only a finished run folds, so the fold happens once,
+when `done` arrives, with no timer in it — this is why the registry's `reasoning`
+is not used anywhere in the column: it opens and closes itself on a delay, which
+reads as a flicker. And a stretch of one does not fold, because `read` folded to
+"read" is the same row minus the file it read.
+
+Not `task` or `chain-of-thought` either. Both are a Collapsible, a trigger and a
+body with no state of their own, which `ui/collapsible.tsx` already is, and
+neither brings the part that took the work — a line that knows what the steps
+under it did.
+
 `conversation.js` holds the rules for turning a pi session into conversation
 items, and both the browser and the server import it. It used to exist twice —
 `apply()` in the client for live events, `snapshot()` in the server for resumed
