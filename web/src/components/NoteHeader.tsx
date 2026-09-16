@@ -23,7 +23,7 @@ function show(folder: string) {
 
 /** How much of a deep path the crumb line spells out before folding the middle away. */
 const CRUMB_HEAD = 1;
-const CRUMB_TAIL = 2;
+const CRUMB_TAIL = 1;
 
 /** `folders`, split into what stays at each end and what collapses behind `…`. */
 function splitCrumbs(folders: string[]): { head: string[]; hidden: string[]; tail: string[] } {
@@ -35,15 +35,25 @@ function splitCrumbs(folders: string[]): { head: string[]; hidden: string[]; tai
 	};
 }
 
+/**
+ * One folder in the line, cut to a width rather than allowed any it asks for.
+ *
+ * A folder named for a whole book title would otherwise push the rest of the
+ * path off the end, and the crumb that matters most — the one you are in — is
+ * the last. VS Code's breadcrumb and the Finder's path bar cut each name the
+ * same way; the whole of it is still there on hover.
+ */
 function FolderCrumb({ folder }: { folder: string }) {
+	const name = folder.slice(folder.lastIndexOf("/") + 1);
 	return (
 		<button
 			type="button"
 			data-crumb={folder}
-			className="truncate rounded-sm px-1 py-0.5 hover:bg-accent hover:text-accent-foreground"
+			title={name}
+			className="max-w-40 truncate rounded-sm px-1 py-0.5 hover:bg-accent hover:text-accent-foreground"
 			onClick={() => show(folder)}
 		>
-			{folder.slice(folder.lastIndexOf("/") + 1)}
+			{name}
 		</button>
 	);
 }

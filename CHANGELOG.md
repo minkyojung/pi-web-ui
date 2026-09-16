@@ -7,7 +7,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 ## [Unreleased]
 
 ### Changed
-- A note buried more than a few folders deep now shows its path as the first folder, a "…" and the last two, instead of every folder in between; clicking "…" lists the hidden ones.
+- The path above a note stays one short line however deep the note is or how long its folders are named: the outermost folder, a "…" for anything between, and the folder it is in, each cut to a width with the whole name on hover. Clicking "…" lists the folders it stands for.
 - Settings, skills or a SYSTEM.md in the note folder's own `.pi/` are read by pi only if pi's terminal was told to trust the folder; until then the context card says they were left out. Before, they were read without asking.
 - Anything pi had to complain about while setting up a session — an extension that failed, an option it did not know — now shows in the conversation instead of nowhere.
 - A message one of pi's extensions posts to the conversation is shown as a notice, live and after resuming; before, it was dropped. So is the summary pi leaves when a branch is left.
