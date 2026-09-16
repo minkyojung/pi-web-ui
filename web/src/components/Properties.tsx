@@ -494,9 +494,9 @@ function ListValue({ name, node, options, apply }: { name: string; node: unknown
 						type="button"
 						aria-label={`Remove ${item}`}
 						onClick={() => set(items.filter((_, j) => j !== i))}
-						className="cursor-default rounded-full text-muted-foreground hover:text-foreground"
+						className="flex size-4 cursor-default items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
 					>
-						<X />
+						<X className="size-3" />
 					</button>
 				</Badge>
 			))}

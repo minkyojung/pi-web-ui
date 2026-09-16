@@ -18,4 +18,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - Octave updates itself: a new version is downloaded in the background and offered, with its notes, when it is ready. "Check for Updates…" is in the Octave menu.
 - The licence (AGPL-3.0) and the notices of everything the app is built on ship inside it.
 
+### Fixed
+- The × that takes a tag off a note is the size of the tag again, so the chip keeps its shape when the properties are open.
+
 [Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/reader-v1...HEAD
