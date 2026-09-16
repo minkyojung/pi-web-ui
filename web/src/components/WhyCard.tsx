@@ -5,7 +5,7 @@ import { askedAtStore, putBack } from "../features/authors";
 import { configStore, sessionsStore, whyStore } from "../serverState";
 import { send } from "../ws";
 import { Button } from "./ui/button";
-import { Popover, PopoverAnchor, PopoverContent } from "./ui/popover";
+import { Popover, PopoverAnchor, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle } from "./ui/popover";
 
 /**
  * How one run of the note came to be there, beside the run.
@@ -50,20 +50,40 @@ export function WhyCard() {
 			<PopoverAnchor asChild>
 				<div className="pointer-events-none fixed" style={{ left: at.left, top: at.top, width: at.width, height: at.height }} />
 			</PopoverAnchor>
-			<PopoverContent align="start" side="bottom" className="w-96 p-0 text-xs">
-				<div className="flex flex-col gap-2 p-3">
-					<div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-						<span className="font-medium text-foreground">{who}</span>
-						{why.model && <span className="font-mono text-muted-foreground">{why.model}</span>}
-						<span className="text-muted-foreground">{new Date(why.at).toLocaleString()}</span>
+			<PopoverContent align="start" side="bottom" className="flex w-80 flex-col gap-3 text-xs">
+				<PopoverHeader className="flex-row items-baseline justify-between gap-2 text-xs">
+					<PopoverTitle className="flex items-baseline gap-1.5">
+						{who}
+						{/* The model by the name it is known by; the provider is in the
+						    title, where a second word would otherwise crowd the first. */}
+						{why.model && (
+							<span className="font-mono font-normal text-muted-foreground" title={why.model}>
+								{why.model.split("/").at(-1)}
+							</span>
+						)}
+					</PopoverTitle>
+					{/* How long ago, which is what anyone reads a time for; the time
+					    itself is a second away, on the hover. */}
+					<span className="shrink-0 text-muted-foreground" title={new Date(why.at).toLocaleString()}>
+						{ago(why.at)}
+					</span>
+				</PopoverHeader>
+
+				{/* The whole of why it is there, in the words that asked for it. */}
+				{why.prompt && <PopoverDescription className="line-clamp-3">“{why.prompt}”</PopoverDescription>}
+
+				{/* Only when it stands in place of something. The words it is made of
+				    are on screen behind this card — repeating them here would be
+				    saying the same thing twice and calling it a diff. */}
+				{why.removed && (
+					<div className="flex flex-col gap-1">
+						<span className="text-muted-foreground">Replaced</span>
+						<Changed from={why.removed} to={why.text} />
 					</div>
-					{why.prompt && (
-						<p className="line-clamp-3 border-l-2 border-border pl-2 text-muted-foreground italic">{why.prompt}</p>
-					)}
-					<Changed from={why.removed} to={why.text} />
-				</div>
+				)}
+
 				{(why.entry || why.removed) && (
-					<div className="flex justify-end gap-1 border-t p-2">
+					<div className="flex justify-end gap-1">
 						{why.removed && (
 							<Button
 								variant="ghost"
@@ -100,18 +120,43 @@ export function WhyCard() {
 }
 
 /**
+ * How long ago, in the words a person uses for it.
+ *
+ * A note is written over hours and days, and "two hours ago" is the answer to
+ * what a time is asked for here. The clock time is on the hover for when the
+ * answer has to be exact. Intl does the counting and the language, so this is
+ * the unit it falls into and nothing else.
+ */
+function ago(at: number, now = Date.now()): string {
+	const seconds = Math.round((at - now) / 1000);
+	const units: [Intl.RelativeTimeFormatUnit, number][] = [
+		["second", 60],
+		["minute", 60],
+		["hour", 24],
+		["day", 7],
+		["week", 4.35],
+		["month", 12],
+		["year", Number.POSITIVE_INFINITY],
+	];
+	let value = seconds;
+	for (const [unit, per] of units) {
+		if (Math.abs(value) < per) return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(Math.round(value), unit);
+		value /= per;
+	}
+	return new Date(at).toLocaleDateString();
+}
+
+/**
  * What the words were and what they are, as a diff of the two.
  *
  * Word level, as the note's own diff is: a reworded sentence shown as a whole
  * line struck through and a whole line added says less than the sentence does.
- * With nothing to compare against — the run is no longer the whole of what its
- * change wrote — there is only what is there now, and saying that plainly is
- * better than implying it replaced nothing.
+ * Drawn on the card's own surface rather than in a box — a box would make it a
+ * second thing to look at, and it is a line of the card like the others.
  */
-function Changed({ from, to }: { from?: string; to: string }) {
-	if (!from) return <p className="max-h-32 overflow-auto rounded border bg-muted/40 p-2 whitespace-pre-wrap">{to}</p>;
+function Changed({ from, to }: { from: string; to: string }) {
 	return (
-		<p className="max-h-32 overflow-auto rounded border bg-muted/40 p-2 whitespace-pre-wrap">
+		<p className="max-h-28 overflow-auto leading-relaxed whitespace-pre-wrap">
 			{diffWordsWithSpace(from, to).map((part, i) => (
 				<span
 					key={i}
