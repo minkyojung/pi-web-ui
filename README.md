@@ -71,10 +71,16 @@ asks only that its notice be carried, so `npm run build` begins by writing
 `THIRD_PARTY_NOTICES.md` — the licence of every package that ships in the app,
 from both trees — and refuses on one that is not permissive (`scripts/notices.mjs`).
 
-Auth comes from `~/.pi/agent/auth.json` (`pi` → `/login`). Sessions are written
-to `~/.pi/agent/sessions/` and survive a restart. With no usable credentials at
-all the server still starts, as pi's own CLI does, on no model: the picker is
-empty and says why beside itself, and pi refuses a prompt in its own words.
+Auth is pi's: `~/.pi/agent/auth.json`, shared with the terminal `pi`. Signing
+in happens in Settings → Accounts, which is pi's `/login` drawn in the browser
+— the server hands pi's `login()` an object whose `prompt` and `notify` go over
+the socket (`login.ts`), so what pi asks for is what is shown, and a provider
+pi adds is signed in to without a change here. A URL pi wants opened goes to
+the shell, which opens the person's browser. Sessions are written to
+`~/.pi/agent/sessions/` and survive a restart. With no usable credentials at
+all the server still starts, as pi's own CLI does, on no model: the picker
+says so, its last item leads to Accounts, and on a first run Accounts opens
+itself.
 
 What the server says it also writes down, in `~/.octave/logs/server.log`,
 rolled to `server.log.1` at two megabytes. In a terminal the log is beside the

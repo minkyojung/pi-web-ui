@@ -739,15 +739,20 @@ const logins = createLoginBridge(
  * After a sign-in: bring the models up to date, and — when the session was on
  * nothing — put it on one of the new provider's, as pi's CLI does after its
  * own login (completeProviderAuthentication). pi's CLI takes the provider's
- * named default; that table is not exported, so this takes the first the
- * provider offers, which the picker can change in one keystroke. A session
- * already on a model is left on it.
+ * named default; that table is not exported, so this takes what the picker
+ * would show first for the provider — the loadout, which until someone
+ * chooses is the newest models (SEED_LOADOUT) — and failing that the first
+ * the provider offers, which is its oldest. A session already on a model is
+ * left on it.
  */
 async function afterSignIn(provider: string): Promise<void> {
 	await refreshModels();
 	if (!currentModel()) {
-		const first = availableModels().find((m) => m.provider === provider);
-		if (first) await session().setModel(first, { persist: true });
+		const offered = availableModels().filter((m) => m.provider === provider);
+		const keys = offered.map(modelKey);
+		const preferred = loadoutOf(readSettings().loadout, keys, null).find((key) => keys.includes(key));
+		const pick = offered.find((m) => modelKey(m) === preferred) ?? offered[0];
+		if (pick) await session().setModel(pick, { persist: true });
 	}
 	broadcast(config());
 	broadcast(contextSources());
@@ -1243,8 +1248,8 @@ wss.on("connection", async (ws) => {
 				}
 
 				case "login_answer":
-					if (typeof msg.id !== "string") return;
-					logins.answer(msg.id, typeof msg.value === "string" ? msg.value : undefined, msg.cancelled === true);
+					if (msg.cancelled === true) logins.cancel();
+					else if (typeof msg.id === "string" && typeof msg.value === "string") logins.answer(msg.id, msg.value, false);
 					break;
 
 				case "logout": {

@@ -113,8 +113,10 @@ export type ClientMsg =
 	| { type: "set_property_type"; name: string; propertyType: PropertyType | null }
 	/** Sign in to a provider one of the ways `providers` says it can be. What pi then asks comes as login_prompt. See login.ts. */
 	| { type: "login"; provider: string; method: "oauth" | "api_key" }
-	/** A tab's answer to a login_prompt, or — `cancelled` — the whole sign-in given up. */
-	| { type: "login_answer"; id: string; value?: string; cancelled?: boolean }
+	/** A tab's answer to a login_prompt, by its id. */
+	| { type: "login_answer"; id: string; value: string; cancelled?: false }
+	/** The whole sign-in given up — with or without a question open, so no id. pi hears its signal abort. */
+	| { type: "login_answer"; cancelled: true; id?: string }
 	/** Forget the credential pi keeps for a provider. One it found elsewhere (an environment variable) is not pi's to forget. */
 	| { type: "logout"; provider: string }
 	/**

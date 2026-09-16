@@ -11,6 +11,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Accounts } from "@/components/Accounts";
 import { Loadout } from "@/components/Loadout";
 import {
   Select,
@@ -21,6 +22,8 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { readTheme, setTheme, type Theme } from "@/theme";
+import { configStore, providersStore } from "../serverState";
+import { settingsOpenStore } from "../settingsOpen";
 
 /** settings.ts, as it arrives. Declared again rather than imported: that module reads files. */
 type Settings = {
@@ -28,8 +31,9 @@ type Settings = {
   loadout: string[];
 };
 
-const SECTIONS = ["Appearance", "Agent", "Loadout", "Keys"] as const;
+const SECTIONS = ["Appearance", "Agent", "Accounts", "Loadout", "Keys"] as const;
 type Section = (typeof SECTIONS)[number];
+const isSection = (name: string): name is Section => (SECTIONS as readonly string[]).includes(name);
 
 /**
  * Everything that used to be a constant in a file.
@@ -60,6 +64,31 @@ export function Settings() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Asked for from elsewhere — the picker's last item — on a section by name.
+  const wanted = useSyncExternalStore(settingsOpenStore.subscribe, settingsOpenStore.get);
+  useEffect(() => {
+    if (!wanted) return;
+    if (isSection(wanted)) {
+      setSection(wanted);
+      setOpen(true);
+    }
+    settingsOpenStore.set(null);
+  }, [wanted]);
+
+  // A first run: no model, because nobody is signed in anywhere. The one thing
+  // to do is here, so it is opened rather than left to be found behind a small
+  // grey icon. Once per page load — closing it is an answer too.
+  const config = useSyncExternalStore(configStore.subscribe, configStore.get);
+  const providers = useSyncExternalStore(providersStore.subscribe, providersStore.get);
+  const offered = useRef(false);
+  useEffect(() => {
+    if (offered.current || !config || !providers) return;
+    if (config.model !== null || providers.some((p) => p.signedIn)) return;
+    offered.current = true;
+    setSection("Accounts");
+    setOpen(true);
+  }, [config, providers]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -159,6 +188,8 @@ function Panel({ section }: { section: Section }) {
       {section === "Appearance" && <Appearance />}
 
       {section === "Keys" && <Keys />}
+
+      {section === "Accounts" && <Accounts />}
 
       {section === "Loadout" && settings && (
         <Loadout chosen={settings.loadout} onChange={(loadout) => void save({ loadout })} />

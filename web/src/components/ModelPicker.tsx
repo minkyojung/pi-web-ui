@@ -1,14 +1,16 @@
 import { useEffect } from "react";
 
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, KeyRoundIcon } from "lucide-react";
 
 import { THINKING_LEVELS } from "../../../models";
 import type { ModelInfo } from "../types";
+import { openSettings } from "../settingsOpen";
 import { send } from "../ws";
 import { Button } from "./ui/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
+	DropdownMenuItem,
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
 	DropdownMenuSeparator,
@@ -62,6 +64,8 @@ export function ModelPicker({
 }) {
 	const current = models.find((m) => m.key === model) ?? null;
 	const levels = current?.levels ?? [];
+	// Nothing to reach by key when there is nothing on the list; the button
+	// still opens, since the way to sign in is at the bottom of it.
 	const idle = disabled || models.length === 0;
 
 	useEffect(() => {
@@ -91,7 +95,7 @@ export function ModelPicker({
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<DropdownMenuTrigger asChild>
-							<Button type="button" variant="outline" size="sm" id="model" className="h-7 min-w-0 shrink gap-1.5 px-2 text-xs shadow-none" disabled={idle}>
+							<Button type="button" variant="outline" size="sm" id="model" className="h-7 min-w-0 shrink gap-1.5 px-2 text-xs shadow-none" disabled={disabled}>
 								{current ? (
 									<>
 										{/* The last thing on the row to give anything up, and it
@@ -103,7 +107,7 @@ export function ModelPicker({
 										<span className="shrink-0 text-muted-foreground/80">{levelLabel(current.level)}</span>
 									</>
 								) : (
-									"model"
+									<span className="text-muted-foreground">{models.length ? "model" : "No model"}</span>
 								)}
 								<ChevronDownIcon className="size-3 opacity-50" />
 							</Button>
@@ -151,6 +155,13 @@ export function ModelPicker({
 					<div className="px-2 pt-1 text-[10px] text-muted-foreground">
 						Next effort <DropdownMenuShortcut className="ml-1">{CYCLE}</DropdownMenuShortcut>
 					</div>
+					<DropdownMenuSeparator />
+					{/* Always here, not only when the list is empty: the same place
+					    to add a second provider as to add the first. */}
+					<DropdownMenuItem onSelect={() => openSettings("Accounts")}>
+						<KeyRoundIcon className="size-3.5" />
+						Sign in to a provider…
+					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
 			{notice && (
