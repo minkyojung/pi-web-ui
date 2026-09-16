@@ -202,6 +202,15 @@ pi wrote and whichever tab opens the note, and gone when there is not. There is
 no other marking of pi's words: a mark that says "pi wrote this, decide" is the
 diff said with less, and it was what this app had first.
 
+A run of pi's that wrote in several notes can be put back at once, from the
+line under the run: every note pi wrote to in that run goes back to its
+"before", as one edit of the person's per note. It is the diff's Undo applied
+wholesale — what was kept stays kept, what the person typed since stays theirs
+— and it is found by the log rather than remembered, so it works on a run from
+before the app was last opened. Cursor and Zed offer the same on a run, as a
+snapshot of the files; here the record knows which words were pi's, so only
+those go.
+
 Between saves the editor keeps "before" honest itself: a change of the person's
 outside the chunks is made to it in the same transaction, so their own words
 never read as pi's for the length of an autosave.

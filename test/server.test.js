@@ -273,6 +273,34 @@ it("한 자리를 짚으면 누가·언제·무엇을 대신해 썼는지가 온
   assert.equal((await want("why")).author, "me");
 });
 
+it("한 런이 쓴 노트들은 한 번에 되돌아간다 — 결정한 것과 내가 쓴 것은 빼고", async () => {
+  // pi의 런 하나(세션 s, 시각 1000~2000)가 노트 셋을 썼다. 첫째는 아직 결정 전, 둘째는 이미 Keep했고,
+  // 셋째는 pi가 쓴 뒤 내가 이어 썼다. 넷째는 다른 런의 것이다.
+  mkdirSync(join(cwd, ".pi/history"), { recursive: true });
+  const plant = (name, lines, text) => {
+    writeFileSync(join(cwd, name), text);
+    writeFileSync(join(cwd, `.pi/history/${name}.jsonl`), lines.map((c) => JSON.stringify(c)).join("\n") + "\n");
+  };
+  const pi = (at, from, inserted, removed = "") => ({ author: "pi", at, sessionId: "s", entryId: "e", from, to: from + removed.length, inserted, removed });
+  plant("run-a.md", [{ author: "me", at: 1, from: 0, to: 0, inserted: "a\n", removed: "" }, pi(1500, 2, "pi a\n")], "a\npi a\n");
+  plant("run-b.md", [{ author: "me", at: 1, from: 0, to: 0, inserted: "b\n", removed: "" }, pi(1500, 2, "pi b\n"), { author: "me", at: 1600, from: 2, to: 7, inserted: "pi b\n", removed: "pi b\n", kept: true }], "b\npi b\n");
+  plant("run-c.md", [{ author: "me", at: 1, from: 0, to: 0, inserted: "c\n", removed: "" }, pi(1500, 2, "pi c\n"), { author: "me", at: 1700, from: 7, to: 7, inserted: "mine after\n", removed: "" }], "c\npi c\nmine after\n");
+  plant("run-d.md", [{ author: "me", at: 1, from: 0, to: 0, inserted: "d\n", removed: "" }, pi(5000, 2, "pi d\n")], "d\npi d\n");
+  clear();
+  send({ type: "undo_run", session: "s", from: 1000, to: 2000 });
+  const undone = await want("run_undone");
+  assert.deepEqual(undone.notes.sort(), ["run-a.md", "run-c.md"]);
+  assert.equal(readFileSync(join(cwd, "run-a.md"), "utf8"), "a\n", "결정 전의 것은 돌아간다");
+  assert.equal(readFileSync(join(cwd, "run-b.md"), "utf8"), "b\npi b\n", "Keep한 것은 내 결정이라 남는다");
+  assert.equal(readFileSync(join(cwd, "run-c.md"), "utf8"), "c\nmine after\n", "pi의 글만 가고 내 글은 남는다");
+  assert.equal(readFileSync(join(cwd, "run-d.md"), "utf8"), "d\npi d\n", "다른 런은 건드리지 않는다");
+  assert.equal(history("run-a.md").at(-1).author, "me", "되돌린 것은 내 편집으로 적힌다");
+  // 다시 누르면 남은 것이 없다.
+  clear();
+  send({ type: "undo_run", session: "s", from: 1000, to: 2000 });
+  assert.deepEqual((await want("run_undone")).notes, []);
+});
+
 it("결정할 것을 담지 못하는 자리의 결정은 거절되고, 노트가 되돌아온다", async () => {
   // pi가 쓴 자리가 있는 노트. 장부를 직접 놓는 것은 pi 없이 그 상태를 만드는 유일한 방법이고,
   // 며칠 뒤에 노트를 여는 사람이 보는 상태이기도 하다.

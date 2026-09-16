@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { apply, appendHistory, changesBetween, decide, historyPath, mapThrough, moveHistory, readHistory, reclaimLog, reconcile, record, replay, trashLog, trashHistoryPath } from "../history.ts";
+import { apply, appendHistory, changesBetween, decide, historyPath, mapThrough, moveHistory, readHistory, reclaimLog, reconcile, record, replay, trashLog, trashHistoryPath, wroteIn } from "../history.ts";
 
 const me = { author: "me", at: 1 };
 const pi = { author: "pi", at: 2, sessionId: "s1", entryId: "e1" };
@@ -109,6 +109,19 @@ test("구간 하나는 언제나 글자 하나 이상이고 서로 겹치지 않
     last = s.to;
   }
   assert.equal(last, text.length, "구간들이 본문 전체를 덮는다");
+});
+
+test("한 런에 pi가 이 노트에 썼는지는 세션과 시각으로 안다 — 사람의 글도, 결정도 아니다", () => {
+  const log = [
+    ...changesBetween("", "mine\n", { author: "me", at: 10 }),
+    ...changesBetween("mine\n", "mine and pi's\n", { author: "pi", at: 20, sessionId: "s1", entryId: "e" }),
+    { author: "me", at: 25, from: 5, to: 13, inserted: "and pi's", removed: "and pi's", kept: true },
+  ];
+  assert.equal(wroteIn(log, "s1", 15, 30), true);
+  assert.equal(wroteIn(log, "s1", 21, 30), false, "그 시간 밖");
+  assert.equal(wroteIn(log, "s2", 15, 30), false, "다른 세션");
+  assert.equal(wroteIn(log, "s1", 24, 26), false, "결정은 쓴 것이 아니다");
+  assert.equal(wroteIn(log, "s1", 5, 12), false, "사람이 쓴 것은 pi의 런이 아니다");
 });
 
 test("자리는 앞에서 일어난 변경만큼 밀리고, 뒤에서 일어난 변경에는 안 움직인다", () => {

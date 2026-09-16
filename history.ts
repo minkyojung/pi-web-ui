@@ -265,6 +265,20 @@ export function undecided({ text, holes }: Holed): { text: string; before: strin
 export const unreviewed = (changes: Change[], from?: Holed) => undecided(holesOf(changes, from));
 
 /**
+ * Did pi write to this note in a given run — the session, and the stretch of
+ * time from the run's first message to its last?
+ *
+ * A run is known by when it was, not by which messages it held: a change of
+ * pi's is stamped with the session and the moment it was written, and a run
+ * has a beginning and an end, so the two meet without the log having to know
+ * anything about how a conversation is shaped. Only pi's — a change of the
+ * person's in the same minutes is theirs, whatever pi was doing.
+ */
+export function wroteIn(changes: Change[], sessionId: string, from: number, to: number): boolean {
+	return changes.some((c) => c.author === "pi" && c.sessionId === sessionId && from <= c.at && c.at <= to && !isTouch(c));
+}
+
+/**
  * Where a place in a note has moved to, after the changes since.
  *
  * A change lies before the place, after it, or around it: before, the place
@@ -314,6 +328,18 @@ export function historyPath(root: string, path: string): string {
 }
 
 export const readHistory = (root: string, path: string): Change[] => readLog(historyPath(root, path)).changes;
+
+/**
+ * Does a note's log so much as mention a word — a session's id, say?
+ *
+ * Asked of every note in a folder before any log is parsed, so that a
+ * question about one session reads only the logs that could answer it. A
+ * note with no log mentions nothing.
+ */
+export function logNames(root: string, path: string, word: string): boolean {
+	const file = historyPath(root, path);
+	return existsSync(file) && readFileSync(file, "utf8").includes(word);
+}
 
 /**
  * The log's lines and what they say, side by side.

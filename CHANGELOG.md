@@ -20,6 +20,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - The model pi will answer with has a rim and a floor of its own under the message box, so the choice you make most often is the one the row points at, and how hard it thinks sits a shade quieter beside its name — the two used to be the same grey.
 
 ### Added
+- A run of pi's that wrote in your notes can be put back in one go, from the line under the run — every note it changed goes back to how it was, keeping what you have already accepted and anything you typed since.
 - If your notes folder is a git repository, Octave now writes a `.gitignore` inside its own `.pi/` folder so that who-wrote-what travels with your notes and its caches and trash do not. Written once; edit it and it stays edited.
 - Octave ships as a signed, notarized disk image for Apple Silicon Macs: download, open, drag to Applications, no warnings.
 - Octave updates itself: a new version is downloaded in the background and offered, with its notes, when it is ready. "Check for Updates…" is in the Octave menu.

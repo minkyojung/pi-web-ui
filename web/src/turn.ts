@@ -109,6 +109,24 @@ export function turnParts({
  * Tool output is left out: someone reaching for a copy button wants the answer,
  * not the work that produced it.
  */
+/** The tools that put words in a note — the app's own three, and the shell, which can (recorder.ts). */
+const WRITERS = new Set(["note_edit", "note_write", "note_properties", "bash", "powershell"]);
+
+/**
+ * Did the run above a `done` reach for a tool that writes notes?
+ *
+ * Whether it wrote is the log's to say, and the server says it when asked;
+ * this only decides whether asking is worth offering. A run of plain talk
+ * gets no button.
+ */
+export function wroteNotesAbove(items: { kind: string; name?: string }[], index: number): boolean {
+	for (let i = index - 1; i >= 0; i--) {
+		if (items[i].kind === "done") break;
+		if (items[i].kind === "tool" && items[i].name && WRITERS.has(items[i].name!)) return true;
+	}
+	return false;
+}
+
 export function answerAbove(items: { kind: string; text?: string }[], index: number): string {
 	const said = [];
 	for (let i = index - 1; i >= 0; i--) {

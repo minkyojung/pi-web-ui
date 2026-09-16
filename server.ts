@@ -37,7 +37,7 @@ import { deleteNote, shellTrash } from "./trash.ts";
 import { createLoginBridge } from "./login.ts";
 import { noteTools } from "./noteEdit.ts";
 import { claimAppDir } from "./appDir.ts";
-import { decide, type Change, historyOf, type Holed, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided } from "./history.ts";
+import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { type Claim, recorder } from "./recorder.ts";
 import { watchNotes } from "./watcher.ts";
@@ -1584,6 +1584,51 @@ wss.on("connection", async (ws) => {
 					// Nothing in the text moved: the spans are the whole of the news.
 					const found = readNote(CWD, msg.path)!;
 					wrote(msg.path, found.modified, []);
+					break;
+				}
+
+				/**
+				 * Put back what pi wrote in one run, across every note it wrote to.
+				 *
+				 * The notes are found by their logs: one that names the session is
+				 * read, and one that says pi wrote in it during the run is a note
+				 * of this run's. Each such note goes back to the text it would have
+				 * with pi's undecided changes put back — the same "before" the diff
+				 * in the note is drawn against — as one save of the person's, which
+				 * is what pressing Undo on every chunk would have come to. A note
+				 * whose chunks were all kept has nothing to put back and is left as
+				 * it is: a kept chunk is the person's decision, and this is not a
+				 * way around it. Nor is what the person typed since touched, since
+				 * "before" holds it (see unreviewed in history.ts).
+				 *
+				 * Every log on disk is looked at — the folder walked, not the list in
+				 * memory, since a note written a moment ago may not have reached the
+				 * list yet and a button is pressed rarely — so it works on a run from
+				 * before the app was last opened; a name looked for in the raw text
+				 * first keeps the reading to the logs that could match.
+				 */
+				case "undo_run": {
+					if (typeof msg.session !== "string" || typeof msg.from !== "number" || typeof msg.to !== "number") return;
+					const at = Date.now();
+					const put: string[] = [];
+					for (const { path } of listNotes(CWD)) {
+						if (!logNames(CWD, path, msg.session)) continue;
+						if (!wroteIn(readHistory(CWD, path), msg.session, msg.from, msg.to)) continue;
+						const found = readNote(CWD, path);
+						if (!found) continue;
+						const { holed } = settleDisk(path, found.text, found.modified, at);
+						const { before, holes } = undecided(holed);
+						if (holes.length === 0 || before === found.text) continue;
+						// Over the version just read: a note that moves between the
+						// read and the write — a save landing this instant — is left
+						// alone rather than written over, and reported as not put back.
+						const written = writeNote(CWD, path, before, found.modified);
+						if (!written.ok) continue;
+						const changes = record(CWD, path, found.text, before, { author: "me", at });
+						wrote(path, found.modified, changes);
+						put.push(path);
+					}
+					reply({ type: "run_undone", notes: put });
 					break;
 				}
 
