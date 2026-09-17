@@ -313,6 +313,22 @@ function PiSwitches() {
           </p>
         </div>
       </div>
+      <div className="flex items-start gap-2">
+        <Checkbox
+          id="projectTrust"
+          checked={pi.projectTrust === "trusted"}
+          disabled={pi.projectTrust === "nothing"}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "projectTrust", value: v === true })}
+        />
+        <div className="flex flex-col gap-0.5">
+          <Label htmlFor="projectTrust">Let pi read this folder&apos;s own .pi</Label>
+          <p className="text-xs text-muted-foreground">
+            {pi.projectTrust === "nothing"
+              ? "This folder has no .pi settings, skills, prompts or SYSTEM.md of its own to read."
+              : "Its settings, skills, prompt templates and SYSTEM.md, as pi reads a trusted project's. Remembered in pi's trust.json, where pi's terminal keeps its /trust answer."}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

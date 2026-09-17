@@ -411,7 +411,20 @@ function piSettings(): PiSettings {
 		retryEnabled: m.getRetryEnabled(),
 		hideThinkingBlock: m.getHideThinkingBlock(),
 		askBranchSummary: !m.getBranchSummarySkipPrompt(),
+		projectTrust: !hasTrustRequiringProjectResources(CWD) ? "nothing" : m.isProjectTrusted() ? "trusted" : "untrusted",
 	};
+}
+
+/**
+ * Trusting this folder, or not: the answer goes where pi's terminal keeps its
+ * own (/trust, trust.json), then to the session that is open, which reads
+ * the folder's .pi/ again on the spot — pi's reload keeps the trust it is
+ * given and loads what that allows. The next session reads the file.
+ */
+async function setProjectTrust(trusted: boolean): Promise<void> {
+	new ProjectTrustStore(getAgentDir()).set(CWD, trusted);
+	session().settingsManager.setProjectTrusted(trusted);
+	await session().reload();
 }
 
 /**
@@ -1688,12 +1701,25 @@ wss.on("connection", async (ws) => {
 							if (typeof msg.value !== "boolean") return;
 							await setBranchSummarySkipPrompt(msg.value);
 							break;
+						case "projectTrust":
+							if (typeof msg.value !== "boolean") return;
+							await setProjectTrust(msg.value);
+							// What is loaded changed with it: the commands, the context.
+							await broadcastAll();
+							return;
 						default:
 							return;
 					}
 					broadcast(config());
 					break;
 				}
+
+				// pi's /reload: skills, prompt templates, settings and context files
+				// read again, for what was added since the session began.
+				case "reload":
+					await session().reload();
+					await broadcastAll();
+					break;
 
 				case "set_session_name":
 					if (typeof msg.name !== "string") return;

@@ -70,6 +70,8 @@ export type ClientMsg =
 	| { type: "navigate"; entryId: string }
 	| { type: "set_session_name"; name: string }
 	| ({ type: "set_setting" } & PiSetting)
+	/** Read the skills, prompt templates, settings and context files again. pi's /reload. */
+	| { type: "reload" }
 	/** Summarise the conversation so far into less, now rather than when it fills. pi's /compact. */
 	| { type: "compact" }
 	| { type: "abort_compaction" }
@@ -262,6 +264,12 @@ export interface PiSettings {
 	hideThinkingBlock: boolean;
 	/** Ask, before the arrows leave a branch, whether to summarise it into the one joined. The opposite of pi's branchSummary.skipPrompt. */
 	askBranchSummary: boolean;
+	/**
+	 * Whether pi may read this folder's own .pi/ — settings, skills, prompts,
+	 * SYSTEM.md — as a project's. "nothing" when the folder has none of those
+	 * to trust. pi's trust.json, the answer its terminal's /trust keeps.
+	 */
+	projectTrust: "trusted" | "untrusted" | "nothing";
 }
 
 /** One of pi's settings, to be written through pi's setter for it. */
@@ -270,7 +278,9 @@ export type PiSetting =
 	| { setting: "retry.enabled"; value: boolean }
 	| { setting: "hideThinkingBlock"; value: boolean }
 	/** pi's key and pi's sense: true means no question and no summary. */
-	| { setting: "branchSummary.skipPrompt"; value: boolean };
+	| { setting: "branchSummary.skipPrompt"; value: boolean }
+	/** Remembered in pi's trust.json for this folder, and read at once. */
+	| { setting: "projectTrust"; value: boolean };
 
 export interface UsageMsg {
 	type: "usage";

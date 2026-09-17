@@ -6,7 +6,8 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 ### Added
-- Settings › Agent has a "pi" section: switch automatic compaction off or on, whether pi retries a failed call on its own, whether the model's thinking is shown in the conversation, and whether stepping between answers asks to summarize first. The card that asks has "No summary, don't ask again" too. It is pi's own setting, so the terminal sees the same value; the two thresholds are shown there with where to change them.
+- Settings › Agent has a "pi" section: switch automatic compaction off or on, whether pi retries a failed call on its own, whether the model's thinking is shown in the conversation, and whether stepping between answers asks to summarize first. The card that asks has "No summary, don't ask again" too. And a switch to let pi read this folder's own `.pi/` (its skills, prompts, settings), remembered where pi's terminal keeps its `/trust` answer.
+- The context card counts what pi read in — skills, prompt templates, context files — with a Reload button for what was added since the session began. It is pi's own setting, so the terminal sees the same value; the two thresholds are shown there with where to change them.
 - The context card can compact the conversation now, before it fills up and pi does it on its own.
 - A session other than the open one can be deleted from the session list; it goes to the bin where there is one.
 - Hover a question and fork: a new session that begins there, with the question back in the box to send or change.

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import { breakdown, compact } from "../contextBreakdown";
-import { configStore, contextSourcesStore, usageStore } from "../serverState";
+import { commandsStore, configStore, contextSourcesStore, usageStore } from "../serverState";
 import { send } from "../ws";
 import { ContextGauge } from "./ContextGauge";
 import { Button } from "./ui/button";
@@ -37,6 +37,7 @@ export function ContextCard() {
 	const usage = useSyncExternalStore(usageStore.subscribe, usageStore.get);
 	const sources = useSyncExternalStore(contextSourcesStore.subscribe, contextSourcesStore.get);
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
+	const prompts = useSyncExternalStore(commandsStore.subscribe, commandsStore.get).filter((c) => c.source === "prompt").length;
 	const b = breakdown(usage?.context, sources);
 	const provider = config?.model?.split("/")[0] ?? "—";
 	const login = !sources ? "—" : sources.login.subscription ? "Subscription (OAuth)" : sources.login.oauth ? "OAuth" : "API key";
@@ -93,6 +94,18 @@ export function ContextCard() {
 					<Row label="Provider" value={provider} />
 					<Row label="Login" value={login} />
 					{sources?.untrusted && <Row label="This folder's .pi" value="Not read — not trusted" />}
+					{/* What pi read in when the session began, and pi's /reload to read
+					    it again for what was added since. */}
+					{sources && (
+						<div className="flex items-center justify-between gap-2 text-xs">
+							<span className="text-muted-foreground">
+								Skills {sources.skills} · prompts {prompts} · context files {sources.memoryFiles.count}
+							</span>
+							<Button variant="ghost" size="xs" onClick={() => send({ type: "reload" })}>
+								Reload
+							</Button>
+						</div>
+					)}
 				</Section>
 
 				{/* pi's /compact by hand: the conversation so far summarised into
