@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { ListPlusIcon, PencilIcon, SquareIcon, TextQuoteIcon, X } from "lucide-react";
+import { ArrowUpIcon, CornerDownLeftIcon, PencilIcon, SquareIcon, TextQuoteIcon, X } from "lucide-react";
 
 import { imagesOf } from "../attachments";
 import { type Chosen as ChosenWords, chosenStore } from "../chosen";
@@ -266,11 +266,11 @@ export function Composer({ note }: { note: string | null }) {
 	}, [restored]);
 
 	const submitButton = (
-		// Sends whatever pi is doing. Mid-run the message joins the queue — the
-		// same thing Enter does — and the icon says which of the two it will be.
-		// Holding the key that steers while clicking steers, as it does on Enter;
-		// the ref is read by the form's submit. The icon is given as a child, and
-		// undefined rather than false so the component falls back to its own.
+		// Sends whatever pi is doing. At rest it sends, and the arrow goes up.
+		// Mid-run the message joins the queue — the same thing Enter does — and
+		// the arrow is Enter's own, so the icon says which of the two a press
+		// will be. Holding the key that steers while clicking steers, as it does
+		// on Enter; the ref is read by the form's submit.
 		<PromptInputSubmit
 			disabled={!online}
 			status="ready"
@@ -278,7 +278,7 @@ export function Composer({ note }: { note: string | null }) {
 				if (streaming && (e.metaKey || e.ctrlKey)) steering.current = true;
 			}}
 		>
-			{streaming ? <ListPlusIcon className="size-4" /> : undefined}
+			{streaming ? <CornerDownLeftIcon className="size-4" /> : <ArrowUpIcon className="size-4" />}
 		</PromptInputSubmit>
 	);
 
@@ -343,26 +343,6 @@ export function Composer({ note }: { note: string | null }) {
 				</PromptInputBody>
 				<PromptInputFooter>
 					<PromptInputTools>
-						{/* Stopping has a button of its own, on the side of the row nothing
-						    is sent from. The one button that sent and stopped by turns
-						    meant the same place under the cursor did opposite things
-						    depending on what pi happened to be doing. */}
-						{streaming && (
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<InputGroupButton
-										variant="ghost"
-										size="icon-sm"
-										className="size-7"
-										aria-label="Stop"
-										onClick={() => send({ type: "abort" })}
-									>
-										<SquareIcon className="size-3.5" />
-									</InputGroupButton>
-								</TooltipTrigger>
-								<TooltipContent side="top">Stop the run — what the agent has already done stays</TooltipContent>
-							</Tooltip>
-						)}
 						{/* Chosen per message, so it sits with the message. What pi may
 						    reach for while it answers is not chosen per message and is no
 						    longer here: the tool mode and the context ring are in the
@@ -387,6 +367,26 @@ export function Composer({ note }: { note: string | null }) {
 					    one, and its children — which are not flexible — get squeezed out
 					    of it and drawn over the controls on the left. */}
 					<span className="flex shrink-0 items-center gap-1">
+						{/* Stopping is its own button rather than the sending one wearing
+						    another hat, and it belongs beside what it is the opposite of.
+						    Quiet where that one is solid, so two buttons this close are
+						    not mistaken for each other, and type="button": Enter presses
+						    the form's first submit button, which must be the other one. */}
+						{streaming && (
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<InputGroupButton
+										variant="ghost"
+										size="icon-sm"
+										aria-label="Stop"
+										onClick={() => send({ type: "abort" })}
+									>
+										<SquareIcon className="size-4" />
+									</InputGroupButton>
+								</TooltipTrigger>
+								<TooltipContent side="top">Stop the run — what the agent has already done stays</TooltipContent>
+							</Tooltip>
+						)}
 						{/* What the two keys do is said on the button they are an
 						    alternative to, and only while a run makes them mean anything.
 						    It used to be a line of words on the left of this row, which
