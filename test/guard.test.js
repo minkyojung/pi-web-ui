@@ -35,12 +35,32 @@ test("프롬프트는 노트 폴더임과 .pi 금지와 경로로 가리키기�
 });
 
 test("고른 글이 없으면 열어 둔 노트만 말한다", () => {
-  assert.equal(looking({ path: "a.md", chosen: null }), "The person has this note open in their editor right now: a.md");
+  assert.equal(looking({ path: "a.md", chosen: null }), "When they sent this message, the person had this note open in their editor: a.md");
+});
+
+// --- what the guard tells pi beside the message ---
+
+/** The before_agent_start handler pi would call, from a guard whose open note is `note`. */
+const beside = (note) => {
+  let handler;
+  guard("/v", () => note)({ on: (event, fn) => { if (event === "before_agent_start") handler = fn; } });
+  return handler({ type: "before_agent_start", prompt: "왜", systemPrompt: "BASE" });
+};
+
+test("열어 둔 노트는 시스템 프롬프트를 건드리지 않고, 화면에 안 보이는 메시지로 간다", async () => {
+  const result = await beside({ path: "a.md", chosen: "첫 줄" });
+  assert.equal(result.systemPrompt, undefined, "시스템 프롬프트가 턴마다 바뀌면 대화 전체의 캐시가 버려진다");
+  assert.equal(result.message.display, false);
+  assert.equal(result.message.content, looking({ path: "a.md", chosen: "첫 줄" }));
+});
+
+test("열어 둔 노트가 없으면 아무것도 보태지 않는다", async () => {
+  assert.equal(await beside(null), undefined);
 });
 
 test("고른 글이 있으면 인용으로 붙고, 그게 무엇에 대한 물음인지 말한다", () => {
   const said = looking({ path: "a.md", chosen: "첫 줄\n둘째 줄" });
-  assert.match(said, /open in their editor right now: a\.md/);
+  assert.match(said, /had this note open in their editor: a\.md/);
   assert.match(said, /what their message is about/);
   assert.ok(said.endsWith("> 첫 줄\n> 둘째 줄"), "고른 글은 인용된 채 마지막에 온다");
 });

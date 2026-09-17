@@ -17,12 +17,14 @@
  *   person has typed past, and records whose words the new ones are. `edit`
  *   and `write` can do neither, so on a note they are refused and told where
  *   to go instead. Every other file in the folder is pi's as it always was.
- * - The note open in the editor, and the words chosen in it, given as lines of
- *   the system prompt for the turn rather than as text in the person's
- *   message. As user text they were kept in the session, compacted with it,
- *   and replayed with a stale path when a question was asked again or a
- *   branch navigated — and what is chosen belongs to the moment even more
- *   than the path does.
+ * - The note open in the editor, and the words chosen in it, given as a hidden
+ *   message of their own beside the person's rather than as text in it. As
+ *   their text it was replayed with a stale path when a question was asked
+ *   again or a branch navigated; a message of its own is left behind with the
+ *   branch, and says it was as of that message. It was a line of the turn's
+ *   system prompt for a while, which kept it out of the session — but that
+ *   prompt comes before the whole conversation, so every note opened or
+ *   words chosen made the provider's cache of the conversation useless.
  *
  * Inline, like wall.ts and noteEdit.ts, and bound per session with them.
  */
@@ -66,9 +68,12 @@ export function mentionsAppDir(command: string): boolean {
 /** The note open in the editor, and the words chosen in it, if any. */
 export type OpenNote = () => { path: string; chosen: string | null } | null;
 
-/** The line of the turn's system prompt that says what the person is looking at. */
+/**
+ * What the person was looking at, said beside their message. Kept in the
+ * conversation with it, so it is said as of that message rather than as now.
+ */
 export function looking(note: { path: string; chosen: string | null }): string {
-	const line = `The person has this note open in their editor right now: ${note.path}`;
+	const line = `When they sent this message, the person had this note open in their editor: ${note.path}`;
 	if (!note.chosen) return line;
 	// Quoted, and said to be a part of the note rather than a thing to answer
 	// about on its own: the question is the message, this is what it points at.
@@ -95,9 +100,12 @@ export const guard = (root: string, openNote: OpenNote) => (pi: ExtensionAPI) =>
 		return undefined;
 	});
 
-	pi.on("before_agent_start", async (event) => {
+	// A message beside the person's rather than a line of the system prompt:
+	// the system prompt comes before the whole conversation, so changing it
+	// with every note opened would throw away the provider's cache of all of it.
+	pi.on("before_agent_start", async () => {
 		const note = openNote();
 		if (!note) return undefined;
-		return { systemPrompt: `${event.systemPrompt}\n\n${looking(note)}` };
+		return { message: { customType: "open-note", content: looking(note), display: false } };
 	});
 };

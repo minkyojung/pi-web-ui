@@ -7,6 +7,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 ## [Unreleased]
 ### Changed
 - On a Mac the agent is no longer offered PowerShell, which is not there to run: a call to it could only fail. It is gone from the tool menu too.
+- Opening another note or choosing other words before you ask no longer makes the provider read the whole conversation afresh: what was said before stays cached, so a reply in a long conversation starts sooner and costs less.
 
 ## [0.0.2] - 2026-09-18
 ### Added

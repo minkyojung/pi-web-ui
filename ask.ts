@@ -87,9 +87,10 @@ export function answerOf(messages: readonly unknown[]): string | null {
 export type OnAnswer = (answer: string | null, sessionId: string, entryId?: string) => void;
 
 export const answering = (asking: () => boolean, onAnswer: OnAnswer) => (pi: ExtensionAPI) => {
-	pi.on("before_agent_start", async (event) => {
+	// Beside the message, not in the system prompt — see guard.ts.
+	pi.on("before_agent_start", async () => {
 		if (!asking()) return undefined;
-		return { systemPrompt: `${event.systemPrompt}\n\n${INSTRUCTION}` };
+		return { message: { customType: "answering", content: INSTRUCTION, display: false } };
 	});
 
 	// The instruction above is the soft version; this is the one that holds
