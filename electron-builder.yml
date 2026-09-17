@@ -71,8 +71,9 @@ dmg:
 
 # Where the release job puts the artifacts and where the app looks for the
 # next version: the GitHub Releases of this repository. A release, not a
-# draft, so the updater sees it the moment the job ends; the notes for it are
-# the version's section of CHANGELOG.md, which the job attaches afterwards.
+# draft, so the updater sees it the moment the job ends; the release itself is
+# made by the job beforehand, with the version's section of CHANGELOG.md as
+# its notes, and what is built here is uploaded to it.
 publish:
   provider: github
   owner: minkyojung

@@ -86,6 +86,19 @@ jobs:
           security find-identity -v -p codesigning "$KEYCHAIN" | grep -q "Developer ID Application"
           echo "CSC_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
 
+      # The release is made here, with its notes — the changelog section, which
+      # the updater shows — before anything is uploaded to it. Left to
+      # electron-builder it was made twice: the zip and the disk image are
+      # published side by side, each found no release for the tag and each made
+      # one, so 0.0.1 came out as two releases with the zip alone in the second,
+      # where no updater would have looked, and the step that attached the notes
+      # afterwards was refused (422) because the tag named two releases.
+      - name: The release, made once
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --title "Octave ${GITHUB_REF_NAME#v}" --notes-file release-notes.md
+
       # A tag publishes; a run by hand builds, signs and notarizes the same way
       # and publishes nothing.
       - name: Build, sign, notarize, publish
@@ -99,12 +112,19 @@ jobs:
       - name: Verify what was built
         run: scripts/verify-signed.sh release/mac-arm64/Octave.app
 
-      # The release body is the changelog section, which the updater shows.
-      - name: Attach the notes
+      # What a person downloads, what the updater downloads, and the file that
+      # tells the updater which: all three on the one release, or this is red.
+      - name: The release has everything on it
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "$GITHUB_REF_NAME" --title "Octave ${GITHUB_REF_NAME#v}" --notes-file release-notes.md
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          HAVE="$(gh release view "$GITHUB_REF_NAME" --json assets -q '.assets[].name')"
+          for f in "latest-mac.yml" "Octave-$V-arm64-mac.zip" "Octave-$V-arm64.dmg"; do
+            echo "$HAVE" | grep -qxF "$f" || { echo "::error::$f is not on the release" >&2; exit 1; }
+          done
+          [ "$(gh api "repos/$GITHUB_REPOSITORY/releases" -q "[.[] | select(.tag_name == \"$GITHUB_REF_NAME\")] | length")" = "1" ] || { echo "::error::more than one release for $GITHUB_REF_NAME" >&2; exit 1; }
 
       - name: The keychain goes with the run
         if: always()

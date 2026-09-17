@@ -2571,8 +2571,22 @@ check("the loadout screen keeps a model pi does not offer, and shows a change an
 		const section = await until("the Loadout section", () =>
 			app.evaluate("(() => { const i = [...document.querySelectorAll('[role=dialog] nav button')].findIndex((x) => x.textContent === 'Loadout'); return i < 0 ? null : String(i); })()"),
 		);
-		await app.click("[role=dialog] nav button", Number(section));
-		await until("the missing model in its place", async () => /^1nobody\/not-offeredNot available/.test(await places()));
+		// Pressed until it takes. The dialog grows into place as it opens, and on a
+		// slow machine a button measured partway there is somewhere else by the
+		// time the press lands: twice today GitHub's runner left this on Accounts,
+		// the section the dialog opens on, and the check waited for a list that
+		// was never on screen. Pressing the section it is already on does nothing.
+		await until("the Loadout section in front", async () => {
+			await app.click("[role=dialog] nav button", Number(section));
+			return app.evaluate("/Reading the models|could not read the models/.test(document.querySelector('[role=dialog]')?.innerText ?? '') || !!document.querySelector('[role=dialog] ol')");
+		});
+		// Says what the list held when it gives up: this one has failed on GitHub's
+		// runner, one run in three, and "timed out" is all it had to say for itself.
+		await until("the missing model in its place", async () => {
+			const seen = await places();
+			if (/^1nobody\/not-offeredNot available/.test(seen)) return true;
+			throw new Error(`the places read ${JSON.stringify(seen)}, the file ${JSON.stringify(await stored())}, the dialog ${JSON.stringify(await app.evaluate("(document.querySelector('[role=dialog]')?.innerText ?? 'no dialog').slice(0, 300)"))}`);
+		});
 		await app.shot("loadout-missing");
 
 		// An edit that has nothing to do with it leaves it where it was.
@@ -2742,18 +2756,39 @@ async function main() {
 		let failed = 0;
 		const running = chosen();
 		if (only) console.log(`  (only the ${running.length} of ${checks.length} checks whose names hold ${JSON.stringify(only)})`);
+		// A check that fails is run once more before it counts. The suite drives a
+		// real browser with real presses, and on a shared runner a press now and
+		// then lands a frame early — today a different check each run, one or two
+		// in ninety, none of them twice. A second go is what Playwright's
+		// `retries` is for and says the same thing here: red twice is the app or
+		// the check; red then green is the weather, and is said so by name rather
+		// than passed over, so a check that is always on its second try shows.
+		const again = [];
+		const said = (error) => `       ${(error.message ?? error).toString().split("\n").join("\n       ")}`;
 		for (const { name, run } of running) {
 			try {
 				await run({ app: page, bench, cwd, api, devtools });
 				console.log(`  ok  ${name}`);
-			} catch (error) {
-				failed++;
-				console.log(`  FAIL ${name}`);
-				console.log(`       ${(error.message ?? error).toString().split("\n").join("\n       ")}`);
+			} catch (first) {
+				try {
+					await run({ app: page, bench, cwd, api, devtools });
+					again.push(name);
+					console.log(`  ok  ${name}  (on a second try)`);
+					console.log(said(first));
+				} catch (error) {
+					failed++;
+					console.log(`  FAIL ${name}`);
+					console.log(said(error));
+				}
 			}
 		}
 
 		console.log(`\n${running.length - failed}/${running.length} passed`);
+		if (again.length) {
+			console.log(`${again.length} of them on a second try:\n${again.map((name) => `  - ${name}`).join("\n")}`);
+			// Seen on the run's summary page, not only by whoever opens the log.
+			if (process.env.GITHUB_ACTIONS) for (const name of again) console.log(`::warning title=e2e passed on a second try::${name}`);
+		}
 		if (failed) {
 			dump();
 			process.exitCode = 1;
