@@ -24,10 +24,11 @@
  * which is the same gap a tab has at the top. Numbers matched by eye drift the
  * moment either end is touched; numbers that follow from one another do not.
  *
- * Left is where the note sits among the others — its tags.
- * Right is how it stands right now — how much of it there is, whether it has
- * reached the disk. That is the order every status bar uses, and it is worth
- * keeping: the left changes when you file something, the right while you type.
+ * Two things, both about the note as it stands: how much of it the agent
+ * wrote, on the left, and how much of it there is — with whether it has
+ * reached the disk, when it has not — on the right. Where the note sits among
+ * the others, its tags and what links to it, was here once and is not the
+ * strip's to say: those are ways to go somewhere, and this is a place to read.
  *
  * All of that is the note's half, which is as wide as the note's column. What
  * pi has to say for itself is the other half, under pi — see AgentStatus.
@@ -36,12 +37,8 @@ import { useSyncExternalStore, useState } from "react";
 
 import { inFrontStore, type Saved } from "../inFront";
 import type { Authored } from "../../../protocol.ts";
-import { taggedStore } from "../serverState";
-import { titleOf } from "../noteSync";
-import type { Backlink, Tagged } from "../types";
 import { AgentStatus } from "./AgentStatus";
 import { Button } from "./ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 /**
  * An item in the strip that can be pressed.
@@ -105,73 +102,6 @@ const words: Record<Saved, string | null> = {
 };
 
 /**
- * The notes the vault puts beside this one — a count in the strip, the list
- * itself behind it.
- *
- * A count and not the list, because the strip is one line and a note can be
- * pointed at by twenty others. It used to be the list, drawn under the note,
- * and that is what made the page move: a strip that holds however many there
- * happen to be is a strip with no height of its own. Linear folds its labels
- * to `+3` for the same reason.
- *
- * A popover rather than a panel, since this is a thing you glance at and put
- * away again. It is the note's own list, so it closes when you take one: you
- * asked to go somewhere, and what is behind you is not worth leaving open.
- */
-function Related({
-	id,
-	what,
-	notes,
-	onOpen,
-	trigger,
-}: {
-	id: string;
-	what: string;
-	notes: (Backlink | Tagged)[];
-	onOpen?: (path: string) => void;
-	/** What opens it, when something other than the count should. */
-	trigger?: React.ReactNode;
-}) {
-	const [open, setOpen] = useState(false);
-	if (notes.length === 0) return null;
-	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				{trigger ?? (
-					<Button variant="ghost" size="sm" className="cursor-default px-1.5 text-xs font-normal" data-count={notes.length}>
-						{notes.length} {what}
-					</Button>
-				)}
-			</PopoverTrigger>
-			<PopoverContent id={id} align="start" side="top" className="max-h-72 w-64 overflow-y-auto p-1">
-				{notes.map((note) => (
-					<Button
-						key={note.path}
-						variant="ghost"
-						size="xs"
-						data-path={note.path}
-						title={note.path}
-						className="h-6 w-full cursor-default justify-start gap-2 px-2 font-normal"
-						onClick={() => {
-							setOpen(false);
-							onOpen?.(note.path);
-						}}
-					>
-						<span className="truncate">{titleOf(note.path)}</span>
-						{/* Why it is on this list: the tags shared, or how many times
-						    the other note names this one. Nothing for a single mention,
-						    which the row already says by being there. */}
-						<span className="ml-auto shrink-0 text-muted-foreground">
-							{"tags" in note ? note.tags.map((tag) => `#${tag}`).join(" ") : note.count > 1 ? note.count : ""}
-						</span>
-					</Button>
-				))}
-			</PopoverContent>
-		</Popover>
-	);
-}
-
-/**
  * How much of the note is not the reader's own, in words rather than a figure.
  *
  * Nothing at all when it is all theirs, which is most notes. A `0%` on every
@@ -200,39 +130,8 @@ function share(of: Authored): { agent: string | null; other: string | null; titl
 	};
 }
 
-/**
- * One of the note's tags, and the other notes that carry it.
- *
- * Pressing it asks the vault, not the search box. A search is over the words
- * of a note, and a tag named in a note's `tags` property is nowhere in its
- * words: `#agent` typed into the search would find the notes that spell it out
- * and quietly miss the ones that file themselves under it. The index already
- * holds the right answer and the strip already has it (taggedStore).
- *
- * Nothing opens when this is the only note with it. Somewhere to go and
- * nowhere to go should not look the same, so a tag no other note shares is
- * drawn as what it is — a word, not a way through.
- */
-function Tag({ name, notes, onOpen }: { name: string; notes: Tagged[]; onOpen?: (path: string) => void }) {
-	if (notes.length === 0) return <span className="shrink-0 px-1.5">#{name}</span>;
-	return (
-		<Related
-			id={`tag-${name}`}
-			what={name}
-			notes={notes}
-			onOpen={onOpen}
-			trigger={
-				<Button variant="ghost" size="sm" className="shrink-0 cursor-default px-1.5 text-xs font-normal" data-tag={name} title={`${notes.length} other ${notes.length === 1 ? "note has" : "notes have"} #${name}`}>
-					#{name}
-				</Button>
-			}
-		/>
-	);
-}
-
-export function StatusBar({ path, onOpen, piWidth, piFolded, onUnfoldPi }: { path: string | null; onOpen?: (path: string) => void; piWidth: number | null; piFolded: boolean; onUnfoldPi: () => void }) {
+export function StatusBar({ path, piWidth, piFolded, onUnfoldPi }: { path: string | null; piWidth: number | null; piFolded: boolean; onUnfoldPi: () => void }) {
 	const front = useSyncExternalStore(inFrontStore.subscribe, inFrontStore.get);
-	const tagged = useSyncExternalStore(taggedStore.subscribe, taggedStore.get);
 	// Which of the two the count is showing. Not beside the note — it is how you
 	// like to be told, not a fact about any one note — and kept in this browser,
 	// the way the recent list and the row of tabs are: a choice you made once
@@ -262,7 +161,6 @@ export function StatusBar({ path, onOpen, piWidth, piFolded, onUnfoldPi }: { pat
 	// about a note you have just closed.
 	const note = front && front.path === path && front.saved !== "loading" ? front : null;
 	const hand = note?.authored ? share(note.authored) : null;
-	const shares = path ? (tagged[path] ?? []) : [];
 
 	return (
 		<div id="status" className="flex h-11 shrink-0 items-center px-2 text-xs text-muted-foreground">
@@ -272,15 +170,6 @@ export function StatusBar({ path, onOpen, piWidth, piFolded, onUnfoldPi }: { pat
 			    told where the divider is. No gap between them for the same reason
 			    — a gap here would be width that belongs to neither. */}
 			<div id="note-status" className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden">
-				{/* Truncated rather than wrapped or counted off as `+3`. A note with
-				    twenty tags is rare and a strip that changed height for it would
-				    undo the whole of this; clipping the end keeps the rule where it
-				    is and says how many there are by saying nothing about the rest. */}
-				<div id="tags" className="flex min-w-0 items-center gap-0.5 overflow-hidden">
-					{note?.tags.map((tag) => (
-						<Tag key={tag} name={tag} notes={shares.filter((other) => other.tags.includes(tag))} onOpen={onOpen} />
-					))}
-				</div>
 				{hand && (
 					<span id="authored" className="px-1.5" title={hand.title} data-agent={hand.agent ?? undefined} data-other={hand.other ?? undefined}>
 						{hand.agent && <span>agent {hand.agent}</span>}

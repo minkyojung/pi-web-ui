@@ -683,7 +683,7 @@ export function App() {
 					    part of the window and reaches its edge, as VS Code's and Zed's
 					    do, and then there is only one place for anything to be centred
 					    in. */}
-					<StatusBar path={open} onOpen={setOpen} piWidth={piWidth} piFolded={!piOpen} onUnfoldPi={unfoldPi} />
+					<StatusBar path={open} piWidth={piWidth} piFolded={!piOpen} onUnfoldPi={unfoldPi} />
 				</ResizablePanel>
 			</ResizablePanelGroup>
 			</div>

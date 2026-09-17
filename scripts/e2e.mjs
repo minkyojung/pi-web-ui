@@ -477,38 +477,6 @@ const type = (page, text) =>
 		return document.execCommand("insertText", false, ${JSON.stringify(text)});
 	})()`);
 
-/**
- * What the strip at the foot says the vault puts beside this note.
- *
- * The lists live behind their counts now — a strip is one line and a note can
- * be pointed at by twenty others — so the count is pressed first and the list
- * put away again. No count at all means the vault puts nothing beside it, and
- * "" is the honest answer to that rather than a wait that never ends.
- */
-const beside = (page, _id) => besideTag(page);
-/**
- * The notes that share the open note's first tag, from the tag in the strip.
- *
- * A tag no other note carries is drawn as a word rather than a button, so
- * nothing to press is the honest "" — the same answer the count used to give
- * when there was no count.
- */
-const besideTag = async (page) => {
-	const open = () => page.evaluate(`document.querySelector('[id^="tag-"]')?.textContent ?? ''`);
-	if (await page.evaluate(`!!document.querySelector('[id^="tag-"]')`)) return open();
-	await page.press("Escape");
-	const pressed = await page.evaluate(`(() => { const b = document.querySelector('#status button[data-tag]'); if (!b) return false; b.click(); return true; })()`);
-	if (!pressed) return "";
-	await until("the tagged list", () => page.evaluate(`!!document.querySelector('[id^="tag-"]')`));
-	return open();
-};
-
-/** Nothing is open over the strip. */
-const shut = async (page) => {
-	await page.press("Escape");
-	await until("the list to close", () => page.evaluate(`!document.querySelector('[id^="tag-"]')`));
-};
-
 check("a row in the sidebar opens its note in the middle", async ({ app }) => {
 	assert.equal(
 		await app.evaluate(`(() => { const b = document.querySelector('#notes button[data-path="first.md"]'); if (!b) return false; b.click(); return true; })()`),
@@ -1352,22 +1320,6 @@ check("a %% line opens a comment that runs over blank lines to the next", async 
 	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-wikilink').length"), 0);
 });
 
-check("under a note, the notes that share its tags", async ({ app, cwd }) => {
-	writeFileSync(join(cwd, "shared-a.md"), "#team notes\n");
-	writeFileSync(join(cwd, "shared-b.md"), "more #Team and #other\n");
-	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="shared-a.md"]') && !!document.querySelector('#notes button[data-path="shared-b.md"]')`));
-	await app.evaluate(`document.querySelector('#notes button[data-path="shared-a.md"]').click()`);
-	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("#team"));
-	await until("the tagged list", async () => {
-		const t = await beside(app, "tagged");
-		return t.includes("shared-b") && t.includes("#team") && !t.includes("#other");
-	});
-	await shut(app);
-	// The other note loses the tag: the count goes with it.
-	writeFileSync(join(cwd, "shared-b.md"), "no more\n");
-	await until("the count to go", async () => (await beside(app, "tagged")) === "");
-});
-
 /**
  * A note is as tall as the page it is on, not as tall as its text.
  *
@@ -1422,34 +1374,6 @@ check("a short note fills the page, and the space under its last line is the edi
 	})()`);
 	assert.ok(scrolls.page > 0, "a long note gives the page something to scroll");
 	assert.ok(scrolls.editor <= 1, `and the editor scrolls nothing of its own (${Math.round(scrolls.editor)}px)`);
-});
-
-/**
- * What the vault puts beside a note is in the strip at the foot of the window,
- * not in the page.
- *
- * It was in the page, under the text, which is what made the page move: it
- * appeared the moment a note was given a tag, and sat wherever the writing
- * happened to stop. In the strip it has a place of its own that nothing else
- * has to make room for.
- */
-check("the notes beside this one are in the strip, behind their counts", async ({ app, cwd }) => {
-	writeFileSync(join(cwd, "foot-a.md"), "#pair one short line, naming [[foot-b]]\n");
-	writeFileSync(join(cwd, "foot-b.md"), "also #pair\n");
-	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="foot-a.md"]') && !!document.querySelector('#notes button[data-path="foot-b.md"]')`));
-	await pickNote(app, "foot-b.md");
-	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("also #pair"));
-
-	// Nothing of it is drawn in the page any more.
-	assert.equal(await app.evaluate(`!!document.querySelector('#note [id^="tag-"]')`), false, "the page holds none of this");
-
-	// The counts are in the strip, and the lists are behind them.
-	await until("the note that shares its tag", async () => (await beside(app, "tagged")).includes("foot-a"));
-
-	// Taking one is going there, and puts the list away on the way.
-	assert.equal(await app.evaluate(`(() => { const b = document.querySelector('[id^="tag-"] button[data-path="foot-a.md"]'); if (!b) return false; b.click(); return true; })()`), true);
-	await until("the note it named", async () => (await app.evaluate("location.hash")) === "#foot-a.md");
-	await until("the list to have gone with it", () => app.evaluate(`!document.querySelector('[id^="tag-"]')`));
 });
 
 check("the strip at the foot of the window keeps its height, and says whether the note has reached the disk", async ({ app, cwd }) => {
@@ -1545,60 +1469,6 @@ check("the strip counts the note's words, and says it in characters instead when
 	await app.evaluate("location.reload()");
 	await until("the note after the reload", async () => (await editorStatus(app)) === "saved");
 	await until("characters still", async () => (await count()).includes("characters"));
-});
-
-/**
- * The note's own tags, along the foot of the window.
- *
- * Written in the note or named in its `tags` property, which are one list and
- * not two (links.ts). Read when the note reaches the disk rather than at every
- * keystroke: the strip's left is where the note sits among the others, and the
- * vault does not learn about a tag until the note is written.
- */
-check("the strip says the note's own tags, from the text and the properties alike", async ({ app, cwd }) => {
-	const tags = () => app.evaluate("document.getElementById('tags')?.textContent ?? ''");
-
-	writeFileSync(join(cwd, "tagged-both.md"), "---\ntags: [Filed]\n---\n\nwritten with #Loose here\n");
-	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="tagged-both.md"]')`));
-	await pickNote(app, "tagged-both.md");
-	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("#Loose"));
-
-	// Both, and in lower case: #Todo and #todo are one tag, as Obsidian has it.
-	await until("both tags", async () => {
-		const t = await tags();
-		return t.includes("#loose") && t.includes("#filed");
-	});
-
-	// A tag typed into the note reaches the strip once the note reaches the disk.
-	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); return true; })()`);
-	assert.equal(await type(app, "\n#later\n"), true);
-	await until("the typing to be in the note", async () => (await editorText(app)).includes("#later"));
-	await until("the save to land", async () => (await editorStatus(app)) === "saved");
-	await until("the new tag", async () => (await tags()).includes("#later"), 10_000).catch(async () => {
-		assert.fail(`the tag typed in reaches the strip, and it said: ${JSON.stringify(await tags())} for ${JSON.stringify(await editorText(app))}`);
-	});
-
-	// A tag another note carries is a way through to it; one no other note has
-	// is a word. Asked of the index, not of the search box: a tag named in a
-	// note's `tags` property is nowhere in its words, so searching for it would
-	// quietly miss exactly the notes that file themselves under it.
-	writeFileSync(join(cwd, "tagged-mate.md"), "shares the #loose one\n");
-	await until("the other note", () => app.evaluate(`!!document.querySelector('#notes button[data-path="tagged-mate.md"]')`));
-	await until("#loose to become a way through", () => app.evaluate(`!!document.querySelector('#status button[data-tag="loose"]')`));
-	assert.equal(await app.evaluate(`!!document.querySelector('#status button[data-tag="filed"]')`), false, "a tag no other note has stays a word");
-	await app.click('#status button[data-tag="loose"]');
-	await until("the notes that share it", () => app.evaluate("document.querySelector('#tag-loose')?.textContent ?? ''").then((t) => t.includes("tagged-mate")));
-	await app.press("Escape");
-	await until("the list to close", () => app.evaluate("!document.querySelector('#tag-loose')"));
-
-	// A note with none says nothing, and the strip does not move for it.
-	const was = await app.evaluate("document.getElementById('status').getBoundingClientRect().height");
-	writeFileSync(join(cwd, "tagged-none.md"), "no tags at all\n");
-	await until("the other note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="tagged-none.md"]')`));
-	await pickNote(app, "tagged-none.md");
-	await until("the other note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("no tags at all"));
-	assert.equal((await tags()).trim(), "", "a note with no tags has nothing to say about them");
-	assert.equal(await app.evaluate("document.getElementById('status').getBoundingClientRect().height"), was, "and the strip stays where it is");
 });
 
 /**
@@ -1837,32 +1707,19 @@ check("the strip's half for pi is as wide as pi's column, and goes where it goes
 	);
 });
 
-check("a tag and a link written in the properties count as much as ones written in the note", async ({ app, cwd }) => {
-	// One note says its tag in the text, the other in its properties, and they share it.
+check("a link written in the properties is rewritten when the note it names is renamed", async ({ app, cwd }) => {
+	// That a tag or a link in the properties is indexed like one in the text is
+	// the indexes' own tests' to say (linkIndex, tag): the strip no longer shows
+	// either, so there is nothing on screen to ask. What is left to see here is
+	// the rename reaching into the property.
 	writeFileSync(join(cwd, "prop-tagged.md"), '---\ntags: [Crew]\nrelated: "[[prop-hub]]"\n---\n\nnothing in the text\n');
-	writeFileSync(join(cwd, "prop-body.md"), "#crew in the text\n");
 	writeFileSync(join(cwd, "prop-hub.md"), "the one linked to\n");
-	await until("the notes to be listed", () => app.evaluate(`["prop-tagged.md", "prop-body.md", "prop-hub.md"].every((p) => document.querySelector('#notes button[data-path="' + p + '"]'))`));
-	await app.evaluate(`document.querySelector('#notes button[data-path="prop-body.md"]').click()`);
-	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("#crew"));
-	await until("the note whose tag is only a property", async () => {
-		const t = await beside(app, "tagged");
-		return t.includes("prop-tagged") && t.includes("#crew");
-	});
-	await shut(app);
-	// And the link written in a property is a link like any other: renaming
-	// the note it names rewrites the property, not just the text. (That it is
-	// indexed as a backlink is linkIndex.test.js's to say; the strip no longer
-	// shows backlinks, so there is nothing on screen to ask.)
+	await until("the notes to be listed", () => app.evaluate(`["prop-tagged.md", "prop-hub.md"].every((p) => document.querySelector('#notes button[data-path="' + p + '"]'))`));
 	await app.evaluate(`document.querySelector('#notes button[data-path="prop-hub.md"]').click()`);
 	await until("the note it names", async () => (await app.evaluate("location.hash")) === "#prop-hub.md" && (await editorStatus(app)) === "saved");
 	await retitle(app, "prop-centre");
 	await until("the note moved", () => existsSync(join(cwd, "prop-centre.md")));
 	await until("the property rewritten", () => readFileSync(join(cwd, "prop-tagged.md"), "utf8").includes('"[[prop-centre]]"'));
-	// Taken out of the properties, the tag goes.
-	writeFileSync(join(cwd, "prop-tagged.md"), "---\nstatus: draft\n---\n\nnothing in the text\n");
-	await app.evaluate(`document.querySelector('#notes button[data-path="prop-body.md"]').click()`);
-	await until("the tagged count to go", async () => (await beside(app, "tagged")) === "");
 });
 
 check("%%a comment%% is set apart, its marks hidden off the cursor", async ({ app, cwd }) => {
