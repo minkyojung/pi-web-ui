@@ -165,8 +165,8 @@ export function glyphOf(line: Line | null, unseen: boolean): Glyph {
  *
  * The way an unread mark works everywhere: set by the thing arriving where you
  * could not see it, cleared by looking. A run that ends with the column open
- * was seen ending. Looking is either opening the column or opening the mark
- * itself into its words — both show what the run came to.
+ * was seen ending. Looking is opening the column, where the run itself is —
+ * not pointing at the mark, which a pointer does on its way past.
  */
 export type SeenEvent = { type: "ended"; folded: boolean } | { type: "looked" };
 

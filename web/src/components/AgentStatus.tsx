@@ -135,9 +135,13 @@ export function AgentStatus({ width, folded, onUnfold }: { width: number | null;
 		if (wasStreaming.current && !streaming) setUnseen((u) => nextUnseen(u, { type: "ended", folded }));
 		wasStreaming.current = streaming;
 	}, [streaming, folded]);
+	// Read by opening the column — pressing the ring, or any other way of
+	// bringing it back. Pointing at the ring only opens it into its line, and a
+	// pointer crosses the ring on its way to other things often enough that a
+	// mark cleared by passing over it would be cleared unread.
 	useEffect(() => {
-		if (!folded || open) setUnseen((u) => nextUnseen(u, { type: "looked" }));
-	}, [folded, open]);
+		if (!folded) setUnseen((u) => nextUnseen(u, { type: "looked" }));
+	}, [folded]);
 
 	// The mark needs the line's kind and not its words, and the kind is decided
 	// before the conversation is read. So it is asked without the items, and this
