@@ -37,6 +37,11 @@ asar: false
 
 mac:
   category: public.app-category.productivity
+  # An Icon Composer file, made in Xcode 26. electron-builder compiles it with
+  # actool into Assets.car for macOS 26 and an .icns for anything older and
+  # for the disk image — so packing needs Xcode 26 selected, which the
+  # macos-latest runner has.
+  icon: build/octave.icon
   # Apple Silicon only. Everything the app leans on the machine for — the
   # recursive fs.watch, the trash, the e2e's Chrome — has only ever been
   # checked here, and an Intel build would be a promise nobody has tested.

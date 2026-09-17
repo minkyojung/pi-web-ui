@@ -6,6 +6,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 ### Added
+- Octave has an icon of its own in the Dock and in Finder, in place of Electron's.
 - The extensions installed for your pi terminal load here too — their tools and commands appear as they do there. A switch in Settings › Agent turns this off; it applies from the next session. An extension that brings its own ask_user or note tool does not replace Octave's, and says so in the conversation.
 - Settings › Agent has a "pi" section: switch automatic compaction off or on, whether the agent retries a failed call on its own, whether the model's thinking is shown in the conversation, and whether stepping between answers asks to summarize first. The card that asks has "No summary, don't ask again" too. And a switch to let the agent read this folder's own `.pi/` (its skills, prompts, settings), remembered where pi's terminal keeps its `/trust` answer.
 - The context card counts what the agent read in — skills, prompt templates, context files — with a Reload button for what was added since the session began. It is pi's own setting, so the terminal sees the same value; the two thresholds are shown there with where to change them.
