@@ -1,5 +1,7 @@
+import { useSyncExternalStore } from "react";
 import { BrainIcon } from "lucide-react";
 
+import { configStore } from "../serverState";
 import { MessageResponse } from "./ai-elements/message";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 
@@ -24,9 +26,15 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collap
  * body, which is what this is.
  */
 export function ThinkingRow({ text }: { text: string }) {
+	// pi's hideThinkingBlock, which its terminal honours by leaving these out:
+	// the same setting, read off the config, and the row is not drawn. Read
+	// here rather than where items are dispatched, so a change of it redraws
+	// these rows and nothing else.
+	const hidden = useSyncExternalStore(configStore.subscribe, configStore.get)?.pi.hideThinkingBlock ?? false;
 	// One line, however the model laid it out. The row truncates to its width,
 	// so the thought is not cut to a length it might have had room for.
 	const preview = text.replace(/\s+/g, " ").trim();
+	if (hidden) return null;
 
 	return (
 		<Collapsible className="-my-1">

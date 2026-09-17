@@ -256,10 +256,17 @@ export interface ConfigMsg {
  */
 export interface PiSettings {
 	compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number };
+	/** Try a failed call again on its own, a few times with growing waits, before giving up. */
+	retryEnabled: boolean;
+	/** Leave the model's thinking out of the conversation; pi's terminal does the same with it. */
+	hideThinkingBlock: boolean;
 }
 
 /** One of pi's settings, to be written through pi's setter for it. */
-export type PiSetting = { setting: "compaction.enabled"; value: boolean };
+export type PiSetting =
+	| { setting: "compaction.enabled"; value: boolean }
+	| { setting: "retry.enabled"; value: boolean }
+	| { setting: "hideThinkingBlock"; value: boolean };
 
 export interface UsageMsg {
 	type: "usage";

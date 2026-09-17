@@ -406,7 +406,11 @@ function contextSources(): ContextSourcesMsg {
 /** pi's settings as pi reads them now, for the switches in Settings. */
 function piSettings(): PiSettings {
 	const m = session().settingsManager;
-	return { compaction: m.getCompactionSettings() };
+	return {
+		compaction: m.getCompactionSettings(),
+		retryEnabled: m.getRetryEnabled(),
+		hideThinkingBlock: m.getHideThinkingBlock(),
+	};
 }
 
 /**
@@ -1644,6 +1648,14 @@ wss.on("connection", async (ws) => {
 						case "compaction.enabled":
 							if (typeof msg.value !== "boolean") return;
 							m.setCompactionEnabled(msg.value);
+							break;
+						case "retry.enabled":
+							if (typeof msg.value !== "boolean") return;
+							m.setRetryEnabled(msg.value);
+							break;
+						case "hideThinkingBlock":
+							if (typeof msg.value !== "boolean") return;
+							m.setHideThinkingBlock(msg.value);
 							break;
 						default:
 							return;

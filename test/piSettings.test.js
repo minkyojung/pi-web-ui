@@ -90,6 +90,24 @@ test("자동 압축을 끄면 모두가 듣고 pi의 settings.json에 남는다;
   assert.equal(piFile().compaction.enabled, true);
 });
 
+test("재시도와 thinking 숨김도 같은 길로 간다 — pi의 setter, pi의 파일, 모두에게 알림", async () => {
+  const start = await want("config");
+  assert.equal(start.pi.retryEnabled, true, "pi's default");
+  assert.equal(start.pi.hideThinkingBlock, false, "pi's default");
+  clear();
+  send({ type: "set_setting", setting: "retry.enabled", value: false });
+  await want("config", (m) => m.pi.retryEnabled === false);
+  assert.equal(piFile().retry.enabled, false);
+  clear();
+  send({ type: "set_setting", setting: "hideThinkingBlock", value: true });
+  await want("config", (m) => m.pi.hideThinkingBlock === true);
+  assert.equal(piFile().hideThinkingBlock, true);
+  clear();
+  send({ type: "set_setting", setting: "retry.enabled", value: true });
+  send({ type: "set_setting", setting: "hideThinkingBlock", value: false });
+  await want("config", (m) => m.pi.retryEnabled === true && m.pi.hideThinkingBlock === false);
+});
+
 test("모르는 설정이나 잘못된 값은 아무것도 바꾸지 않는다", async () => {
   clear();
   send({ type: "set_setting", setting: "compaction.enabled", value: "yes" });

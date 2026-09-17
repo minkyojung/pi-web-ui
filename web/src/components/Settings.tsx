@@ -276,6 +276,30 @@ function PiSwitches() {
           </p>
         </div>
       </div>
+      <div className="flex items-start gap-2">
+        <Checkbox
+          id="retry"
+          checked={pi.retryEnabled}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "retry.enabled", value: v === true })}
+        />
+        <div className="flex flex-col gap-0.5">
+          <Label htmlFor="retry">Retry a failed call on its own</Label>
+          <p className="text-xs text-muted-foreground">
+            A few times, with growing waits, before giving up. Each attempt is said in the conversation.
+          </p>
+        </div>
+      </div>
+      <div className="flex items-start gap-2">
+        <Checkbox
+          id="hideThinking"
+          checked={pi.hideThinkingBlock}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "hideThinkingBlock", value: v === true })}
+        />
+        <div className="flex flex-col gap-0.5">
+          <Label htmlFor="hideThinking">Hide the model&apos;s thinking</Label>
+          <p className="text-xs text-muted-foreground">The thinking rows are left out of the conversation; the answers stay.</p>
+        </div>
+      </div>
     </div>
   );
 }
