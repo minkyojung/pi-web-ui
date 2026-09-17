@@ -346,6 +346,17 @@ const press = (page, title) =>
 	page.evaluate(
 		`(() => { const b = [...document.querySelectorAll('#chat button[aria-label=${JSON.stringify(title)}]')].find((x) => !x.disabled); if (!b) return false; b.click(); return true; })()`,
 	);
+/**
+ * Step to another answer with an arrow, and answer the card that comes first:
+ * before the arrows leave a branch, the server asks — as pi's /tree does —
+ * whether to summarise it, and "No summary" is the move without one.
+ */
+const step = async (page, title) => {
+	if (!(await press(page, title))) return false;
+	await until("the summary card", () => page.evaluate("[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'No summary')"));
+	await page.evaluate("[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'No summary').click()");
+	return true;
+};
 const allDisabled = (page, title) =>
 	page.evaluate(
 		`[...document.querySelectorAll('#chat button[aria-label=${JSON.stringify(title)}]')].every((b) => b.disabled)`,
@@ -381,20 +392,20 @@ check("the newest branch offers no next", async ({ app }) => {
 });
 
 check("going back shows the answer that was there before", async ({ app }) => {
-	assert.equal(await press(app, "Previous answer"), true);
+	assert.equal(await step(app, "Previous answer"), true);
 	await until("the previous branch", async () => (await marks(app)).includes("ANSWER-BETA"));
 	assert.equal(await marks(app), "ANSWER-BETA 2/3");
 });
 
 check("the first branch offers no previous", async ({ app }) => {
-	assert.equal(await press(app, "Previous answer"), true);
+	assert.equal(await step(app, "Previous answer"), true);
 	await until("the first branch", async () => (await marks(app)).includes("ANSWER-ALPHA"));
 	assert.equal(await marks(app), "ANSWER-ALPHA 1/3");
 	assert.equal(await allDisabled(app, "Previous answer"), true);
 });
 
 check("and forward again", async ({ app }) => {
-	assert.equal(await press(app, "Next answer"), true);
+	assert.equal(await step(app, "Next answer"), true);
 	await until("the second branch", async () => (await marks(app)).includes("ANSWER-BETA"));
 });
 

@@ -233,6 +233,18 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 			// name keeps it (detectExtensionConflicts). Octave's wins here, and the
 			// extension is told in pi's own words, in the conversation.
 			extensionsOverride: (loaded) => {
+				// pi-web-access is Octave's own dependency, loaded above from its
+				// node_modules; the person's pi may list the same package, and pi
+				// would then load it twice — its commands split into curator:1 and
+				// curator:2, its tools reported as clashing with themselves. The
+				// copy Octave brings is the one kept; the person's is not loaded.
+				const theirs = (ext: { path: string; resolvedPath: string }) =>
+					!ext.path.startsWith("<inline:") && !ext.resolvedPath.startsWith(WEB_ACCESS) && /[\\/]node_modules[\\/]pi-web-access[\\/]/.test(ext.resolvedPath);
+				const dropped = new Set(loaded.extensions.filter(theirs).map((ext) => ext.path));
+				loaded.extensions = loaded.extensions.filter((ext) => !dropped.has(ext.path));
+				// pi had already found that copy clashing with the one kept; a
+				// clash with what is not loaded is nothing to say.
+				loaded.errors = loaded.errors.filter((e) => !dropped.has(e.path));
 				const ours = new Map<string, string>();
 				for (const ext of loaded.extensions) {
 					if (ext.path.startsWith("<inline:")) for (const name of ext.tools.keys()) ours.set(name, ext.path);
