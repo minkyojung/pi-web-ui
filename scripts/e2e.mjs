@@ -2620,6 +2620,17 @@ async function main() {
 	// Its own settings directory too, since the server writes a log into one and
 	// a test run has no business in the log the person's own app keeps.
 	const appDir = mkdtempSync(join(tmpdir(), "pi-e2e-app-"));
+	// And its own pi: a folder with a key in it that is not a key. pi lists a
+	// provider's models for a key it has not tried, which is all the suite
+	// needs — no check spends a call. Without this the suite ran on whatever
+	// the machine was signed in to, and on GitHub's runner that is nothing:
+	// the app, rightly, opens Settings on Accounts when nobody is signed in,
+	// and every click after that landed on the dialog. It passed on a laptop
+	// and had not finished on the runner for a day. Set here, before a session
+	// is written, so the session and the server agree on where pi lives.
+	const agentDir = mkdtempSync(join(tmpdir(), "pi-e2e-agent-"));
+	writeFileSync(join(agentDir, "auth.json"), JSON.stringify({ openai: { type: "api_key", key: "sk-e2e-not-a-key" } }));
+	process.env.PI_CODING_AGENT_DIR = agentDir;
 	const sessionFile = branchedSession(cwd);
 	// Two notes and a file that is not one, for the sidebar to sort out.
 	mkdirSync(join(cwd, "ideas"));
@@ -2761,7 +2772,7 @@ async function main() {
 		await Promise.all(children.map(stop));
 		// The session pi wrote lives beside the working folder, not inside it.
 		const sessionDir = sessionFile ? join(sessionFile, "..") : null;
-		for (const path of [cwd, profile, appDir, sessionDir]) {
+		for (const path of [cwd, profile, appDir, agentDir, sessionDir]) {
 			if (!path) continue;
 			try {
 				rmSync(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });

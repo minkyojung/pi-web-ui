@@ -30,8 +30,12 @@
 # or not a key behind it is any good, and no check in the suite spends a call.
 name: ci
 
+# A branch is checked through its pull request and main when something lands
+# on it. With a bare `push:` as well, every commit on a branch that had a pull
+# request open ran all of this twice, side by side.
 on:
   push:
+    branches: [main]
   pull_request:
 
 # One run per branch: a newer push makes the older run's answer moot, and the
