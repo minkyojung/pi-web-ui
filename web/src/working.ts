@@ -161,16 +161,30 @@ export function glyphOf(line: Line | null, unseen: boolean): Glyph {
 }
 
 /**
+ * Whether what a run came to is on screen right now.
+ *
+ * The test every unread mark uses: not whether the mark was touched, but
+ * whether the thing it stands for was shown. Slack reads a channel when its
+ * new messages are in view, Mail a message when its body is in the preview —
+ * however either was opened. Here the thing is the end of the conversation,
+ * so it takes three things at once: the column open, the conversation
+ * scrolled to its end, and the window in front of somebody. A column opened
+ * onto a conversation still scrolled up to last week, or opened in a window
+ * behind another app, shows nothing of the run.
+ */
+export function resultSeen(at: { folded: boolean; atEnd: boolean; shown: boolean }): boolean {
+	return !at.folded && at.atEnd && at.shown;
+}
+
+/**
  * Whether a finished run is still waiting to be seen, after something happened.
  *
- * The way an unread mark works everywhere: set by the thing arriving where you
- * could not see it, cleared by looking. A run that ends with the column open
- * was seen ending. Looking is opening the column, where the run itself is —
- * not pointing at the mark, which a pointer does on its way past.
+ * Set by the run ending where its result could not be seen, cleared by its
+ * result coming into view (resultSeen) — never by pointing at the mark, which
+ * a pointer does on its way past.
  */
-export type SeenEvent = { type: "ended"; folded: boolean } | { type: "looked" };
+export type SeenEvent = { type: "ended"; seen: boolean } | { type: "looked" };
 
-export function nextUnseen(unseen: boolean, event: SeenEvent): boolean {
-	if (event.type === "looked") return false;
-	return event.type === "ended" ? event.folded : unseen;
+export function nextUnseen(_unseen: boolean, event: SeenEvent): boolean {
+	return event.type === "ended" && !event.seen;
 }

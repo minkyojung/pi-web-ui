@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { agentLine, currentStep, glyphOf, lastRun, nextUnseen } from "../web/src/working.ts";
+import { agentLine, currentStep, glyphOf, lastRun, nextUnseen, resultSeen } from "../web/src/working.ts";
 
 const line = (over = {}) => agentLine({ connection: "open", asking: 0, streaming: false, queued: 0, items: [], ...over });
 const done = (over = {}) => ({ kind: "done", endedAt: Date.parse("2026-09-16T13:38:00Z"), ...over });
@@ -113,10 +113,17 @@ test("the mark folds the line into one shape, in the line's own order", () => {
 });
 
 test("a run that ends out of sight is unread until it is looked at", () => {
-	assert.equal(nextUnseen(false, { type: "ended", folded: true }), true);
-	// Ending with the column open is ending in plain view.
-	assert.equal(nextUnseen(false, { type: "ended", folded: false }), false);
+	assert.equal(nextUnseen(false, { type: "ended", seen: false }), true);
+	// Ending in plain view is ending seen.
+	assert.equal(nextUnseen(false, { type: "ended", seen: true }), false);
 	assert.equal(nextUnseen(true, { type: "looked" }), false);
 	// Another run ending in plain view is the newest thing, and it was seen.
-	assert.equal(nextUnseen(true, { type: "ended", folded: false }), false);
+	assert.equal(nextUnseen(true, { type: "ended", seen: true }), false);
+});
+
+test("a result is seen only when the column is open, at its end, in a window in front", () => {
+	assert.equal(resultSeen({ folded: false, atEnd: true, shown: true }), true);
+	assert.equal(resultSeen({ folded: true, atEnd: true, shown: true }), false, "the column is away");
+	assert.equal(resultSeen({ folded: false, atEnd: false, shown: true }), false, "open, but scrolled up past it");
+	assert.equal(resultSeen({ folded: false, atEnd: true, shown: false }), false, "open, behind another window");
 });

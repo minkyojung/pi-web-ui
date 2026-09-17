@@ -1,5 +1,7 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { useStickToBottomContext } from "use-stick-to-bottom";
 
+import { atEndStore } from "../atEnd";
 import { rowsOf } from "../runSummary";
 import { answerAbove, wroteNotesAbove } from "../turn";
 import type { Item } from "../types";
@@ -18,6 +20,17 @@ import { RunAnswer, RunWrote } from "./TurnFooter";
  * this list and must not open a socket, and PromptCard — which answers over
  * one — would come with the module whether or not the export was used.
  */
+/**
+ * Says whether the conversation is at its end, for what is not inside it — the
+ * strip's unread mark, which is read only once the run it stands for has been
+ * on screen (atEnd.ts, resultSeen in working.ts).
+ */
+function AtEnd() {
+	const { isAtBottom } = useStickToBottomContext();
+	useEffect(() => atEndStore.set(isAtBottom), [isAtBottom]);
+	return null;
+}
+
 export function ConversationView({ items, children }: { items: Item[]; children?: React.ReactNode }) {
 	// Through a ref, so the lookup a footer holds does not change identity when
 	// the list does — a new one every render would re-render every finished run
@@ -44,6 +57,7 @@ export function ConversationView({ items, children }: { items: Item[]; children?
 					{children}
 				</ConversationContent>
 				<ConversationScrollButton />
+				<AtEnd />
 			</Scroller>
 		</RunWrote>
 		</RunAnswer>

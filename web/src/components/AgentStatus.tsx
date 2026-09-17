@@ -23,9 +23,10 @@
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
+import { atEndStore } from "../atEnd";
 import { configStore, promptsStore } from "../serverState";
 import { getConnection, getItems, subscribe } from "../store";
-import { agentLine, glyphOf, nextUnseen } from "../working";
+import { agentLine, glyphOf, nextUnseen, resultSeen } from "../working";
 import { send } from "../ws";
 import { ContextCard } from "./ContextCard";
 import { ToolModes } from "./ToolModes";
@@ -92,6 +93,19 @@ function Line({ bare = false }: { bare?: boolean }) {
 	);
 }
 
+/** Whether this window is in front of somebody: shown, and the one with the focus. */
+const windowShown = () => document.visibilityState === "visible" && document.hasFocus();
+function subscribeShown(changed: () => void): () => void {
+	addEventListener("focus", changed);
+	addEventListener("blur", changed);
+	document.addEventListener("visibilitychange", changed);
+	return () => {
+		removeEventListener("focus", changed);
+		removeEventListener("blur", changed);
+		document.removeEventListener("visibilitychange", changed);
+	};
+}
+
 /**
  * Folded, the half is the ring alone, and the ring says what the line would.
  *
@@ -126,22 +140,22 @@ export function AgentStatus({ width, folded, onUnfold }: { width: number | null;
 	const [card, setCard] = useState(false);
 	const open = folded && (pointed || reached || menu || card);
 
-	// A run that ends out of sight is unread until it is looked at — see
-	// nextUnseen. Only the moment a run stops counts, so what was true on the
-	// last render is kept beside what is true on this one.
+	// A run that ends out of sight is unread until its result has been on
+	// screen — see resultSeen for what that takes, and why pointing at the ring
+	// is not it. Only the moment a run stops counts as its ending, so what was
+	// true on the last render is kept beside what is true on this one.
+	const atEnd = useSyncExternalStore(atEndStore.subscribe, atEndStore.get);
+	const shown = useSyncExternalStore(subscribeShown, windowShown);
+	const seen = resultSeen({ folded, atEnd, shown });
 	const [unseen, setUnseen] = useState(false);
 	const wasStreaming = useRef(streaming);
 	useEffect(() => {
-		if (wasStreaming.current && !streaming) setUnseen((u) => nextUnseen(u, { type: "ended", folded }));
+		if (wasStreaming.current && !streaming) setUnseen((u) => nextUnseen(u, { type: "ended", seen }));
 		wasStreaming.current = streaming;
-	}, [streaming, folded]);
-	// Read by opening the column — pressing the ring, or any other way of
-	// bringing it back. Pointing at the ring only opens it into its line, and a
-	// pointer crosses the ring on its way to other things often enough that a
-	// mark cleared by passing over it would be cleared unread.
+	}, [streaming, seen]);
 	useEffect(() => {
-		if (!folded) setUnseen((u) => nextUnseen(u, { type: "looked" }));
-	}, [folded]);
+		if (seen) setUnseen((u) => nextUnseen(u, { type: "looked" }));
+	}, [seen]);
 
 	// The mark needs the line's kind and not its words, and the kind is decided
 	// before the conversation is read. So it is asked without the items, and this
