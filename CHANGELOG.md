@@ -65,6 +65,9 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - The strip says how much of a note somebody other than you wrote — the agent's share and anything written outside Octave, counted apart. A note that is all yours says nothing.
 
 ### Fixed
+- Your loadout and the mode new sessions open on are no longer lost when Octave's settings moved to `~/.octave`: what you chose where they were kept before is brought over the first time, instead of starting again from the defaults.
+- A model in the loadout that can't be reached right now — its provider signed out, say — keeps its place, marked "Not available", instead of being dropped from the loadout the next time you change it.
+- A setting changed in one window shows in any other window's Settings straight away, and changing a setting there no longer puts back what another window had just changed. A setting that couldn't be saved goes back to what it was, with a note saying so, instead of looking saved.
 - The × that takes a tag off a note is the size of the tag again, so the chip keeps its shape when the properties are open.
 
 [Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/reader-v1...HEAD

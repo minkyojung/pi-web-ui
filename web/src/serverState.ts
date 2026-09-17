@@ -35,6 +35,7 @@ import type {
 	SearchResultsMsg,
 	ServerMsg,
 	SessionInfo,
+	SettingsMsg,
 	Tagged,
 	UsageMsg,
 	WhyMsg,
@@ -67,6 +68,19 @@ export function createStore<T>(initial: T): Store<T> {
 export const configStore = createStore<ConfigMsg | null>(null);
 /** The providers and who is signed in, as the server last said. See ProvidersMsg. */
 export const providersStore = createStore<ProviderInfo[] | null>(null);
+/** Octave's own settings, as the server last said. See SettingsMsg. */
+export const settingsStore = createStore<SettingsMsg | null>(null);
+
+/**
+ * Settings from the server, by the socket or as the answer to a change, unless
+ * what is held is a later write of the same run — which is how an answer that
+ * arrives after the news of a newer change does not put the old value back.
+ */
+export function applySettings(msg: SettingsMsg): void {
+	const held = settingsStore.get()?.revision;
+	if (held && held.boot === msg.revision.boot && held.n > msg.revision.n) return;
+	settingsStore.set(msg);
+}
 
 /**
  * The sign-in under way, as the server tells it: which provider, the question

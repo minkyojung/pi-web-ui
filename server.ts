@@ -12,6 +12,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
@@ -30,7 +31,7 @@ import {
 import { itemsFromMessages, textOf } from "./conversation.js";
 import { modeToolNames } from "./toolModes.ts";
 import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice as modelsNotice_, providerInfo, supportedLevels } from "./models.ts";
-import { readSettings, writeSettings } from "./settings.ts";
+import { readSettings, updateSettings, type Settings } from "./settings.ts";
 import { askForName } from "./sessionName.ts";
 import { askUser } from "./askUser.ts";
 import { createPromptBridge } from "./prompts.ts";
@@ -74,6 +75,7 @@ import type {
 	ProvidersMsg,
 	ServerMsg,
 	SessionsMsg,
+	SettingsMsg,
 	SnapshotMsg,
 	UsageMsg,
 } from "./protocol.ts";
@@ -1274,6 +1276,11 @@ function text(req: IncomingMessage): Promise<string> {
 	});
 }
 
+/** This run of the server, and how many times it has written the settings. See SettingsMsg's revision. */
+const SETTINGS_BOOT = randomUUID();
+let settingsWrites = 0;
+const settingsMsg = (settings: Settings, n: number): SettingsMsg => ({ type: "settings", settings, revision: { boot: SETTINGS_BOOT, n } });
+
 const server = createServer(async (req, res) => {
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const { pathname } = url;
@@ -1283,21 +1290,34 @@ const server = createServer(async (req, res) => {
 			res.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
 			res.end(JSON.stringify(body));
 		};
-		// The settings, all of them at once. Sent whole rather than a field at a
-		// time because that is what settings.ts writes; a field it did not hear
-		// about would come back as its default and quietly undo an edit.
+		// A change to the settings: the fields named, laid over what is on disk
+		// (see updateSettings). What was asked wrongly and what could not be
+		// written are told apart, since only one of them is worth asking again.
 		if (pathname === "/api/settings" && req.method === "POST") {
+			let patch: unknown;
 			try {
-				const written = writeSettings(JSON.parse(await text(req)));
-				// The loadout lives here and is drawn on the composer, which hears about
-				// it on the socket rather than by asking — so a change made on this
-				// screen has to be announced, or the picker keeps the old list until
-				// something else happens to move it.
-				broadcast(config());
-				return json(200, written);
+				patch = JSON.parse(await text(req));
 			} catch {
 				return json(400, { error: "invalid JSON" });
 			}
+			if (typeof patch !== "object" || patch === null || Array.isArray(patch)) {
+				return json(400, { error: "expected an object" });
+			}
+			let written: SettingsMsg;
+			try {
+				written = settingsMsg(updateSettings(patch as Record<string, unknown>), ++settingsWrites);
+			} catch (err) {
+				console.error("could not write settings:", err instanceof Error ? err.message : err);
+				return json(500, { error: "could not write settings" });
+			}
+			json(200, written);
+			// Every tab hears of it, the one that asked too: a settings screen open
+			// in another window would otherwise build its next edit on the old
+			// value, and the loadout is drawn on the composer, which hears about it
+			// on the socket rather than by asking.
+			broadcast(written);
+			broadcast(config());
+			return;
 		}
 		if (req.method !== "GET") return json(405, { error: "read only" });
 		if (pathname === "/api/settings") return json(200, readSettings());
@@ -1345,6 +1365,7 @@ wss.on("connection", async (ws) => {
 	const reply = (msg: ServerMsg) => ws.send(safeStringify(msg));
 	reply(config());
 	reply(providers());
+	reply(settingsMsg(readSettings(), settingsWrites));
 	reply(usage());
 	reply(contextSources());
 	reply(commands());

@@ -46,11 +46,13 @@ const until = async (what, get, ms = 30000) => {
 for (const signal of ["SIGTERM", "SIGINT"]) {
   test(`${signal}을 받으면 제 발로 나간다`, async (t) => {
     const cwd = mkdtempSync(join(tmpdir(), "shutdown-test-"));
+    // Its own settings and log, as every server a test starts: the person's are not a test's to write in.
+    const appDir = mkdtempSync(join(tmpdir(), "shutdown-test-app-"));
     writeFileSync(join(cwd, "a.md"), "# a\n");
     const port = await freePort();
     const server = spawn(join(root, "node_modules/.bin/tsx"), ["server.ts"], {
       cwd: root,
-      env: { ...process.env, WORKDIR: cwd, PORT: String(port) },
+      env: { ...process.env, WORKDIR: cwd, PORT: String(port), APP_DIR: appDir },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let log = "";
@@ -76,6 +78,7 @@ for (const signal of ["SIGTERM", "SIGINT"]) {
     } finally {
       if (server.exitCode === null) server.kill("SIGKILL");
       rmSync(cwd, { recursive: true, force: true });
+      rmSync(appDir, { recursive: true, force: true });
     }
   });
 }

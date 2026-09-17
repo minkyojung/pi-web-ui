@@ -12,6 +12,7 @@ import {
 	setTagged,
 	configStore,
 	providersStore,
+	applySettings,
 	applyLogin,
 	commandsStore,
 	contextSourcesStore,
@@ -72,6 +73,7 @@ const backoff = () => Math.random() * Math.min(250 * 2 ** attempt, 5000);
 const STATE: Record<StateMsg["type"], true> = {
 	config: true,
 	providers: true,
+	settings: true,
 	login_prompt: true,
 	login_prompt_dismiss: true,
 	login_event: true,
@@ -122,6 +124,9 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "providers":
 			providersStore.set(msg.providers);
+			return;
+		case "settings":
+			applySettings(msg);
 			return;
 		case "login_prompt":
 		case "login_prompt_dismiss":

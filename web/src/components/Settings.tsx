@@ -23,16 +23,11 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { readTheme, setTheme, type Theme } from "@/theme";
-import { configStore, providersStore } from "../serverState";
+import { applySettings, configStore, providersStore, settingsStore } from "../serverState";
+import { getConnection, subscribe } from "../store";
+import type { Settings, SettingsMsg } from "../types";
 import { send } from "../ws";
 import { settingsOpenStore } from "../settingsOpen";
-
-/** settings.ts, as it arrives. Declared again rather than imported: that module reads files. */
-type Settings = {
-  toolMode: ToolModeId;
-  loadout: string[];
-  loadExtensions: boolean;
-};
 
 const SECTIONS = ["Accounts", "Appearance", "Agent", "Loadout", "Keys"] as const;
 type Section = (typeof SECTIONS)[number];
@@ -138,50 +133,47 @@ export function Settings() {
 }
 
 function Panel({ section }: { section: Section }) {
-  const [settings, setSettings] = useState<Settings | null>(null);
+  // What the server last said, which every window hears whenever any of them
+  // changes something — so this screen never edits a copy it read when it
+  // opened. See SettingsMsg.
+  const stored = useSyncExternalStore(settingsStore.subscribe, settingsStore.get)?.settings;
+  // Changes sent and not yet answered, shown over it. The loadout is a whole
+  // list written at once, and a second edit made inside one round trip has to
+  // start from the first, not from the copy the server has not replaced yet.
+  const [pending, setPending] = useState<Partial<Settings> | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // What is on screen, readable without waiting for a render — see save.
-  const showing = useRef<Settings | null>(null);
   const saves = useRef(0);
-
-  useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((s) => {
-        showing.current = s;
-        setSettings(s);
-      })
-      .catch(() => setError("could not read settings"));
-  }, []);
+  const settings = stored && { ...stored, ...pending };
+  const connection = useSyncExternalStore(subscribe, getConnection);
 
   /**
-   * The whole object every time, and whatever comes back is what is shown: the
-   * server decides what it will keep, and the screen says what it kept.
+   * Only the change, which the server lays over what is on disk; what comes
+   * back is what is shown, since the server decides what it will keep.
    *
-   * Built on what is on screen rather than on what the server last confirmed,
-   * and the answer to a save that another has overtaken is dropped. The loadout
-   * is a whole list written at once, so two edits made inside one round trip
-   * would otherwise each start from the saved copy and the first would be lost.
+   * Shown at once rather than after the answer. When the last save is answered
+   * the change stops being laid over — replaced by what was kept, or, if it
+   * could not be written, taken back, so the screen never shows a setting the
+   * next session will not have. An earlier save's answer is not the last word
+   * while a later one is on its way.
    */
   const save = useCallback(async (patch: Partial<Settings>) => {
-    if (!showing.current) return;
     setError(null);
-    const next = { ...showing.current, ...patch };
-    showing.current = next;
-    setSettings(next);
+    setPending((was) => ({ ...was, ...patch }));
     const mine = ++saves.current;
     try {
       const r = await fetch("/api/settings", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(next),
+        body: JSON.stringify(patch),
       });
       if (!r.ok) throw new Error(`${r.status}`);
-      const kept = await r.json();
+      // Kept only if nothing newer has been heard meanwhile — see applySettings.
+      applySettings((await r.json()) as SettingsMsg);
       if (mine !== saves.current) return;
-      showing.current = kept;
-      setSettings(kept);
+      setPending(null);
     } catch {
+      if (mine !== saves.current) return;
+      setPending(null);
       setError("could not save");
     }
   }, []);
@@ -193,6 +185,15 @@ function Panel({ section }: { section: Section }) {
       {section === "Keys" && <Keys />}
 
       {section === "Accounts" && <Accounts />}
+
+      {/* The settings come on the socket, as the server says them on connecting;
+          until they have, the sections made of them say why they are empty
+          rather than showing nothing, which reads as a setting lost. */}
+      {!settings && (section === "Loadout" || section === "Agent") && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {connection === "open" ? "Reading settings…" : "Not connected — settings show once the window reconnects."}
+        </p>
+      )}
 
       {section === "Loadout" && settings && (
         <Loadout chosen={settings.loadout} onChange={(loadout) => void save({ loadout })} />

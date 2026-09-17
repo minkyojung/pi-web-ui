@@ -19,6 +19,10 @@ import type { Author, Change, Edit, Moved } from "./history";
 import type { NoteFile } from "./vault";
 import type { Backlink, Tagged } from "./linkIndex";
 import type { SearchHit } from "./search";
+import type { Settings } from "./settings.ts";
+
+/** Octave's own settings, for the client, which cannot import settings.ts for anything but its type. */
+export type { Settings };
 
 export type { Ask, AskOutcome, Author, Backlink, BranchPoint, Change, Edit, Moved, NoteFile, SearchHit, Tagged };
 
@@ -374,6 +378,25 @@ export interface LoginDoneMsg {
 export interface ProvidersMsg {
 	type: "providers";
 	providers: ProviderInfo[];
+}
+
+/**
+ * Octave's own settings, as settings.ts last wrote or read them. Sent on
+ * connect and after every change, whichever tab made it, so a screen showing
+ * them never builds an edit on a copy another window has since replaced. It is
+ * also the answer to POST /api/settings.
+ */
+export interface SettingsMsg {
+	type: "settings";
+	settings: Settings;
+	/**
+	 * Which write they are: the nth since this run of the server began, and
+	 * which run. The answer to a tab's own change and the news of another
+	 * window's come on different connections and can arrive in either order;
+	 * this is how the older is kept from being shown over the newer. A
+	 * different run is a restart, whose count began again.
+	 */
+	revision: { boot: string; n: number };
 }
 
 /** Sizes of what fills the context besides the conversation. See contextBreakdown.ts. */
@@ -759,6 +782,7 @@ export interface PiEventMsg {
 export type StateMsg =
 	| ConfigMsg
 	| ProvidersMsg
+	| SettingsMsg
 	| LoginPromptMsg
 	| LoginPromptDismissMsg
 	| LoginEventMsg

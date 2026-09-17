@@ -2708,6 +2708,40 @@ check("typing @ in the message box offers the notes, and Enter writes the chosen
 	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
 });
 
+check("the loadout screen keeps a model pi does not offer, and shows a change another window made", async ({ app, api }) => {
+	const url = `http://localhost:${api}/api/settings`;
+	const post = (patch) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) });
+	const stored = async () => (await (await fetch(url)).json()).loadout.join(",");
+	const [a, b] = await (await fetch(`http://localhost:${api}/api/models`)).json();
+	assert.ok(a && b, "pi offers two models to choose from");
+	// A provider signed out since it was chosen: in the file, and not among what pi offers.
+	const gone = "nobody/not-offered";
+	assert.equal((await post({ loadout: [gone, a.key, b.key] })).status, 200);
+
+	const places = () => app.evaluate("[...document.querySelectorAll('[role=dialog] ol li')].map((li) => li.textContent).join(' | ')");
+	try {
+		assert.ok(await app.click('button[aria-label="Settings"]'), "the settings button is there");
+		const section = await until("the Loadout section", () =>
+			app.evaluate("(() => { const i = [...document.querySelectorAll('[role=dialog] nav button')].findIndex((x) => x.textContent === 'Loadout'); return i < 0 ? null : String(i); })()"),
+		);
+		await app.click("[role=dialog] nav button", Number(section));
+		await until("the missing model in its place", async () => /^1nobody\/not-offeredNot available/.test(await places()));
+		await app.shot("loadout-missing");
+
+		// An edit that has nothing to do with it leaves it where it was.
+		assert.ok(await app.click(`button[aria-label=${JSON.stringify(`Take out ${b.name}`)}]`), "the second model can be taken out");
+		await until("the file without the one taken out, and with the missing one", async () => (await stored()) === [gone, a.key].join(","));
+		assert.equal((await places()).split(" | ").length, 2 + 3, "two places and three empty");
+
+		// Another window changes the order; this one shows it without being reopened.
+		assert.equal((await post({ loadout: [a.key, gone] })).status, 200);
+		await until("the other window's order", async () => (await places()).startsWith(`1${a.name}`));
+	} finally {
+		await app.press("Escape");
+		await post({ loadout: [] });
+	}
+});
+
 check("the bench renders every scenario it knows", async ({ bench }) => {
 	// The list is drawn only while the picker is open, and each entry carries
 	// its id: what is read is the scenario's name, and the name is not the id.

@@ -89,6 +89,18 @@ crash that does not happen again is never seen at all, and the safety net for
 uncaught errors reports to nobody. `⌘⇧D` says where the file is. `APP_DIR`
 moves it, which is how the tests and `npm run e2e` keep out of yours.
 
+Octave's own settings — the loadout, the mode a session opens on — are
+`~/.octave/settings.json` (`settings.ts`), which `APP_DIR` moves too. They
+were under `~/.pi/web-ui` before the app had a name, and a file there is
+copied over while there is none here. The server is the one copy: a change is
+POSTed as the fields it names, laid over what is on disk, and every tab is
+sent the result as a `settings` message with a revision — the answer to a
+tab's own change and the news of another window's travel on different
+connections, and the revision is what keeps the older from being shown over
+the newer. The file holds what was chosen, not what pi offers today: the
+loadout screen edits the whole list, and a model pi does not offer just now
+stays in it, marked, while the picker leaves it out.
+
 ```bash
 npm test          # everything below, offline
 npm run typecheck

@@ -195,3 +195,18 @@ export function loadoutOf(
 	if (current && !keys.includes(current)) keys.push(current);
 	return keys;
 }
+
+/**
+ * The places the loadout screen edits: what was chosen, all of it, or the
+ * seed — as far as pi offers it — while nothing has been.
+ *
+ * Not loadoutOf, which is what the picker can offer now. A model pi does not
+ * offer at this moment — a provider signed out, a pass over the models that
+ * failed — is still a choice somebody made, and an edit built on the shorter
+ * list would write it out of the file for good.
+ */
+export function placesOf(chosen: readonly string[], available: readonly string[]): string[] {
+	if (chosen.length) return [...chosen];
+	const offered = new Set(available);
+	return SEED_LOADOUT.filter((key) => offered.has(key));
+}

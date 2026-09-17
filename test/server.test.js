@@ -891,3 +891,44 @@ it("갈래를 만들면 그 질문까지를 가진 새 세션이 열리고 질�
   assert.ok(gone);
   assert.equal(existsSync(older.path), false, "the file is gone (to the bin, or unlinked)");
 });
+
+// Not `it`: none of this needs a model, and saving a setting is what a person
+// without credentials does first. Last in the file, and on a socket of its own
+// — a second window — since the checks above read what the first one was sent
+// when it connected.
+test("설정은 접속할 때 오고, 바꾼 칸만 디스크에 겹쳐 쓰이며, 다른 창도 결과를 듣는다", async () => {
+  const other = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  const heard = [];
+  other.onmessage = (e) => heard.push(JSON.parse(e.data));
+  const hear = (type, pred = () => true) => until(type, () => heard.find((m) => m.type === type && pred(m)));
+  const url = `http://127.0.0.1:${port}/api/settings`;
+  const post = (body) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body });
+  try {
+    const opened = await hear("settings");
+    assert.deepEqual(opened.settings, await (await fetch(url)).json(), "접속 때 온 것이 디스크의 것");
+
+    heard.length = 0;
+    const loadout = ["anthropic/claude-fable-5", "openai/gpt-5.5"];
+    const first = await post(JSON.stringify({ loadout }));
+    assert.equal(first.status, 200);
+    const answered = await first.json();
+    assert.deepEqual(answered.settings.loadout, loadout);
+    const told = await hear("settings");
+    assert.deepEqual(told, answered, "바꾸지 않은 창도 같은 것을 듣는다 — 같은 번째의 쓰기로");
+    assert.ok(told.revision.n > opened.revision.n, "접속 때 것보다 나중의 쓰기");
+    assert.ok(await hear("config"), "피커가 새 목록을 받도록 config도 다시 간다");
+
+    // A window that never saw that loadout changes the mode, and only the mode.
+    const second = await (await post(JSON.stringify({ toolMode: "plan" }))).json();
+    assert.equal(second.settings.toolMode, "plan");
+    assert.deepEqual(second.settings.loadout, loadout, "다른 칸을 바꿔도 로드아웃은 그대로");
+    assert.equal(second.revision.n, answered.revision.n + 1, "쓸 때마다 하나씩");
+    assert.deepEqual(JSON.parse(readFileSync(join(appDir, "settings.json"), "utf8")), second.settings, "디스크에 있는 것이 답한 것");
+
+    assert.equal((await post("{ 반쯤")).status, 400, "읽을 수 없는 몸통");
+    assert.equal((await post("[1]")).status, 400, "객체가 아닌 몸통");
+    assert.equal((await post(JSON.stringify({ toolMode: "coding" }))).status, 200);
+  } finally {
+    other.close();
+  }
+});

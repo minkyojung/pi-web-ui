@@ -22,6 +22,13 @@ import { DEFAULT_MODE, MODE_IDS, type ToolModeId } from "./toolModes.ts";
 export const APP_DIR = process.env.APP_DIR ?? join(homedir(), ".octave");
 export const SETTINGS_PATH = join(APP_DIR, "settings.json");
 
+/**
+ * Where settings were kept before the app had a name, and a directory of its
+ * own. Only when APP_DIR is not set: it moved the old place too, so a run that
+ * names its own directory never had settings there.
+ */
+const LEGACY_PATH = process.env.APP_DIR ? null : join(homedir(), ".pi", "web-ui", "settings.json");
+
 export interface Settings {
 	/** Which rung of the tool ladder a new session opens on. */
 	toolMode: ToolModeId;
@@ -65,16 +72,37 @@ export function coerce(raw: unknown): Settings {
 		toolMode: MODE_IDS.includes(o.toolMode as ToolModeId) ? (o.toolMode as ToolModeId) : DEFAULTS.toolMode,
 		// Whatever of the list is a string survives; a model that has since gone
 		// is dropped when the list is read against what pi offers, not here, so a
-		// provider that is merely logged out keeps its place in the file.
+		// provider that is merely logged out keeps its place in the file. Once
+		// each: a place is one model, and the screen tells places apart by it.
 		loadout: Array.isArray(o.loadout)
-			? o.loadout.filter((key) => typeof key === "string").slice(0, LOADOUT_SLOTS)
+			? [...new Set(o.loadout.filter((key) => typeof key === "string"))].slice(0, LOADOUT_SLOTS)
 			: [],
 		created: typeof o.created === "boolean" ? o.created : DEFAULTS.created,
 		loadExtensions: typeof o.loadExtensions === "boolean" ? o.loadExtensions : DEFAULTS.loadExtensions,
 	};
 }
 
+/**
+ * Settings made where they used to be kept, brought here once.
+ *
+ * Moving the directory without this read as every choice forgotten: the new
+ * place had no file, so the defaults came back, and the next change wrote them
+ * over what the person had chosen. Copied rather than moved — the old file
+ * stays, so a build from before the move still finds it — and only while
+ * there is nothing here, so it happens once and never undoes a later change.
+ * A file that cannot be read is nothing to bring.
+ */
+function adoptLegacy(): void {
+	if (!LEGACY_PATH || existsSync(SETTINGS_PATH) || !existsSync(LEGACY_PATH)) return;
+	try {
+		writeSettings(JSON.parse(readFileSync(LEGACY_PATH, "utf8")));
+	} catch {
+		// Unreadable is the same as absent, as in readSettings.
+	}
+}
+
 export function readSettings(): Settings {
+	adoptLegacy();
 	if (!existsSync(SETTINGS_PATH)) return coerce({});
 	try {
 		return coerce(JSON.parse(readFileSync(SETTINGS_PATH, "utf8")));
@@ -90,4 +118,14 @@ export function writeSettings(next: unknown): Settings {
 	const settings = coerce(next);
 	writeAtomic(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n");
 	return settings;
+}
+
+/**
+ * One change, laid over what is on disk now rather than over what the caller
+ * last saw: only the fields it names move. Sending the whole object from a
+ * screen meant a window opened earlier put back every value it was showing —
+ * a mode changed in one window undid a loadout changed in another.
+ */
+export function updateSettings(patch: Record<string, unknown>): Settings {
+	return writeSettings({ ...readSettings(), ...patch });
 }

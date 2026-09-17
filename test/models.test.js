@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice, providerInfo, providersOf, supportedLevels } from "../models.ts";
+import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice, placesOf, providerInfo, providersOf, supportedLevels } from "../models.ts";
 
 test("제공자는 모델 키의 앞부분이고, 하나씩, 정렬되어 나온다", () => {
   assert.deepEqual(providersOf(["openai/gpt-5", "anthropic/claude-opus-4-8", "openai/o3"]), ["anthropic", "openai"]);
@@ -101,4 +101,13 @@ test("지금 쓰는 모델은 고르지 않았어도 목록에 있다 — 두 �
     "이미 있으면 다시 넣지 않는다",
   );
   assert.deepEqual(loadoutOf(["없는/모델"], available, null), [], "고른 것이 다 사라졌으면 빈 목록");
+});
+
+test("로드아웃 화면이 고치는 목록은 고른 것 전부다 — 지금 pi가 내주지 않는 모델도", () => {
+  const available = ["openai/gpt-5.5"];
+  const chosen = ["anthropic/claude-fable-5", "openai/gpt-5.5"];
+  assert.deepEqual(placesOf(chosen, available), chosen, "로그아웃한 제공자의 모델도 자리를 지킨다");
+  assert.notEqual(placesOf(chosen, available), chosen, "받은 배열을 그대로 내주지 않는다");
+  assert.deepEqual(placesOf([], ["openai/gpt-5.5", "openai/gpt-5.6-sol"]), ["openai/gpt-5.6-sol", "openai/gpt-5.5"], "고른 것이 없으면 씨앗 중 내주는 것만");
+  assert.deepEqual(placesOf([], []), []);
 });

@@ -6,7 +6,7 @@ import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } 
 import { CSS } from "@dnd-kit/utilities";
 import { CheckIcon, GripVerticalIcon, XIcon } from "lucide-react";
 
-import { LOADOUT_SLOTS, loadoutOf, providersOf } from "../../../models";
+import { LOADOUT_SLOTS, placesOf, providersOf } from "../../../models";
 import { configStore } from "../serverState";
 import type { ModelInfo } from "../types";
 import { levelLabel } from "./ModelPicker";
@@ -49,10 +49,12 @@ export function Loadout({ chosen, onChange }: { chosen: string[]; onChange: (nex
 	if (!catalogue) return <p className="text-xs text-muted-foreground">Reading the models…</p>;
 
 	const byKey = new Map(catalogue.map((m) => [m.key, m]));
-	// What the picker is showing, which is the seed while nothing has been
-	// chosen — so this screen opens on the same list the composer has, and the
-	// first edit is an edit of what was there rather than of an empty row.
-	const places = loadoutOf(chosen, [...byKey.keys()], null);
+	// The seed while nothing has been chosen — so this screen opens on the same
+	// list the composer has, and the first edit is an edit of what was there
+	// rather than of an empty row. Otherwise everything chosen, offered now or
+	// not: every edit below is written whole, and one made on the shorter list
+	// would take the missing models out of the file. See placesOf.
+	const places = placesOf(chosen, [...byKey.keys()]);
 	const full = places.length >= LOADOUT_SLOTS;
 	// An empty list is how "nobody has chosen" is written, so emptying the last
 	// place would bring the seed back rather than leave nothing. One model is
@@ -94,8 +96,9 @@ export function Loadout({ chosen, onChange }: { chosen: string[]; onChange: (nex
 						{places.map((key, i) => (
 							<Place
 								key={key}
+								id={key}
 								place={i + 1}
-								model={byKey.get(key)!}
+								model={byKey.get(key)}
 								inUse={config?.model === key}
 								canRemove={canRemove}
 								onRemove={() => onChange(places.filter((k) => k !== key))}
@@ -159,21 +162,30 @@ export function Loadout({ chosen, onChange }: { chosen: string[]; onChange: (nex
 
 const MOD = navigator.userAgent.includes("Mac") ? "⌃⌘" : "Ctrl+Alt+";
 
-/** One place in the loadout, with the model in it. Dragged by the handle only, so the × stays clickable. */
+/**
+ * One place in the loadout, with the model in it. Dragged by the handle only, so the × stays clickable.
+ *
+ * A model pi does not offer just now keeps its place, named by its key since
+ * pi gave no name for it, and says so; the picker leaves it out until pi
+ * offers it again.
+ */
 function Place({
+	id,
 	place,
 	model,
 	inUse,
 	canRemove,
 	onRemove,
 }: {
+	id: string;
 	place: number;
-	model: ModelInfo;
+	model: ModelInfo | undefined;
 	inUse: boolean;
 	canRemove: boolean;
 	onRemove: () => void;
 }) {
-	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: model.key });
+	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+	const name = model?.name ?? id;
 
 	return (
 		<li
@@ -184,7 +196,7 @@ function Place({
 		>
 			<button
 				type="button"
-				aria-label={`Move ${model.name}`}
+				aria-label={`Move ${name}`}
 				className="cursor-grab text-muted-foreground focus-visible:outline-none"
 				style={{ touchAction: "none" }}
 				{...attributes}
@@ -193,20 +205,29 @@ function Place({
 				<GripVerticalIcon className="size-3.5" />
 			</button>
 			<span className="w-3 text-center tabular-nums text-muted-foreground">{place}</span>
-			<span className="min-w-0 flex-1 truncate">{model.name}</span>
+			<span className={model ? "min-w-0 flex-1 truncate" : "min-w-0 flex-1 truncate text-muted-foreground"}>{name}</span>
 			{inUse && (
 				<Badge variant="secondary" className="h-4 px-1 text-[10px] font-normal">
 					In use
 				</Badge>
 			)}
-			<span className="text-muted-foreground">{levelLabel(model.level)}</span>
+			{model ? (
+				<span className="text-muted-foreground">{levelLabel(model.level)}</span>
+			) : (
+				<span
+					className="text-muted-foreground"
+					title="Signed out of its provider, or no longer offered. The composer leaves it out until pi offers it again."
+				>
+					Not available
+				</span>
+			)}
 			<Button
 				type="button"
 				variant="ghost"
 				size="icon-xs"
 				disabled={!canRemove}
 				onClick={onRemove}
-				aria-label={`Take out ${model.name}`}
+				aria-label={`Take out ${name}`}
 				title={canRemove ? undefined : "The loadout keeps at least one model"}
 			>
 				<XIcon />

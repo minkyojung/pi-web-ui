@@ -44,6 +44,13 @@ test("로드아웃은 문자열만 남기고, 목록이 아니면 비운다", ()
   assert.deepEqual(coerce({}).loadout, []);
 });
 
+test("로드아웃에 같은 모델은 한 번만 남는다 — 손으로 고친 파일이라도", () => {
+  assert.deepEqual(coerce({ loadout: ["openai/gpt-5.5", "openai/gpt-5.5", "anthropic/claude-opus-5"] }).loadout, [
+    "openai/gpt-5.5",
+    "anthropic/claude-opus-5",
+  ]);
+});
+
 test("로드아웃은 칸 수를 넘지 않는다 — 화면에 그려지는 만큼만 남는다", () => {
   const many = Array.from({ length: LOADOUT_SLOTS + 3 }, (_, i) => `openai/m${i}`);
   assert.equal(coerce({ loadout: many }).loadout.length, LOADOUT_SLOTS);
