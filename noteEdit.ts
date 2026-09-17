@@ -239,14 +239,10 @@ export const noteTools = (root: string, write: WriteNote) => (pi: ExtensionAPI) 
 		name: "note_edit",
 		label: "Edit note",
 		description:
-			"Make precise edits to one note by exact text replacement. Notes are edited with this rather than with edit, so that what you write is kept as yours and the person can see it, accept it, or put it back.",
-		promptSnippet: "Make precise note edits with exact text replacement, including multiple disjoint edits in one call",
-		promptGuidelines: [
-			"Use note_edit, not edit, for any markdown note in this folder; edit and write are refused on notes.",
-			"edits[].oldText must match the note exactly and be unique in it. Keep it as small as it can be while staying unique.",
-			"When changing several separate places in one note, send one note_edit call with several entries in edits[].",
+			"Make precise edits to one note by exact text replacement. Any markdown note in this folder is edited with this, not with edit — edit and write are refused on notes — so that what you write is kept as yours and the person can see it, accept it, or put it back. " +
+			"edits[].oldText must match the note exactly and be unique in it. Keep it as small as it can be while staying unique. " +
+			"When changing several separate places in one note, send one note_edit call with several entries in edits[]. " +
 			"Each edits[].oldText is matched against the note as it is now, not after earlier edits are applied. Do not send overlapping edits.",
-		],
 		parameters: editSchema,
 		prepareArguments: (args) => prepareEdits(args) as Static<typeof editSchema>,
 		execute: async (_id, params, _signal, _onUpdate, ctx) => {
@@ -269,14 +265,10 @@ export const noteTools = (root: string, write: WriteNote) => (pi: ExtensionAPI) 
 		name: "note_properties",
 		label: "Note properties",
 		description:
-			"Set or remove the properties at the top of one note — its tags, its dates, whatever it is filed by. Properties are changed with this rather than by editing the note's text, so that the block stays readable and the note keeps its place in the index.",
-		promptSnippet: "Set or remove a note's properties without touching its text",
-		promptGuidelines: [
-			"Use note_properties for anything in the `---` block at the top of a note; note_edit is refused there while the block can be read.",
-			"Read the note first: set[].value replaces what is there, so a list must be sent whole — the values it should end up with, not the one being added.",
-			"Set a property to null to leave it empty; put its name in remove[] to take it out of the note altogether.",
+			"Set or remove the properties at the top of one note — its tags, its dates, whatever it is filed by. Properties are changed with this rather than by editing the note's text, so that the block stays readable and the note keeps its place in the index; note_edit is refused in the `---` block while it can be read. " +
+			"Read the note first: set[].value replaces what is there, so a list must be sent whole — the values it should end up with, not the one being added. " +
+			"Set a property to null to leave it empty; put its name in remove[] to take it out of the note altogether. " +
 			"Several properties in one call, not one call each: the person sees one change to accept.",
-		],
 		parameters: propertiesSchema,
 		execute: async (_id, params, _signal, _onUpdate, ctx) => {
 			const { path, had } = open(params.path);
@@ -294,9 +286,9 @@ export const noteTools = (root: string, write: WriteNote) => (pi: ExtensionAPI) 
 	pi.registerTool({
 		name: "note_write",
 		label: "Write note",
-		description: "Make a new note, or replace one completely. Notes are written with this rather than with write, so that what you write is kept as yours.",
-		promptSnippet: "Create or overwrite notes",
-		promptGuidelines: ["Use note_write only for a new note or a complete rewrite; use note_edit to change part of one."],
+		description:
+			"Make a new note, or replace one completely. Notes are written with this rather than with write, so that what you write is kept as yours. " +
+			"Only for a new note or a complete rewrite; use note_edit to change part of one.",
 		parameters: writeSchema,
 		execute: async (_id, params, _signal, _onUpdate, ctx) => {
 			const { path, had } = open(params.path);

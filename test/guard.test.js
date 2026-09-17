@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { VAULT_PROMPT, guard, looking, mentionsAppDir, underAppDir } from "../guard.ts";
+import { OCTAVE_PROMPT, VAULT_PROMPT, guard, looking, mentionsAppDir, underAppDir } from "../guard.ts";
 
 test("앱 폴더 아래의 경로는 상대든 절대든 잡힌다", () => {
   assert.equal(underAppDir("/v", ".pi/history/a.md.jsonl"), true);
@@ -26,6 +26,10 @@ test("셸 명령에서 .pi를 건드리는 것은 잡히고, 닮은 것은 안 �
   assert.equal(mentionsAppDir("cat .pixel.md"), false);
   assert.equal(mentionsAppDir("pip install x"), false);
   assert.equal(mentionsAppDir("echo api"), false);
+});
+
+test("에이전트가 누구인지 말하는 프롬프트는 되묻는 도구를 이름으로 부른다", () => {
+  assert.match(OCTAVE_PROMPT, /\bask_user\b/);
 });
 
 test("프롬프트는 노트 폴더임과 .pi 금지와 경로로 가리키기를 말한다", () => {

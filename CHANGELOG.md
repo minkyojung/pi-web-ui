@@ -50,6 +50,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - The model the agent will answer with sits in the row under the message box with no rim or floor of its own, and how hard it thinks sits a shade quieter beside its name — the two used to be the same grey.
 - On a Mac the agent is no longer offered PowerShell, which is not there to run: a call to it could only fail. It is gone from the tool menu too.
 - Opening another note or choosing other words before you ask no longer makes the provider read the whole conversation afresh: what was said before stays cached, so a reply in a long conversation starts sooner and costs less.
+- The agent is told it is someone you think with and who gets things done for you, rather than a programmer: when you are thinking something through it thinks with you and asks, when you want something done it does it and says what it did, and a change you did not ask for it suggests instead of making. A SYSTEM.md you gave pi still takes the place of this.
 
 ### Added
 - Pressing a folder in the path above a note shows what is in it — the notes beside the one you are reading, and the folders inside it — and picking one opens it, without a trip to the list on the left. Type to narrow it; the last item still shows the folder on the left.
