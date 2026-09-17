@@ -8,6 +8,19 @@ who wrote which words is kept beside them. pi is not an assistant off to the
 side — it is the other person at the table, and the column is its seat. It
 collapses with `⌘\` so it can be ignored.
 
+## The name
+
+The same note, in two voices. An octave is one note sounded at two heights: the
+ratio is exactly two to one, so the ear takes it for a single sound, and yet
+there are still two voices and it is always known which is which. That is the
+page here — it reads as one piece of writing, and every word of it still has
+its author. The lower voice carries the tune: what pi writes stays a suggestion
+until the person keeps it.
+
+It is a word from poetry as well. The octave is the first eight lines of a
+sonnet, the part that sets the question; then comes the volta — the turn — and
+the rest answers. You write, the turn passes, pi answers.
+
 ## Run
 
 ```bash
