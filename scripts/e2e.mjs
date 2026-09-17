@@ -1086,7 +1086,7 @@ check("the note's menu says who wrote what, and the marks ride the words under t
 	await app.click("#editor .cm-by-pi");
 	await until("the card", () => app.evaluate("!!document.querySelector('[data-slot=popover-content]')"));
 	const card = await app.evaluate("document.querySelector('[data-slot=popover-content]').textContent");
-	assert.match(card, /^pi/, "who wrote it");
+	assert.match(card, /^The agent/, "who wrote it — in the word the window uses for it");
 	assert.ok(card.includes("−ours") && card.includes("+pi's"), `the old over the new: ${card}`);
 	assert.equal(card.includes("Undo"), false, "it says, and does not do: deciding is the diff's");
 	await app.press("Escape");
