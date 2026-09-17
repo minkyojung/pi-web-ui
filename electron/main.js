@@ -15,6 +15,8 @@ import { fileURLToPath } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
 import updater from "electron-updater";
 
+import { reportUrl } from "./report.js";
+
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
 const { autoUpdater } = updater;
@@ -334,6 +336,22 @@ function serveFolders() {
 	ipcMain.handle("file:reveal", (_event, path) => shell.showItemInFolder(path));
 }
 
+/** Where the server writes its log — log.ts says the same, from the same two places. */
+const logPath = () => join(process.env.APP_DIR ?? join(app.getPath("home"), ".octave"), "logs", "server.log");
+
+/** The log chosen in the Finder, or its folder — made if need be — when there is no log yet. */
+function showLog() {
+	const log = logPath();
+	if (existsSync(log)) return shell.showItemInFolder(log);
+	mkdirSync(join(log, ".."), { recursive: true });
+	shell.openPath(join(log, ".."));
+}
+
+function reportProblem() {
+	showLog();
+	shell.openExternal(reportUrl({ version: app.getVersion(), macos: process.getSystemVersion(), arch: process.arch }));
+}
+
 function buildMenu(workdir) {
 	// A custom menu replaces the default one entirely, so the standard roles have
 	// to be listed or the window loses copy, paste and the developer tools.
@@ -367,6 +385,16 @@ function buildMenu(workdir) {
 			// The standard window menu less Close: ⌘W is the page's, for the tab in
 			// front, and a menu accelerator would take it before the page heard it.
 			{ role: "window", submenu: [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { role: "front" }] },
+			// Two things at once, since a report wants both: the folder the log is
+			// in, to drag from, and the form to drag it into. The app sends nothing
+			// itself — see report.js.
+			{
+				role: "help",
+				submenu: [
+					{ label: "Report a Problem…", click: reportProblem },
+					{ label: "Show Log in Finder", click: showLog },
+				],
+			},
 		]),
 	);
 }
