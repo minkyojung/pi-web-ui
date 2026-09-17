@@ -2571,7 +2571,15 @@ check("the loadout screen keeps a model pi does not offer, and shows a change an
 		const section = await until("the Loadout section", () =>
 			app.evaluate("(() => { const i = [...document.querySelectorAll('[role=dialog] nav button')].findIndex((x) => x.textContent === 'Loadout'); return i < 0 ? null : String(i); })()"),
 		);
-		await app.click("[role=dialog] nav button", Number(section));
+		// Pressed until it takes. The dialog grows into place as it opens, and on a
+		// slow machine a button measured partway there is somewhere else by the
+		// time the press lands: twice today GitHub's runner left this on Accounts,
+		// the section the dialog opens on, and the check waited for a list that
+		// was never on screen. Pressing the section it is already on does nothing.
+		await until("the Loadout section in front", async () => {
+			await app.click("[role=dialog] nav button", Number(section));
+			return app.evaluate("/Reading the models|could not read the models/.test(document.querySelector('[role=dialog]')?.innerText ?? '') || !!document.querySelector('[role=dialog] ol')");
+		});
 		// Says what the list held when it gives up: this one has failed on GitHub's
 		// runner, one run in three, and "timed out" is all it had to say for itself.
 		await until("the missing model in its place", async () => {
