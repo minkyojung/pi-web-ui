@@ -151,8 +151,8 @@ const availableModels = () => modelRuntime.getAvailableSnapshot();
  */
 /**
  * The note open in the editor of the tab that last sent a prompt, and the
- * words chosen in it, given to pi for the turn as lines of the system prompt
- * — see guard.ts. One value, not one per tab: pi has one conversation.
+ * words chosen in it, given to pi beside the prompt as a hidden message — see
+ * guard.ts. One value, not one per tab: pi has one conversation.
  */
 let openNote: { path: string; chosen: string | null } | null = null;
 
