@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { PencilIcon, TextQuoteIcon, X } from "lucide-react";
+import { ListPlusIcon, PencilIcon, SquareIcon, TextQuoteIcon, X } from "lucide-react";
 
 import { imagesOf } from "../attachments";
 import { type Chosen as ChosenWords, chosenStore } from "../chosen";
@@ -15,6 +15,8 @@ import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { InputGroupButton } from "./ui/input-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { type Suggestion, SuggestMenu } from "./SuggestMenu";
 import { ContextCard } from "./ContextCard";
 import { ModelPicker } from "./ModelPicker";
@@ -267,12 +269,29 @@ export function Composer({ note }: { note: string | null }) {
 		restoredStore.set(null);
 	}, [restored]);
 
+	const submitButton = (
+		// Sends whatever pi is doing. Mid-run the message joins the queue — the
+		// same thing Enter does — and the icon says which of the two it will be.
+		// Holding the key that steers while clicking steers, as it does on Enter;
+		// the ref is read by the form's submit. The icon is given as a child, and
+		// undefined rather than false so the component falls back to its own.
+		<PromptInputSubmit
+			disabled={!online}
+			status="ready"
+			onClick={(e) => {
+				if (streaming && (e.metaKey || e.ctrlKey)) steering.current = true;
+			}}
+		>
+			{streaming ? <ListPlusIcon className="size-4" /> : undefined}
+		</PromptInputSubmit>
+	);
+
 	return (
 		// The footer's controls give up their words as the panel narrows, and
 		// what they have to fit in is this box — not the window, which pi's
 		// column is only a draggable share of. So the measure is a container
 		// query, taken here, where the width the footer actually gets is
-		// settled. See ToolModes and the hint below for what goes first.
+		// settled. See ToolModes for what goes first.
 		<div className="@container/composer p-3">
 			<QueuedMessages />
 			<AskingAgain />
@@ -327,6 +346,26 @@ export function Composer({ note }: { note: string | null }) {
 				</PromptInputBody>
 				<PromptInputFooter>
 					<PromptInputTools>
+						{/* Stopping has a button of its own, on the side of the row nothing
+						    is sent from. The one button that sent and stopped by turns
+						    meant the same place under the cursor did opposite things
+						    depending on what pi happened to be doing. */}
+						{streaming && (
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<InputGroupButton
+										variant="ghost"
+										size="icon-sm"
+										className="size-7"
+										aria-label="Stop"
+										onClick={() => send({ type: "abort" })}
+									>
+										<SquareIcon className="size-3.5" />
+									</InputGroupButton>
+								</TooltipTrigger>
+								<TooltipContent side="top">Stop the run — what pi has already done stays</TooltipContent>
+							</Tooltip>
+						)}
 						{/* Chosen per message, so it sits with the message. */}
 						{config && (
 							<>
@@ -363,17 +402,7 @@ export function Composer({ note }: { note: string | null }) {
 							>
 								pi is waiting for your answer above
 							</span>
-						) : (
-							streaming && (
-								// Two keys, said once while they are useful. It is the least
-								// of what is on this row — the keys work whether or not it
-								// is drawn — so it is the first thing a narrow panel drops,
-								// before any control gives up its word.
-								<span className="px-1 text-xs text-muted-foreground @max-[480px]/composer:hidden">
-									Enter to queue · {MOD}↵ to steer
-								</span>
-							)
-						)}
+						) : null}
 					</PromptInputTools>
 					{/* Never shrunk. Without this the row's only flexible item is this
 					    one, and its children — which are not flexible — get squeezed out
@@ -386,13 +415,21 @@ export function Composer({ note }: { note: string | null }) {
 						<span className="flex @max-[160px]/composer:hidden">
 							<ContextCard />
 						</span>
-						{/* Becomes a stop button while a run streams, which is where the
-						    settings bar's own stop button went. */}
-						<PromptInputSubmit
-							disabled={!online}
-							status={streaming ? "streaming" : "ready"}
-							onStop={() => send({ type: "abort" })}
-						/>
+						{/* What the two keys do is said on the button they are an
+						    alternative to, and only while a run makes them mean anything.
+						    It used to be a line of words on the left of this row, which
+						    explained a button at the other end of it and took the width a
+						    narrow panel needed for the controls. */}
+						{streaming ? (
+							<Tooltip>
+								<TooltipTrigger asChild>{submitButton}</TooltipTrigger>
+								<TooltipContent side="top">
+									Joins the queue — pi takes it when this run ends. {MOD}↵ sends it now and cuts the run short.
+								</TooltipContent>
+							</Tooltip>
+						) : (
+							submitButton
+						)}
 					</span>
 				</PromptInputFooter>
 			</PromptInput>

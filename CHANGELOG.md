@@ -12,6 +12,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 
 ### Changed
+- While pi is working, the button you send with is still there and still sends: the message waits in the queue until the run ends, which is what Enter always did. Hold ⌘ as you press it — or press ⌘↵ — and it cuts the run short instead. Stopping the run is a button of its own now, at the left of the row under the box. Hovering either button says what it will do, so the row no longer carries a line of keyboard hints.
 - Once pi has answered, the steps it took getting there — what it thought, which tools it reached for — fold into one line saying how many tools it used and how many times it went out and came back, and whether any of it failed. Click the line to read the steps again. While pi is still working they stay open, so you can watch.
 - The path above a note stays one short line however deep the note is or how long its folders are named: the outermost folder, a "…" for anything between, and the folder it is in, each cut to a width with the whole name on hover. Clicking "…" lists the folders it stands for.
 - Settings, skills or a SYSTEM.md in the note folder's own `.pi/` are read by pi only if pi's terminal was told to trust the folder; until then the context card says they were left out. Before, they were read without asking.
@@ -29,7 +30,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - The note's text is a point larger, 16px instead of 15px.
 - pi's conversation sits on a panel of its own beside the note, inset from the note's page on every side — a shade lighter than the note in the dark themes, a shade darker in the light ones — so where the writing stops and the conversation starts is plain to see.
 - The notes in the sidebar are a quieter grey until you point at one or open it, so the note you are in is the one that stands out.
-- Narrowing pi's column no longer leaves the row under the message box overlapping itself. It gives things up in order instead: the keyboard hint first, then the tool mode's name — its icon stays, and the tooltip still says which mode — then the model's name shortens, and last of all the context ring. Everything comes back as you widen it.
+- Narrowing pi's column no longer leaves the row under the message box overlapping itself. It gives things up in order instead: the tool mode's name first — its icon stays, and the tooltip still says which mode — then the model's name shortens, and last of all the context ring. Everything comes back as you widen it.
 - The model pi will answer with has a rim and a floor of its own under the message box, so the choice you make most often is the one the row points at, and how hard it thinks sits a shade quieter beside its name — the two used to be the same grey.
 
 ### Added
