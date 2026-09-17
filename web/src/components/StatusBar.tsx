@@ -70,7 +70,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
  */
 function Item({ onClick, title, children }: { onClick?: () => void; title?: string; children: React.ReactNode }) {
 	return (
-		<Button variant="ghost" size="sm" className="cursor-default text-xs font-normal" title={title} onClick={onClick}>
+		<Button variant="ghost" size="sm" className="cursor-default px-1.5 text-xs font-normal" title={title} onClick={onClick}>
 			{children}
 		</Button>
 	);
@@ -138,7 +138,7 @@ function Related({
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				{trigger ?? (
-					<Button variant="ghost" size="sm" className="cursor-default text-xs font-normal" data-count={notes.length}>
+					<Button variant="ghost" size="sm" className="cursor-default px-1.5 text-xs font-normal" data-count={notes.length}>
 						{notes.length} {what}
 					</Button>
 				)}
@@ -222,7 +222,7 @@ function Tag({ name, notes, onOpen }: { name: string; notes: Tagged[]; onOpen?: 
 			notes={notes}
 			onOpen={onOpen}
 			trigger={
-				<Button variant="ghost" size="sm" className="shrink-0 cursor-default text-xs font-normal" data-tag={name} title={`${notes.length} other ${notes.length === 1 ? "note has" : "notes have"} #${name}`}>
+				<Button variant="ghost" size="sm" className="shrink-0 cursor-default px-1.5 text-xs font-normal" data-tag={name} title={`${notes.length} other ${notes.length === 1 ? "note has" : "notes have"} #${name}`}>
 					#{name}
 				</Button>
 			}
