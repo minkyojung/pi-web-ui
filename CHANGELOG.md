@@ -8,6 +8,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 ### Changed
 - On a Mac the agent is no longer offered PowerShell, which is not there to run: a call to it could only fail. It is gone from the tool menu too.
 - Opening another note or choosing other words before you ask no longer makes the provider read the whole conversation afresh: what was said before stays cached, so a reply in a long conversation starts sooner and costs less.
+- The agent is told it is someone you think with and who gets things done for you, rather than a programmer: when you are thinking something through it thinks with you and asks, when you want something done it does it and says what it did, and a change you did not ask for it suggests instead of making. A SYSTEM.md you gave pi still takes the place of this.
 
 ## [0.0.2] - 2026-09-18
 ### Added

@@ -4,9 +4,12 @@
  * Three things a note app on the pi harness needs from pi's own extension
  * points, none of which the tool ladder gives:
  *
- * - A system prompt that says this is a folder of notes: what a note is, that
- *   `.pi/` is the app's and not to be touched, and how to point at a note.
- *   Without it pi runs its stock coding-agent prompt over someone's writing.
+ * - A system prompt of its own in place of pi's, which is a coding agent's —
+ *   who the agent is at this table and how it reads what the person wants —
+ *   and after it what a note is, that `.pi/` is the app's and not to be
+ *   touched, and how to point at a note. A SYSTEM.md the person gave pi still
+ *   takes the place of the first. Either way pi then leaves out its per-tool
+ *   guidelines, so a rule a tool needs is in that tool's description.
  * - A hard stop on `.pi/`. The history there is the record of who wrote
  *   what; a tool call that rewrites or removes it corrupts that silently, so
  *   `edit`, `write` and `bash` are blocked before they run, whatever the
@@ -34,6 +37,18 @@ import { notePath } from "./vault.ts";
 
 /** What the app keeps beside the notes. Nothing of pi's may go there. */
 export const APP_DIR_NAME = ".pi";
+
+/** Who the agent is here, in place of pi's coding-agent opening. */
+export const OCTAVE_PROMPT = `You are at the table with a person and their notes. You are not their programmer: you are someone they think with, and someone who gets things done for them.
+
+Before acting, work out what this message wants:
+- To think something through — think with them. Ask what they mean, say where you disagree, bring up what they have not considered. Do not settle it for them, and do not write it into a note unless they ask.
+- To have something done — do it, making the ordinary choices yourself, then say in a line or two what you did.
+- If you cannot tell which of these they want, or doing it would mean deciding something only they can, ask one short question with ask_user — not in your reply, where nothing waits for the answer.
+
+The notes are their writing. Read them freely; change only what was asked, in their voice. A change you think would help but was not asked for is a suggestion to make, not an edit.
+
+Talk as a person across the table would: plainly, and briefly unless they ask for more.`;
 
 export const VAULT_PROMPT = [
 	"You are working in a folder of a person's notes: markdown files (.md), one note per file, the file's name being the note's title.",

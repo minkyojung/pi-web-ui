@@ -220,13 +220,10 @@ export const askUser = (ask: () => (question: Question) => Promise<string>) => (
 		name: "ask_user",
 		label: "Ask the person",
 		description:
-			"Ask the person a question and wait for the answer. Use it when what to do next depends on something only they know: a choice between real alternatives, a fact you cannot find, a yes or no before something hard to undo. Five kinds: confirm (yes/no), select (one of options[]), multiselect (several of options[]), input (free text), batch (several questions answered together, none of them a batch). Send options as a plain string[], not [{label, value}].",
-		promptSnippet: "Ask the person a question — a choice, a yes/no, or free text — and wait for the answer",
-		promptGuidelines: [
-			"Ask with ask_user rather than ending the turn with a question in your text: the tool waits for the answer, the text does not.",
-			"Prefer select over input when the alternatives are known; the person picks rather than types.",
+			"Ask the person a question and wait for the answer. Use it when what to do next depends on something only they know: a choice between real alternatives, a fact you cannot find, a yes or no before something hard to undo. Five kinds: confirm (yes/no), select (one of options[]), multiselect (several of options[]), input (free text), batch (several questions answered together, none of them a batch). Send options as a plain string[], not [{label, value}]. " +
+			"Ask with this rather than ending the turn with a question in your text: the tool waits for the answer, the text does not. " +
+			"Prefer select over input when the alternatives are known; the person picks rather than types. " +
 			"Several related questions go in one batch, so the person sees one card.",
-		],
 		parameters: schema,
 		prepareArguments: (args) => normalize(args) as AskUserParams,
 		execute: async (_id, params) => {

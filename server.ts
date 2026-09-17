@@ -50,7 +50,7 @@ import { wall } from "./wall.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { watchNotes } from "./watcher.ts";
-import { guard, VAULT_PROMPT } from "./guard.ts";
+import { guard, OCTAVE_PROMPT, VAULT_PROMPT } from "./guard.ts";
 import { renameTarget } from "./naming.ts";
 import { LinkStore, type Touched } from "./linkIndex.ts";
 import { PropertyStore } from "./propertyIndex.ts";
@@ -203,7 +203,9 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 		// Inline rather than a file under .pi/extensions/: that path needs the
 		// project trusted, and the desktop shell's cwd is wherever it was opened.
 		resourceLoaderOptions: {
-			// pi is told this is a folder of notes — see guard.ts.
+			// pi is told who it is here and that this is a folder of notes — see
+			// guard.ts. A SYSTEM.md pi would read takes the place of the first.
+			systemPromptOverride: (base) => base ?? OCTAVE_PROMPT,
 			appendSystemPrompt: [VAULT_PROMPT],
 			extensionFactories: [
 				// The guard first: a blocked call never reaches anything after it.
