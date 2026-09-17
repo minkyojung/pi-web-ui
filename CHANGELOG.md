@@ -15,7 +15,7 @@ The first release. Octave is a notes app for the Mac with an agent that works in
 - Every word keeps its author. A switch shows which words are yours, which the agent wrote, and which arrived from outside Octave; click the agent's words to see which model wrote them and what it was asked. Cut and paste keeps the author with the words.
 - The agent starts careful. A new conversation can read and edit notes but cannot run shell commands or reach the web; Full access and Web access are one step away in the tool menu, and stay where you put them.
 - Sign in inside the app, in Settings → Accounts: a subscription account or an API key, for the provider you choose. Your notes go to that provider when you ask the agent something, and nowhere else.
-- Links between notes, the notes that link here, tags, and properties at the top of a note, in the shapes Obsidian uses — a folder of notes made there opens here as it is. Images inside notes are not shown yet.
+- Links between notes, tags, and properties at the top of a note, in the shapes Obsidian uses — a folder of notes made there opens here as it is. Two things such a folder will miss for now: images inside notes are not shown, and neither is the list of notes that link to the one you are in.
 - Tabs, back and forward, find in a note, find across the folder, open a note by a few letters of its name, and a bin that deleted notes come back from.
 - Conversations are kept, named, and can be forked from any question, cloned, or exported.
 - Light and dark themes.
