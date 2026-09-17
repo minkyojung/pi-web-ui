@@ -47,7 +47,7 @@ export function WhyCard() {
 	}, [why]);
 
 	if (!why || !at) return null;
-	const who = why.author === "pi" ? "pi" : why.author === "outside" ? "Outside this app" : why.author === "before" ? "Before this app" : "You";
+	const who = why.author === "pi" ? "The agent" : why.author === "outside" ? "Outside this app" : why.author === "before" ? "Before this app" : "You";
 	const conversation = sessions.find((s) => s.id === why.session);
 
 	return (

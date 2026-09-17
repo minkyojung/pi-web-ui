@@ -473,7 +473,10 @@ const type = (page, text) =>
  * "" is the honest answer to that rather than a wait that never ends.
  */
 const beside = async (page, id) => {
-	const label = id === "backlinks" ? "linked" : "tagged";
+	// "tagged" is no longer a count of its own. Each tag in the strip opens the
+	// notes that share it — the same list, by the tag it is about — so this
+	// presses the first tag that is a way through and reads what comes up.
+	if (id === "tagged") return besideTag(page);
 	// Already showing: read it rather than press again. This is called from
 	// inside `until`, and a press on an open popover is a press that shuts it —
 	// the wait would then flap between open and closed rather than settle.
@@ -493,6 +496,23 @@ const beside = async (page, id) => {
 	await until(`the ${label} list`, () => page.evaluate(`!!document.querySelector('#${id}')`));
 	return page.evaluate(`document.querySelector('#${id}')?.textContent ?? ''`);
 };
+/**
+ * The notes that share the open note's first tag, from the tag in the strip.
+ *
+ * A tag no other note carries is drawn as a word rather than a button, so
+ * nothing to press is the honest "" — the same answer the count used to give
+ * when there was no count.
+ */
+const besideTag = async (page) => {
+	const open = () => page.evaluate(`document.querySelector('[id^="tag-"]')?.textContent ?? ''`);
+	if (await page.evaluate(`!!document.querySelector('[id^="tag-"]')`)) return open();
+	await page.press("Escape");
+	const pressed = await page.evaluate(`(() => { const b = document.querySelector('#status button[data-tag]'); if (!b) return false; b.click(); return true; })()`);
+	if (!pressed) return "";
+	await until("the tagged list", () => page.evaluate(`!!document.querySelector('[id^="tag-"]')`));
+	return open();
+};
+
 /** Take one of them, which is also how the list is put away. */
 const goBeside = async (page, id, path) => {
 	await beside(page, id);
@@ -501,7 +521,7 @@ const goBeside = async (page, id, path) => {
 /** Nothing is open over the strip. */
 const shut = async (page) => {
 	await page.press("Escape");
-	await until("the list to close", () => page.evaluate("!document.querySelector('#backlinks') && !document.querySelector('#tagged')"));
+	await until("the list to close", () => page.evaluate(`!document.querySelector('#backlinks') && !document.querySelector('[id^="tag-"]')`));
 };
 
 check("a row in the sidebar opens its note in the middle", async ({ app }) => {
@@ -1436,7 +1456,7 @@ check("the notes beside this one are in the strip, behind their counts", async (
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("also #pair"));
 
 	// Nothing of it is drawn in the page any more.
-	assert.equal(await app.evaluate("!!document.querySelector('#note #tagged, #note #backlinks')"), false, "the page holds none of this");
+	assert.equal(await app.evaluate(`!!document.querySelector('#note [id^="tag-"], #note #backlinks')`), false, "the page holds none of this");
 
 	// The counts are in the strip, and the lists are behind them.
 	await until("the note that shares its tag", async () => (await beside(app, "tagged")).includes("foot-a"));
@@ -1461,7 +1481,7 @@ check("the strip at the foot of the window keeps its height, and says whether th
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("one line"));
 	const was = await height();
 	assert.ok(was > 0, "the strip is drawn");
-	assert.ok((await says()).includes("Saved"), "a note that is on disk says so");
+	assert.ok(!(await says()).includes("Saving"), "a note that is on disk says nothing about the disk");
 
 	// A long note, pi put away and brought back, and the window made smaller:
 	// four things that move everything else in the window, and none of them is
@@ -1474,18 +1494,18 @@ check("the strip at the foot of the window keeps its height, and says whether th
 	// rather than taken out of the page, so #chat is still there either way.
 	// What the button says is the one thing that turns over.
 	const pi = (label) => app.evaluate(`(() => { const b = document.querySelector('button[aria-label=${JSON.stringify(label)}]'); if (!b) return false; b.click(); return true; })()`);
-	assert.equal(await pi("Hide pi"), true);
-	await until("pi to be away", () => app.evaluate(`!!document.querySelector('button[aria-label="Show pi"]')`));
+	assert.equal(await pi("Hide the agent"), true);
+	await until("pi to be away", () => app.evaluate(`!!document.querySelector('button[aria-label="Show the agent"]')`));
 	assert.equal(await height(), was, "putting pi away does not move the strip");
-	assert.equal(await pi("Show pi"), true);
-	await until("pi to be back", () => app.evaluate(`!!document.querySelector('button[aria-label="Hide pi"]')`));
+	assert.equal(await pi("Show the agent"), true);
+	await until("pi to be back", () => app.evaluate(`!!document.querySelector('button[aria-label="Hide the agent"]')`));
 	assert.equal(await height(), was, "and bringing it back does not either");
 
 	// Typed and not yet sent, then sent: the strip follows the note to the disk.
 	assert.equal(await type(app, "MORE "), true);
 	await until("the strip to say it is going", async () => (await says()).includes("Saving"));
 	assert.equal(await height(), was, "and neither does a word being typed");
-	await until("the strip to say it has landed", async () => (await says()).includes("Saved"));
+	await until("the strip to go quiet again", async () => !(await says()).includes("Saving"));
 	assert.ok(readFileSync(join(cwd, "strip-long.md"), "utf8").includes("MORE"), "which it had");
 });
 
@@ -1605,7 +1625,7 @@ check("the strip says the note's own tags, from the text and the properties alik
  * (`who_wrote`), and an answer that followed every keystroke would be another
  * feature; one number rides in with the note and with every change to it.
  */
-check("the strip says how much of the note pi wrote, and nothing at all when it is all yours", async ({ app, cwd }) => {
+check("the strip says how much of the note the agent wrote, and nothing at all when it is all yours", async ({ app, cwd }) => {
 	const share = () => app.evaluate("document.getElementById('authored')?.textContent ?? ''");
 
 	// All the person's own — and made through the app, which is the only way to
@@ -1637,8 +1657,8 @@ check("the strip says how much of the note pi wrote, and nothing at all when it 
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("mine and then"));
 
 	// 4 of 19 characters are pi's, which is 21%.
-	await until("pi's share", async () => (await share()).includes("pi "));
-	assert.match(await share(), /pi 21%/, `a share in whole points, and it said: ${await share()}`);
+	await until("the agent's share", async () => (await share()).includes("agent "));
+	assert.match(await share(), /agent 21%/, `a share in whole points, and it said: ${await share()}`);
 	assert.equal(await app.evaluate("document.getElementById('status').getBoundingClientRect().height"), was, "and the strip does not move for it");
 
 	// Typing is the person's own by definition, so their part of it grows: the
@@ -1646,8 +1666,8 @@ check("the strip says how much of the note pi wrote, and nothing at all when it 
 	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); return true; })()`);
 	assert.equal(await type(app, "and a good deal more of my own besides\n"), true);
 	await until("the save to land", async () => (await editorStatus(app)) === "saved");
-	await until("pi's share to fall", async () => {
-		const m = (await share()).match(/pi (\d+)%/);
+	await until("the agent's share to fall", async () => {
+		const m = (await share()).match(/agent (\d+)%/);
 		return m !== null && Number(m[1]) < 21;
 	});
 });
@@ -1738,6 +1758,74 @@ check("the strip reaches the foot of the window, and sits in it the way the tabs
 	assert.ok(
 		Math.abs(feet.item.middle - feet.gear.middle) <= 1,
 		`and what is in them sits on one line: ${Math.round(feet.item.middle - feet.gear.middle)}px between the strip's item and the settings button`,
+	);
+});
+
+/**
+ * The strip is divided where the window is.
+ *
+ * What is in the strip is about two different things — the note on the left,
+ * pi on the right — and a single row of items leaves the reader to find the
+ * seam. The seam is the one already on screen: the divider between the two
+ * columns. So pi's half of the strip is exactly as wide as pi's column, and
+ * the note's half is whatever is left, which is the note's column.
+ *
+ * Nothing in either half is told where the divider is. The half is given the
+ * column's width and the other takes the rest, so the two cannot drift apart —
+ * which is what this check is for: it moves the divider (all the way to
+ * nothing, and back) and asks whether the strip went with it.
+ */
+check("the strip's half for pi is as wide as pi's column, and goes where it goes", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "two-halves.md"), "a note with #halves\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="two-halves.md"]')`));
+	await pickNote(app, "two-halves.md");
+	await until("the note", async () => (await editorStatus(app)) === "saved");
+
+	const laid = () => app.evaluate(`(() => {
+		const of = (id) => { const el = document.getElementById(id); if (!el) return null; const b = el.getBoundingClientRect(); return { left: b.left, right: b.right, width: b.width }; };
+		return { agent: of('agent'), note: of('note-status'), column: of('pi'), strip: of('status') };
+	})()`);
+
+	const first = await laid();
+	assert.ok(first.agent, "the strip has a half for pi");
+	// A pixel of tolerance, and it is spent on a real pixel: the columns are
+	// laid inside the card's rim and the strip is not.
+	assert.ok(
+		Math.abs(first.agent.left - first.column.left) <= 1,
+		`pi's half begins where pi's column does, and began ${Math.round(first.agent.left - first.column.left)}px off`,
+	);
+	assert.ok(
+		Math.abs(first.note.right - first.agent.left) <= 1,
+		`the note's half ends where pi's begins, and ended ${Math.round(first.note.right - first.agent.left)}px off`,
+	);
+	assert.ok(first.note.left < first.agent.left, "and it is the half on the left");
+
+	// Folded away, pi's column has no width to be as wide as — and this is the
+	// one thing in the strip that does not go with it. What pi is doing is
+	// exactly what there is no other way to see once the column is away, so the
+	// half stays, takes only what it needs, and keeps the window's edge.
+	const fold = (label) => app.evaluate(`(() => { const b = document.querySelector('button[aria-label=${JSON.stringify(label)}]'); if (!b) return false; b.click(); return true; })()`);
+	assert.equal(await fold("Hide the agent"), true);
+	await until("pi to be away", () => app.evaluate(`!!document.querySelector('button[aria-label="Show the agent"]')`));
+	await until("the strip to follow it", async () => (await laid()).agent.width < first.agent.width);
+	const away = await laid();
+	assert.ok(
+		Math.abs(away.agent.right - first.agent.right) <= 1,
+		`it keeps the window's edge, and moved ${Math.round(away.agent.right - first.agent.right)}px off it`,
+	);
+	assert.ok(away.note.width > first.note.width, "and the note's half has the rest of the strip");
+
+	assert.equal(await fold("Show the agent"), true);
+	await until("pi to be back", () => app.evaluate(`!!document.querySelector('button[aria-label="Hide the agent"]')`));
+	await until("the strip to follow it back", async () => (await laid()).agent.width > away.agent.width);
+	const again = await laid();
+	assert.ok(
+		Math.abs(again.agent.left - again.column.left) <= 1,
+		`pi's half is back under pi's column, ${Math.round(again.agent.left - again.column.left)}px off`,
+	);
+	assert.ok(
+		Math.abs(again.agent.width - first.agent.width) <= 1,
+		`and is the width it was: ${Math.round(again.agent.width)}px against ${Math.round(first.agent.width)}px`,
 	);
 });
 

@@ -484,8 +484,12 @@ from: a module that takes something at module scope either gives all of it back
 in `hot.dispose`, or refuses the swap. Half a teardown is worse than none,
 because it looks handled.
 
-The controls sit with the message they apply to, under the composer, since all
-three are chosen per message:
+The model and the thinking level sit with the message they apply to, under the
+composer, because they are chosen per message. What pi may reach for is not —
+it takes effect at the next turn and holds until it is changed again — so the
+tool mode is in the strip at the foot of the window, in the half of it that is
+as wide as pi's own column, beside the ring that says how full the context is
+and the step a run is on:
 
 - **Model** — any model with usable credentials, grouped by provider. pi decides
   which by reading each provider's credential, and leaves out without a word any

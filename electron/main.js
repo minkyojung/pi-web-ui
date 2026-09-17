@@ -75,7 +75,7 @@ function writeSettings(next) {
 async function askForWorkdir(current) {
 	const { canceled, filePaths } = await dialog.showOpenDialog({
 		title: "Choose a working folder",
-		message: "The folder pi will read and write files in.",
+		message: "The folder the agent will read and write files in.",
 		buttonLabel: "Use this folder",
 		defaultPath: current ?? app.getPath("home"),
 		properties: ["openDirectory", "createDirectory"],
@@ -150,7 +150,7 @@ function startServer(port, workdir) {
 		child = null;
 		if (exiting) return;
 		dialog.showErrorBox(
-			"The pi server stopped",
+			"The server stopped",
 			serverErrors.length ? serverErrors.join("\n") : `Exit code ${code}. Check the terminal output.`,
 		);
 		app.quit();
@@ -442,7 +442,7 @@ async function main() {
 	window.on("closed", () => cancel.abort());
 	if (!(await waitForServer(url, cancel.signal))) {
 		if (!cancel.signal.aborted) {
-			dialog.showErrorBox("The pi server did not answer", `${url} did not come up within 30 seconds.`);
+			dialog.showErrorBox("The server did not answer", `${url} did not come up within 30 seconds.`);
 			app.quit();
 		}
 		return;

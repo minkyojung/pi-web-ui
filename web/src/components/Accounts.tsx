@@ -142,7 +142,7 @@ function Row({ provider, busy }: { provider: ProviderInfo; busy: boolean }) {
 		);
 	} else if (signedIn) {
 		status = (
-			<Badge variant="outline" className="gap-1 font-mono text-[11px] text-muted-foreground" title="Set outside the app; pi reads it from the environment.">
+			<Badge variant="outline" className="gap-1 font-mono text-[11px] text-muted-foreground" title="Set outside the app; the agent reads it from the environment.">
 				<KeyRoundIcon className="size-3" /> {signedIn.source}
 			</Badge>
 		);
@@ -221,7 +221,7 @@ function SignIn({ login, name }: { login: LoginState; name: string }) {
 					{prompt && <Ask prompt={prompt} />}
 					{!prompt && !done && (
 						<p className="flex items-center gap-2 text-muted-foreground">
-							<Spinner className="size-3" /> Waiting for pi…
+							<Spinner className="size-3" /> Waiting for the agent…
 						</p>
 					)}
 				</div>

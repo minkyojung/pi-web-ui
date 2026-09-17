@@ -28,6 +28,9 @@
  * Right is how it stands right now — how much of it there is, whether it has
  * reached the disk. That is the order every status bar uses, and it is worth
  * keeping: the left changes when you file something, the right while you type.
+ *
+ * All of that is the note's half, which is as wide as the note's column. What
+ * pi has to say for itself is the other half, under pi — see AgentStatus.
  */
 import { useSyncExternalStore, useState } from "react";
 
@@ -36,6 +39,7 @@ import type { Authored } from "../../../protocol.ts";
 import { backlinksStore, taggedStore } from "../serverState";
 import { titleOf } from "../noteSync";
 import type { Backlink, Tagged } from "../types";
+import { AgentStatus } from "./AgentStatus";
 import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
@@ -78,6 +82,12 @@ function Item({ onClick, title, children }: { onClick?: () => void; title?: stri
  * Nothing while it is still arriving: a bar that says "Opening…" for the
  * tenth of a second a note takes to come is a flicker, not an answer.
  *
+ * Nothing once it is there, either. A note is on disk almost always, and a word
+ * that is drawn almost always is read as part of the strip rather than as
+ * something the strip is saying — which leaves nothing louder for the moment it
+ * is not true. VS Code and Zed say nothing for a saved file too; the row of
+ * tabs is where a file that is behind says so, and this window has one.
+ *
  * "Saving" rather than "Unsaved" for work that has been typed and not yet
  * sent. It is a second away and nobody has to do anything about it, and the
  * word for a thing in hand should not be the word for a thing gone wrong —
@@ -88,7 +98,7 @@ const COUNTING = "status-counting";
 
 const words: Record<Saved, string | null> = {
 	loading: null,
-	saved: "Saved",
+	saved: null,
 	unsaved: "Saving",
 	conflict: "Not saved",
 	gone: "Not on disk",
@@ -178,15 +188,15 @@ function Related({
  * client is not the same note as one a quarter written by pi, and rolling them
  * together into "not yours" would lose the only part anybody acts on.
  */
-function share(of: Authored): { pi: string | null; other: string | null; title: string } | null {
+function share(of: Authored): { agent: string | null; other: string | null; title: string } | null {
 	if (of.total === 0 || (of.pi === 0 && of.other === 0)) return null;
 	const cut = (n: number) => (n === 0 ? null : `${Math.min(99, Math.max(1, Math.round((n / of.total) * 100)))}%`);
-	const pi = cut(of.pi);
+	const agent = cut(of.pi);
 	const other = cut(of.other);
 	return {
-		pi,
+		agent,
 		other,
-		title: [pi && `pi wrote ${pi} of this note`, other && `${other} was written outside Octave`].filter(Boolean).join(" · "),
+		title: [agent && `the agent wrote ${agent} of this note`, other && `${other} was written outside Octave`].filter(Boolean).join(" · "),
 	};
 }
 
@@ -220,7 +230,7 @@ function Tag({ name, notes, onOpen }: { name: string; notes: Tagged[]; onOpen?: 
 	);
 }
 
-export function StatusBar({ path, onOpen }: { path: string | null; onOpen?: (path: string) => void }) {
+export function StatusBar({ path, onOpen, piWidth, piFolded }: { path: string | null; onOpen?: (path: string) => void; piWidth: number | null; piFolded: boolean }) {
 	const front = useSyncExternalStore(inFrontStore.subscribe, inFrontStore.get);
 	const backlinks = useSyncExternalStore(backlinksStore.subscribe, backlinksStore.get);
 	const tagged = useSyncExternalStore(taggedStore.subscribe, taggedStore.get);
@@ -257,41 +267,48 @@ export function StatusBar({ path, onOpen }: { path: string | null; onOpen?: (pat
 	const shares = path ? (tagged[path] ?? []) : [];
 
 	return (
-		<div id="status" className="flex h-11 shrink-0 items-center gap-0.5 px-2 text-xs text-muted-foreground">
-			{/* Truncated rather than wrapped or counted off as `+3`. A note with
-			    twenty tags is rare and a strip that changed height for it would
-			    undo the whole of this; clipping the end keeps the rule where it
-			    is and says how many there are by saying nothing about the rest. */}
-			<div id="tags" className="flex min-w-0 items-center gap-0.5 overflow-hidden">
-				{note?.tags.map((tag) => (
-					<Tag key={tag} name={tag} notes={shares.filter((other) => other.tags.includes(tag))} onOpen={onOpen} />
-				))}
-			</div>
-			{hand && (
-				<span id="authored" className="px-1.5" title={hand.title} data-pi={hand.pi ?? undefined} data-other={hand.other ?? undefined}>
-					{hand.pi && <span>pi {hand.pi}</span>}
-					{hand.pi && hand.other && " · "}
-					{hand.other && <span>outside {hand.other}</span>}
-				</span>
-			)}
-			<Related id="backlinks" what="linked" notes={links} onOpen={onOpen} />
-			<Related id="tagged" what="tagged" notes={shares} onOpen={onOpen} />
-			<div className="flex-1" />
-			{note && (
-				<Item
-					title={counting === "words" ? "Count characters instead" : "Count words instead"}
-					onClick={() => count(counting === "words" ? "characters" : "words")}
-				>
-					<span id="count" data-counting={counting}>
-						{note[counting].toLocaleString()} {counting === "words" ? (note.words === 1 ? "word" : "words") : note.characters === 1 ? "character" : "characters"}
+		<div id="status" className="flex h-11 shrink-0 items-center px-2 text-xs text-muted-foreground">
+			{/* The note's half. It has no width of its own: it is what the strip
+			    has left once pi's half has taken pi's width, which is how the two
+			    halves come to be laid under the two columns without either being
+			    told where the divider is. No gap between them for the same reason
+			    — a gap here would be width that belongs to neither. */}
+			<div id="note-status" className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden">
+				{/* Truncated rather than wrapped or counted off as `+3`. A note with
+				    twenty tags is rare and a strip that changed height for it would
+				    undo the whole of this; clipping the end keeps the rule where it
+				    is and says how many there are by saying nothing about the rest. */}
+				<div id="tags" className="flex min-w-0 items-center gap-0.5 overflow-hidden">
+					{note?.tags.map((tag) => (
+						<Tag key={tag} name={tag} notes={shares.filter((other) => other.tags.includes(tag))} onOpen={onOpen} />
+					))}
+				</div>
+				{hand && (
+					<span id="authored" className="px-1.5" title={hand.title} data-agent={hand.agent ?? undefined} data-other={hand.other ?? undefined}>
+						{hand.agent && <span>agent {hand.agent}</span>}
+						{hand.agent && hand.other && " · "}
+						{hand.other && <span>outside {hand.other}</span>}
 					</span>
-				</Item>
-			)}
-			{note && (
-				<span data-saved={note.saved} className="px-1.5">
-					{words[note.saved]}
-				</span>
-			)}
+				)}
+				<Related id="backlinks" what="linked" notes={links} onOpen={onOpen} />
+				<div className="flex-1" />
+				{note && (
+					<Item
+						title={counting === "words" ? "Count characters instead" : "Count words instead"}
+						onClick={() => count(counting === "words" ? "characters" : "words")}
+					>
+						<span id="count" data-counting={counting}>
+							{note[counting].toLocaleString()} {counting === "words" ? (note.words === 1 ? "word" : "words") : note.characters === 1 ? "character" : "characters"}
+						</span>
+					</Item>
+				)}
+				{note && (
+					<span data-saved={note.saved} className="px-1.5">
+						{words[note.saved]}
+					</span>
+				)}
+			</div>
+			<AgentStatus width={piWidth} folded={piFolded} />
 		</div>
 	);
 }

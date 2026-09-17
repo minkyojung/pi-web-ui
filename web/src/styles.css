@@ -544,3 +544,21 @@
 .cm-scroller::-webkit-scrollbar {
   display: none;
 }
+
+/*
+ * One step of a run replacing the last, in the strip at the foot of the window.
+ *
+ * A line that is only rewritten in place does not read as a new thing having
+ * happened — the words change and the eye, which is on the note and not on the
+ * strip, has nothing to catch. A short rise says a step went by, in about the
+ * time it takes to notice one.
+ *
+ * Applied to a keyed element, so it plays when the step changes and not while
+ * one is merely growing longer: the key is what the line says (AgentStatus).
+ */
+.step-in {
+  animation: step-in 160ms ease-out;
+}
+@keyframes step-in {
+  from { opacity: 0; transform: translateY(2px); }
+}

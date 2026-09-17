@@ -10,7 +10,7 @@ import { acceptMention, matchNotes, mentionQuery } from "../noteMention";
 import { titleOf } from "../noteSync";
 import { appendRestored } from "../queue";
 import { flushSaves } from "../saves";
-import { askingAgainStore, commandsStore, configStore, filesStore, promptsStore, restoredStore } from "../serverState";
+import { askingAgainStore, commandsStore, configStore, filesStore, restoredStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Badge } from "./ui/badge";
@@ -18,10 +18,8 @@ import { Button } from "./ui/button";
 import { InputGroupButton } from "./ui/input-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { type Suggestion, SuggestMenu } from "./SuggestMenu";
-import { ContextCard } from "./ContextCard";
 import { ModelPicker } from "./ModelPicker";
 import { QueuedMessages } from "./QueuedMessages";
-import { ToolModes } from "./ToolModes";
 import {
 	PromptInput,
 	PromptInputBody,
@@ -182,11 +180,9 @@ function Attached() {
  * press. So it is one here too, and only while a run is going.
  */
 export function Composer({ note }: { note: string | null }) {
-	const connection = useSyncExternalStore(subscribe, getConnection);
-	const online = connection === "open";
+	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const streaming = config?.isStreaming ?? false;
-	const asking = useSyncExternalStore(promptsStore.subscribe, promptsStore.get).length > 0;
 	// What the editor points at, unless this one has been dropped with the ×.
 	const chosen = useSyncExternalStore(chosenStore.subscribe, chosenStore.get);
 	const [dropped, setDropped] = useState<string | null>(null);
@@ -287,11 +283,12 @@ export function Composer({ note }: { note: string | null }) {
 	);
 
 	return (
-		// The footer's controls give up their words as the panel narrows, and
-		// what they have to fit in is this box — not the window, which pi's
-		// column is only a draggable share of. So the measure is a container
-		// query, taken here, where the width the footer actually gets is
-		// settled. See ToolModes for what goes first.
+		// The footer gives up its words as the panel narrows, and what it has to
+		// fit in is this box — not the window, which pi's column is only a
+		// draggable share of. So the measure is a container query, taken here,
+		// where the width the footer actually gets is settled. The strip at the
+		// foot of the window measures itself the same way, for the controls that
+		// used to be along this row.
 		<div className="@container/composer p-3">
 			<QueuedMessages />
 			<AskingAgain />
@@ -311,7 +308,7 @@ export function Composer({ note }: { note: string | null }) {
 					<PromptInputTextarea
 						ref={box}
 						className="min-h-9"
-						placeholder="Message pi"
+						placeholder="Message the agent"
 						disabled={!online}
 						onChange={(e) => {
 							draftStore.set(e.currentTarget.value);
@@ -363,58 +360,33 @@ export function Composer({ note }: { note: string | null }) {
 										<SquareIcon className="size-3.5" />
 									</InputGroupButton>
 								</TooltipTrigger>
-								<TooltipContent side="top">Stop the run — what pi has already done stays</TooltipContent>
+								<TooltipContent side="top">Stop the run — what the agent has already done stays</TooltipContent>
 							</Tooltip>
 						)}
-						{/* Chosen per message, so it sits with the message. */}
+						{/* Chosen per message, so it sits with the message. What pi may
+						    reach for while it answers is not chosen per message and is no
+						    longer here: the tool mode and the context ring are in the
+						    strip at the foot of the window, under pi's own column. */}
 						{config && (
-							<>
-								<ModelPicker
-									model={config.model}
-									models={config.models}
-									notice={config.modelsNotice}
-									disabled={!online}
-								/>
-								<ToolModes
-									tools={config.tools}
-									active={config.activeTools}
-									disabled={!online}
-									onSetTools={(names) => send({ type: "set_tools", names })}
-								/>
-							</>
+							<ModelPicker
+								model={config.model}
+								models={config.models}
+								notice={config.modelsNotice}
+								disabled={!online}
+							/>
 						)}
-						{/* Reconnection is automatic and unattended — a backoff of at most
-						    five seconds, skipped when the network returns or the tab is looked
-						    at again. So this reports, beside the box it disables, and is
-						    careful not to look like it is asking for something. */}
-						{!online ? (
-							<span
-								id="status"
-								className="min-w-0 truncate px-1 text-xs text-amber-600 dark:text-amber-500"
-								title={connection === "connecting" ? "Connecting…" : "Offline — reconnecting automatically"}
-							>
-								{connection === "connecting" ? "Connecting…" : "Offline — reconnecting automatically"}
-							</span>
-						) : asking ? (
-							<span
-								className="min-w-0 truncate px-1 text-xs text-amber-600 dark:text-amber-500"
-								title="pi is waiting for your answer above"
-							>
-								pi is waiting for your answer above
-							</span>
-						) : null}
+						{/* What used to be here, when there was something to say: that the
+						    socket was down, or that the agent was waiting on an answer. Both
+						    are in the strip at the foot of the window now. They were said
+						    beside the box they disable, which was the right place until the
+						    column could be folded away — and the moment you most need to be
+						    told the agent is waiting for you is the moment you have put its
+						    column away and gone back to writing. */}
 					</PromptInputTools>
 					{/* Never shrunk. Without this the row's only flexible item is this
 					    one, and its children — which are not flexible — get squeezed out
 					    of it and drawn over the controls on the left. */}
 					<span className="flex shrink-0 items-center gap-1">
-						{/* The ring is the last thing to go and the only control that
-						    does: it is glanced at rather than used, and the panel it
-						    would be dropped from is one no message is written in. It
-						    comes back with the width. */}
-						<span className="flex @max-[160px]/composer:hidden">
-							<ContextCard />
-						</span>
 						{/* What the two keys do is said on the button they are an
 						    alternative to, and only while a run makes them mean anything.
 						    It used to be a line of words on the left of this row, which
@@ -424,7 +396,7 @@ export function Composer({ note }: { note: string | null }) {
 							<Tooltip>
 								<TooltipTrigger asChild>{submitButton}</TooltipTrigger>
 								<TooltipContent side="top">
-									Joins the queue — pi takes it when this run ends. {MOD}↵ sends it now and cuts the run short.
+									Joins the queue — the agent takes it when this run ends. {MOD}↵ sends it now and cuts the run short.
 								</TooltipContent>
 							</Tooltip>
 						) : (
@@ -437,4 +409,3 @@ export function Composer({ note }: { note: string | null }) {
 		</div>
 	);
 }
-

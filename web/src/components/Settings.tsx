@@ -197,7 +197,7 @@ function Panel({ section }: { section: Section }) {
 
       {section === "Agent" && (
         <>
-          <Heading title="Agent">What pi may do.</Heading>
+          <Heading title="Agent">What the agent may do.</Heading>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="toolMode" className="text-xs text-muted-foreground">
               New sessions open on
@@ -302,10 +302,10 @@ const KEYS: [string, string][] = [
   [`${MOD}⇧F`, "Search the text of every note"],
   [`${MOD}S`, "Save now (typing is saved on its own when it pauses)"],
   [`${MOD}F`, "Find and replace in the note"],
-  [`${MOD}↵`, "Accept pi's words under the cursor"],
-  [`${MOD}⌫`, "Put back what pi replaced under the cursor"],
+  [`${MOD}↵`, "Accept the agent's words under the cursor"],
+  [`${MOD}⌫`, "Put back what the agent replaced under the cursor"],
   [`${MOD}↵ in the message box`, "Steer the run in progress"],
-  [`${MOD}\\`, "Show or hide pi"],
+  [`${MOD}\\`, "Show or hide the agent"],
   [`${MOD},`, "Settings"],
   [`${MOD}⇧D`, "Raw events, for debugging"],
 ];

@@ -6,7 +6,7 @@
  * each card and reading its arguments as JSON.
  *
  * The shapes below are pi 0.84's built-in tool schemas (core/tools/*), plus this
- * project's own `set_gist`. A tool that is not listed, or whose arguments do not
+ * project's own `set_gist` and the three a note is written by. A tool that is not listed, or whose arguments do not
  * look the way they should, returns null and the card keeps the plain tool name
  * it has today: a header is not worth guessing at, and a schema that changes
  * under us should degrade rather than lie.
@@ -40,9 +40,16 @@ function detailOf(name: string, args: Record<string, unknown>): string | null {
 	switch (name) {
 		case "read":
 		case "write":
+		// The app's own three, which are the only tools a note may be written by
+		// (noteEdit.ts). Their shapes are pi's own read/write/edit exactly — that
+		// is why they were given pi's parameter names — so the answers are the
+		// same answers, and a row that says a note was edited says which note.
+		case "note_write":
+		case "note_properties":
 			return shortPath(args.path);
 
-		case "edit": {
+		case "edit":
+		case "note_edit": {
 			const path = shortPath(args.path);
 			if (!path) return null;
 			// One edit is the common case and saying so adds nothing; several is

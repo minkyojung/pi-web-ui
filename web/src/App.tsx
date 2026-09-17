@@ -221,6 +221,10 @@ export function App() {
 	// collapses by drag, by key and by button alike — and reports through
 	// onResize, so the toggle that brings it back can be drawn where it is not.
 	const [piOpen, setPiOpen] = useState(true);
+	// And how wide it is, which the strip along the foot lays its own pi half
+	// out to. The panel reports it in pixels on every change, the window's own
+	// included, so the two stay together while the divider is being dragged.
+	const [piWidth, setPiWidth] = useState<number | null>(null);
 	// The columns' widths, and whether pi is folded away, outlive the window:
 	// the shadcn sidebar keeps its open state in a cookie for the same reason.
 	// Two groups, because the window divides twice and the divisions are not
@@ -610,7 +614,7 @@ export function App() {
 							) : files.length === 0 ? (
 								<div className="max-w-sm text-center leading-relaxed">
 									<p className="text-foreground">This folder has no notes yet.</p>
-									<p className="mt-2">⌘N makes one. pi reads and writes the same files; who wrote which words is kept beside them, in .pi/.</p>
+									<p className="mt-2">⌘N makes one. The agent reads and writes the same files; who wrote which words is kept beside them, in .pi/.</p>
 								</div>
 							) : (
 								<span>No note open · ⌘P to find one · ⌘N for a new one</span>
@@ -627,7 +631,10 @@ export function App() {
 						collapsible
 						collapsedSize="0%"
 						className="flex min-w-0 flex-col"
-						onResize={() => setPiOpen(!pi.current?.isCollapsed())}
+						onResize={(size) => {
+							setPiOpen(!pi.current?.isCollapsed());
+							setPiWidth(size.inPixels);
+						}}
 					>
 						{/* A floor of its own, laid inside the card rather than up
 						    against it: the note is the page, the conversation beside it
@@ -672,7 +679,7 @@ export function App() {
 					    part of the window and reaches its edge, as VS Code's and Zed's
 					    do, and then there is only one place for anything to be centred
 					    in. */}
-					<StatusBar path={open} onOpen={setOpen} />
+					<StatusBar path={open} onOpen={setOpen} piWidth={piWidth} piFolded={!piOpen} />
 				</ResizablePanel>
 			</ResizablePanelGroup>
 			</div>

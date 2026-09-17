@@ -71,7 +71,7 @@ function Grants({ id, web }: { id: ToolModeId | null; web?: boolean }) {
 			{/* Nothing withheld — say so, rather than leaving an absence to read.
 			    The web off is something withheld, whatever the rung says. */}
 			{mode.cannot.length === 0 && web !== false && (
-				<span className="pt-0.5 text-background/60">Every tool pi has.</span>
+				<span className="pt-0.5 text-background/60">Every tool the agent has.</span>
 			)}
 		</div>
 	);
@@ -111,18 +111,21 @@ export function ToolModes({
 							variant="ghost"
 							size="sm"
 							id="tools"
-							className="h-7 gap-1.5 px-2 text-xs"
+							className="cursor-default gap-1.5 text-xs font-normal"
 							disabled={disabled}
 							aria-label={name}
 						>
 							<Icon id={current} />
 							{/* The word goes before anything else in the row does. There
 							    are three modes and each icon names the capability it
-							    unlocks, so the icon can carry it alone — which is not
-							    true of the model beside it, one of fifty names. The
-							    tooltip says it either way, and aria-label above keeps
-							    the button named when the word is gone. */}
-							<span className="@max-[340px]/composer:hidden">{name}</span>
+							    unlocks, so the icon can carry it alone. The tooltip says
+							    it either way, and aria-label above keeps the button named
+							    when the word is gone.
+
+							    The measure is the strip's pi half, which is as wide as
+							    pi's column — so the word goes when the column is too
+							    narrow for it, and comes back when the divider does. */}
+							<span className="@max-[340px]/agent:hidden">{name}</span>
 						</Button>
 					</DropdownMenuTrigger>
 				</TooltipTrigger>

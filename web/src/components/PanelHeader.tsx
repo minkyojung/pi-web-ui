@@ -120,7 +120,7 @@ export function PiToggle({ open, onToggle }: { open: boolean; onToggle: () => vo
 					id="togglePi"
 					variant="ghost"
 					size="icon-xs"
-					aria-label={open ? "Hide pi" : "Show pi"}
+					aria-label={open ? "Hide the agent" : "Show the agent"}
 					aria-pressed={open}
 					className="shrink-0 text-muted-foreground"
 					onClick={onToggle}
@@ -128,7 +128,7 @@ export function PiToggle({ open, onToggle }: { open: boolean; onToggle: () => vo
 					{open ? <PanelRight /> : <PanelRightOpen />}
 				</Button>
 			</TooltipTrigger>
-			<TooltipContent side="bottom">{open ? "Hide pi" : "Show pi"} ⌘\</TooltipContent>
+			<TooltipContent side="bottom">{open ? "Hide the agent" : "Show the agent"} ⌘\</TooltipContent>
 		</Tooltip>
 	);
 }

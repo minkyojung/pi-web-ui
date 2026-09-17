@@ -47,7 +47,10 @@ export function ContextCard() {
 		// to cross the gap between the ring and the card.
 		<HoverCard openDelay={0} closeDelay={150}>
 			<HoverCardTrigger asChild>
-				<Button variant="ghost" size="icon-sm" className="size-7" aria-label="Context usage">
+				{/* No height of its own: it sits in the strip at the foot of the
+				    window, where what a thing is cut to is what says how tall it is
+				    — see the Item in StatusBar.tsx. */}
+				<Button variant="ghost" size="icon-sm" className="cursor-default" aria-label="Context usage">
 					<ContextGauge />
 				</Button>
 			</HoverCardTrigger>
@@ -73,7 +76,7 @@ export function ContextCard() {
 							))}
 						</>
 					) : (
-						<div className="text-xs text-muted-foreground">No estimate yet — pi counts after each response.</div>
+						<div className="text-xs text-muted-foreground">No estimate yet — the agent counts after each response.</div>
 					)}
 				</Section>
 
