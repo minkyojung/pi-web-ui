@@ -48,6 +48,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - The notes in the sidebar are a quieter grey until you point at one or open it, so the note you are in is the one that stands out.
 - Narrowing the agent's column no longer leaves the row under the message box overlapping itself. It gives things up in order instead: the model's name shortens. Everything comes back as you widen it.
 - The model the agent will answer with sits in the row under the message box with no rim or floor of its own, and how hard it thinks sits a shade quieter beside its name — the two used to be the same grey.
+- On a Mac the agent is no longer offered PowerShell, which is not there to run: a call to it could only fail. It is gone from the tool menu too.
 
 ### Added
 - Pressing a folder in the path above a note shows what is in it — the notes beside the one you are reading, and the folders inside it — and picking one opens it, without a trip to the list on the left. Type to narrow it; the last item still shows the folder on the left.
