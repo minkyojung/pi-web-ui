@@ -590,6 +590,18 @@ branch is left by the arrows, the same question pi's `/tree` asks — summarise
 it into the one being joined? — as the card any question is, unless pi's
 `branchSummary.skipPrompt` says not to ask.
 
+Settings › Agent has a "pi" section, and everything in it is pi's own: each
+switch calls a `SettingsManager` setter (`compaction.enabled`, `retry.enabled`,
+`hideThinkingBlock`) or writes pi's own key into pi's `settings.json` and reads
+it back through pi's reload (`branchSummary.skipPrompt`, which pi has no setter
+for), so pi's terminal and this window see one value. Nothing is copied into
+Octave's own settings. What pi has no setter for and does not offer on its own
+screen — the two compaction thresholds — is said beside the switch, not
+offered. Trusting the folder is a switch too: pi's `trust.json`, then
+`setProjectTrusted` and `reload()` on the open session, so the folder's `.pi/`
+is read on the spot. The context card counts what was read in and has pi's
+`/reload` behind a button.
+
 `clear_queue` empties the queue and returns what was in it, so the tab that asked
 can put the text back in its input box. It is all of them at once because that is
 the only queue edit pi has: `clearQueue()` is the whole API, and removing one
