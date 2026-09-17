@@ -300,6 +300,19 @@ function PiSwitches() {
           <p className="text-xs text-muted-foreground">The thinking rows are left out of the conversation; the answers stay.</p>
         </div>
       </div>
+      <div className="flex items-start gap-2">
+        <Checkbox
+          id="askBranchSummary"
+          checked={pi.askBranchSummary}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "branchSummary.skipPrompt", value: v !== true })}
+        />
+        <div className="flex flex-col gap-0.5">
+          <Label htmlFor="askBranchSummary">Ask to summarize when leaving a branch</Label>
+          <p className="text-xs text-muted-foreground">
+            Stepping to another answer with the arrows asks first whether to keep a summary of the one left. Off, it moves without one.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

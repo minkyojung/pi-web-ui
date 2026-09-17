@@ -108,6 +108,31 @@ test("재시도와 thinking 숨김도 같은 길로 간다 — pi의 setter, pi�
   await want("config", (m) => m.pi.retryEnabled === true && m.pi.hideThinkingBlock === false);
 });
 
+test("가지를 떠날 때 물을지는 pi의 파일에 pi의 키로 쓰이고, 카드의 세 번째 답이 그것을 끈다", async () => {
+  const start = await want("config");
+  assert.equal(start.pi.askBranchSummary, true, "pi's default is to ask");
+  // The card comes before the move; its third answer turns the asking off.
+  clear();
+  send({ type: "navigate", entryId: "nowhere" });
+  const card = await want("prompt_request");
+  assert.deepEqual(card.prompt.options, ["No summary", "Summarize", "No summary, don't ask again"]);
+  send({ type: "prompt_response", id: card.prompt.id, answer: "No summary, don't ask again" });
+  await want("config", (m) => m.pi.askBranchSummary === false);
+  assert.equal(piFile().branchSummary.skipPrompt, true, "pi's own key, in pi's own file");
+  // Off, the arrows move without a card: the move itself fails on a made-up
+  // target, which is the error and not a question.
+  clear();
+  send({ type: "navigate", entryId: "nowhere" });
+  await until("an answer", () => inbox.find((m) => m.type === "error" || m.type === "prompt_request"));
+  assert.equal(inbox.some((m) => m.type === "prompt_request"), false, "no card");
+  // And the switch turns it back on.
+  clear();
+  send({ type: "set_setting", setting: "branchSummary.skipPrompt", value: false });
+  await want("config", (m) => m.pi.askBranchSummary === true);
+  assert.equal(piFile().branchSummary.skipPrompt, false);
+  assert.equal(piFile().retry?.enabled ?? true, true, "the other keys in the file are kept");
+});
+
 test("모르는 설정이나 잘못된 값은 아무것도 바꾸지 않는다", async () => {
   clear();
   send({ type: "set_setting", setting: "compaction.enabled", value: "yes" });

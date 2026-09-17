@@ -260,13 +260,17 @@ export interface PiSettings {
 	retryEnabled: boolean;
 	/** Leave the model's thinking out of the conversation; pi's terminal does the same with it. */
 	hideThinkingBlock: boolean;
+	/** Ask, before the arrows leave a branch, whether to summarise it into the one joined. The opposite of pi's branchSummary.skipPrompt. */
+	askBranchSummary: boolean;
 }
 
 /** One of pi's settings, to be written through pi's setter for it. */
 export type PiSetting =
 	| { setting: "compaction.enabled"; value: boolean }
 	| { setting: "retry.enabled"; value: boolean }
-	| { setting: "hideThinkingBlock"; value: boolean };
+	| { setting: "hideThinkingBlock"; value: boolean }
+	/** pi's key and pi's sense: true means no question and no summary. */
+	| { setting: "branchSummary.skipPrompt"; value: boolean };
 
 export interface UsageMsg {
 	type: "usage";

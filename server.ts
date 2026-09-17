@@ -7,7 +7,7 @@
  * server's state and are rebroadcast whenever it changes.
  */
 
-import { existsSync, mkdirSync, watch } from "node:fs";
+import { existsSync, mkdirSync, watch, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -410,7 +410,28 @@ function piSettings(): PiSettings {
 		compaction: m.getCompactionSettings(),
 		retryEnabled: m.getRetryEnabled(),
 		hideThinkingBlock: m.getHideThinkingBlock(),
+		askBranchSummary: !m.getBranchSummarySkipPrompt(),
 	};
+}
+
+/**
+ * The one of pi's settings shown here that pi has no setter for. Written
+ * into pi's own settings.json under pi's own key, then read back through
+ * pi's reload, so pi's copy and the file agree — as they would had pi
+ * written it.
+ */
+async function setBranchSummarySkipPrompt(skip: boolean): Promise<void> {
+	const path = join(getAgentDir(), "settings.json");
+	let all: Record<string, unknown> = {};
+	try {
+		all = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+	} catch {
+		// No file, or not JSON yet: pi starts from nothing too.
+	}
+	const branchSummary = { ...((all.branchSummary as Record<string, unknown> | undefined) ?? {}), skipPrompt: skip };
+	mkdirSync(dirname(path), { recursive: true });
+	writeFileSync(path, `${JSON.stringify({ ...all, branchSummary }, null, 2)}\n`);
+	await session().settingsManager.reload();
 }
 
 /**
@@ -1525,15 +1546,21 @@ wss.on("connection", async (ws) => {
 					// found there is not lost. The same card as any question, and the
 					// same setting as pi's to stop asking (branchSummary.skipPrompt,
 					// which means no summary). Closing the card is not moving.
+					// The third answer is the one a terminal's list has no room for:
+					// it turns the setting off from where the question got tiresome.
 					let summarize = false;
 					if (!session().settingsManager.getBranchSummarySkipPrompt()) {
 						try {
 							const answer = await prompts.ask({
 								type: "select",
-								question: "Summarize the branch you are leaving?",
-								options: ["No summary", "Summarize"],
+								question: "Summarize branch?",
+								options: ["No summary", "Summarize", "No summary, don't ask again"],
 							});
 							summarize = answer === "Summarize";
+							if (answer === "No summary, don't ask again") {
+								await setBranchSummarySkipPrompt(true);
+								broadcast(config());
+							}
 						} catch (err) {
 							if (err instanceof Cancelled) return;
 							throw err;
@@ -1656,6 +1683,10 @@ wss.on("connection", async (ws) => {
 						case "hideThinkingBlock":
 							if (typeof msg.value !== "boolean") return;
 							m.setHideThinkingBlock(msg.value);
+							break;
+						case "branchSummary.skipPrompt":
+							if (typeof msg.value !== "boolean") return;
+							await setBranchSummarySkipPrompt(msg.value);
 							break;
 						default:
 							return;
