@@ -2756,18 +2756,39 @@ async function main() {
 		let failed = 0;
 		const running = chosen();
 		if (only) console.log(`  (only the ${running.length} of ${checks.length} checks whose names hold ${JSON.stringify(only)})`);
+		// A check that fails is run once more before it counts. The suite drives a
+		// real browser with real presses, and on a shared runner a press now and
+		// then lands a frame early — today a different check each run, one or two
+		// in ninety, none of them twice. A second go is what Playwright's
+		// `retries` is for and says the same thing here: red twice is the app or
+		// the check; red then green is the weather, and is said so by name rather
+		// than passed over, so a check that is always on its second try shows.
+		const again = [];
+		const said = (error) => `       ${(error.message ?? error).toString().split("\n").join("\n       ")}`;
 		for (const { name, run } of running) {
 			try {
 				await run({ app: page, bench, cwd, api, devtools });
 				console.log(`  ok  ${name}`);
-			} catch (error) {
-				failed++;
-				console.log(`  FAIL ${name}`);
-				console.log(`       ${(error.message ?? error).toString().split("\n").join("\n       ")}`);
+			} catch (first) {
+				try {
+					await run({ app: page, bench, cwd, api, devtools });
+					again.push(name);
+					console.log(`  ok  ${name}  (on a second try)`);
+					console.log(said(first));
+				} catch (error) {
+					failed++;
+					console.log(`  FAIL ${name}`);
+					console.log(said(error));
+				}
 			}
 		}
 
 		console.log(`\n${running.length - failed}/${running.length} passed`);
+		if (again.length) {
+			console.log(`${again.length} of them on a second try:\n${again.map((name) => `  - ${name}`).join("\n")}`);
+			// Seen on the run's summary page, not only by whoever opens the log.
+			if (process.env.GITHUB_ACTIONS) for (const name of again) console.log(`::warning title=e2e passed on a second try::${name}`);
+		}
 		if (failed) {
 			dump();
 			process.exitCode = 1;
