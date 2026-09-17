@@ -232,6 +232,10 @@ export function App() {
 	// cut again into the note and pi. Each keeps its own widths.
 	const columns = useDefaultLayout({ id: "columns", storage: localStorage, panelIds: ["sidebar", "content"] });
 	const panes = useDefaultLayout({ id: "panes", storage: localStorage, panelIds: ["main", "pi"] });
+	// Opening only, for the folded ring at the foot of the window: it is only
+	// ever pressed with the column away, and a press that could also fold it
+	// would be a guess about which way the column was.
+	const unfoldPi = useCallback(() => pi.current?.expand(), []);
 	const togglePi = useCallback(() => {
 		const panel = pi.current;
 		if (panel) panel.isCollapsed() ? panel.expand() : panel.collapse();
@@ -679,7 +683,7 @@ export function App() {
 					    part of the window and reaches its edge, as VS Code's and Zed's
 					    do, and then there is only one place for anything to be centred
 					    in. */}
-					<StatusBar path={open} onOpen={setOpen} piWidth={piWidth} piFolded={!piOpen} />
+					<StatusBar path={open} onOpen={setOpen} piWidth={piWidth} piFolded={!piOpen} onUnfoldPi={unfoldPi} />
 				</ResizablePanel>
 			</ResizablePanelGroup>
 			</div>

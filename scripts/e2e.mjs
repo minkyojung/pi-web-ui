@@ -210,6 +210,8 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
 		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
 	};
+	/** The pointer over a place and nothing pressed: for what opens on being pointed at. */
+	const moveTo = (x, y) => call("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
 	/** Choosing words with the mouse: press at one end of an element and let go at the other. */
 	const drag = async (selector, nth = 0) => {
 		const box = await evaluate(`(() => { const el = document.querySelectorAll(${JSON.stringify(selector)})[${nth}]; if (!el) return null; const r = el.getBoundingClientRect(); return [r.left + 1, r.top + r.height / 2, r.right - 1]; })()`);
@@ -261,7 +263,7 @@ async function openPage(devtoolsPort, url) {
 	};
 	/** A syllable half typed and left so: the composition is open, nothing committed. */
 	const compose = (text) => call("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length });
-	return { evaluate, shot, errors, click, clickAt, drag, dragTo, press, keys, ime, compose, close: () => socket.close() };
+	return { evaluate, shot, errors, click, clickAt, moveTo, drag, dragTo, press, keys, ime, compose, close: () => socket.close() };
 }
 
 /**
@@ -1801,13 +1803,21 @@ check("the strip's half for pi is as wide as pi's column, and goes where it goes
 	assert.ok(first.note.left < first.agent.left, "and it is the half on the left");
 
 	// Folded away, pi's column has no width to be as wide as — and this is the
-	// one thing in the strip that does not go with it. What pi is doing is
-	// exactly what there is no other way to see once the column is away, so the
-	// half stays, takes only what it needs, and keeps the window's edge.
+	// one thing in the strip that does not go with it. What the agent is doing
+	// is exactly what there is no other way to see once the column is away, so
+	// the half stays: folded into its ring, against the window's edge.
 	const fold = (label) => app.evaluate(`(() => { const b = document.querySelector('button[aria-label=${JSON.stringify(label)}]'); if (!b) return false; b.click(); return true; })()`);
+	const ring = () => app.evaluate(`(() => { const b = document.querySelector('#agent #context-gauge').closest('button').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2, width: b.width }; })()`);
+	// Somewhere in the note, so that wherever the last check left the pointer it
+	// is not left over the ring by chance.
+	const elsewhere = async () => {
+		const at = await app.evaluate(`(() => { const b = document.getElementById('note').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
+		await app.moveTo(at.x, at.y);
+	};
+	await elsewhere();
 	assert.equal(await fold("Hide the agent"), true);
 	await until("pi to be away", () => app.evaluate(`!!document.querySelector('button[aria-label="Show the agent"]')`));
-	await until("the strip to follow it", async () => (await laid()).agent.width < first.agent.width);
+	await until("the half to fold into its ring", async () => Math.abs((await laid()).agent.width - (await ring()).width) <= 1);
 	const away = await laid();
 	assert.ok(
 		Math.abs(away.agent.right - first.agent.right) <= 1,
@@ -1815,9 +1825,26 @@ check("the strip's half for pi is as wide as pi's column, and goes where it goes
 	);
 	assert.ok(away.note.width > first.note.width, "and the note's half has the rest of the strip");
 
-	assert.equal(await fold("Show the agent"), true);
+	// Pointed at, the ring opens out into its words — leftwards, the ring staying
+	// against the edge — and pointed away from, it folds again.
+	const at = await ring();
+	await app.moveTo(at.x, at.y);
+	await until("the ring to open into its words", async () => (await laid()).agent.width > away.agent.width + 40);
+	assert.ok(
+		Math.abs((await laid()).agent.right - away.agent.right) <= 1,
+		"it opens leftwards, and the ring stays where it was",
+	);
+	assert.notEqual(await app.evaluate(`document.getElementById('agentLine')?.textContent ?? ''`), "", "and what it opens into says something");
+	await elsewhere();
+	await until("the ring to fold again", async () => Math.abs((await laid()).agent.width - away.agent.width) <= 1);
+
+	// Pressed, it opens the column: the one thing anybody pointing at the agent
+	// with its column away is about to want.
+	const pressed = await ring();
+	await app.clickAt(pressed.x, pressed.y);
 	await until("pi to be back", () => app.evaluate(`!!document.querySelector('button[aria-label="Hide the agent"]')`));
-	await until("the strip to follow it back", async () => (await laid()).agent.width > away.agent.width);
+	await elsewhere();
+	await until("the strip to follow it back", async () => (await laid()).agent.width > away.agent.width + 40);
 	const again = await laid();
 	assert.ok(
 		Math.abs(again.agent.left - again.column.left) <= 1,

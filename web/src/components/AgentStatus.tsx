@@ -21,11 +21,11 @@
  * said pi was waiting for you in the one place you could not see once pi was
  * folded away.
  */
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { configStore, promptsStore } from "../serverState";
 import { getConnection, getItems, subscribe } from "../store";
-import { agentLine } from "../working";
+import { agentLine, glyphOf, nextUnseen } from "../working";
 import { send } from "../ws";
 import { ContextCard } from "./ContextCard";
 import { ToolModes } from "./ToolModes";
@@ -42,8 +42,11 @@ import { Spinner } from "./ui/spinner";
  *
  * The step is keyed by what it says, so a step that replaces another plays the
  * rise (styles.css) while one that is merely growing longer does not.
+ *
+ * `bare` leaves the spinner out, for when the ring beside it is already
+ * turning: two things going round side by side say one thing twice.
  */
-function Line() {
+function Line({ bare = false }: { bare?: boolean }) {
 	const connection = useSyncExternalStore(subscribe, getConnection);
 	const items = useSyncExternalStore(subscribe, getItems);
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
@@ -76,7 +79,7 @@ function Line() {
 	}
 	return (
 		<span id="agentLine" className="flex min-w-0 items-center gap-1.5 px-1.5">
-			<Spinner className="size-3 shrink-0" />
+			{!bare && <Spinner className="size-3 shrink-0" />}
 			<span key={`${line.what} ${line.detail}`} className="step-in flex min-w-0 items-center gap-1.5">
 				<span className="shrink-0 text-foreground/80">{line.what}</span>
 				{line.detail && <span className="min-w-0 truncate">{line.detail}</span>}
@@ -89,45 +92,116 @@ function Line() {
 	);
 }
 
-export function AgentStatus({ width, folded }: { width: number | null; folded: boolean }) {
+/**
+ * Folded, the half is the ring alone, and the ring says what the line would.
+ *
+ * A phone's status bar does this with signal, network and battery: several
+ * states, one shape, the words a gesture away. Here the gesture is pointing at
+ * the ring or reaching it from the keyboard, and the words open out of it
+ * leftwards, the way the half grew into the strip in the first place. Pressing
+ * it opens the column — the one thing anybody pointing at the agent's state
+ * with the column folded is about to want.
+ *
+ * It stays open while it is being used, not only while it is pointed at: the
+ * tool menu and the ring's card are drawn in a layer of their own, and a
+ * pointer that crosses into either has left this box without leaving the
+ * thing it opened. A row that folded shut under an open menu would take the
+ * menu's trigger with it.
+ *
+ * A keyboard focus opens it; a click's focus does not. The one says "show me
+ * what is here", the other only lands on the way to pressing something, and a
+ * row that stayed open because it had once been clicked would be a row that
+ * no longer folds.
+ */
+export function AgentStatus({ width, folded, onUnfold }: { width: number | null; folded: boolean; onUnfold: () => void }) {
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
-	const online = useSyncExternalStore(subscribe, getConnection) === "open";
+	const connection = useSyncExternalStore(subscribe, getConnection);
+	const prompts = useSyncExternalStore(promptsStore.subscribe, promptsStore.get);
+	const online = connection === "open";
+	const streaming = config?.isStreaming ?? false;
+
+	const [pointed, setPointed] = useState(false);
+	const [reached, setReached] = useState(false);
+	const [menu, setMenu] = useState(false);
+	const [card, setCard] = useState(false);
+	const open = folded && (pointed || reached || menu || card);
+
+	// A run that ends out of sight is unread until it is looked at — see
+	// nextUnseen. Only the moment a run stops counts, so what was true on the
+	// last render is kept beside what is true on this one.
+	const [unseen, setUnseen] = useState(false);
+	const wasStreaming = useRef(streaming);
+	useEffect(() => {
+		if (wasStreaming.current && !streaming) setUnseen((u) => nextUnseen(u, { type: "ended", folded }));
+		wasStreaming.current = streaming;
+	}, [streaming, folded]);
+	useEffect(() => {
+		if (!folded || open) setUnseen((u) => nextUnseen(u, { type: "looked" }));
+	}, [folded, open]);
+
+	// The mark needs the line's kind and not its words, and the kind is decided
+	// before the conversation is read. So it is asked without the items, and this
+	// does not render again on every delta of an answer the way Line does.
+	const glyph = folded
+		? glyphOf(agentLine({ connection, asking: prompts.length, streaming, queued: 0, items: [] }), unseen)
+		: "idle";
+
 	// A width the column has not reported yet is not the same as no column, and
 	// for the one frame between them this waits rather than laying itself out
 	// twice.
 	if (!folded && width === null) return null;
 	return (
-		// As wide as pi's column and one pixel more: the columns are laid inside
-		// the card's rim and the strip is not, so pi's own left edge is a rim
-		// further in than the strip's right edge less pi's width. The one number
-		// this is told is the column's width, and the rest follows from it.
+		// Open, as wide as pi's column and one pixel more: the columns are laid
+		// inside the card's rim and the strip is not, so pi's own left edge is a
+		// rim further in than the strip's right edge less pi's width. The one
+		// number this is told is the column's width, and the rest follows from it.
 		//
-		// Folded, there is no column to be as wide as, and this is why it does
-		// not go with it: the strip is part of the window rather than part of
-		// pi, so what pi is doing is exactly what you cannot see any other way
-		// once the column is away. It takes what it needs and stays against the
-		// window's edge, where it already was.
+		// A container of its own while it is that wide, so what is in it gives up
+		// its words to pi's width rather than the window's. Folded there is no
+		// width to measure against: it is as wide as what it holds.
 		//
-		// A container of its own, so what is in it gives up its words to the
-		// width it actually has — which is pi's, not the window's. The composer
-		// measured the same way for the same reason, and the controls that moved
-		// here brought the habit with them.
+		// Folded, the ring's own width, or everything's once it opens. The two are
+		// a length and a keyword, and it is `interpolate-size` in styles.css that
+		// lets the one become the other gradually — so the words are laid out in
+		// full the whole time, the box is what grows, and the ring stays against
+		// the window's edge because the row is packed from its end.
 		<div
 			id="agent"
-			className={`@container/agent flex min-w-0 items-center gap-0.5 overflow-hidden ${folded ? "" : "shrink-0"}`}
-			style={folded ? undefined : { width: width! + 1 }}
+			data-folded={folded || undefined}
+			data-open={open || undefined}
+			className={
+				folded
+					? "agent-fold flex min-w-0 items-center justify-end overflow-hidden"
+					: "@container/agent flex min-w-0 shrink-0 items-center gap-0.5 overflow-hidden"
+			}
+			style={folded ? { width: open ? "auto" : "2rem" } : { width: width! + 1 }}
+			onPointerEnter={() => setPointed(true)}
+			onPointerLeave={() => setPointed(false)}
+			onFocus={(e) => setReached(e.target.matches(":focus-visible"))}
+			onBlur={(e) => {
+				if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setReached(false);
+			}}
 		>
-			<Line />
-			<div className="flex-1" />
-			{config && (
-				<ToolModes
-					tools={config.tools}
-					active={config.activeTools}
-					disabled={!online}
-					onSetTools={(names) => send({ type: "set_tools", names })}
-				/>
-			)}
-			<ContextCard />
+			<div
+				className={
+					folded
+						? `flex items-center gap-0.5 transition-opacity duration-200 ${open ? "min-w-0 opacity-100" : "shrink-0 opacity-0"}`
+						: "flex min-w-0 flex-1 items-center gap-0.5"
+				}
+			>
+				<Line bare={folded} />
+				<div className="flex-1" />
+				{config && (
+					<ToolModes
+						tools={config.tools}
+						active={config.activeTools}
+						disabled={!online}
+						onSetTools={(names) => send({ type: "set_tools", names })}
+						onOpenChange={setMenu}
+					/>
+				)}
+			</div>
+			<ContextCard status={glyph} quiet={folded && !open} onOpenChange={setCard} onClick={folded ? onUnfold : undefined} />
 		</div>
 	);
 }

@@ -36,7 +36,7 @@ import type { Item } from "./types";
 
 export type Line =
 	/** Something is in the way, and it is drawn in the colour that says so. */
-	| { kind: "trouble"; text: string }
+	| { kind: "trouble"; why: "offline" | "waiting"; text: string }
 	/** A run in flight: the step, and what is waiting behind it. */
 	| { kind: "step"; what: string; detail: string | null; queued: number }
 	/** At rest: what the last run came to. */
@@ -132,10 +132,45 @@ export function agentLine(state: {
 	items: Item[];
 }): Line | null {
 	if (state.connection !== "open") {
-		return { kind: "trouble", text: state.connection === "connecting" ? "Connecting…" : "Offline — reconnecting" };
+		return { kind: "trouble", why: "offline", text: state.connection === "connecting" ? "Connecting…" : "Offline — reconnecting" };
 	}
-	if (state.asking > 0) return { kind: "trouble", text: "Waiting for your answer" };
+	if (state.asking > 0) return { kind: "trouble", why: "waiting", text: "Waiting for your answer" };
 	if (state.streaming) return { kind: "step", ...currentStep(state.items), queued: state.queued };
 	const last = lastRun(state.items);
 	return last ? { kind: "last", text: last } : null;
+}
+
+/**
+ * The same line, as one mark: what the ring says when the agent's column is
+ * folded away and there is room for nothing else.
+ *
+ * Several signals in one glyph, the way a phone's status bar folds signal,
+ * network and battery into a single shape: the order is the line's own, so
+ * the mark and the words it opens into can never disagree about what matters
+ * most. One thing is added below the line's order — a run that ended while
+ * nobody could see it — because the words at rest already say what the run
+ * came to, and a ring that simply stops turning says nothing to someone who
+ * was not looking at the moment it stopped.
+ */
+export type Glyph = "offline" | "waiting" | "working" | "unseen" | "idle";
+
+export function glyphOf(line: Line | null, unseen: boolean): Glyph {
+	if (line?.kind === "trouble") return line.why;
+	if (line?.kind === "step") return "working";
+	return unseen ? "unseen" : "idle";
+}
+
+/**
+ * Whether a finished run is still waiting to be seen, after something happened.
+ *
+ * The way an unread mark works everywhere: set by the thing arriving where you
+ * could not see it, cleared by looking. A run that ends with the column open
+ * was seen ending. Looking is either opening the column or opening the mark
+ * itself into its words — both show what the run came to.
+ */
+export type SeenEvent = { type: "ended"; folded: boolean } | { type: "looked" };
+
+export function nextUnseen(unseen: boolean, event: SeenEvent): boolean {
+	if (event.type === "looked") return false;
+	return event.type === "ended" ? event.folded : unseen;
 }

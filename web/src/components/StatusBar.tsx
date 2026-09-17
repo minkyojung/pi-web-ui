@@ -230,7 +230,7 @@ function Tag({ name, notes, onOpen }: { name: string; notes: Tagged[]; onOpen?: 
 	);
 }
 
-export function StatusBar({ path, onOpen, piWidth, piFolded }: { path: string | null; onOpen?: (path: string) => void; piWidth: number | null; piFolded: boolean }) {
+export function StatusBar({ path, onOpen, piWidth, piFolded, onUnfoldPi }: { path: string | null; onOpen?: (path: string) => void; piWidth: number | null; piFolded: boolean; onUnfoldPi: () => void }) {
 	const front = useSyncExternalStore(inFrontStore.subscribe, inFrontStore.get);
 	const backlinks = useSyncExternalStore(backlinksStore.subscribe, backlinksStore.get);
 	const tagged = useSyncExternalStore(taggedStore.subscribe, taggedStore.get);
@@ -308,7 +308,7 @@ export function StatusBar({ path, onOpen, piWidth, piFolded }: { path: string | 
 					</span>
 				)}
 			</div>
-			<AgentStatus width={piWidth} folded={piFolded} />
+			<AgentStatus width={piWidth} folded={piFolded} onUnfold={onUnfoldPi} />
 		</div>
 	);
 }

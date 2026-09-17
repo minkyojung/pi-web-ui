@@ -562,3 +562,48 @@
 @keyframes step-in {
   from { opacity: 0; transform: translateY(2px); }
 }
+
+/*
+ * The arc that travels round the agent's ring while it works (ContextGauge).
+ *
+ * Turned about the middle of the ring's own drawing rather than its box: an
+ * SVG shape's box is the shape, and a short arc's middle is nowhere near the
+ * ring's.
+ *
+ * With motion reduced it stays where it is and breathes instead. A mark that
+ * goes still says the work has stopped, which is the one thing it must not
+ * say; a change in how strongly it is drawn keeps saying "going" without
+ * anything crossing the screen — the substitution Apple's own guidance makes.
+ */
+.agent-orbit {
+  transform-box: view-box;
+  transform-origin: center;
+  animation: agent-orbit 1.1s linear infinite;
+}
+@keyframes agent-orbit {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-orbit {
+    animation: agent-breathe 1.6s ease-in-out infinite alternate;
+  }
+}
+@keyframes agent-breathe {
+  from { opacity: 1; }
+  to { opacity: 0.3; }
+}
+
+/*
+ * The folded agent half opening out of its ring (AgentStatus).
+ *
+ * Its width goes from the ring's own to `auto`, and a transition cannot run
+ * to a keyword without being allowed to: `interpolate-size` is what lets the
+ * browser measure `auto` and move towards it, so nothing here has to measure
+ * the words and tell the box how wide they came out. Eased out, fast at the
+ * start and settling at the end, which is how something the pointer asked for
+ * should arrive.
+ */
+.agent-fold {
+  interpolate-size: allow-keywords;
+  transition: width 220ms cubic-bezier(0.2, 0, 0, 1);
+}

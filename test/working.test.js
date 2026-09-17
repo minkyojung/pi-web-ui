@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { agentLine, currentStep, lastRun } from "../web/src/working.ts";
+import { agentLine, currentStep, glyphOf, lastRun, nextUnseen } from "../web/src/working.ts";
 
 const line = (over = {}) => agentLine({ connection: "open", asking: 0, streaming: false, queued: 0, items: [], ...over });
 const done = (over = {}) => ({ kind: "done", endedAt: Date.parse("2026-09-16T13:38:00Z"), ...over });
@@ -79,14 +79,15 @@ test("the socket outranks everything, including a run in flight", () => {
 	const items = [{ kind: "tool", name: "read", args: { path: "a.md" } }];
 	assert.deepEqual(line({ connection: "reconnecting", streaming: true, asking: 1, items }), {
 		kind: "trouble",
+		why: "offline",
 		text: "Offline — reconnecting",
 	});
-	assert.deepEqual(line({ connection: "connecting" }), { kind: "trouble", text: "Connecting…" });
+	assert.deepEqual(line({ connection: "connecting" }), { kind: "trouble", why: "offline", text: "Connecting…" });
 });
 
 test("a question of pi's outranks the step it asked it from", () => {
 	const items = [{ kind: "tool", name: "ask_user", args: {} }];
-	assert.deepEqual(line({ asking: 1, streaming: true, items }), { kind: "trouble", text: "Waiting for your answer" });
+	assert.deepEqual(line({ asking: 1, streaming: true, items }), { kind: "trouble", why: "waiting", text: "Waiting for your answer" });
 });
 
 test("a run in flight is the step, with what is queued behind it", () => {
@@ -98,4 +99,24 @@ test("at rest it is the last run, and nothing at all before the first one", () =
 	const items = [{ kind: "user", text: "go" }, { kind: "tool", name: "note_write", args: { path: "plan.md" } }, done()];
 	assert.deepEqual(line({ items }), { kind: "last", text: "Wrote plan" });
 	assert.equal(line({ items: [] }), null);
+});
+
+test("the mark folds the line into one shape, in the line's own order", () => {
+	const step = { kind: "step", what: "read", detail: null, queued: 0 };
+	assert.equal(glyphOf({ kind: "trouble", why: "offline", text: "Offline — reconnecting" }, true), "offline");
+	assert.equal(glyphOf({ kind: "trouble", why: "waiting", text: "Waiting for your answer" }, true), "waiting");
+	// A run going outranks the one before it having gone unseen.
+	assert.equal(glyphOf(step, true), "working");
+	assert.equal(glyphOf({ kind: "last", text: "Wrote plan" }, true), "unseen");
+	assert.equal(glyphOf({ kind: "last", text: "Wrote plan" }, false), "idle");
+	assert.equal(glyphOf(null, false), "idle");
+});
+
+test("a run that ends out of sight is unread until it is looked at", () => {
+	assert.equal(nextUnseen(false, { type: "ended", folded: true }), true);
+	// Ending with the column open is ending in plain view.
+	assert.equal(nextUnseen(false, { type: "ended", folded: false }), false);
+	assert.equal(nextUnseen(true, { type: "looked" }), false);
+	// Another run ending in plain view is the newest thing, and it was seen.
+	assert.equal(nextUnseen(true, { type: "ended", folded: false }), false);
 });

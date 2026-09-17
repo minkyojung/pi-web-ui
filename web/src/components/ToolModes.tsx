@@ -87,11 +87,14 @@ export function ToolModes({
 	active,
 	disabled,
 	onSetTools,
+	onOpenChange,
 }: {
 	tools: ToolInfo[];
 	active: string[];
 	disabled: boolean;
 	onSetTools: (names: string[]) => void;
+	/** Told when the menu opens and shuts, for a row that must not fold away from under it. */
+	onOpenChange?: (open: boolean) => void;
 }) {
 	const available = tools.map((t) => t.name);
 	// Custom is not a mode you can pick — it is what the checkboxes leave behind.
@@ -102,7 +105,7 @@ export function ToolModes({
 	const webOn = isWebOn(active);
 
 	return (
-		<DropdownMenu>
+		<DropdownMenu onOpenChange={onOpenChange}>
 			<Tooltip>
 				<TooltipTrigger asChild>
 					<DropdownMenuTrigger asChild>

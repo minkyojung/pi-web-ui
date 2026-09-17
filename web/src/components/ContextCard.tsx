@@ -1,9 +1,10 @@
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 import { breakdown, compact } from "../contextBreakdown";
 import { commandsStore, configStore, contextSourcesStore, usageStore } from "../serverState";
 import { send } from "../ws";
-import { ContextGauge } from "./ContextGauge";
+import type { Glyph } from "../working";
+import { ContextGauge, SAYS } from "./ContextGauge";
 import { Button } from "./ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
 
@@ -33,7 +34,24 @@ const pct = (n: number) => `${n < 10 ? n.toFixed(1) : Math.round(n)}%`;
  * Only the total is counted, by the model; the fixed parts are estimated at
  * four characters a token, and say so with a ≈. Messages are the remainder.
  */
-export function ContextCard() {
+export function ContextCard({
+	status = "idle",
+	quiet = false,
+	onOpenChange,
+	onClick,
+}: {
+	/** What the agent's state is, when the ring is all of the agent the window shows. See ContextGauge. */
+	status?: Glyph;
+	/**
+	 * Not to open on this pointer. The folded ring is first a thing to open into
+	 * words, and a card coming up on the same hover would be two answers to one
+	 * gesture; once opened, a fresh hover on the ring brings the card as always.
+	 */
+	quiet?: boolean;
+	onOpenChange?: (open: boolean) => void;
+	onClick?: () => void;
+} = {}) {
+	const [open, setOpen] = useState(false);
 	const usage = useSyncExternalStore(usageStore.subscribe, usageStore.get);
 	const sources = useSyncExternalStore(contextSourcesStore.subscribe, contextSourcesStore.get);
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
@@ -46,13 +64,22 @@ export function ContextCard() {
 		// Everything shown is already in memory, so there is nothing to wait for:
 		// it comes up with the pointer and takes a moment to go, which is enough
 		// to cross the gap between the ring and the card.
-		<HoverCard openDelay={0} closeDelay={150}>
+		<HoverCard
+			openDelay={0}
+			closeDelay={150}
+			open={open}
+			onOpenChange={(want) => {
+				const next = want && !quiet;
+				setOpen(next);
+				onOpenChange?.(next);
+			}}
+		>
 			<HoverCardTrigger asChild>
 				{/* No height of its own: it sits in the strip at the foot of the
 				    window, where what a thing is cut to is what says how tall it is
 				    — see the Item in StatusBar.tsx. */}
-				<Button variant="ghost" size="icon-sm" className="cursor-default" aria-label="Context usage">
-					<ContextGauge />
+				<Button variant="ghost" size="icon-sm" className="cursor-default" aria-label={SAYS[status] ?? "Context usage"} onClick={onClick}>
+					<ContextGauge status={status} />
 				</Button>
 			</HoverCardTrigger>
 			<HoverCardContent align="end" side="top" className="flex w-80 flex-col gap-4">
