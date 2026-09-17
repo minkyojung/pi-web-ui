@@ -29,7 +29,7 @@ import {
 	readStoredCredential,
 } from "@earendil-works/pi-coding-agent";
 import { itemsFromMessages, textOf } from "./conversation.js";
-import { modeToolNames } from "./toolModes.ts";
+import { modeToolNames, withWeb } from "./toolModes.ts";
 import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice as modelsNotice_, providerInfo, supportedLevels } from "./models.ts";
 import { readSettings, updateSettings, type Settings } from "./settings.ts";
 import { askForName } from "./sessionName.ts";
@@ -1114,13 +1114,17 @@ async function bind(): Promise<void> {
  * there by design, so this picks the same mode every time instead of carrying
  * one over — no second settings store, and nothing to get out of step with pi's.
  *
+ * The web is off in it, whatever the mode: a search sends words off this
+ * machine, and that begins when the person says so — the switch is beside the
+ * modes (toolModes.ts).
+ *
  * Resumed sessions are left alone: they open the way they were left.
  */
 function openOnDefaultMode(): void {
 	const available = session()
 		.getAllTools()
 		.map((tool) => tool.name);
-	session().setActiveToolsByName(modeToolNames(readSettings().toolMode, available));
+	session().setActiveToolsByName(withWeb(modeToolNames(readSettings().toolMode, available), available, false));
 }
 
 /** Push the full server state to every client. Used after a session is replaced. */

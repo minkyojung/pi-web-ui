@@ -538,9 +538,10 @@ and the step a run is on:
 - **Web access** — a checkbox beside those three, not a fourth radio, because it
   is a different question: the ladder is about what happens to your notes, the
   web about what leaves this machine and what comes back into the conversation.
-  Every mode comes with it on; turned off it stays off through a change of rung
-  (`withWeb` exists so a mode, which is generous with extension tools, cannot
-  quietly turn it back on). The four tools go together, and the per-tool list
+  A new session opens with it off, in every mode, since a search sends words
+  off this machine and that should begin with the person; where it is put it
+  stays through a change of rung (`withWeb` exists so a mode, which is generous
+  with extension tools, cannot quietly turn it back on). The four tools go together, and the per-tool list
   below still separates them.
 
 The ladder is in `toolModes.ts` at the repo root, shared like `conversation.js`,

@@ -80,8 +80,9 @@ export const isExtensionTool = (name: string) => !LADDER_TOOLS.has(name);
  * beside the sandbox, none of them make the network a rung of the write
  * ladder.
  *
- * On by default, since it is on in every mode unless the switch says no, and
- * off it stays off through a change of mode (ToolModes.tsx).
+ * Off when a session opens (openOnDefaultMode in server.ts): what leaves the
+ * machine leaves it because the person said so. Where it is put it stays,
+ * through a change of mode (ToolModes.tsx).
  */
 export const WEB_TOOLS = ["web_search", "fetch_content", "source_check", "get_search_content"];
 
