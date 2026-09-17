@@ -530,8 +530,10 @@ session-scoped there by design. Rather than keep a second settings store beside
 pi's, every new session opens on `DEFAULT_MODE`. Resumed sessions are left as
 they were.
 
-Stopping a run is the composer's submit button, which becomes a stop button while
-streaming.
+Stopping a run is a button of its own, drawn beside the composer's send button
+while streaming and nowhere otherwise. The send button used to become it, which
+left one place under the cursor doing opposite things and no way to send at all
+mid-run.
 
 Sessions are owned by an `AgentSessionRuntime`, since `/new` and `/resume`
 replace the `AgentSession` object rather than mutating it. Every read goes
@@ -544,7 +546,9 @@ makes a sibling rather than a reply, and `branches.ts` finds the points where a
 session forked so the ways of asking can be stepped through with arrows.
 
 Messages sent while a run is in progress are queued as either `steer` or
-`followUp`, chosen next to the input. Steering is delivered at the next turn
+`followUp`, chosen by the gesture that sends rather than by a control set
+beforehand: Enter, or the send button, queues a follow-up; `⌘Enter`, or `⌘` held
+while the button is pressed, steers. Steering is delivered at the next turn
 boundary — after the current turn's tool calls, before the next model call — so
 it cuts a tool-using run short but cannot interrupt a single long generation.
 Follow-ups wait for the run to finish. Both are listed above the composer, in
