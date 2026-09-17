@@ -9,8 +9,8 @@
  * Asked rather than always on, and that is the whole of why it is bearable.
  * A note permanently marked up where anyone but its writer touched it is a
  * note nobody can read — this app had that once, and the diff replaced it. So
- * it is a question put from the note's own menu, answered for as long as it is
- * useful, and gone again.
+ * it is a question put from the share in the strip at the foot of the window
+ * (StatusBar.tsx), answered for as long as it is useful, and gone again.
  *
  * Only what somebody else wrote is marked. Most of a note is its writer's, and
  * a note coloured all over says nothing. pi's words carry a line under them,

@@ -35,10 +35,14 @@
  */
 import { useSyncExternalStore, useState } from "react";
 
+import { showAuthorsStore } from "../features/authors";
 import { inFrontStore, type Saved } from "../inFront";
 import type { Authored } from "../../../protocol.ts";
 import { AgentStatus } from "./AgentStatus";
 import { Button } from "./ui/button";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
+import { Label } from "./ui/label";
+import { Switch } from "./ui/switch";
 
 /**
  * An item in the strip that can be pressed.
@@ -118,16 +122,12 @@ const words: Record<Saved, string | null> = {
  * client is not the same note as one a quarter written by pi, and rolling them
  * together into "not yours" would lose the only part anybody acts on.
  */
-function share(of: Authored): { agent: string | null; other: string | null; title: string } | null {
+function share(of: Authored): { agent: string | null; other: string | null } | null {
 	if (of.total === 0 || (of.pi === 0 && of.other === 0)) return null;
 	const cut = (n: number) => (n === 0 ? null : `${Math.min(99, Math.max(1, Math.round((n / of.total) * 100)))}%`);
 	const agent = cut(of.pi);
 	const other = cut(of.other);
-	return {
-		agent,
-		other,
-		title: [agent && `the agent wrote ${agent} of this note`, other && `${other} was written outside Octave`].filter(Boolean).join(" · "),
-	};
+	return { agent, other };
 }
 
 export function StatusBar({ path, piWidth, piFolded, onUnfoldPi }: { path: string | null; piWidth: number | null; piFolded: boolean; onUnfoldPi: () => void }) {
@@ -161,6 +161,7 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi }: { path: strin
 	// about a note you have just closed.
 	const note = front && front.path === path && front.saved !== "loading" ? front : null;
 	const hand = note?.authored ? share(note.authored) : null;
+	const showing = useSyncExternalStore(showAuthorsStore.subscribe, showAuthorsStore.get);
 
 	return (
 		<div id="status" className="flex h-11 shrink-0 items-center px-2 text-xs text-muted-foreground">
@@ -186,11 +187,38 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi }: { path: strin
 					</Item>
 				)}
 				{hand && (
-					<span id="authored" className="px-1.5" title={hand.title} data-agent={hand.agent ?? undefined} data-other={hand.other ?? undefined}>
-						{hand.agent && <span>agent {hand.agent}</span>}
-						{hand.agent && hand.other && " · "}
-						{hand.other && <span>outside {hand.other}</span>}
-					</span>
+					// The switch for the marks is behind the share rather than on it.
+					// The figure already says somebody else wrote some of this, so it
+					// is where the question of where comes up — but the strip is a
+					// place to read, and a control that stays drawn there, pressed or
+					// not, is louder than anything else in it. So it comes up with the
+					// pointer, the way the context ring's card does (ContextCard.tsx),
+					// and the words on the page are what say it is on.
+					<HoverCard openDelay={0} closeDelay={150}>
+						<HoverCardTrigger asChild>
+							<Button
+								id="authored"
+								variant="ghost"
+								size="sm"
+								className="cursor-default px-1.5 text-xs font-normal"
+								data-agent={hand.agent ?? undefined}
+								data-other={hand.other ?? undefined}
+							>
+								{hand.agent && <span>agent {hand.agent}</span>}
+								{hand.agent && hand.other && " · "}
+								{hand.other && <span>outside {hand.other}</span>}
+							</Button>
+						</HoverCardTrigger>
+						<HoverCardContent side="top" align="start" className="flex w-auto items-center justify-between gap-4">
+							<div className="flex flex-col gap-0.5">
+								<Label htmlFor="whoWrote">Who wrote what</Label>
+								<p className="text-xs whitespace-nowrap text-muted-foreground">
+									{[hand.agent && "Underlined: the agent", hand.other && "Dashed: outside Octave"].filter(Boolean).join(" · ")}
+								</p>
+							</div>
+							<Switch id="whoWrote" checked={showing} onCheckedChange={(on) => showAuthorsStore.set(on)} />
+						</HoverCardContent>
+					</HoverCard>
 				)}
 				{note && (
 					<span data-saved={note.saved} className="px-1.5">

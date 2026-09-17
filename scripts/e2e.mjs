@@ -1003,7 +1003,7 @@ async function deleteNote(app) {
 	await app.evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((i) => i.textContent.trim() === "Delete").click()`);
 }
 
-check("the note's menu says who wrote what, and the marks ride the words under typing", async ({ app, cwd }) => {
+check("pointing at the agent's share offers who wrote what, and the marks ride the words under typing", async ({ app, cwd }) => {
 	// A note with a past: the person wrote the first half and pi the second. Written
 	// straight to disk with its log beside it, which is the state a note is in when
 	// it is opened days later — the only way to have pi's words here without pi.
@@ -1023,9 +1023,22 @@ check("the note's menu says who wrote what, and the marks ride the words under t
 	await until("the note", async () => (await editorText(app)).includes("mine and then"));
 	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-by-pi').length"), 0, "off is the ordinary state");
 
-	await app.click("#noteMenu");
-	await until("the note's menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitemcheckbox]')"));
-	await app.evaluate(`document.querySelector('[role=menu] [role=menuitemcheckbox]').click()`);
+	// The switch is behind the share in the strip: pointed at, a card comes up
+	// with it. A real pointer, since a hover card opens on pointer movement, and
+	// taken away again after so the card is not left over the page.
+	await until("the share", () => app.evaluate("!!document.getElementById('authored')"));
+	const whoWrote = async () => {
+		const at = await app.evaluate("(() => { const b = document.getElementById('authored').getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()");
+		await app.moveTo(at.x, at.y);
+		await until("the card with the switch", () => app.evaluate("!!document.getElementById('whoWrote')"));
+		const was = await app.evaluate("document.getElementById('whoWrote').getAttribute('aria-checked')");
+		assert.equal(await app.click("#whoWrote"), true);
+		await until("the switch moved", async () => (await app.evaluate("document.getElementById('whoWrote').getAttribute('aria-checked')")) !== was);
+		await app.moveTo(1, 1);
+		await until("the card gone", async () => !(await app.evaluate("!!document.getElementById('whoWrote')")));
+	};
+	assert.equal(await app.evaluate("getComputedStyle(document.getElementById('authored')).backgroundColor").then((c) => /(\/ 0\)|, 0\))$/.test(c)), true, "nothing drawn on the share before it is pointed at");
+	await whoWrote();
 	await until("pi's words, marked", () =>
 		app.evaluate("[...document.querySelectorAll('#editor .cm-by-pi')].map((el) => el.textContent).join('')"),
 	).then((marked) => assert.equal(marked.trim(), "pi's", "what pi wrote, and nothing the person wrote"));
@@ -1094,14 +1107,11 @@ check("the note's menu says who wrote what, and the marks ride the words under t
 		return runs.length > 0 && runs.join("") === "pi's" && (await app.evaluate("document.querySelector('#editor .cm-line').textContent.startsWith(\"pi's\")"));
 	});
 
-	// Off again, and the menu with it. This is a view of the window rather than
-	// of the note, so leaving it on would leave every check after this one
-	// asking the same question of whatever note it opens.
-	await app.click("#noteMenu");
-	await until("the note's menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitemcheckbox]')"));
-	await app.evaluate(`document.querySelector('[role=menu] [role=menuitemcheckbox]').click()`);
-	await app.press("Escape");
-	await until("the menu closed", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+	// Off again. This is a view of the window rather than of the note, so
+	// leaving it on would leave every check after this one asking the same
+	// question of whatever note it opens.
+	await whoWrote();
+	await until("the marks gone", async () => (await app.evaluate("document.querySelectorAll('#editor .cm-by-pi, #editor .cm-by-outside').length")) === 0);
 });
 
 check("a right click in the list acts on that note, open or not", async ({ app, cwd }) => {
@@ -1494,7 +1504,7 @@ check("the strip says how much of the note the agent wrote, and nothing at all w
 	const was = await app.evaluate("document.getElementById('status').getBoundingClientRect().height");
 
 	// Half the person's, half pi's — written to disk with its log beside it, the
-	// state a note is in when it is opened days later (see the note's menu check).
+	// state a note is in when it is opened days later (see the check that presses the share).
 	writeFileSync(join(cwd, "share-pi.md"), "mine and then pi's\n");
 	mkdirSync(join(cwd, ".pi/history"), { recursive: true });
 	writeFileSync(

@@ -330,7 +330,7 @@ export function Editor({
 		const features = [
 			// What pi changed and the person has not decided about, as a diff.
 			review(() => at.current),
-			// Who wrote which words, when the note's menu asks for it; a click on
+			// Who wrote which words, when the strip's share asks for it; a click on
 			// one of them asks how it got there.
 			authors(() => at.current),
 			links({
@@ -579,7 +579,7 @@ export function Editor({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [note, path]);
 
-	// Turned on from the note's menu: what is unsaved goes down first, since the
+	// Turned on from the strip's share: what is unsaved goes down first, since the
 	// answer is about the note on disk, and then the question is asked. Turned
 	// off, or moved to another note, the marks go at once rather than waiting
 	// for an answer about somewhere else.
