@@ -271,7 +271,13 @@ export function Composer({ note }: { note: string | null }) {
 		// the arrow is Enter's own, so the icon says which of the two a press
 		// will be. Holding the key that steers while clicking steers, as it does
 		// on Enter; the ref is read by the form's submit.
+		//
+		// The name is said as well as drawn: the arrow and the words on hovering
+		// it are for people who can see them, and a screen reader is read the
+		// label alone — which said "Submit" mid-run, the one thing a press then
+		// does not do.
 		<PromptInputSubmit
+			aria-label={streaming ? "Queue" : "Submit"}
 			disabled={!online}
 			status="ready"
 			onClick={(e) => {
