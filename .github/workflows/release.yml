@@ -1,0 +1,70 @@
+# A tag v<version> becomes a GitHub Release with the signed, notarized disk
+# image on it, and the zip and latest-mac.yml the installed apps update from.
+#
+# The tag is made by scripts/release.mjs, which has already closed the
+# changelog and bumped package.json; the two checks at the top repeat what it
+# checked, because a tag pushed by hand is the one that skips them. Nothing
+# ships from a machine: the certificate comes out of the secrets as a base64
+# .p12 that electron-builder imports into a keychain of its own for the run.
+#
+# Secrets: CSC_LINK (the .p12, base64), CSC_KEY_PASSWORD, APPLE_ID,
+# APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID. GITHUB_TOKEN is provided.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+
+      - name: The tag is the version in package.json
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME#v}" != "$VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME but package.json says $VERSION — cut releases with scripts/release.mjs" >&2
+            exit 1
+          fi
+
+      - name: CHANGELOG.md has this version's section
+        run: |
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            import { sectionFor } from "./scripts/release.mjs";
+            const v = process.env.GITHUB_REF_NAME.slice(1);
+            const notes = sectionFor(readFileSync("CHANGELOG.md", "utf8"), v);
+            if (!notes) { console.error(`::error::CHANGELOG.md has no [${v}] section`); process.exit(1); }
+            writeFileSync("release-notes.md", notes + "\n");
+          '
+
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Build, sign, notarize, publish
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build && npx electron-builder --mac --arm64 --publish always
+
+      - name: Verify what was built
+        run: scripts/verify-signed.sh release/mac-arm64/Octave.app
+
+      # The release body is the changelog section, which the updater shows.
+      - name: Attach the notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --title "Octave ${GITHUB_REF_NAME#v}" --notes-file release-notes.md

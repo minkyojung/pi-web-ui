@@ -11,8 +11,10 @@
  * the two writers are one person and one agent that works in turns, so this
  * is rare, and rare things are better seen than smoothed over.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync } from "node:fs";
+import { writeAtomic } from "./atomic.ts";
+import { propertiesOf, setProperty, withProperties } from "./properties.ts";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
 export type NoteFile = {
 	/** Relative to the folder, with forward slashes, so it reads as a name. */
@@ -24,8 +26,23 @@ export type NoteFile = {
 /** Folders nothing worth listing lives in; `.git` and `.pi` are the two that matter. */
 const SKIP = new Set(["node_modules", "dist", "dist-server", "release", "build", "out"]);
 
-/** Enough to be more than anyone scrolls, few enough that a monorepo cannot stall the server. */
-const LIMIT = 2000;
+/**
+ * Where the walk gives up, which is a guard against the folder not being a
+ * folder of notes at all — someone picks their home directory, or a monorepo.
+ *
+ * It used to be two thousand, which ordinary vaults pass: people keep ten and
+ * twenty thousand notes, and every one past the two thousandth was in the
+ * folder and in no list. That number was not about how many notes anyone has;
+ * it was there because the list was read again on every save, and the server
+ * is one thread. It is not read on every save any more (fileIndex.ts), so the
+ * guard can sit where it means what it says.
+ *
+ * It counts notes found, not folders looked in, so a folder full of things
+ * that are not notes is bounded by the walk rather than by this. That shows up
+ * as a slow start rather than as a stall, now that starting is one of the
+ * three times the folder is read.
+ */
+export const LIMIT = 50_000;
 
 export function listNotes(root: string): NoteFile[] {
 	const out: NoteFile[] = [];
@@ -56,30 +73,93 @@ export function listNotes(root: string): NoteFile[] {
 }
 
 /**
- * The absolute path of a note, or null for anything that is not one.
+ * A path as the file system itself spells it.
+ *
+ * Two strings can name one file. A Mac opens `a.MD` when the file is `a.md`,
+ * and opens `회의록.md` whichever way its characters are composed; a symlink
+ * is a second name for a third place. Deciding "is this the same note?" by
+ * comparing the strings gets all of these wrong, and getting them wrong means
+ * the app writes one note's history under two names.
+ *
+ * So it is not decided here: realpath asks the file system, which is the only
+ * thing that knows. This is the same problem git settles with core.ignorecase
+ * and core.precomposeunicode, taken at the one place a path becomes a name.
+ *
+ * A note being made does not exist yet, so the deepest part of the path that
+ * does is resolved and the rest kept as asked — which is the spelling it will
+ * be created with, and true from then on.
+ */
+function asOnDisk(full: string): string {
+	const tail: string[] = [];
+	let at = full;
+	for (;;) {
+		try {
+			return join(realpathSync.native(at), ...tail);
+		} catch {
+			const up = dirname(at);
+			if (up === at) return full; // No part of it is there.
+			tail.unshift(basename(at));
+			at = up;
+		}
+	}
+}
+
+/**
+ * The note a path names, as the vault names it — from the root, forward
+ * slashes, spelled as the disk spells it — or null if it names none.
  *
  * Inside the folder, and a markdown file: pi may reach every file in the
  * folder with its own tools, but what the editor opens and saves is a note.
- * Resolved and compared, not pattern-matched, so `..` in any encoding is
- * caught the same way.
+ * Containment is checked after resolving, so `..` in any encoding is caught,
+ * and so is a symlink pointing out of the folder, which no amount of reading
+ * the string would catch.
  */
-export function resolveNote(root: string, path: string): string | null {
-	if (!path || isAbsolute(path) || !path.endsWith(".md")) return null;
-	const full = normalize(join(root, path));
-	const rel = relative(root, full);
+export function noteAt(root: string, given: string): { path: string; full: string } | null {
+	if (!given) return null;
+	const full = asOnDisk(isAbsolute(given) ? given : join(root, given));
+	const rel = relative(asOnDisk(root), full);
 	if (!rel || rel.startsWith("..") || isAbsolute(rel)) return null;
 	if (rel.split(sep).some((part) => part.startsWith("."))) return null;
-	return full;
+	// On the disk's spelling, so `a.MD` is this note where the file system says
+	// it is, and a name that is only ever going to be `.MD` is not a note.
+	if (!rel.endsWith(".md")) return null;
+	return { path: rel.split(sep).join("/"), full };
+}
+
+/**
+ * The absolute path of a note named from the folder, or null for anything
+ * that is not one. Notes are named from the folder and nowhere else, so an
+ * absolute path is not one of them — see notePath for what pi may send.
+ */
+export function resolveNote(root: string, path: string): string | null {
+	if (isAbsolute(path)) return null;
+	return noteAt(root, path)?.full ?? null;
+}
+
+/**
+ * The note a tool's path argument names, as the vault knows notes.
+ *
+ * pi's tools take a path as given, relative or absolute and spelled however
+ * the model spelled it, and every part of the app that has to decide whether
+ * pi is touching a note asks this one question so that they cannot disagree
+ * about the answer — or about which note it was.
+ */
+export function notePath(root: string, given: string): string | null {
+	return noteAt(root, given)?.path ?? null;
 }
 
 export type Note = { path: string; text: string; modified: number };
 
-/** A note's text and the time it was written, or null if there is no such note. */
+/**
+ * A note's text and the time it was written, or null if there is no such note.
+ * The path comes back as the vault names it, which is not always how it was
+ * asked for, and is what everything downstream files it under.
+ */
 export function readNote(root: string, path: string): Note | null {
-	const full = resolveNote(root, path);
-	if (!full) return null;
+	const found = noteAt(root, path);
+	if (!found) return null;
 	try {
-		return { path, text: readFileSync(full, "utf8"), modified: statSync(full).mtimeMs };
+		return { path: found.path, text: readFileSync(found.full, "utf8"), modified: statSync(found.full).mtimeMs };
 	} catch {
 		return null;
 	}
@@ -113,10 +193,7 @@ export function writeNote(root: string, path: string, text: string, base: number
 	if (current !== base) {
 		return current === null ? { ok: false, reason: "missing" } : { ok: false, reason: "conflict", modified: current };
 	}
-	mkdirSync(dirname(full), { recursive: true });
-	const tmp = `${full}.${process.pid}.tmp`;
-	writeFileSync(tmp, text);
-	renameSync(tmp, full);
+	writeAtomic(full, text);
 	return { ok: true, modified: statSync(full).mtimeMs };
 }
 
@@ -133,6 +210,39 @@ export function newNoteName(existing: Iterable<string>): string {
 	if (!taken.has("Untitled.md")) return "Untitled.md";
 	for (let n = 2; ; n++) if (!taken.has(`Untitled ${n}.md`)) return `Untitled ${n}.md`;
 }
+
+/**
+ * The note with when it was made written into it — the one thing the app
+ * knows at that moment and nothing else does for long.
+ *
+ * The file system knows it too, and is the wrong place to keep it: a `git
+ * clone`, a folder copied, a vault synced — each gives every note the same
+ * birthday, the day it arrived. Written into the note, it survives all of
+ * them, which is the whole test a stamp has to pass. Nothing else passes it.
+ * A title would be a second answer to what the file's name already gives, an
+ * id a second name for what the path already is, and a modified time a line
+ * that changes on every save and is already in the history beside the words
+ * it belongs to.
+ *
+ * Local time, to the minute, as a person means it: `2026-01-01T00:05` is what
+ * the date-and-time widget reads and writes (propertyTypes.ts), and the note
+ * has nowhere to put an offset. Never a Date turned into a string — that is a
+ * UTC instant, and either side of midnight it is the wrong day.
+ *
+ * A note that already says when it was made keeps what it says, and one whose
+ * block cannot be read is left as it is: nothing is written over here either.
+ */
+export function withCreated(text: string, at: Date): string {
+	const two = (n: number) => String(n).padStart(2, "0");
+	const said = `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}T${two(at.getHours())}:${two(at.getMinutes())}`;
+	const had = propertiesOf(text);
+	if (had.block && had.errors.length === 0 && had.doc.has(CREATED)) return text;
+	const made = withProperties(text, (doc) => setProperty(doc, CREATED, said));
+	return made.ok ? made.text : text;
+}
+
+/** What the property is called. `created` is what a vault of markdown notes calls it. */
+const CREATED = "created";
 
 export type RenameResult =
 	| { ok: true }

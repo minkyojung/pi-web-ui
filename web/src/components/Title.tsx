@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Trash2 } from "lucide-react";
-
+import { step } from "../features/pageMove";
 import { renameTarget, titleOf } from "../noteSync";
 import { flushSaves } from "../saves";
 import { noteRenameFailedStore } from "../serverState";
 import { send } from "../ws";
-import { Button } from "./ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 const REASONS = {
 	exists: "A note with that name already exists.",
@@ -27,6 +24,10 @@ const REASONS = {
  *
  * Uncontrolled like the composer, and keyed on the path so a rename from
  * anywhere — this field, another tab — resets what it shows.
+ *
+ * It sits at the top of the note's own column of text, not in the title bar:
+ * that row is the tabs', and a title is the first line of its note, as in
+ * Obsidian.
  */
 export function Title({ path }: { path: string }) {
 	const box = useRef<HTMLInputElement>(null);
@@ -67,7 +68,7 @@ export function Title({ path }: { path: string }) {
 	};
 
 	return (
-		<div className="drag-region flex h-11 shrink-0 items-center gap-3 border-b px-6">
+		<div className="mx-auto flex w-full max-w-[42rem] shrink-0 items-center gap-3 px-6 pt-6">
 			<input
 				key={path}
 				ref={box}
@@ -77,14 +78,18 @@ export function Title({ path }: { path: string }) {
 				aria-label="Title"
 				aria-invalid={error ? true : undefined}
 				spellCheck={false}
-				className="min-w-0 flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-muted-foreground"
+				className="min-w-0 flex-1 bg-transparent text-xl font-semibold outline-none placeholder:text-muted-foreground"
 				placeholder="Untitled"
 				onKeyDown={(e) => {
 					if (e.nativeEvent.isComposing) return;
+					// Enter is the rename, and stays here: going on to the text as
+					// well would be two things from one key. ↓ is how the page goes on.
 					if (e.key === "Enter") {
 						e.preventDefault();
 						commit();
 						e.currentTarget.blur();
+					} else if (e.key === "ArrowDown") {
+						if (step("title", 1)) e.preventDefault();
 					} else if (e.key === "Escape") {
 						e.preventDefault();
 						reset();
@@ -98,22 +103,6 @@ export function Title({ path }: { path: string }) {
 					{error}
 				</span>
 			)}
-			{/* To the trash, not gone: the column offers Restore afterwards, so
-			    there is nothing to confirm here. */}
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<Button
-						variant="ghost"
-						size="sm"
-						aria-label="Delete note"
-						className="h-7 w-7 shrink-0 p-0 text-muted-foreground"
-						onClick={() => send({ type: "delete_note", path })}
-					>
-						<Trash2 className="size-3.5" />
-					</Button>
-				</TooltipTrigger>
-				<TooltipContent side="bottom">Delete</TooltipContent>
-			</Tooltip>
 		</div>
 	);
 }

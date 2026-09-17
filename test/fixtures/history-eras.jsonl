@@ -1,0 +1,6 @@
+{"author":"outside","at":1757900000000,"from":0,"to":0,"inserted":"Shopping list\n","removed":""}
+{"author":"me","at":1757900060000,"from":14,"to":14,"inserted":"milk\n","removed":""}
+{"author":"pi","at":1757900120000,"sessionId":"s-old","entryId":"e-old","from":14,"to":18,"inserted":"oat milk","removed":"milk"}
+{"author":"me","at":1757900180000,"from":14,"to":22,"inserted":"oat milk","removed":"oat milk"}
+{"v":1,"author":"pi","at":1757990000000,"sessionId":"s-v1","entryId":"e-v1","from":23,"to":23,"inserted":"eggs\n","removed":""}
+{"v":2,"author":"me","at":1758000000000,"from":28,"to":28,"inserted":"jam\n","removed":"","spans":[{"author":"pi","at":1757990000000,"sessionId":"s-v1","entryId":"e-v1","from":0,"to":3}]}

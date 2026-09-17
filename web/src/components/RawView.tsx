@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import { rawStore } from "../serverState";
+import { configStore, rawStore } from "../serverState";
 
 const MOD = navigator.userAgent.includes("Mac") ? "⌘⇧D" : "Ctrl+Shift+D";
 
@@ -14,12 +14,22 @@ const MOD = navigator.userAgent.includes("Mac") ? "⌘⇧D" : "Ctrl+Shift+D";
  */
 export function RawView() {
 	const events = useSyncExternalStore(rawStore.subscribe, rawStore.get);
+	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	return (
 		<div className="flex flex-1 flex-col overflow-hidden">
 			{/* Nothing on screen says this view exists, so it has to say how to leave. */}
-			<div className="border-b px-3 py-1 text-xs text-muted-foreground">
+			<div className="px-3 py-1 text-xs text-muted-foreground">
 				Raw events · {MOD} to close
 			</div>
+			{/* What is above is this window's side of it, and it goes when the window
+			    does. The server's side outlives both, which is what someone asking
+			    about yesterday needs — but a file nobody can find is not one, so
+			    this is where it is said: the place people come when something is wrong. */}
+			{config?.log && (
+				<div id="log-path" className="px-3 pb-1 text-xs text-muted-foreground">
+					The server writes what it says to <span className="font-mono select-all">{config.log}</span>
+				</div>
+			)}
 			<pre id="raw" className="flex-1 overflow-auto p-3 font-mono text-xs whitespace-pre-wrap">
 				{events.map((event) => `${JSON.stringify(event, null, 2)}\n`).join("")}
 			</pre>

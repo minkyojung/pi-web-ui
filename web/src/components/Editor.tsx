@@ -1,40 +1,70 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { markdown, markdownKeymap, markdownLanguage } from "@codemirror/lang-markdown";
+import { deleteMarkupBackward, insertNewlineContinueMarkup, markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { Annotation, ChangeSet, EditorState, type Extension, Transaction } from "@codemirror/state";
+import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
+import { ChangeSet, EditorState, type Extension, Transaction } from "@codemirror/state";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
-import { drawSelection, dropCursor, EditorView, keymap, placeholder, scrollPastEnd } from "@codemirror/view";
+import { drawSelection, dropCursor, EditorView, keymap, placeholder } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-import { codeBlocks } from "../features/codeBlocks";
+import { choose, chosenStore } from "../chosen";
 import { linkCompletion } from "../features/linkCompletion";
+import { indentListItem, listBackspace, listEnter, outdentListItem } from "../features/listEdit";
+import { listNumbers } from "../features/listNumbers";
+import { listIndent } from "../features/listIndent";
+import { authors, clearAuthors, paintAuthors, showAuthorsStore } from "../features/authors";
+import { forget as forgetMoves, observe as observeMoves, take as takeMoves } from "../features/moves";
+import { livePreview, toggleLivePreview, toggleTask } from "../features/livePreview";
+import { leaveTextUp } from "../features/pageMove";
+import { properties, propertiesField } from "../features/properties";
+import { fromServer, serverChange } from "../features/origin";
 import { landOn, links, notesChanged } from "../features/links";
-import { pending, setSpans } from "../features/pending";
-import { wikiLink } from "../../../wikilink.ts";
-import type { Place } from "../../../links.ts";
-import { backlinksStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
-import { titleOf } from "../noteSync";
+import { closeDiff, diffFor, keepChunk, review, showDiff, undoChunk } from "../features/review";
+import { toggleBold, toggleItalic } from "../features/toggleMarks";
+import { fitted, leaving, scrollBack } from "../features/viewPlace";
+import { wrapSelection } from "../features/wrapSelection";
+import { highlightTag } from "../../../highlight.ts";
+import { inlineCodeTag, noteSyntax } from "../../../syntax.ts";
+import { bodyStart, type Properties as PropertiesRead } from "../../../properties.ts";
+import { tagTag } from "../../../tag.ts";
+import { tagsIn, type Place } from "../../../links.ts";
+import type { Left } from "../nav";
+import type { Edit } from "../types";
+import type { Authored } from "../../../protocol.ts";
+import { authorsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
+import { inFrontStore, say as sayInFront } from "../inFront";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
-import { registerSave } from "../saves";
+import { flushSaves, registerSave } from "../saves";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
+import { Properties } from "./Properties";
 import { Button } from "./ui/button";
 
 /** How long typing has to stop before it is written down. */
 const AUTOSAVE_MS = 600;
 
-/** Marks a change the server made, so it is not taken for typing and saved back. */
-const fromServer = Annotation.define<boolean>();
 /**
- * On every change the server makes: not typing, and not undoable. ⌘Z undoes
- * what the person typed; what pi or another editor wrote is not theirs to
- * take back that way, and an undo that reached it would then be saved as a
- * change of theirs.
+ * How much note there is, for the strip at the foot of the window.
+ *
+ * From the body, not the document: the front matter is what the note is filed
+ * under rather than anything written in it, and a note of two lines under six
+ * properties should not read as eight.
+ *
+ * Words are runs between spaces, which is what Korean and English both are
+ * written in. It undercounts the languages that put no spaces between words —
+ * Chinese, Japanese — and there is no honest cheap answer for those; a count
+ * that is right for the writing in front of you beats one that is wrong for
+ * everybody equally.
+ *
+ * Over the whole body at every keystroke. A note is small, and a count that
+ * lagged the typing by a save would read as broken.
  */
-const serverChange = [fromServer.of(true), Transaction.addToHistory.of(false)];
+function counted(text: string): { words: number; characters: number } {
+	const body = text.slice(bodyStart(text)).trim();
+	return { words: body === "" ? 0 : body.split(/\s+/).length, characters: body.length };
+}
 
 /**
  * The editor in the app's own colours, both themes, since the tokens switch
@@ -44,19 +74,52 @@ const serverChange = [fromServer.of(true), Transaction.addToHistory.of(false)];
  * that says who wrote a word.
  */
 const theme = EditorView.theme({
-	"&": { height: "100%", backgroundColor: "var(--background)", color: "var(--foreground)", fontSize: "15px" },
-	".cm-scroller": { fontFamily: "inherit", lineHeight: "1.6", padding: "1.5rem 0" },
-	".cm-content": { maxWidth: "42rem", margin: "0 auto", padding: "0 1.5rem", caretColor: "var(--foreground)" },
+	// A floor, not a height. The page (#note) is what scrolls, so the editor
+	// must never be given a height: that makes .cm-scroller scroll inside
+	// itself, and a long note would move within a page that stays put.
+	//
+	// `flex: 1` down the column from #note gives it the room the title and the
+	// links leave, while the default `min-height: auto` that comes with it
+	// leaves it free to grow past that room with its text. So a short note
+	// reaches the foot of the page and a long one runs off it, which is what
+	// both of them should do.
+	"&": { backgroundColor: "var(--background)", color: "var(--foreground)", fontSize: "16px", flex: "1" },
+	// The margin around the text is the scroller's, and the column is the
+	// content element with no padding of its own: the selection is drawn as
+	// wide as .cm-content, so any padding on it is painted as selected past
+	// the words. This is how Obsidian has it. 39rem is the title's 42rem box
+	// less its own 1.5rem sides, so the two start on one line.
+	".cm-scroller": { fontFamily: "inherit", lineHeight: "1.6", padding: "1.5rem" },
+	// The find panel stays in view while the page scrolls under it.
+	".cm-panels.cm-panels-top": { position: "sticky", top: 0, zIndex: 10 },
+	".cm-content": { maxWidth: "39rem", margin: "0 auto", padding: "0", caretColor: "var(--foreground)" },
 	".cm-line": { padding: "0" },
 	"&.cm-focused": { outline: "none" },
 	".cm-cursor": { borderLeftColor: "var(--foreground)" },
-	// Not --accent: in the light theme that is nearly the page colour, and a
-	// selection that cannot be seen is not one. A share of the text colour
-	// reads in both themes.
-	".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-		backgroundColor: "color-mix(in oklab, var(--foreground) 18%, transparent)",
+	// --selection, so a note is marked the way the rest of the window is; the
+	// themes decide what that is.
+	//
+	// The selectors are the long way round on purpose. CodeMirror's base theme
+	// reaches this element through `&light.cm-focused > .cm-scroller >
+	// .cm-selectionLayer .cm-selectionBackground` — five classes — so the short
+	// `&.cm-focused .cm-selectionBackground` loses on specificity and the
+	// selection came out CodeMirror's lavender in every theme, whatever was
+	// written here. Matching its path and adding one class wins without
+	// !important.
+	"&.cm-editor .cm-selectionLayer .cm-selectionBackground": { background: "var(--selection)" },
+	"&.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
+		background: "var(--selection)",
 	},
 	".cm-placeholder": { color: "var(--muted-foreground)" },
+	// ==words==: a wash of the text colour, like the selection but lighter, so it reads in both themes.
+	".cm-highlight": { backgroundColor: "color-mix(in oklab, var(--foreground) 12%, transparent)", borderRadius: "2px" },
+	// #tag: set off from the prose the way a link is, without being one yet.
+	// The fill is --muted rather than a wash mixed here, so that it and the
+	// words on it are a pair the themes answer for — a wash of --foreground
+	// under text taken from --muted-foreground is two colours derived apart
+	// and met on screen, and on a light page they met at 4.2. It is also the
+	// fill every other quiet chip in the window already uses.
+	".cm-tag": { color: "var(--muted-foreground)", backgroundColor: "var(--muted)", borderRadius: "4px", padding: "0 0.25em" },
 	// The search panel, in the app's own chrome rather than CodeMirror's grey.
 	".cm-panels": { backgroundColor: "var(--background)", color: "var(--foreground)", borderColor: "var(--border)" },
 	".cm-panels-top": { borderBottom: "1px solid var(--border)" },
@@ -78,7 +141,7 @@ const theme = EditorView.theme({
 	".cm-panel.cm-search [name=close]": { color: "var(--muted-foreground)", border: "none", fontSize: "16px", top: "0.3rem", right: "1rem" },
 	".cm-searchMatch": { backgroundColor: "color-mix(in oklab, var(--foreground) 14%, transparent)" },
 	".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: "color-mix(in oklab, var(--foreground) 28%, transparent)" },
-	// Drawn by the editor now, so ::selection is left to the browser's default.
+	// The other copies of the selected word, under the selection's own wash.
 	".cm-selectionMatch": { backgroundColor: "color-mix(in oklab, var(--foreground) 10%, transparent)" },
 });
 
@@ -86,15 +149,32 @@ const markup = HighlightStyle.define([
 	{ tag: tags.heading, fontWeight: "600" },
 	{ tag: tags.heading1, fontSize: "1.4em" },
 	{ tag: tags.heading2, fontSize: "1.2em" },
+	{ tag: tags.heading3, fontSize: "1.1em" },
+	{ tag: tags.heading4, fontSize: "1em" },
+	{ tag: tags.heading5, fontSize: "0.95em" },
+	{ tag: tags.heading6, fontSize: "0.9em", color: "var(--muted-foreground)" },
 	{ tag: tags.emphasis, fontStyle: "italic" },
 	{ tag: tags.strong, fontWeight: "600" },
 	{ tag: tags.strikethrough, textDecoration: "line-through" },
+	{ tag: highlightTag, class: "cm-highlight" },
+	{ tag: tagTag, class: "cm-tag" },
 	{ tag: tags.link, textDecoration: "underline", color: "var(--muted-foreground)" },
 	{ tag: tags.url, color: "var(--muted-foreground)" },
 	{ tag: tags.monospace, fontFamily: "ui-monospace, monospace", fontSize: "0.9em" },
+	// Inline code in a box; the font again, since this rule is the one taken for it.
+	{
+		tag: inlineCodeTag,
+		fontFamily: "ui-monospace, monospace",
+		fontSize: "0.9em",
+		backgroundColor: "color-mix(in oklab, var(--foreground) 7%, transparent)",
+		borderRadius: "3px",
+		padding: "0.1em 0.3em",
+	},
 	{ tag: tags.processingInstruction, color: "var(--muted-foreground)" },
 	{ tag: tags.quote, color: "var(--muted-foreground)" },
 	{ tag: tags.meta, color: "var(--muted-foreground)" },
+	// %%a note to self%%: there, but plainly not part of the note.
+	{ tag: tags.comment, color: "var(--muted-foreground)", fontStyle: "italic", class: "cm-comment" },
 ]);
 
 /**
@@ -119,20 +199,38 @@ const markup = HighlightStyle.define([
 export function Editor({
 	path,
 	place = null,
+	left = null,
+	onLeave,
 	extensions = [],
 	onOpen,
 }: {
 	path: string;
 	/** Where the link that opened this note pointed inside it, if anywhere. */
 	place?: Place | null;
+	/** Where this step of the way back was being read, if it was read before. */
+	left?: Left | null;
+	/** Where it is being read now: called as the note is stepped off, for the step to keep. */
+	onLeave?: (left: Left) => void;
 	extensions?: Extension[];
 	/** Follow a link: open another note, at a place in it. */
 	onOpen?: (path: string, place?: Place) => void;
 }) {
 	const host = useRef<HTMLDivElement>(null);
 	const view = useRef<EditorView | null>(null);
+	/** The page (#note) the editor scrolls on: the title and backlinks scroll with the text. */
+	const page = useRef<HTMLElement | null>(null);
 	/** Landed on once, when the text first arrives: after that the cursor is the person's. */
 	const landing = useRef(place);
+	/** Where this step was read before, for the same one arrival. */
+	const was = useRef(left);
+	/**
+	 * Told as the note is stepped off, from a cleanup that runs while the step
+	 * this editor was drawn for is still the one in front: a component being
+	 * taken off the page is not rendered again, so this is its own step's and
+	 * not the one being opened.
+	 */
+	const report = useRef(onLeave);
+	report.current = onLeave;
 	// The path can change under a live editor — a rename — so what the closures
 	// below send is read from here, not captured at mount.
 	const at = useRef(path);
@@ -140,6 +238,8 @@ export function Editor({
 	// The version on disk the doc was read from, the save in flight, and whether
 	// the doc has moved past what is saved. Refs: they change on every keystroke.
 	const base = useRef<number | null>(null);
+	/** The log's length at `saved`: the record's own version of the text, which a moved paste names as where it came from (moves.ts). */
+	const lines = useRef<number | null>(null);
 	/** The server's text at `base`: what the doc was before typing, and what a change from the server is over. */
 	const saved = useRef("");
 	/** Typing since `base`, as one change set — what a change from the server has to fit around. */
@@ -152,26 +252,30 @@ export function Editor({
 	const dirty = useRef(false);
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [status, setStatus] = useState<"loading" | "saved" | "unsaved" | "conflict" | "gone">("loading");
+	/** The properties as the editor last read them, for the panel; a new value only when the block changed. */
+	const [read, setRead] = useState<PropertiesRead | null>(null);
 	/**
 	 * Work that changes the doc, held while the person is mid-composition —
-	 * a Hangul syllable half typed — since a transaction then would cut the
-	 * composition short. Run in order once it ends.
+	 * a Hangul syllable half typed — since a transaction then would drop
+	 * what the input method has put in the DOM and not yet handed over.
+	 * Run in order once the composition is over: the editor's next update
+	 * after it, which the composition's own commit brings (the listener
+	 * below), on a microtask, since nothing may be dispatched inside one.
 	 */
 	const held = useRef<(() => void)[]>([]);
 	const whenNotComposing = (fn: () => void) => {
 		const v = view.current;
 		if (!v) return;
-		held.current.push(fn);
-		if (held.current.length > 1) return; // A tick is already waiting.
-		const tick = () => {
-			const view_ = view.current;
-			if (!view_) return void (held.current = []);
-			if (view_.composing) return void setTimeout(tick, 40);
-			const jobs = held.current;
-			held.current = [];
+		if (v.composing) held.current.push(fn);
+		else fn();
+	};
+	const releaseHeld = () => {
+		const jobs = held.current;
+		held.current = [];
+		queueMicrotask(() => {
+			if (!view.current) return;
 			for (const job of jobs) job();
-		};
-		tick();
+		});
 	};
 
 	const save = () => {
@@ -180,9 +284,17 @@ export function Editor({
 		if (timer.current) clearTimeout(timer.current);
 		timer.current = null;
 		const text = v.state.doc.toString();
+		// What was done to the text at `base` to get here, beside the result:
+		// the record takes the account where it adds up, and reads the change
+		// off the two texts where it does not — so nothing here has to be right
+		// for the save to land, only for the record to be exact.
+		const held: (Edit & { fromB: number; toB: number })[] = [];
+		local.current.iterChanges((from, to, fromB, toB, inserted) => held.push({ from, to, insert: inserted.toString(), fromB, toB }));
+		// A paste of words cut from somewhere says so on the edit that holds it.
+		const edits: Edit[] = takeMoves(held).map(({ fromB: _f, toB: _t, ...edit }) => edit);
 		// Only a save that went out is one to expect an echo of. One sent to a
 		// closed socket is dropped, and the doc stays dirty for the next chance.
-		if (!send({ type: "save_note", path: at.current, text, base: base.current })) return false;
+		if (!send({ type: "save_note", path: at.current, text, base: base.current, edits })) return false;
 		sent.current = text;
 		sinceSent.current = ChangeSet.empty(text.length);
 		return true;
@@ -199,9 +311,10 @@ export function Editor({
 	};
 
 	/** The doc is the server's text `text` at version `modified`: nothing typed, nothing owed. */
-	const settle = (text: string, modified: number) => {
+	const settle = (text: string, modified: number, atLines: number) => {
 		saved.current = text;
 		base.current = modified;
+		lines.current = atLines;
 		local.current = ChangeSet.empty(text.length);
 		sinceSent.current = local.current;
 		sent.current = null;
@@ -210,42 +323,94 @@ export function Editor({
 		setStatus("saved");
 	};
 
+
+
 	useEffect(() => {
 		if (!host.current) return;
 		const features = [
-			pending(() => at.current),
+			// What pi changed and the person has not decided about, as a diff.
+			review(() => at.current),
+			// Who wrote which words, when the strip's share asks for it; a click on
+			// one of them asks how it got there.
+			authors(() => at.current),
 			links({
 				notes: () => filesStore.get().map((f) => f.path),
 				here: () => at.current,
 				open: (p, at) => onOpen?.(p, at),
 			}),
 			linkCompletion(() => filesStore.get().map((f) => f.path)),
+			// Markup hidden where the cursor is not; Mod-e shows it all again.
+			livePreview,
+			// The properties read off the tree for the panel above, and the
+			// block kept from the cursor and from typing while it is hidden.
+			properties,
+			// Wrapped list lines start where the item's words do. Outside the
+			// compartment: source mode wants this too.
+			listIndent,
+			// A numbered list's numbers put right on every edit of it.
+			listNumbers,
+			// A mark typed over chosen words wraps them.
+			wrapSelection,
 		];
 		const state = EditorState.create({
 			doc: "",
 			extensions: [
 				history(),
-				// Order is precedence. The markdown keys go before the default ones
-				// or Enter would never reach them: a list item continues on Enter
-				// and ends on a second, a quote likewise. closeBrackets' Backspace
-				// takes the pair out together; it too has to see the key first.
+				// Every key of the editor, in one place and one order: order is
+				// precedence, and a command that says no passes the key on. The
+				// features' keys go before the default ones, which would take
+				// them — Mod-Enter for a blank line, Enter for a plain newline,
+				// Backspace for a character.
 				keymap.of([
 					{ key: "Mod-s", run: () => (save(), true) },
+					// Mod-Enter is a decision where there is one to make, and a tick
+					// where there is a box: the diff's chunk under the cursor first,
+					// then a task on the line. Mod-Backspace takes the chunk back.
+					{ key: "Mod-Enter", run: keepChunk },
+					{ key: "Mod-Enter", run: toggleTask },
+					{ key: "Mod-Backspace", run: undoChunk },
+					// Before the search panel's Escape, which would take it while a diff is open.
+					{ key: "Escape", run: closeDiff },
+					// At the top of the text there is nothing above to move to, and
+					// the note's page goes on above: the properties, the title.
+					{ key: "ArrowUp", run: leaveTextUp },
+					// ⌘[ and ⌘] are the window's back and forward (App.tsx), as in
+					// Obsidian. Taken here so the default keymap does not indent with
+					// them, which is Tab's work and done above.
+					{ key: "Mod-[", run: () => true },
+					{ key: "Mod-]", run: () => true },
+					{ key: "Mod-e", run: toggleLivePreview },
+					{ key: "Mod-b", run: toggleBold },
+					{ key: "Mod-i", run: toggleItalic },
+					// On a list item, the item is the unit: it nests, splits and ends
+					// (listEdit.ts). Elsewhere these say no, and a quote's `>` is
+					// lang-markdown's, as is a Tab.
+					{ key: "Tab", run: indentListItem },
+					{ key: "Shift-Tab", run: outdentListItem },
+					{ key: "Enter", run: listEnter },
+					{ key: "Enter", run: insertNewlineContinueMarkup },
+					{ key: "Backspace", run: listBackspace },
+					{ key: "Backspace", run: deleteMarkupBackward },
 					indentWithTab,
-					...markdownKeymap,
 					...closeBracketsKeymap,
 					...searchKeymap,
 					...defaultKeymap,
 					...historyKeymap,
 				]),
-				markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [wikiLink] }),
+				// No HTML tag completion: a `<` in prose is a less-than, not a tag.
+				// And not the language's own Enter and Backspace, which it would put
+				// above every key bound here: the list ones are above.
+				markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [noteSyntax], completeHTMLTags: false, addKeymap: false }),
+				// Four spaces, as Typora and GitHub have it and as Obsidian's tab
+				// counts: what a Tab inserts, and enough to nest under `1. ` or
+				// `10. `, which two would not be.
+				indentUnit.of("    "),
 				// Pairs close as they open. Backticks too, for inline code; not
 				// `*`, which opens a list item as often as it opens emphasis, and
 				// `[[` needs nothing — the second `[` lands inside the first pair.
 				closeBrackets(),
 				markdownLanguage.data.of({ closeBrackets: { brackets: ["(", "[", "{", "'", '"', "`"] } }),
 				syntaxHighlighting(markup),
-				codeBlocks,
 				EditorView.lineWrapping,
 				// The selection and cursor drawn by the editor rather than the
 				// browser, which is what lets there be more than one of each.
@@ -256,12 +421,28 @@ export function Editor({
 				// ⌘F, find next and previous, replace: the editor's own panel, at
 				// the top so the text does not jump, drawn in the app's tokens below.
 				search({ top: true }),
-				scrollPastEnd(),
 				placeholder("Write here"),
 				EditorView.contentAttributes.of({ spellcheck: "true", "aria-label": "Note" }),
 				theme,
 				EditorView.updateListener.of((u) => {
-					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) onChange(u.changes);
+					if (held.current.length > 0 && !u.view.composing) releaseHeld();
+					if (u.state.field(propertiesField) !== u.startState.field(propertiesField)) setRead(u.state.field(propertiesField));
+					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) {
+						// A cut or a paste is seen here, while `local` is still the way
+						// from the saved text to the one this update started from.
+						observeMoves(u, { path: at.current, lines: lines.current, toBase: local.current.invertedDesc });
+						onChange(u.changes);
+					}
+					// Straight to the store rather than through state of this
+					// component's: the strip is the only thing that wants these,
+					// and a render of the editor for every keystroke would take
+					// the properties panel with it.
+					if (u.docChanged || u.startState.doc.length === 0) sayInFront(at.current, counted(u.state.doc.toString()));
+					// What is chosen, for the box under pi's column to point with.
+					if (u.selectionSet || u.docChanged) {
+						const { from, to } = u.state.selection.main;
+						choose(at.current, u.state.sliceDoc(from, to));
+					}
 				}),
 				...features,
 				...extensions,
@@ -269,6 +450,9 @@ export function Editor({
 		});
 		const v = new EditorView({ state, parent: host.current });
 		view.current = v;
+		// The page this editor scrolls on, found while it is still on it.
+		page.current = host.current.closest("#note");
+		setRead(v.state.field(propertiesField));
 		base.current = null;
 		sent.current = null;
 		dirty.current = false;
@@ -286,12 +470,27 @@ export function Editor({
 			save();
 			removeEventListener("pagehide", onHide);
 			unregister();
+			// Nothing is chosen in a note that is not open.
+			chosenStore.set(null);
+			forgetMoves();
 			v.destroy();
 			view.current = null;
 		};
 		// Once: a rename changes `path` without changing which note this is.
 		// `extensions` is a stable array from the caller.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
+	// Where the note is left — cursor and scroll — is read here, in a layout
+	// effect's cleanup, which runs while the editor is still on the page. By
+	// the time the effect above is cleaned up the page has lost this editor,
+	// and with it the height that held its scroll. Only a note whose text
+	// came is a note that was left somewhere: StrictMode runs this once right
+	// after mount, over an empty doc.
+	useLayoutEffect(() => {
+		return () => {
+			if (view.current && base.current !== null) report.current?.(leaving(view.current, page.current));
+		};
 	}, []);
 
 	// Asked for whenever there is a socket to ask on: at mount the socket may
@@ -328,37 +527,50 @@ export function Editor({
 		switch (decision.kind) {
 			case "saved":
 				if (!decision.dirty) {
-					settle(note.text, note.modified);
-					v.dispatch({ effects: setSpans.of({ spans: note.spans }) });
+					settle(note.text, note.modified, note.lines);
+					v.dispatch({ effects: diffFor(note.original ?? null) });
+					onDisk(note.text, note.authored);
 				} else {
 					// The echo of the save; what was typed since is still owed.
 					saved.current = note.text;
 					base.current = note.modified;
+					lines.current = note.lines;
 					local.current = sinceSent.current;
 					sent.current = null;
 					dirty.current = !local.current.empty;
 					setStatus(dirty.current ? "unsaved" : "saved");
-					v.dispatch({ effects: setSpans.of({ spans: note.spans, through: local.current }) });
+					v.dispatch({ effects: diffFor(note.original ?? null) });
+					onDisk(note.text, note.authored);
 				}
 				return;
 			case "same":
-				settle(note.text, note.modified);
-				v.dispatch({ effects: setSpans.of({ spans: note.spans }) });
+				settle(note.text, note.modified, note.lines);
+				v.dispatch({ effects: diffFor(note.original ?? null) });
+				onDisk(note.text, note.authored);
 				return;
-			case "replace":
+			case "replace": {
+				// The first text of a note opened again: back where it was left,
+				// unless a link said where to land; a note never left opens under
+				// its properties, where its text begins. Later whole texts keep
+				// the cursor where it is, if the text still reaches there.
+				const first = base.current === null;
+				const back = first && !landing.current && was.current ? fitted(was.current, note.text.length) : null;
 				v.dispatch({
 					changes: { from: 0, to: v.state.doc.length, insert: note.text },
 					annotations: serverChange,
-					// Keep the cursor where it was if the text still reaches there.
-					selection: { anchor: Math.min(v.state.selection.main.head, note.text.length) },
-					effects: setSpans.of({ spans: note.spans }),
+					selection: back ?? { anchor: first ? bodyStart(note.text) : Math.min(v.state.selection.main.head, note.text.length) },
+					effects: diffFor(note.original ?? null),
 				});
-				settle(note.text, note.modified);
+				if (back) scrollBack(was.current!, v, page.current);
+				forgetMoves();
+				settle(note.text, note.modified, note.lines);
+				onDisk(note.text, note.authored);
 				if (landing.current) {
 					landOn(v, landing.current);
 					landing.current = null;
 				}
 				return;
+			}
 			case "conflict":
 				setStatus("conflict");
 				return;
@@ -366,6 +578,70 @@ export function Editor({
 		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [note, path]);
+
+	// Turned on from the strip's share: what is unsaved goes down first, since the
+	// answer is about the note on disk, and then the question is asked. Turned
+	// off, or moved to another note, the marks go at once rather than waiting
+	// for an answer about somewhere else.
+	const showAuthors = useSyncExternalStore(showAuthorsStore.subscribe, showAuthorsStore.get);
+	useEffect(() => {
+		const v = view.current;
+		if (!v) return;
+		v.dispatch({ effects: clearAuthors.of(null) });
+		if (!showAuthors) return;
+		// A note not yet here asks for itself when it arrives (askAgain, on the
+		// first whole text); this is for the toggle turned on over a note.
+		if (base.current === null) return;
+		flushSaves();
+		send({ type: "who_wrote", path });
+	}, [showAuthors, path]);
+
+	/**
+	 * The one rule for when the marks are asked for again: whenever the note
+	 * on screen has just become the note on disk. The answer is in the disk's
+	 * coordinates, so while there is typing not yet written down it is about
+	 * a text that is not the one on screen, and is not asked for — the save
+	 * that follows brings the screen back to the disk and asks then. Between,
+	 * the marks ride the words (authors.ts).
+	 *
+	 * Every road to that state calls this after settling: the first whole text,
+	 * the echo of a save, a change from elsewhere landing on a clean note.
+	 * Read off the store rather than a prop, since it is called from inside
+	 * the note's own effect, where a prop would be the one it was made with.
+	 */
+	const askAgain = useCallback(() => {
+		if (dirty.current || !showAuthorsStore.get()) return;
+		send({ type: "who_wrote", path });
+	}, [path]);
+
+	/**
+	 * The note on screen has just become the note on disk.
+	 *
+	 * Two things want this moment and no other. The marks of who wrote what are
+	 * answered in the disk's coordinates (askAgain, above). The note's tags are
+	 * the vault's reading of it, and the vault has read nothing until the note
+	 * is written — a half-typed `#ag` is not a tag yet. `tagsIn` is a parse of
+	 * the whole note and the one definition of what a note's tags are, shared
+	 * with the index that answers who else has them (links.ts): worth a parse
+	 * here, not worth one per keystroke the way the counts are.
+	 *
+	 * Together, in one place, because there are five roads to this moment and
+	 * putting the tags on one of them is how they were missed on the other
+	 * four — including the echo of this editor's own save, which is how a tag
+	 * somebody typed almost always arrives. A road added later gets both or
+	 * neither.
+	 */
+	const onDisk = (text: string, authored?: Authored) => {
+		sayInFront(at.current, { tags: tagsIn(text), ...(authored ? { authored } : {}) });
+		askAgain();
+	};
+
+	const authored = useSyncExternalStore(authorsStore.subscribe, authorsStore.get);
+	useEffect(() => {
+		const v = view.current;
+		if (!v || !showAuthors || authored?.path !== path) return;
+		v.dispatch({ effects: paintAuthors.of(authored.spans) });
+	}, [authored, showAuthors, path]);
 
 	// A change to the note, from whoever made it, over the version it was made to.
 	const changed = useSyncExternalStore(noteChangedStore.subscribe, noteChangedStore.get);
@@ -386,16 +662,19 @@ export function Editor({
 			// The echo of this editor's save, as the change it made.
 			saved.current = text;
 			base.current = changed.modified;
+			lines.current = changed.lines;
 			local.current = sinceSent.current;
 			sent.current = null;
 			dirty.current = !local.current.empty;
 			setStatus(dirty.current ? "unsaved" : "saved");
-			v.dispatch({ effects: setSpans.of({ spans: changed.spans, through: local.current }) });
+			v.dispatch({ effects: diffFor(changed.original ?? null) });
+			onDisk(text, changed.authored);
 			return;
 		}
 		if (!dirty.current) {
-			v.dispatch({ changes: theirs, annotations: serverChange, effects: setSpans.of({ spans: changed.spans }) });
-			settle(text, changed.modified);
+			v.dispatch({ changes: theirs, annotations: serverChange, effects: diffFor(changed.original ?? null) });
+			settle(text, changed.modified, changed.lines);
+			onDisk(text, changed.authored);
 			return;
 		}
 		const fit = rebase(theirs, local.current);
@@ -404,9 +683,10 @@ export function Editor({
 			return;
 		}
 		// Their change, around the typing; the typing, over their text.
-		v.dispatch({ changes: fit.theirs, annotations: serverChange, effects: setSpans.of({ spans: changed.spans, through: fit.ours }) });
+		v.dispatch({ changes: fit.theirs, annotations: serverChange, effects: diffFor(changed.original ?? null) });
 		saved.current = text;
 		base.current = changed.modified;
+		lines.current = changed.lines;
 		local.current = fit.ours;
 		sinceSent.current = fit.ours;
 		if (sent.current !== null) {
@@ -423,6 +703,10 @@ export function Editor({
 		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [changed, path]);
+
+	// The diff is about one note. Opening another closes it; the other's own
+	// `note` opens its own, if there is anything in it to decide about.
+	useEffect(() => () => { if (view.current) showDiff(view.current, null); }, [path]);
 
 	// The note is gone from the disk: deleted by pi's bash, another program,
 	// or a save that found nothing to save over. What is on screen is the only
@@ -451,6 +735,28 @@ export function Editor({
 		setStatus("conflict");
 	}, [conflict, path]);
 
+	// Told to the strip across the foot of the window, which is not in this
+	// tree and cannot be handed it (inFront.ts).
+	useEffect(() => {
+		sayInFront(at.current, { saved: status });
+	}, [path, status]);
+
+	// Cleared on the way out, since an editor that has gone has nothing to say
+	// — and cleared only if what is there is still this note's, so the editor
+	// being left behind does not wipe what the one taking its place has
+	// already written.
+	//
+	// Its own effect, and not the one above. Clearing on every change of
+	// status would take the word count with it every time a keystroke was
+	// saved: the counts are written from the editor's update listener, which
+	// knows nothing of React's renders, and what the two say is only ever put
+	// together in the store.
+	useEffect(() => {
+		return () => {
+			if (inFrontStore.get()?.path === path) inFrontStore.set(null);
+		};
+	}, [path]);
+
 	/** Take the disk's version. Everything typed here is given up, and the answer settles the rest. */
 	const reload = () => {
 		const v = view.current;
@@ -467,7 +773,10 @@ export function Editor({
 	/** Put what is on screen over whatever is there — the version the refusal named, or none if the note is gone. */
 	const overwrite = () => {
 		if (status === "gone") base.current = null;
-		else if (conflict?.path === path) base.current = conflict.modified;
+		else if (conflict?.path === path) {
+			base.current = conflict.modified;
+			lines.current = null;
+		}
 		else if (note?.path === path) base.current = note.modified;
 		else return reload(); // No version to write over is known here; the disk's answer will say.
 		dirty.current = true;
@@ -479,9 +788,9 @@ export function Editor({
 	};
 
 	return (
-		<div id="editor" className="flex min-h-0 flex-1 flex-col" data-status={status}>
+		<div id="editor" data-status={status} className="flex flex-1 flex-col">
 			{status === "conflict" && (
-				<div role="alert" className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs">
+				<div role="alert" className="sticky top-0 z-10 flex items-center gap-2 bg-muted px-4 py-2 text-xs">
 					<span className="flex-1">This note changed on disk while you were editing it.</span>
 					<Button variant="outline" size="sm" className="h-7 text-xs" onClick={reload}>
 						Reload
@@ -491,8 +800,10 @@ export function Editor({
 					</Button>
 				</div>
 			)}
+			{/* Above the text, on the page with it: the panel for the block the text hides. Not before the text is here — an empty note is not a note with no properties yet. */}
+			{status !== "loading" && <Properties view={view.current} read={read} />}
 			{status === "gone" && (
-				<div role="alert" className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-xs">
+				<div role="alert" className="sticky top-0 z-10 flex items-center gap-2 bg-muted px-4 py-2 text-xs">
 					<span className="flex-1">This note is no longer on disk. What is here is the only copy.</span>
 					<Button variant="outline" size="sm" className="h-7 text-xs" onClick={overwrite}>
 						Put it back
@@ -502,36 +813,9 @@ export function Editor({
 					</Button>
 				</div>
 			)}
-			<div ref={host} className="min-h-0 flex-1 overflow-hidden" />
-			<Backlinks path={path} onOpen={onOpen} />
+			{/* The text takes what the page has left, whether or not it has the words to fill it — see the theme's min-height. */}
+			<div ref={host} className="flex flex-1 flex-col" />
 		</div>
 	);
 }
 
-/**
- * The notes that link here, under the note. From the index, sent with the
- * note and again whenever a write anywhere may have changed it. Nothing when
- * there are none: an empty "Linked from" is a question nobody asked.
- */
-function Backlinks({ path, onOpen }: { path: string; onOpen?: (path: string) => void }) {
-	const all = useSyncExternalStore(backlinksStore.subscribe, backlinksStore.get);
-	const notes = all[path] ?? [];
-	if (notes.length === 0) return null;
-	return (
-		<div id="backlinks" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t px-6 py-2 text-xs text-muted-foreground">
-			<span>Linked from</span>
-			{notes.map((b) => (
-				<button
-					key={b.path}
-					type="button"
-					title={b.path}
-					onClick={() => onOpen?.(b.path)}
-					className="cursor-default rounded-sm px-1 text-foreground hover:bg-accent"
-				>
-					{titleOf(b.path)}
-					{b.count > 1 && <span className="ml-1 text-muted-foreground">{b.count}</span>}
-				</button>
-			))}
-		</div>
-	);
-}

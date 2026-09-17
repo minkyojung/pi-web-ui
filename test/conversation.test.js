@@ -32,7 +32,7 @@ function replay(events) {
 const comparable = (items) =>
 	items
 		.filter((item) => item.kind !== "done")
-		.map(({ kind, text, name, args, result, isError }) => ({ kind, text, name, args, result, isError }));
+		.map(({ kind, text, name, args, result, isError, message }) => ({ kind, text, name, args, result, isError, message }));
 
 test("live events and stored messages produce the same conversation", async (t) => {
 	// agent_end carries the run's messages, which for these single-turn
@@ -239,6 +239,26 @@ test("a compaction reads the same live as it does after resuming", () => {
 	]);
 	assert.deepEqual(state.items, stored);
 	assert.equal(stored[0].text, compactionText(120000));
+});
+
+test("an extension's message is a notice on both paths, and only if it asked to be shown", () => {
+	const shown = { role: "custom", customType: "web", content: [{ type: "text", text: "Searched 3 pages" }], display: true, timestamp: 0 };
+	const hidden = { ...shown, display: false };
+	const live = replay([
+		{ type: "message_start", message: shown },
+		{ type: "message_end", message: shown },
+		{ type: "message_start", message: hidden },
+		{ type: "message_end", message: hidden },
+	]).state.items;
+	assert.deepEqual(live, [{ kind: "notice", text: "Searched 3 pages" }]);
+	assert.deepEqual(itemsFromMessages([shown, hidden]), live);
+});
+
+test("a branch summary reads as a notice after resuming", () => {
+	const stored = itemsFromMessages([
+		{ role: "branchSummary", summary: "Tried the other wording first", fromId: "x", timestamp: "0" },
+	]);
+	assert.deepEqual(stored, [{ kind: "notice", text: "Tried the other wording first" }]);
 });
 
 test("a compaction that fails or is cancelled says which", () => {

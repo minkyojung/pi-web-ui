@@ -1,11 +1,12 @@
 # Kept out of package.json so it can say why it is the way it is.
 
-# Provisional: the app has no name yet. Changing it later moves where macOS
-# keeps the app's settings, which starts a user from scratch.
-# productName lives in package.json instead, because electron reads it from
-# there at runtime to decide that path — a dev run and the packaged app have to
-# agree on it.
-appId: local.pi-web-ui.app
+# The reverse of octave.run, and settled: this is what macOS, the signing
+# identity and the updater know the app by, and a change would make it a
+# different app to all three. The folder the app keeps its settings in is a
+# separate matter — Electron names that after productName, which lives in
+# package.json because electron reads it from there at runtime, and a dev run
+# and the packaged app have to agree on it.
+appId: run.octave.app
 
 directories:
   output: release
@@ -20,6 +21,10 @@ files:
   - dist/**
   - dist-server/**
   - package.json
+  # Octave's licence, and the licences of everything shipped with it — the
+  # latter written by scripts/notices.mjs at the start of `npm run build`.
+  - LICENSE
+  - THIRD_PARTY_NOTICES.md
 
 # The server runs as a child process, and a child process cannot load an ES
 # module out of an asar archive. Unpacking just the server does not help either:
@@ -31,8 +36,45 @@ files:
 asar: false
 
 mac:
-  category: public.app-category.developer-tools
-  target: [dir]
-  # Signing needs an Apple Developer identity this build does not have. Unsigned
-  # runs, but a first open has to be right-click -> Open.
-  identity: null
+  category: public.app-category.productivity
+  # An Icon Composer file, made in Xcode 26. electron-builder compiles it with
+  # actool into Assets.car for macOS 26 and an .icns for anything older and
+  # for the disk image — so packing needs Xcode 26 selected, which the
+  # macos-latest runner has.
+  icon: build/octave.icon
+  # Apple Silicon only. Everything the app leans on the machine for — the
+  # recursive fs.watch, the trash, the e2e's Chrome — has only ever been
+  # checked here, and an Intel build would be a promise nobody has tested.
+  # `npm run pack` says --arm64. The disk image is what a person downloads;
+  # the zip is what electron-updater downloads, since on macOS it updates
+  # from a zip and not a dmg, and latest-mac.yml beside it is what it reads.
+  target: [dmg, zip]
+  # Signed with the Developer ID Application identity in the keychain, found
+  # by name, and notarized with the Apple ID, app-specific password and team
+  # in the environment — scripts/pack-signed.sh puts them there for one run.
+  # The hardened runtime is electron-builder's default and so are the three
+  # entitlements Electron needs under it (allow-jit, unsigned executable
+  # memory, no library validation for the SDK's native clipboard module);
+  # nothing here asks for more, so no entitlements file of our own.
+  #
+  # The server is spawned with ELECTRON_RUN_AS_NODE (electron/main.js). That
+  # is a fuse, on by default, and electron-builder leaves fuses alone unless
+  # `electronFuses` says otherwise — so it is not set here, and
+  # scripts/verify-signed.sh checks the packaged app still starts its server.
+  notarize: true
+
+dmg:
+  # One window, the app and a link to Applications, no background art yet.
+  contents:
+    - { x: 130, y: 220 }
+    - { x: 410, y: 220, type: link, path: /Applications }
+
+# Where the release job puts the artifacts and where the app looks for the
+# next version: the GitHub Releases of this repository. A release, not a
+# draft, so the updater sees it the moment the job ends; the notes for it are
+# the version's section of CHANGELOG.md, which the job attaches afterwards.
+publish:
+  provider: github
+  owner: minkyojung
+  repo: pi-web-ui
+  releaseType: release

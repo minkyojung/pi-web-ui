@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { listNotes, newNoteName, readNote, renameNote, resolveNote, restoreNote, trashNote, writeNote } from "../vault.ts";
+import { listNotes, newNoteName, notePath, readNote, renameNote, resolveNote, restoreNote, trashNote, withCreated, writeNote } from "../vault.ts";
 
 const DIR = mkdtempSync(join(tmpdir(), "notes-"));
+/** What the disk calls DIR: on a Mac the temp folder is reached through a symlink. */
+const REAL = realpathSync.native(DIR);
 test.after(() => rmSync(DIR, { recursive: true, force: true }));
 
 const put = (path, whenSeconds) => {
@@ -47,8 +49,8 @@ test("없는 폴더는 빈 목록이다", () => {
 });
 
 test("폴더 밖, 절대 경로, 숨김 폴더, 마크다운 아닌 것은 노트가 아니다", () => {
-  assert.equal(resolveNote(DIR, "a.md"), join(DIR, "a.md"));
-  assert.equal(resolveNote(DIR, "deep/er/c.md"), join(DIR, "deep/er/c.md"));
+  assert.equal(resolveNote(DIR, "a.md"), join(REAL, "a.md"));
+  assert.equal(resolveNote(DIR, "deep/er/c.md"), join(REAL, "deep/er/c.md"));
   assert.equal(resolveNote(DIR, "../a.md"), null);
   assert.equal(resolveNote(DIR, "deep/../../a.md"), null);
   assert.equal(resolveNote(DIR, join(DIR, "a.md")), null, "절대 경로는 상대 경로로만 받는다");
@@ -149,4 +151,99 @@ test("같은 이름을 두 번 지우면 둘 다 남고, 되살릴 자리가 차
   assert.deepEqual(trashNote(DIR, "nope.md"), { ok: false, reason: "missing" });
   assert.deepEqual(trashNote(DIR, "../x.md"), { ok: false, reason: "invalid" });
   assert.deepEqual(restoreNote(DIR, "never.md", "never.md"), { ok: false, reason: "missing" });
+});
+
+// --- one note, however its name is spelled ---
+//
+// What a file system treats as the same name is its own business and differs
+// between them, so each of these asks the disk under the test whether it has
+// the behaviour at all, the way git probes for core.ignorecase. Where it does
+// not, there is nothing to get wrong and the case is skipped.
+
+const opens = (name, as) => {
+  writeFileSync(join(DIR, name), "probe\n");
+  try {
+    readFileSync(join(DIR, as));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(join(DIR, name), { force: true });
+  }
+};
+
+const NFC = "café.md".normalize("NFC");
+const NFD = "café.md".normalize("NFD");
+
+test("대문자로 쓴 확장자도 같은 노트다 — 파일시스템이 같은 파일을 열어 준다면", (t) => {
+  if (!opens("case.md", "case.MD")) return t.skip("대소문자를 구분하는 파일시스템");
+  writeFileSync(join(DIR, "case.md"), "mine\n");
+  t.after(() => rmSync(join(DIR, "case.md"), { force: true }));
+  assert.equal(notePath(DIR, "case.MD"), "case.md", "디스크가 부르는 이름으로 돌아온다");
+  assert.equal(readNote(DIR, "case.MD").path, "case.md");
+  assert.equal(readNote(DIR, "case.MD").text, "mine\n");
+});
+
+test("아직 없는 노트를 .MD로 만들려는 것은 노트가 아니다 — 목록에 뜨지 않을 이름이라서", () => {
+  assert.equal(notePath(DIR, "notmade.MD"), null);
+});
+
+test("한글과 악센트는 어떻게 조합되어 있든 같은 노트다", (t) => {
+  if (!opens(NFC, NFD)) return t.skip("정규화를 가리는 파일시스템");
+  writeFileSync(join(DIR, NFC), "mine\n");
+  t.after(() => rmSync(join(DIR, NFC), { force: true }));
+  const listed = listNotes(DIR).find((f) => f.path.normalize("NFC") === NFC);
+  assert.ok(listed, "목록에는 디스크 철자로 뜬다");
+  assert.equal(notePath(DIR, NFD), listed.path, "다르게 조합해 물어도 그 하나를 가리킨다");
+  assert.equal(notePath(DIR, NFC), listed.path);
+});
+
+test("pi가 절대 경로로 말해도 폴더 기준 이름으로 돌아온다", () => {
+  assert.equal(notePath(DIR, join(DIR, "a.md")), "a.md");
+  assert.equal(notePath(DIR, join(REAL, "deep/er/c.md")), "deep/er/c.md");
+  assert.equal(notePath(DIR, join(DIR, "..", "outside.md")), null);
+});
+
+test("폴더 밖을 가리키는 심볼릭 링크는 노트가 아니다 — 글자만 봐서는 알 수 없는 것", (t) => {
+  const link = join(DIR, "escape.md");
+  const outside = join(tmpdir(), `vault-escape-${process.pid}.md`);
+  writeFileSync(outside, "not yours\n");
+  try {
+    symlinkSync(outside, link);
+  } catch {
+    return t.skip("심볼릭 링크를 만들 수 없는 곳");
+  }
+  t.after(() => {
+    rmSync(link, { force: true });
+    rmSync(outside, { force: true });
+  });
+  assert.equal(notePath(DIR, "escape.md"), null);
+  assert.equal(readNote(DIR, "escape.md"), null);
+});
+
+// --- what a note says the moment it is made ---
+
+const AT = new Date(2026, 0, 1, 0, 5); // 새해 0시 5분, 이곳의 시각으로
+
+test("새 노트는 만들어진 시각을 적는다 — 지역 시각으로, 분까지", () => {
+  assert.equal(withCreated("", AT), "---\ncreated: 2026-01-01T00:05\n---\n");
+});
+
+test("UTC로 바꾸지 않는다 — 자정 근처에서 날짜가 하루 어긋나지 않도록", () => {
+  // toISOString이라면 서울에서 2025-12-31T15:05Z가 되어 전날이 된다.
+  assert.match(withCreated("", AT), /2026-01-01T00:05/);
+});
+
+test("이미 속성이 있으면 그 줄들은 그대로 두고 한 줄만 더한다", () => {
+  assert.equal(withCreated("---\ntags: [a]   # kept\n---\nbody\n", AT), "---\ntags: [a]   # kept\ncreated: 2026-01-01T00:05\n---\nbody\n");
+});
+
+test("이미 만들어진 시각을 말하는 노트는 그대로 둔다", () => {
+  const note = "---\ncreated: 2020-05-05T09:00\n---\nbody\n";
+  assert.equal(withCreated(note, AT), note);
+});
+
+test("깨진 블록은 건드리지 않는다", () => {
+  const note = "---\ntags: [a\n---\nbody\n";
+  assert.equal(withCreated(note, AT), note);
 });

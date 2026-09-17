@@ -55,3 +55,13 @@ test("arguments that are not what the schema says fall back rather than throw", 
 	// A path that is missing sinks the whole header, even when the rest is fine.
 	assert.equal(toolDetail("edit", { edits: [{ oldText: "a", newText: "b" }] }), null);
 });
+
+test("the tools a note is written by say which note, as pi's own do", () => {
+	assert.equal(toolDetail("note_write", { path: "daily/2026-09-16.md", content: "…" }), "daily/2026-09-16.md");
+	assert.equal(toolDetail("note_properties", { path: "plan.md", set: [{ name: "tags", value: ["x"] }] }), "plan.md");
+	assert.equal(toolDetail("note_edit", { path: "plan.md", edits: [{ oldText: "a", newText: "b" }] }), "plan.md");
+	assert.equal(
+		toolDetail("note_edit", { path: "plan.md", edits: [{ oldText: "a", newText: "b" }, { oldText: "c", newText: "d" }] }),
+		"plan.md · 2 edits",
+	);
+});

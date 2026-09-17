@@ -38,7 +38,7 @@ test("사이드카가 폴더와 맞으면 그대로 쓰고, 안 맞으면 다시
 test("고치면 옛 대상과 새 대상이 모두 '바뀌었을 수 있는 노트'로 나온다", () => {
   const store = new LinkStore(DIR);
   store.load();
-  const touched = store.update("a.md", "now [[c]] only\n");
+  const touched = store.update("a.md", "now [[c]] only\n").backlinks;
   assert.deepEqual(touched.sort(), ["c.md", "ideas/b.md"]);
   assert.deepEqual(store.backlinks("ideas/b.md"), []);
   assert.deepEqual(store.backlinks("c.md"), [{ path: "a.md", count: 1 }]);
@@ -47,7 +47,7 @@ test("고치면 옛 대상과 새 대상이 모두 '바뀌었을 수 있는 노�
 test("없는 노트로의 링크도 그 이름의 대상으로 잡힌다", () => {
   const store = new LinkStore(DIR);
   store.load();
-  assert.deepEqual(store.update("c.md", "[[nowhere]]\n").sort(), ["a.md", "nowhere.md"]);
+  assert.deepEqual(store.update("c.md", "[[nowhere]]\n").backlinks.sort(), ["a.md", "nowhere.md"]);
 });
 
 test("이름이 바뀌면 키가 옮겨지고, 지우면 빠진다", () => {
@@ -56,7 +56,7 @@ test("이름이 바뀌면 키가 옮겨지고, 지우면 빠진다", () => {
   store.rename("a.md", "z.md");
   assert.deepEqual(store.linksOf("a.md"), []);
   assert.deepEqual(store.linksOf("z.md").map((l) => l.target), ["c"]);
-  const touched = store.remove("z.md");
+  const touched = store.remove("z.md").backlinks;
   assert.deepEqual(touched, ["c.md"]);
   assert.deepEqual(store.backlinks("c.md"), []);
   assert.equal(JSON.parse(readFileSync(join(DIR, LINKS_PATH), "utf8")).notes["z.md"], undefined);
@@ -74,6 +74,34 @@ test("폴더와 맞아도 다른 파서가 만든 사이드카는 믿지 않고 
 test("삽입도 링크처럼 색인되어 백링크가 된다", () => {
   const store = new LinkStore(DIR);
   store.load();
-  assert.deepEqual(store.update("c.md", "![[a]]\n"), ["a.md"]);
+  assert.deepEqual(store.update("c.md", "![[a]]\n").backlinks, ["a.md"]);
   assert.deepEqual(store.backlinks("a.md"), [{ path: "c.md", count: 1 }, { path: "ideas/b.md", count: 1 }]);
+});
+
+test("태그: 노트마다 한 번씩 적히고, 같은 태그의 다른 노트가 조회된다", () => {
+  put("t1.md", "#work and #Work again, #home\n");
+  put("t2.md", "#work\n");
+  put("t3.md", "no tags\n");
+  const store = new LinkStore(DIR);
+  store.load();
+  assert.deepEqual(store.tagsOf("t1.md"), ["work", "home"]);
+  assert.deepEqual(store.tagged("t1.md"), [{ path: "t2.md", tags: ["work"] }]);
+  assert.deepEqual(store.tagged("t3.md"), []);
+  // From the sidecar, the same.
+  const again = new LinkStore(DIR);
+  again.load();
+  assert.deepEqual(again.tagged("t2.md"), [{ path: "t1.md", tags: ["work"] }]);
+});
+
+test("태그를 고치면 옛 태그와 새 태그를 나눠 가진 노트가 모두 '바뀌었을 수 있는 노트'다", () => {
+  const store = new LinkStore(DIR);
+  store.load();
+  assert.deepEqual(store.update("t2.md", "#home now\n").tagged.sort(), ["t1.md", "t2.md"]);
+  assert.deepEqual(store.tagged("t2.md"), [{ path: "t1.md", tags: ["home"] }]);
+  assert.deepEqual(store.remove("t2.md").tagged, ["t1.md"]);
+  assert.deepEqual(store.tagged("t1.md"), []);
+  put("t4.md", "#home\n");
+  store.update("t4.md", "#home\n");
+  store.rename("t4.md", "t5.md");
+  assert.deepEqual(store.tagged("t1.md"), [{ path: "t5.md", tags: ["home"] }]);
 });

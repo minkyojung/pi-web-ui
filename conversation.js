@@ -22,6 +22,11 @@
  * @property {string} [stopReason] on `done`: why the run's last message stopped
  * @property {number} [tokens]     on `done`: tokens the run billed, across its messages
  * @property {number} [cost]       on `done`: what it cost, in dollars
+ * @property {number} [message]  on `thinking` and `tool`: which assistant message
+ *   this step came from. A turn that calls tools is several assistant messages,
+ *   and how many of them a folded run holds is the one thing about it the items
+ *   themselves cannot be asked — two thoughts in one message and two thoughts in
+ *   two look identical without it.
  */
 
 /** Concatenate the text parts of a message content array. */
@@ -184,6 +189,11 @@ export function createConversation() {
 		/** The notice tracking a compaction in progress, if any. */
 		openCompaction: null,
 		/**
+		 * How many assistant messages have begun, which is what numbers the steps
+		 * they produce. Not reset per run: only ever compared for sameness.
+		 */
+		messageIndex: 0,
+		/**
 		 * When the messages of the run in flight were written, in ms.
 		 *
 		 * Taken from the messages themselves rather than read off a clock here:
@@ -213,6 +223,9 @@ export function applyEvent(state, event) {
 	const added = [];
 	const changed = [];
 	const add = (item) => {
+		// Every step is stamped with the message it came from, at the one place
+		// items are made, so no new kind of step can forget to carry it.
+		if (item.kind === "thinking" || item.kind === "tool") item.message = state.messageIndex;
 		state.items.push(item);
 		added.push(item);
 		return item;
@@ -243,6 +256,7 @@ export function applyEvent(state, event) {
 				if (text) add({ kind: "user", text });
 			} else if (event.message?.role === "assistant") {
 				state.sawText = false;
+				state.messageIndex++;
 			}
 			break;
 
@@ -307,6 +321,11 @@ export function applyEvent(state, event) {
 				// Nothing streamed for this message, so take the finished text.
 				const text = textOf(event.message.content);
 				if (text) add({ kind: "assistant", text });
+			} else if (event.message?.role === "custom" && event.message.display) {
+				// An extension's own message, and one it asked to have shown. It
+				// does not stream, so the whole of it is here.
+				const text = textOf(event.message.content);
+				if (text) add({ kind: "notice", text });
 			}
 			state.openText = null;
 			state.openThinking = null;
@@ -409,6 +428,12 @@ export function applyEvent(state, event) {
 		case "error":
 			add({ kind: "error", text: errorText(event.message) });
 			break;
+
+		// Said by an extension, through the server (extensionUI.ts). Live only,
+		// like a retry: pi keeps no record of it.
+		case "notice":
+			add({ kind: "notice", text: event.text });
+			break;
 	}
 
 	return { added, changed };
@@ -438,6 +463,8 @@ export function itemsFromMessages(messages, entryIdOf) {
 	let run = newRun();
 	/** Whether the run being read has anything in it to finish. */
 	let running = false;
+	/** Numbers each message's steps, the way messageIndex does live. */
+	let messageIndex = 0;
 
 	/**
 	 * Close the run being read, if there is one.
@@ -475,13 +502,14 @@ export function itemsFromMessages(messages, entryIdOf) {
 			stamp(run, message);
 			bill(run, message);
 			running = true;
+			messageIndex++;
 			// Live, a message thinks before it speaks and speaks before its tool
 			// calls start, so replay in that order rather than in content order.
 			for (const part of message.content) {
 				// Redacted thinking is an opaque payload the provider keeps for its
 				// own continuity, with nothing in it to read.
 				if (part.type === "thinking" && part.thinking && !part.redacted) {
-					items.push({ kind: "thinking", text: part.thinking });
+					items.push({ kind: "thinking", text: part.thinking, message: messageIndex });
 				}
 			}
 			for (const part of message.content) {
@@ -489,7 +517,7 @@ export function itemsFromMessages(messages, entryIdOf) {
 			}
 			for (const part of message.content) {
 				if (part.type === "toolCall") {
-					const item = { kind: "tool", name: part.name, args: part.arguments, result: null, isError: false };
+					const item = { kind: "tool", name: part.name, args: part.arguments, result: null, isError: false, message: messageIndex };
 					toolItems.set(part.id, item);
 					items.push(item);
 				}
@@ -502,6 +530,13 @@ export function itemsFromMessages(messages, entryIdOf) {
 		} else if (message.role === "compactionSummary") {
 			// Left behind by a compaction, in place of the messages it replaced.
 			items.push({ kind: "notice", text: compactionText(message.tokensBefore) });
+		} else if (message.role === "custom") {
+			// An extension's own message. Shown only if it asked to be, as live.
+			const text = textOf(message.content);
+			if (message.display && text) items.push({ kind: "notice", text });
+		} else if (message.role === "branchSummary") {
+			// Left where a branch was left, saying what happened on it.
+			if (message.summary) items.push({ kind: "notice", text: message.summary });
 		} else if (message.role === "toolResult") {
 			const item = toolItems.get(message.toolCallId);
 			if (item) {

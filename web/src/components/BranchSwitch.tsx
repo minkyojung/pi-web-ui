@@ -3,6 +3,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 
 import { branchesStore, configStore } from "../serverState";
 import { Button } from "./ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
  * How to ask for a different branch.
@@ -47,27 +48,37 @@ export function BranchSwitch({ entryId }: { entryId: string }) {
 
 	return (
 		<div className="flex items-center gap-0.5 text-xs text-muted-foreground">
-			<Button
-				size="icon-xs"
-				variant="ghost"
-				title="Previous answer"
-				disabled={busy || point.index === 0}
-				onClick={() => go(point.index - 1)}
-			>
-				<ChevronLeftIcon />
-			</Button>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button
+						size="icon-xs"
+						variant="ghost"
+						aria-label="Previous answer"
+						disabled={busy || point.index === 0}
+						onClick={() => go(point.index - 1)}
+					>
+						<ChevronLeftIcon />
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent side="bottom">Previous answer</TooltipContent>
+			</Tooltip>
 			<span className="tabular-nums">
 				{point.index + 1}/{point.total}
 			</span>
-			<Button
-				size="icon-xs"
-				variant="ghost"
-				title="Next answer"
-				disabled={busy || point.index === point.total - 1}
-				onClick={() => go(point.index + 1)}
-			>
-				<ChevronRightIcon />
-			</Button>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button
+						size="icon-xs"
+						variant="ghost"
+						aria-label="Next answer"
+						disabled={busy || point.index === point.total - 1}
+						onClick={() => go(point.index + 1)}
+					>
+						<ChevronRightIcon />
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent side="bottom">Next answer</TooltipContent>
+			</Tooltip>
 		</div>
 	);
 }

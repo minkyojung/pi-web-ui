@@ -1,5 +1,5 @@
 /**
- * Light, dark, or whatever the system says.
+ * Light, dark, either Perplexity, or whatever the system says.
  *
  * Kept in this browser rather than in settings.json with the rest. A theme is
  * about the screen it is being read on, not about the work — the same
@@ -7,14 +7,17 @@
  * setting on the server can only hold one.
  *
  * The choice and the answer are two different things. The choice is one of the
- * three below; the answer is only ever light or dark, and that is what goes on
- * the element as data-theme. index.html works it out again, inline, before the
- * first paint — keep the two in step.
+ * five below; the answer is one of the four that name a theme, since only
+ * system has anything left to resolve — to light or dark, by what the screen
+ * says. System resolves to the neutral pair and not to Perplexity: it answers
+ * how bright the room is, which is not an answer to which palette was wanted.
+ * The answer is what goes on the element as data-theme. index.html works it out
+ * again, inline, before the first paint — keep the two in step.
  */
-export type Theme = "system" | "light" | "dark";
+export type Theme = "system" | "light" | "dark" | "perplexity-light" | "perplexity-dark";
 
 const KEY = "theme";
-const THEMES: Theme[] = ["system", "light", "dark"];
+const THEMES: Theme[] = ["system", "light", "dark", "perplexity-light", "perplexity-dark"];
 const dark = () => matchMedia("(prefers-color-scheme: dark)");
 
 /** Storage throws in a window opened with cookies blocked; the default is not worth a crash. */

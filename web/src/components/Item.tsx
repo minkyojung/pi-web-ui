@@ -4,6 +4,7 @@ import { CircleAlertIcon, InfoIcon } from "lucide-react";
 import type { Item } from "../types";
 import { AskAgain } from "./AskAgain";
 import { BranchSwitch } from "./BranchSwitch";
+import { Fork } from "./Fork";
 import { Message, MessageContent, MessageResponse } from "./ai-elements/message";
 import { ThinkingRow } from "./ThinkingRow";
 import { ToolRow } from "./ToolRow";
@@ -34,6 +35,7 @@ export const ItemView = memo(function ItemView({ item, index }: { item: Item; in
 					{item.entryId && (
 						<div className="ml-auto flex items-center gap-0.5">
 							<AskAgain entryId={item.entryId} text={item.text ?? ""} />
+							<Fork entryId={item.entryId} />
 							<BranchSwitch entryId={item.entryId} />
 						</div>
 					)}

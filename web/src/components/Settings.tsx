@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { SlidersHorizontalIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { SettingsIcon } from "lucide-react";
 import { MODE_IDS, describeMode, type ToolModeId } from "../../../toolModes";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -11,17 +11,27 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { NativeSelect } from "@/components/ui/native-select";
+import { Switch } from "@/components/ui/switch";
+import { Accounts } from "@/components/Accounts";
+import { Loadout } from "@/components/Loadout";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { readTheme, setTheme, type Theme } from "@/theme";
+import { applySettings, configStore, providersStore, settingsStore } from "../serverState";
+import { getConnection, subscribe } from "../store";
+import type { Settings, SettingsMsg } from "../types";
+import { send } from "../ws";
+import { settingsOpenStore } from "../settingsOpen";
 
-/** settings.ts, as it arrives. Declared again rather than imported: that module reads files. */
-type Settings = {
-  toolMode: ToolModeId;
-};
-
-const SECTIONS = ["Appearance", "Agent", "Keys"] as const;
+const SECTIONS = ["Accounts", "Appearance", "Agent", "Loadout", "Keys"] as const;
 type Section = (typeof SECTIONS)[number];
+const isSection = (name: string): name is Section => (SECTIONS as readonly string[]).includes(name);
 
 /**
  * Everything that used to be a constant in a file.
@@ -36,7 +46,7 @@ type Section = (typeof SECTIONS)[number];
  */
 export function Settings() {
   const [open, setOpen] = useState(false);
-  const [section, setSection] = useState<Section>("Appearance");
+  const [section, setSection] = useState<Section>("Accounts");
 
   // ⌘, is where every mac app keeps this. The button is a small grey icon in a
   // corner, which is the right size for how often it is needed and the wrong
@@ -53,6 +63,31 @@ export function Settings() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Asked for from elsewhere — the picker's last item — on a section by name.
+  const wanted = useSyncExternalStore(settingsOpenStore.subscribe, settingsOpenStore.get);
+  useEffect(() => {
+    if (!wanted) return;
+    if (isSection(wanted)) {
+      setSection(wanted);
+      setOpen(true);
+    }
+    settingsOpenStore.set(null);
+  }, [wanted]);
+
+  // A first run: no model, because nobody is signed in anywhere. The one thing
+  // to do is here, so it is opened rather than left to be found behind a small
+  // grey icon. Once per page load — closing it is an answer too.
+  const config = useSyncExternalStore(configStore.subscribe, configStore.get);
+  const providers = useSyncExternalStore(providersStore.subscribe, providersStore.get);
+  const offered = useRef(false);
+  useEffect(() => {
+    if (offered.current || !config || !providers) return;
+    if (config.model !== null || providers.some((p) => p.signedIn)) return;
+    offered.current = true;
+    setSection("Accounts");
+    setOpen(true);
+  }, [config, providers]);
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <Tooltip>
@@ -60,21 +95,21 @@ export function Settings() {
           <DialogTrigger asChild>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon-sm"
               aria-label="Settings"
-              className="h-7 w-7 shrink-0 p-0 text-muted-foreground"
+              className="shrink-0 text-muted-foreground"
             >
-              <SlidersHorizontalIcon className="size-3.5" />
+              <SettingsIcon className="size-3.5" />
             </Button>
           </DialogTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Settings ⌘,</TooltipContent>
+        <TooltipContent side="top">Settings ⌘,</TooltipContent>
       </Tooltip>
-      <DialogContent className="grid-cols-[10rem_1fr] gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      <DialogContent className="h-[72vh] max-h-[44rem] min-h-[28rem] w-[72vw] max-w-[64rem] min-w-[40rem] grid-cols-[13rem_1fr] grid-rows-1 gap-0 overflow-hidden p-0 sm:max-w-[64rem]">
         <DialogDescription className="sr-only">
           Settings for how this window is drawn and what the agent may do.
         </DialogDescription>
-        <nav className="flex flex-col gap-0.5 border-r bg-muted/30 p-3">
+        <nav className="flex flex-col gap-0.5 bg-muted/30 p-3">
           <DialogTitle className="px-2 pt-1 pb-2 text-sm font-semibold">Settings</DialogTitle>
           {SECTIONS.map((name) => (
             <Button
@@ -89,7 +124,7 @@ export function Settings() {
             </Button>
           ))}
         </nav>
-        <div className="max-h-[28rem] min-w-0 overflow-y-auto p-5">
+        <div className="min-w-0 overflow-y-auto p-6">
           <Panel section={section} />
         </div>
       </DialogContent>
@@ -98,35 +133,50 @@ export function Settings() {
 }
 
 function Panel({ section }: { section: Section }) {
-  const [settings, setSettings] = useState<Settings | null>(null);
+  // What the server last said, which every window hears whenever any of them
+  // changes something — so this screen never edits a copy it read when it
+  // opened. See SettingsMsg.
+  const stored = useSyncExternalStore(settingsStore.subscribe, settingsStore.get)?.settings;
+  // Changes sent and not yet answered, shown over it. The loadout is a whole
+  // list written at once, and a second edit made inside one round trip has to
+  // start from the first, not from the copy the server has not replaced yet.
+  const [pending, setPending] = useState<Partial<Settings> | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setSettings)
-      .catch(() => setError("could not read settings"));
-  }, []);
+  const saves = useRef(0);
+  const settings = stored && { ...stored, ...pending };
+  const connection = useSyncExternalStore(subscribe, getConnection);
 
   /**
-   * The whole object every time, and whatever comes back is what is shown: the
-   * server decides what it will keep, and the screen says what it kept.
+   * Only the change, which the server lays over what is on disk; what comes
+   * back is what is shown, since the server decides what it will keep.
+   *
+   * Shown at once rather than after the answer. When the last save is answered
+   * the change stops being laid over — replaced by what was kept, or, if it
+   * could not be written, taken back, so the screen never shows a setting the
+   * next session will not have. An earlier save's answer is not the last word
+   * while a later one is on its way.
    */
   const save = useCallback(async (patch: Partial<Settings>) => {
     setError(null);
-    setSettings((cur) => (cur ? { ...cur, ...patch } : cur));
+    setPending((was) => ({ ...was, ...patch }));
+    const mine = ++saves.current;
     try {
       const r = await fetch("/api/settings", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...settings, ...patch }),
+        body: JSON.stringify(patch),
       });
       if (!r.ok) throw new Error(`${r.status}`);
-      setSettings(await r.json());
+      // Kept only if nothing newer has been heard meanwhile — see applySettings.
+      applySettings((await r.json()) as SettingsMsg);
+      if (mine !== saves.current) return;
+      setPending(null);
     } catch {
+      if (mine !== saves.current) return;
+      setPending(null);
       setError("could not save");
     }
-  }, [settings]);
+  }, []);
 
   return (
     <section className="flex flex-col gap-4">
@@ -134,31 +184,48 @@ function Panel({ section }: { section: Section }) {
 
       {section === "Keys" && <Keys />}
 
+      {section === "Accounts" && <Accounts />}
+
+      {/* The settings come on the socket, as the server says them on connecting;
+          until they have, the sections made of them say why they are empty
+          rather than showing nothing, which reads as a setting lost. */}
+      {!settings && (section === "Loadout" || section === "Agent") && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {connection === "open" ? "Reading settings…" : "Not connected — settings show once the window reconnects."}
+        </p>
+      )}
+
+      {section === "Loadout" && settings && (
+        <Loadout chosen={settings.loadout} onChange={(loadout) => void save({ loadout })} />
+      )}
+
       {section === "Agent" && (
         <>
-          <Heading title="Agent">What pi may do.</Heading>
+          <Heading title="Agent">What the agent may do.</Heading>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="toolMode" className="text-xs text-muted-foreground">
               New sessions open on
             </Label>
-            {/* NativeSelect's chevron is placed against its own wrapper, and the
-                wrapper stretches to the column. Narrowing has to happen outside
-                it, or the arrow ends up a panel's width from the box. */}
-            <div className="w-48">
-              <NativeSelect
-                id="toolMode"
-                className="text-sm"
-                disabled={!settings}
-                value={settings?.toolMode ?? ""}
-                onChange={(e) => void save({ toolMode: e.target.value as ToolModeId })}
-              >
+            {/* The native select was for the lists that are picked by typing —
+                fifty models, an unbounded session list. This one is three
+                rungs, so it can be the app's own listbox and be drawn in the
+                app's chrome rather than the system's. */}
+            <Select
+              disabled={!settings}
+              value={settings?.toolMode ?? ""}
+              onValueChange={(v) => void save({ toolMode: v as ToolModeId })}
+            >
+              <SelectTrigger id="toolMode" size="sm" className="w-48">
+                <SelectValue placeholder="…" />
+              </SelectTrigger>
+              <SelectContent>
                 {MODE_IDS.map((id) => (
-                  <option key={id} value={id}>
+                  <SelectItem key={id} value={id}>
                     {describeMode(id).name}
-                  </option>
+                  </SelectItem>
                 ))}
-              </NativeSelect>
-            </div>
+              </SelectContent>
+            </Select>
             <p className="text-xs text-muted-foreground">
               {settings ? describeMode(settings.toolMode).can.join(" · ") : " "}
             </p>
@@ -169,6 +236,22 @@ function Panel({ section }: { section: Section }) {
               The session already running keeps the mode on its own control.
             </p>
           </div>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-0.5">
+              <Label htmlFor="loadExtensions">Load the extensions installed for pi&apos;s terminal</Label>
+              <p className="text-xs text-muted-foreground">
+                Their tools and commands appear here as they do there. Applies when the next session starts. One of
+                them registering a tool Octave has — ask_user, the note tools — keeps Octave&apos;s.
+              </p>
+            </div>
+            <Switch
+              id="loadExtensions"
+              disabled={!settings}
+              checked={settings?.loadExtensions ?? true}
+              onCheckedChange={(v) => void save({ loadExtensions: v === true })}
+            />
+          </div>
+          <PiSwitches />
         </>
       )}
 
@@ -181,17 +264,105 @@ function Panel({ section }: { section: Section }) {
   );
 }
 
+/** Thousands, the way pi's own screen says token counts: 16384 → "16k". */
+const k = (n: number) => `${Math.round(n / 1000)}k`;
+
+/**
+ * pi's own settings, each behind a switch that calls pi's setter for it —
+ * pi's settings.json is the one store, so the terminal sees the same value.
+ * What pi has no setter for is said rather than offered: the two compaction
+ * thresholds, which pi's own screen does not offer either.
+ */
+function PiSwitches() {
+  const pi = useSyncExternalStore(configStore.subscribe, configStore.get)?.pi;
+  if (!pi) return null;
+  return (
+    <div className="flex flex-col gap-3">
+      <Heading title="pi">What pi does on its own. Kept in pi&apos;s own settings, shared with its terminal.</Heading>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-0.5">
+          <Label htmlFor="compaction">Compact the conversation automatically</Label>
+          <p className="text-xs text-muted-foreground">
+            When {k(pi.compaction.reserveTokens)} tokens of the context window are left, keeping the last{" "}
+            {k(pi.compaction.keepRecentTokens)}. Those two are pi&apos;s to change, in ~/.pi/agent/settings.json.
+          </p>
+        </div>
+        <Switch
+          id="compaction"
+          checked={pi.compaction.enabled}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "compaction.enabled", value: v === true })}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-0.5">
+          <Label htmlFor="retry">Retry a failed call on its own</Label>
+          <p className="text-xs text-muted-foreground">
+            A few times, with growing waits, before giving up. Each attempt is said in the conversation.
+          </p>
+        </div>
+        <Switch
+          id="retry"
+          checked={pi.retryEnabled}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "retry.enabled", value: v === true })}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-0.5">
+          <Label htmlFor="hideThinking">Hide the model&apos;s thinking</Label>
+          <p className="text-xs text-muted-foreground">The thinking rows are left out of the conversation; the answers stay.</p>
+        </div>
+        <Switch
+          id="hideThinking"
+          checked={pi.hideThinkingBlock}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "hideThinkingBlock", value: v === true })}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-0.5">
+          <Label htmlFor="askBranchSummary">Ask to summarize when leaving a branch</Label>
+          <p className="text-xs text-muted-foreground">
+            Stepping to another answer with the arrows asks first whether to keep a summary of the one left. Off, it moves without one.
+          </p>
+        </div>
+        <Switch
+          id="askBranchSummary"
+          checked={pi.askBranchSummary}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "branchSummary.skipPrompt", value: v !== true })}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-0.5">
+          <Label htmlFor="projectTrust">Let pi read this folder&apos;s own .pi</Label>
+          <p className="text-xs text-muted-foreground">
+            {pi.projectTrust === "nothing"
+              ? "This folder has no .pi settings, skills, prompts or SYSTEM.md of its own to read."
+              : "Its settings, skills, prompt templates and SYSTEM.md, as pi reads a trusted project's. Remembered in pi's trust.json, where pi's terminal keeps its /trust answer."}
+          </p>
+        </div>
+        <Switch
+          id="projectTrust"
+          checked={pi.projectTrust === "trusted"}
+          disabled={pi.projectTrust === "nothing"}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "projectTrust", value: v === true })}
+        />
+      </div>
+    </div>
+  );
+}
+
 const THEMES: { id: Theme; label: string }[] = [
   { id: "system", label: "System" },
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },
+  { id: "perplexity-light", label: "Perplexity Light" },
+  { id: "perplexity-dark", label: "Perplexity Dark" },
 ];
 
 /**
- * The one setting that is about this window rather than about the agent, and
- * the only one that does not go to the server — see theme.ts. Which is also why
- * it applies as it is clicked: there is nothing to wait for, and the answer to
- * "what does dark look like" is the screen.
+ * The settings that are about this window rather than about the agent, and
+ * the only ones that do not go to the server — see theme.ts.
+ * Which is also why they apply as they are clicked: there is nothing to wait
+ * for, and the answer to "what does dark look like" is the screen.
  */
 function Appearance() {
   const [theme, setCurrent] = useState<Theme>(readTheme);
@@ -237,10 +408,10 @@ const KEYS: [string, string][] = [
   [`${MOD}⇧F`, "Search the text of every note"],
   [`${MOD}S`, "Save now (typing is saved on its own when it pauses)"],
   [`${MOD}F`, "Find and replace in the note"],
-  [`${MOD}↵`, "Accept pi's words under the cursor"],
-  [`${MOD}⌫`, "Put back what pi replaced under the cursor"],
+  [`${MOD}↵`, "Accept the agent's words under the cursor"],
+  [`${MOD}⌫`, "Put back what the agent replaced under the cursor"],
   [`${MOD}↵ in the message box`, "Steer the run in progress"],
-  [`${MOD}\\`, "Show or hide pi's column"],
+  [`${MOD}\\`, "Show or hide the agent"],
   [`${MOD},`, "Settings"],
   [`${MOD}⇧D`, "Raw events, for debugging"],
 ];

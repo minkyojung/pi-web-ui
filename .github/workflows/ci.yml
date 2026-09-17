@@ -1,0 +1,87 @@
+# The tests this repo already has, run by something other than a person
+# remembering to.
+#
+# It was written after the e2e suite sat red for a day and forty-four commits:
+# a check had been left asserting the old shape of a code block, and nothing
+# was watching.
+#
+# On macOS, because that is what the app is. The first run of this went to
+# ubuntu and came back with two failures that were about the runner and not
+# about the code — a write from outside never reached the recursive fs.watch
+# the server hears the disk through, and the one check that spends a model
+# call failed in a shape its own skip did not recognise. Both pass or skip on
+# a Mac, where the app ships, where it is developed, and where the checks that
+# ask the file system about its own habits — whether it opens a.MD as a.md,
+# whether it hides how a name is composed — get a real answer rather than a
+# skip. Public repo, so the runner is free.
+#
+# The e2e suite is here now, in a job of its own. What had held it back was one
+# check — a note coming back scrolled where it was read — seen to time out once
+# under load and never again. The runs that were meant to reproduce it had no
+# load on them: this Mac has no `timeout`, so the process that was supposed to
+# make the machine busy never started. Run properly, with twelve spinners on
+# twelve cores and the load average between eleven and thirty, the suite passed
+# 77/77 three times over. That check also says where the page actually was when
+# it gives up now, so a first red would name itself rather than be guessed at.
+#
+# Its own job, not another step on this one, so that a red there does not hide
+# whether the types, the tests and the build are fine. It needs no credentials
+# for the same reason `npm test` needs none: the server lists a model whether
+# or not a key behind it is any good, and no check in the suite spends a call.
+name: ci
+
+# A branch is checked through its pull request and main when something lands
+# on it. With a bare `push:` as well, every commit on a branch that had a pull
+# request open ran all of this twice, side by side.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One run per branch: a newer push makes the older run's answer moot, and the
+# runners it would have held are the ones the newer run is waiting for.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-latest
+    # A minute's work. GitHub's own limit is six hours, which is how long a
+    # stuck job holds a runner if nothing here says otherwise.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # What the repo is developed on. `npm test` is node's own runner, so
+          # the version it runs under is the version the tests are written for.
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      # Two projects: the client's and the server's.
+      - run: npm run typecheck
+      # Node's built-in test runner, no dependencies. server.test.js boots the
+      # real server, which starts here — pi lists a model whether or not its
+      # key is good — so what a tab gets back is pinned on the runner too; the
+      # single check that spends a model call skips when it goes unanswered.
+      - run: npm test
+      # That it still builds is its own answer: a bundler resolves imports a
+      # type check never looks at.
+      - run: npm run build
+
+  # The app in a real browser, driven over the DevTools protocol. Chrome is on
+  # the runner already; scripts/e2e.mjs looks for it where macOS keeps it.
+  e2e:
+    runs-on: macos-latest
+    # Four minutes on a laptop. The suite gives up on a silent browser by
+    # itself (scripts/e2e.mjs); this is for whatever that does not catch.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run e2e

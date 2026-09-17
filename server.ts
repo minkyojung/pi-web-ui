@@ -7,50 +7,86 @@
  * server's state and are rebroadcast whenever it changes.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, watch, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
 	createAgentSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
-	createEventBus,
 	getAgentDir,
+	hasTrustRequiringProjectResources,
 	ModelRuntime,
+	ProjectTrustStore,
 	SessionManager,
 	type AgentSessionEvent,
 	type CreateAgentSessionRuntimeFactory,
+	readStoredCredential,
 } from "@earendil-works/pi-coding-agent";
-import { itemsFromMessages } from "./conversation.js";
-import { modeToolNames } from "./toolModes.ts";
-import { readSettings, writeSettings } from "./settings.ts";
+import { itemsFromMessages, textOf } from "./conversation.js";
+import { modeToolNames, withWeb } from "./toolModes.ts";
+import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice as modelsNotice_, providerInfo, supportedLevels } from "./models.ts";
+import { readSettings, updateSettings, type Settings } from "./settings.ts";
+import { askForName } from "./sessionName.ts";
+import { askUser } from "./askUser.ts";
 import { createPromptBridge } from "./prompts.ts";
+import { extensionUI } from "./extensionUI.ts";
+import { deleteSessionFile } from "./sessionDelete.ts";
+import { Cancelled } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { listNotes, newNoteName, readNote, renameNote, restoreNote, trashNote, writeNote } from "./vault.ts";
-import { accept, type Change, historyPath, moveHistory, moveLog, reconcile, record, replay, readHistory, trashHistoryPath } from "./history.ts";
-import { recorder } from "./recorder.ts";
+import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, withCreated, writeNote, type WriteResult } from "./vault.ts";
+import { FileIndex } from "./fileIndex.ts";
+import { startLogging } from "./log.ts";
+import { deleteNote, shellTrash } from "./trash.ts";
+import { createLoginBridge } from "./login.ts";
+import { noteTools } from "./noteEdit.ts";
+import { claimAppDir } from "./appDir.ts";
+import { wall } from "./wall.ts";
+import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
+import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { watchNotes } from "./watcher.ts";
 import { guard, VAULT_PROMPT } from "./guard.ts";
 import { renameTarget } from "./naming.ts";
-import { LinkStore } from "./linkIndex.ts";
+import { LinkStore, type Touched } from "./linkIndex.ts";
+import { PropertyStore } from "./propertyIndex.ts";
+import { PropertyRegistry } from "./propertyRegistry.ts";
+import { isPropertyType } from "./propertyTypes.ts";
 import { backlinksOf, retarget } from "./links.ts";
 import { search } from "./search.ts";
 import type {
+	Authored,
 	BranchesMsg,
 	ClientMsg,
+	CommandsMsg,
 	ConfigMsg,
 	ContextSourcesMsg,
+	ErrorMsg,
 	FilesMsg,
+	ModelInfo,
 	NoteChangedMsg,
 	NoteMsg,
+	PiSettings,
 	PiEventMsg,
+	ProvidersMsg,
 	ServerMsg,
 	SessionsMsg,
+	SettingsMsg,
 	SnapshotMsg,
 	UsageMsg,
 } from "./protocol.ts";
+
+/**
+ * What this process says, to a file as well as to the terminal — see log.ts.
+ * First, so that what follows is in it. What it cannot catch is a line printed
+ * while another module was being loaded, since those run before this body
+ * does; in practice that is pi's own extensions announcing themselves.
+ */
+const logFile = startLogging();
 
 const PORT = Number(process.env.PORT ?? 3000);
 /**
@@ -103,14 +139,8 @@ const modelRuntime = await ModelRuntime.create();
 const modelKey = (m: { provider: string; id: string }) => `${m.provider}/${m.id}`;
 
 /**
- * Models with usable credentials, as pi sees them right now.
- *
- * Read each time rather than once at startup, the way pi's own rpc and
- * interactive modes do. pi's availability pass can be invalidated by a
- * credential write that lands while it runs — a provider's OAuth token being
- * renewed as the process starts — and what that pass returns is then only the
- * provider that wrote. pi recovers on its next pass; a copy taken at startup
- * never would, and it showed one provider's models until a restart.
+ * Models with usable credentials, as of pi's last pass over them — which is
+ * run again whenever it can have gone stale; see refreshModels below.
  */
 const availableModels = () => modelRuntime.getAvailableSnapshot();
 
@@ -120,79 +150,120 @@ const availableModels = () => modelRuntime.getAvailableSnapshot();
  * runtime.session rather than capturing it.
  */
 /**
- * Shared with the extensions. The dashboard extension listens on it for
- * answerers to register (see prompts.ts); passing ours into the resource loader
- * is what makes its `pi.events` the same bus this process can emit on.
+ * The note open in the editor of the tab that last sent a prompt, and the
+ * words chosen in it, given to pi for the turn as lines of the system prompt
+ * — see guard.ts. One value, not one per tab: pi has one conversation.
  */
-const eventBus = createEventBus();
+let openNote: { path: string; chosen: string | null } | null = null;
 
 /**
- * The dashboard extension keeps its state on `process` so that a second load
- * in the same process — which it assumes is a subagent — can find the first
- * and stand down. pi replacing the session (New, Resume) reloads every
- * extension in this process, so the reloaded bridge stood down too: no tools
- * registered (13 became 8), no ui patch, no hook. Worse, the state it carried
- * over held the previous session's context, and touching that threw inside its
- * session_start, which skipped everything after.
+ * The ask waiting for an answer, if there is one: what was chosen, where the
+ * note's log stood when it was asked, and how to tell the tab it is over.
  *
- * So before a session is built the previous bridge is retired the way its own
- * initialiser retires one — cleanup, connections, timers — and its state
- * removed, which makes the reload a first load. This is its internal state,
- * not an interface: if the key moves this is a no-op and bind() warns that
- * ask_user's hook did not answer.
+ * One at a time. pi has one conversation, and an answer that could belong to
+ * either of two asks belongs to neither — so a second ask, or anything else
+ * said to pi meanwhile, ends the one waiting rather than guessing.
  */
-function retireDashboardBridge(): void {
-	const key = "__pi_dashboard_bridge__";
-	const prev = (process as unknown as Record<string, DashboardBridgeState | undefined>)[key];
-	if (!prev) return;
-	try {
-		prev.cleanup?.();
-	} catch {
-		// Its problem to report; ours is only to get out of its way.
-	}
-	for (const connection of prev.connections ?? []) {
-		try {
-			connection.disconnect();
-		} catch {
-			// As above.
-		}
-	}
-	for (const timer of prev.timers ?? []) clearInterval(timer);
-	delete (process as unknown as Record<string, unknown>)[key];
-}
-
-interface DashboardBridgeState {
-	cleanup?: () => void;
-	connections?: { disconnect(): void }[];
-	timers?: ReturnType<typeof setInterval>[];
-}
+let asking: (Ask & { at: number; done: (outcome: AskOutcome) => void }) | null = null;
 
 /**
- * The note open in the editor of the tab that last sent a prompt, given to
- * pi for the turn as a line of the system prompt — see guard.ts. One value,
- * not one per tab: pi has one conversation.
+ * The one extension Octave loads from a file rather than writing itself:
+ * pi-web-access, which is where web_search, fetch_content, source_check and
+ * get_search_content come from. A note app whose agent cannot read a page is
+ * missing half of what a note is written from.
+ *
+ * A dependency of ours, resolved out of our own node_modules, rather than the
+ * copy in the person's pi: that is the whole point of noExtensions below, and
+ * a tool that is there on one machine and not the next is still one nobody can
+ * be told about. The package names its entry in package.json (`pi.extensions`)
+ * and ships it as TypeScript, so it is handed to pi as a path and pi's loader
+ * transpiles it — importing it here would only put source esbuild cannot
+ * bundle into the server.
  */
-let openNote: string | null = null;
+const WEB_ACCESS = dirname(createRequire(import.meta.url).resolve("pi-web-access/package.json"));
+
+/**
+ * Whether pi may read the vault's own `.pi/` — its settings.json, skills,
+ * prompts, SYSTEM.md — the way it reads a project's. pi's terminal asks the
+ * person the first time and remembers the answer in its trust file; nothing
+ * here asks yet, so the answer is what that file says, and no unless it says
+ * otherwise. A vault with none of those has nothing to trust and is read as
+ * before. Left to the SDK, the answer is yes without asking.
+ */
+function projectTrusted(cwd: string): boolean {
+	if (!hasTrustRequiringProjectResources(cwd)) return true;
+	return new ProjectTrustStore(getAgentDir()).get(cwd) ?? false;
+}
 
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
-	retireDashboardBridge();
+	const trusted = projectTrusted(cwd);
 	const services = await createAgentSessionServices({
 		cwd,
 		modelRuntime,
 		// Inline rather than a file under .pi/extensions/: that path needs the
 		// project trusted, and the desktop shell's cwd is wherever it was opened.
 		resourceLoaderOptions: {
-			eventBus,
 			// pi is told this is a folder of notes — see guard.ts.
 			appendSystemPrompt: [VAULT_PROMPT],
 			extensionFactories: [
-				// The guard first: a blocked call never reaches the recorder.
+				// The guard first: a blocked call never reaches anything after it.
 				{ name: "guard", factory: guard(CWD, () => openNote) },
-				// pi's writes to notes go into their history as they happen, and the
-				// tabs looking at a note hear about it.
-				{ name: "recorder", factory: recorder(CWD, (path, base, changes) => wrote(path, base, changes)) },
+				// Then the wall: what the guard let through, the shell runs behind
+				// it, where a note cannot be written. See wall.ts.
+				{ name: "wall", factory: wall(CWD) },
+				// The one pair a note is written by — what the guard above sends
+				// edit and write to when they reach for one. See noteEdit.ts.
+				{ name: "notes", factory: noteTools(CWD, piWrote) },
+				// A turn that answers about a chosen part of a note says it rather
+				// than writing it; the answer is put in here — see ask.ts.
+				{ name: "answering", factory: answering(() => asking !== null, answered) },
+				// pi asking the person, answered in the browser — see askUser.ts.
+				// The bridge is reached when a question is asked, not now: it is
+				// made further down, after this first session is.
+				{ name: "ask", factory: askUser(() => prompts.ask) },
 			],
+			// The extensions installed for the person's own pi — ~/.pi/agent/
+			// extensions, the packages in its settings — load here as they load
+			// there, unless the Settings switch says not to: one of them has cost
+			// a second on every new session, and that is the person's to weigh.
+			// What Octave brings (above, and pi-web-access below) loads either way.
+			noExtensions: !readSettings().loadExtensions,
+			additionalExtensionPaths: [WEB_ACCESS],
+			// A tool of the person's extensions that has the name of one of
+			// Octave's own — ask_user, the note tools — would be the one pi kept,
+			// since files load before inline factories and the first owner of a
+			// name keeps it (detectExtensionConflicts). Octave's wins here, and the
+			// extension is told in pi's own words, in the conversation.
+			extensionsOverride: (loaded) => {
+				// pi-web-access is Octave's own dependency, loaded above from its
+				// node_modules; the person's pi may list the same package, and pi
+				// would then load it twice — its commands split into curator:1 and
+				// curator:2, its tools reported as clashing with themselves. The
+				// copy Octave brings is the one kept; the person's is not loaded.
+				const theirs = (ext: { path: string; resolvedPath: string }) =>
+					!ext.path.startsWith("<inline:") && !ext.resolvedPath.startsWith(WEB_ACCESS) && /[\\/]node_modules[\\/]pi-web-access[\\/]/.test(ext.resolvedPath);
+				const dropped = new Set(loaded.extensions.filter(theirs).map((ext) => ext.path));
+				loaded.extensions = loaded.extensions.filter((ext) => !dropped.has(ext.path));
+				// pi had already found that copy clashing with the one kept; a
+				// clash with what is not loaded is nothing to say.
+				loaded.errors = loaded.errors.filter((e) => !dropped.has(e.path));
+				const ours = new Map<string, string>();
+				for (const ext of loaded.extensions) {
+					if (ext.path.startsWith("<inline:")) for (const name of ext.tools.keys()) ours.set(name, ext.path);
+				}
+				for (const ext of loaded.extensions) {
+					if (ext.path.startsWith("<inline:")) continue;
+					for (const name of [...ext.tools.keys()]) {
+						const owner = ours.get(name);
+						if (!owner) continue;
+						ext.tools.delete(name);
+						loaded.errors.push({ path: ext.path, error: `Tool "${name}" conflicts with ${owner}; Octave's is kept` });
+					}
+				}
+				return loaded;
+			},
 		},
+		resourceLoaderReloadOptions: { resolveProjectTrust: async () => trusted },
 	});
 	return {
 		// No `model`: pi picks it the way the CLI does — the one the session was
@@ -217,28 +288,83 @@ const runtime = await createAgentSessionRuntime(createRuntime, {
 
 const session = () => runtime.session;
 
+/** The model the session is on, or undefined when pi has only its stand-in — see isUnknownModel. */
+const currentModel = () => {
+	const model = session().model;
+	return model && !isUnknownModel(model) ? model : undefined;
+};
+
 /** Derived from the session so it stays in sync; pi does not re-export ThinkingLevel. */
 type ThinkingLevel = ReturnType<typeof session>["thinkingLevel"];
+
+type AvailableModel = ReturnType<typeof availableModels>[number];
+
+/**
+ * A model as both the picker and the loadout screen show it.
+ *
+ * The level named beside a model has to be the one that choosing it will get:
+ * what the session is thinking at for the model it is on, and for the rest what
+ * pi would put them back on — its own memory of that model, else the default it
+ * falls back to — clamped, since pi clamps on the way in and neither screen may
+ * name a level the model will not do.
+ */
+function modelInfo(m: AvailableModel, current: string | null): ModelInfo {
+	const s = session();
+	const settings = s.settingsManager;
+	const key = modelKey(m);
+	const levels = supportedLevels(m);
+	const level =
+		key === current
+			? s.thinkingLevel
+			: clampLevel(levels, settings.getModelThinkingLevel(m.provider, m.id) ?? settings.getDefaultThinkingLevel() ?? s.thinkingLevel);
+	return { key, name: m.name, levels, level };
+}
+
+/**
+ * Every model pi can reach, for the screen that chooses a loadout from them.
+ *
+ * Over HTTP rather than in the config broadcast: it is fifty-odd entries that
+ * change when credentials do, and config goes out on every keystroke's worth of
+ * streaming state. The screen that needs it is a modal, so it cannot go stale
+ * while it is being read.
+ */
+function catalog(): ModelInfo[] {
+	const model = currentModel();
+	const current = model ? modelKey(model) : null;
+	return availableModels().map((m) => modelInfo(m, current));
+}
 
 /** Everything the settings UI needs. Re-sent whenever any of it changes. */
 function config(): ConfigMsg {
 	const s = session();
-	const model = s.model;
+	const model = currentModel();
+	const current = model ? modelKey(model) : null;
+	const offered = new Map(availableModels().map((m) => [modelKey(m), m]));
+	// The model the session is on belongs on the list even when the snapshot has
+	// left it out — see availableModels. Without this the picker could show the
+	// session running on nothing.
+	if (model && current) offered.set(current, model);
 	return {
 		type: "config",
-		model: model ? modelKey(model) : null,
-		models: availableModels().map(modelKey),
-		thinkingLevel: s.thinkingLevel,
-		thinkingLevels: s.supportsThinking() ? s.getAvailableThinkingLevels() : [],
+		model: current,
+		models: loadoutOf(readSettings().loadout, [...offered.keys()], current).flatMap((key) => {
+			const m = offered.get(key);
+			return m ? [modelInfo(m, current)] : [];
+		}),
+		modelsNotice,
 		tools: s.getAllTools().map((tool) => ({ name: tool.name, description: tool.description })),
 		activeTools: s.getActiveToolNames(),
 		isStreaming: s.isStreaming,
+		isCompacting: s.isCompacting,
+		pi: piSettings(),
 		queued: {
 			steering: [...s.getSteeringMessages()],
 			followUp: [...s.getFollowUpMessages()],
 		},
 		sessionId: s.sessionId,
 		sessionName: s.sessionName ?? null,
+		folder: CWD,
+		log: logFile,
 	};
 }
 
@@ -286,7 +412,7 @@ function contextSources(): ContextSourcesMsg {
 	const s = session();
 	const active = new Set(s.getActiveToolNames());
 	const loader = runtime.services.resourceLoader;
-	const provider = s.model?.provider;
+	const provider = currentModel()?.provider;
 	const files = loader.getAgentsFiles().agentsFiles;
 	return {
 		type: "context_sources",
@@ -297,11 +423,106 @@ function contextSources(): ContextSourcesMsg {
 			active: active.has(tool.name),
 		})),
 		skills: loader.getSkills().skills.length,
+		extensions: loader
+			.getExtensions()
+			.extensions.filter((e) => !e.path.startsWith("<inline:") && !e.resolvedPath.startsWith(WEB_ACCESS)).length,
 		memoryFiles: { count: files.length, chars: files.reduce((n, f) => n + f.content.length, 0) },
+		// The vault has a .pi/ pi would read as a project's, and was not let to.
+		untrusted: hasTrustRequiringProjectResources(CWD) && !s.settingsManager.isProjectTrusted(),
 		login: {
 			oauth: provider ? modelRuntime.isUsingOAuth(provider) : false,
 			subscription: provider ? modelRuntime.isUsingSubscription(provider) : false,
 		},
+	};
+}
+
+/** pi's settings as pi reads them now, for the switches in Settings. */
+function piSettings(): PiSettings {
+	const m = session().settingsManager;
+	return {
+		compaction: m.getCompactionSettings(),
+		retryEnabled: m.getRetryEnabled(),
+		hideThinkingBlock: m.getHideThinkingBlock(),
+		askBranchSummary: !m.getBranchSummarySkipPrompt(),
+		projectTrust: !hasTrustRequiringProjectResources(CWD) ? "nothing" : m.isProjectTrusted() ? "trusted" : "untrusted",
+	};
+}
+
+/**
+ * Trusting this folder, or not: the answer goes where pi's terminal keeps its
+ * own (/trust, trust.json), then to the session that is open, which reads
+ * the folder's .pi/ again on the spot — pi's reload keeps the trust it is
+ * given and loads what that allows. The next session reads the file.
+ */
+async function setProjectTrust(trusted: boolean): Promise<void> {
+	new ProjectTrustStore(getAgentDir()).set(CWD, trusted);
+	session().settingsManager.setProjectTrusted(trusted);
+	await session().reload();
+}
+
+/**
+ * The one of pi's settings shown here that pi has no setter for. Written
+ * into pi's own settings.json under pi's own key, then read back through
+ * pi's reload, so pi's copy and the file agree — as they would had pi
+ * written it.
+ */
+async function setBranchSummarySkipPrompt(skip: boolean): Promise<void> {
+	const path = join(getAgentDir(), "settings.json");
+	let all: Record<string, unknown> = {};
+	try {
+		all = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+	} catch {
+		// No file, or not JSON yet: pi starts from nothing too.
+	}
+	const branchSummary = { ...((all.branchSummary as Record<string, unknown> | undefined) ?? {}), skipPrompt: skip };
+	mkdirSync(dirname(path), { recursive: true });
+	writeFileSync(path, `${JSON.stringify({ ...all, branchSummary }, null, 2)}\n`);
+	await session().settingsManager.reload();
+}
+
+/**
+ * What "/" can name, the three kinds and in the order pi's own get_commands
+ * lists them. Read from the session, since an extension's commands are
+ * registered when it is bound to one.
+ */
+function commands(): CommandsMsg {
+	const s = session();
+	return {
+		type: "commands",
+		commands: [
+			...s.extensionRunner.getRegisteredCommands().map((c) => ({
+				name: c.invocationName,
+				description: c.description,
+				source: "extension" as const,
+			})),
+			...s.promptTemplates.map((t) => ({ name: t.name, description: t.description, source: "prompt" as const })),
+			...runtime.services.resourceLoader.getSkills().skills.map((k) => ({
+				name: `skill:${k.name}`,
+				description: k.description,
+				source: "skill" as const,
+			})),
+		],
+	};
+}
+
+/**
+ * The providers, as pi's /login screen lists them: which can be signed in to
+ * from here, and which are signed in. Read fresh from pi each time, since it
+ * is pi that reads the credentials file.
+ */
+function providers(): ProvidersMsg {
+	return {
+		type: "providers",
+		providers: modelRuntime
+			.getProviders()
+			.flatMap((p) => {
+				const status = modelRuntime.getProviderAuthStatus(p.id);
+				// pi's own read of its file, for the key's tail; only a key pi keeps
+				// has one to show, and pi says so with source "stored".
+				const kept = status.source === "stored" ? readStoredCredential(p.id) : undefined;
+				const key = kept?.type === "api_key" ? kept.key : undefined;
+				return providerInfo(p, status, modelRuntime.isUsingOAuth(p.id), key) ?? [];
+			}),
 	};
 }
 
@@ -315,7 +536,42 @@ function branches(): BranchesMsg {
 
 /** The notes in the working folder. See vault.ts. */
 function files(): FilesMsg {
-	return { type: "files", files: listNotes(CWD) };
+	return { type: "files", files: notes.all(), truncated: notes.truncated };
+}
+
+/**
+ * Bring a note's log up to what is on disk, asking whose the difference is.
+ *
+ * Every place that settles the disk goes through here, because the answer is
+ * the same question everywhere. Never pi's: pi writes a note by note_edit and
+ * note_write, which say so as they write, and its shell cannot write one at
+ * all (wall.ts). Outside's, if the note is one the folder did not have when
+ * the app listed it: it appeared while the app was running, so every word of
+ * it was written by someone, just now, and not through here. Else what the
+ * log makes of it — a difference from what it knew is outside's, and a note
+ * it never knew is from before (reconcile).
+ */
+/**
+ * How much of a note somebody other than the person reading it wrote, from the
+ * spans the log replays to. See Authored in protocol.ts.
+ *
+ * Only pi and outside are counted. `me` is the person's own and `before` is
+ * what was there when the app first saw the note, which nobody was seen to
+ * write — neither is somebody else's hand.
+ */
+function shareOf(spans: { from: number; to: number; author: string }[], total: number): Authored {
+	let pi = 0;
+	let other = 0;
+	for (const span of spans) {
+		if (span.author === "pi") pi += span.to - span.from;
+		else if (span.author === "outside") other += span.to - span.from;
+	}
+	return { pi, other, total };
+}
+
+function settleDisk(path: string, text: string, at: number) {
+	const origin: Origin | undefined = notes.has(path) ? undefined : { author: "outside", at };
+	return reconcile(CWD, path, text, at, origin);
 }
 
 /**
@@ -326,18 +582,66 @@ function files(): FilesMsg {
 function note(path: string): NoteMsg | null {
 	const found = readNote(CWD, path);
 	if (!found) return null;
-	const { spans } = reconcile(CWD, path, found.text, Date.now());
+	const { holed, replayed, lines } = settleDisk(path, found.text, Date.now());
 	known.set(path, found.modified);
-	return { type: "note", path, text: found.text, modified: found.modified, spans, backlinks: links.backlinks(path) };
+	return {
+		type: "note",
+		path,
+		text: found.text,
+		modified: found.modified,
+		lines,
+		original: toDecide(holed),
+		backlinks: links.backlinks(path),
+		tagged: links.tagged(path),
+		authored: shareOf(replayed.spans, found.text.length),
+	};
 }
+
+/**
+ * A note being made now, as it starts out: with when it was made written in
+ * it, unless that has been turned off. Only at the making — a note restored
+ * from the trash or noticed on disk was made some other time, and one that
+ * already says so keeps what it says (vault.ts).
+ */
+const born = (text: string) => (readSettings().created ? withCreated(text, new Date()) : text);
+
+// The app's folder, and what git should keep of it — see appDir.ts.
+claimAppDir(CWD);
+
+/** Which notes the folder holds, so that a save does not read the folder again — see fileIndex.ts. */
+const notes = new FileIndex(CWD);
+notes.load();
 
 /** Every note's links, for "who links here" — see linkIndex.ts. */
 const links = new LinkStore(CWD);
 links.load();
 
+/** What kind of thing each property holds, where someone has chosen — see propertyRegistry.ts. */
+const propertyTypes = new PropertyRegistry(CWD);
+propertyTypes.load();
+
+/** What the vault's notes call their properties, for the boxes that offer them — see propertyIndex.ts. */
+const propertyNames = new PropertyStore(CWD);
+propertyNames.load();
+
+/**
+ * The vault has something else to offer, or one thing less: every tab hears
+ * the names again. Only when they differ — a write that changed a body alone
+ * leaves the boxes saying what they said.
+ */
+function offered(changed: boolean): void {
+	if (changed) broadcast({ type: "property_names", ...propertyNames.all() });
+}
+
 /** After a change to what links where: the notes whose backlinks may differ hear theirs again. */
 function backlinksFor(paths: string[]): void {
 	for (const path of paths) broadcast({ type: "backlinks", path, notes: links.backlinks(path) });
+}
+
+/** After a change to what links where or what is tagged how: everyone whose lists may differ hears them again. */
+function touchedBy(touched: Touched): void {
+	backlinksFor(touched.backlinks);
+	for (const path of touched.tagged) broadcast({ type: "tagged", path, notes: links.tagged(path) });
 }
 
 /**
@@ -350,9 +654,9 @@ const known = new Map<string, number>();
 
 /**
  * The disk changed under a note, and not by this process: pi's bash, another
- * editor. Logged to "outside" and sent on as a change over the version the
- * tabs have, the same as any other write — or whole, if no tab could have a
- * version of it yet. A note that is gone is only news to the list.
+ * editor. Logged to whoever it belongs to and sent on as a change over the
+ * version the tabs have, the same as any other write — or whole, if no tab
+ * could have a version of it yet. A note that is gone is only news to the list.
  */
 function noticed(path: string): void {
 	const found = readNote(CWD, path);
@@ -361,15 +665,16 @@ function noticed(path: string): void {
 		// moved it — a rename, a delete — is already told, and known forgets
 		// it first.
 		if (known.delete(path)) broadcast({ type: "note_gone", path });
-		backlinksFor(links.remove(path));
-		broadcast(files());
+		touchedBy(links.remove(path));
+		offered(propertyNames.remove(path));
+		if (notes.remove(path)) broadcast(files());
 		return;
 	}
 	const base = known.get(path) ?? null;
 	if (base === found.modified) return; // This process's own write, already sent.
-	const { outside } = reconcile(CWD, path, found.text, Date.now());
+	const { appended } = settleDisk(path, found.text, Date.now());
 	// Touched but not changed still moves the version the next save is measured against.
-	wrote(path, base, outside);
+	wrote(path, base, appended);
 }
 
 /**
@@ -380,20 +685,176 @@ function noticed(path: string): void {
  */
 function wrote(path: string, base: number | null, changes: Change[]): void {
 	const found = readNote(CWD, path);
-	if (found) backlinksFor(links.update(path, found.text));
-	if (found && base !== null && replay(readHistory(CWD, path)).text === found.text) {
-		const { spans } = replay(readHistory(CWD, path));
+	if (found) {
+		touchedBy(links.update(path, found.text));
+		offered(propertyNames.update(path, found.text));
+	}
+	// One read of the log for both questions — whether it agrees with the disk,
+	// and what is left to decide about — and the snapshot beside it means the
+	// walk is only what has been written since. See historyOf.
+	const said = found ? historyOf(CWD, path) : null;
+	if (found && said && base !== null && said.replayed.text === found.text) {
 		known.set(path, found.modified);
-		const msg: NoteChangedMsg = { type: "note_changed", path, base, modified: found.modified, changes, spans };
+		// From the reading of the log this already needed: a share costs nothing
+		// on top of it, and a note that pi has just written in should not have
+		// to be reopened before the strip says so.
+		const msg: NoteChangedMsg = {
+			type: "note_changed",
+			path,
+			base,
+			modified: found.modified,
+			lines: said.lines,
+			changes,
+			original: toDecide(said.holed),
+			authored: shareOf(said.replayed.spans, found.text.length),
+		};
 		broadcast(msg);
 	} else {
 		const msg = note(path);
 		if (msg) broadcast(msg);
 	}
-	broadcast(files());
+	// The list only hears about a note it did not have. A note's text changing
+	// is not something anything reading that list can see — see fileIndex.ts.
+	const news = found ? notes.saw(path, found.modified) : notes.remove(path);
+	if (news) broadcast(files());
+}
+
+/**
+ * What is left to decide about in a note, as the text it would be with pi's
+ * undecided changes put back — or nothing, when there are none. Read off the
+ * log each time it is asked, so it is never stale and nothing about a run
+ * has to be remembered: a diff is available whenever there is one to show,
+ * to whichever tab opens the note, however long ago pi wrote.
+ */
+function toDecide(holed: Holed): string | undefined {
+	const { before, holes } = undecided(holed);
+	return holes.length ? before : undefined;
+}
+
+/** End the ask in flight, whatever came of it, and stop waiting for an answer. */
+function settle(outcome: AskOutcome): void {
+	const ask = asking;
+	asking = null;
+	ask?.done(outcome);
+}
+
+/**
+ * Take an ask, or say why not, and give back the question pi is sent: the
+ * chosen words as a quote, then what was asked about them.
+ *
+ * Where the log stands now is kept with it. That is the mark the answer's
+ * place is measured from — everything appended after it is what the note did
+ * while pi thought.
+ */
+function beginAsk(ask: Ask, question: string, tab: WebSocket): string | null {
+	if (typeof ask.id !== "number" || typeof ask.path !== "string" || typeof ask.from !== "number" || typeof ask.to !== "number") return null;
+	const done = (outcome: AskOutcome) => {
+		// The tab may be gone by the time the answer is. The answer still goes
+		// into the note; there is simply nobody left to tell about it.
+		if (tab.readyState === tab.OPEN) tab.send(safeStringify({ type: "ask_done", id: ask.id, outcome }));
+	};
+	const refuse = (outcome: AskOutcome): null => {
+		done(outcome);
+		return null;
+	};
+	if (asking || session().isStreaming) return refuse("interrupted");
+	const found = readNote(CWD, ask.path);
+	if (!found) return refuse("gone");
+	if (!(ask.from >= 0 && ask.to > ask.from && ask.to <= found.text.length)) return refuse("gone");
+	asking = { ...ask, at: readHistory(CWD, ask.path).length, done };
+	return asked(found.text.slice(ask.from, ask.to), question);
+}
+
+/**
+ * A note as pi leaves it, by the path every write takes: the file, then the
+ * log, then the tabs.
+ *
+ * `had` is the note as it was read a moment ago — what the change is measured
+ * from, and the version the write is refused over if the person has typed past
+ * it since. Null for a note that is not there yet. The same shape as the
+ * editor's own save, which is the point: pi's writing is held to what a
+ * person's is, and marked until they accept it.
+ */
+function piWrote(path: string, had: Note | null, given: string, sessionId: string, entryId?: string): WriteResult {
+	// A note pi makes is a note made here, and says when as any other does.
+	const text = had ? given : born(given);
+	const written = writeNote(CWD, path, text, had?.modified ?? null);
+	if (!written.ok) return written;
+	const changes = record(CWD, path, had?.text ?? "", text, { author: "pi", at: Date.now(), sessionId, entryId });
+	wrote(path, had?.modified ?? null, changes);
+	return written;
+}
+
+/**
+ * pi's words, put into the note under the line the words at `to` end on.
+ *
+ * The person asking for them to be put there does not make them theirs; what
+ * it makes is the moment they land, which is why this is a write of pi's made
+ * on a person's word.
+ */
+function putUnder(path: string, to: number, words: string, sessionId: string, entryId?: string): boolean {
+	const found = readNote(CWD, path);
+	if (!found) return false;
+	return piWrote(path, found, under(found.text, to, words), sessionId, entryId).ok;
+}
+
+/**
+ * pi's answer to the ask in flight, put into the note under what was asked
+ * about.
+ *
+ * The note has moved on while pi thought — the person kept typing, and their
+ * saves are in the log — so the place is mapped through the changes since, the
+ * way the editor maps its own around a write.
+ */
+function answered(answer: string | null, sessionId: string, entryId?: string): void {
+	const ask = asking;
+	if (!ask) return;
+	if (!answer) return settle("failed");
+	const found = readNote(CWD, ask.path);
+	if (!found) return settle("gone");
+	// Settle what the disk says first: a write that missed the app belongs in
+	// the log ahead of this one, and moves the place along with it.
+	reconcile(CWD, ask.path, found.text, Date.now());
+	const since = readHistory(CWD, ask.path).slice(ask.at);
+	const to = mapThrough(since, ask.to);
+	// The two ends meet when what was chosen was replaced whole: it is not
+	// there to answer under any more.
+	if (mapThrough(since, ask.from) >= to) return settle("gone");
+	settle(putUnder(ask.path, to, answer, sessionId, entryId) ? "written" : "failed");
 }
 
 /** Saved sessions for this working directory, newest first. */
+/**
+ * The model a turn was on, and the message it began with, out of pi's own
+ * record of the conversation.
+ *
+ * Its entries are a tree and the log holds the id of the one that was being
+ * written at the time, so the branch down to it is the turn's own history:
+ * the last model it was told to use, and the last thing the person said
+ * before it. Nothing here is ours — a session can be deleted, and then this
+ * says nothing rather than guessing.
+ */
+async function turnOf(sessionId?: string, entryId?: string): Promise<{ model?: string; prompt?: string }> {
+	if (!sessionId || !entryId) return {};
+	try {
+		const info = (await SessionManager.list(CWD)).find((s) => s.id === sessionId);
+		if (!info) return {};
+		const manager = await SessionManager.open(info.path);
+		const branch = manager.getBranch(entryId);
+		if (!Array.isArray(branch)) return {};
+		let model: string | undefined;
+		let prompt: string | undefined;
+		for (const entry of branch) {
+			if (entry.type === "model_change" && entry.modelId) model = entry.provider ? `${entry.provider}/${entry.modelId}` : entry.modelId;
+			if (entry.type === "message" && entry.message?.role === "user") prompt = textOf(entry.message.content).trim() || undefined;
+		}
+		return { ...(model ? { model } : {}), ...(prompt ? { prompt } : {}) };
+	} catch {
+		// A session that will not open is a session that has nothing to say here.
+		return {};
+	}
+}
+
 async function sessions(): Promise<SessionsMsg> {
 	const current = session().sessionFile;
 	const list = (await SessionManager.list(CWD))
@@ -452,6 +913,40 @@ function broadcast(payload: ServerMsg): void {
 const prompts = createPromptBridge(broadcast);
 
 /**
+ * Signing in, through pi — see login.ts. A URL pi wants opened goes to the
+ * shell when there is one (electron/main.js opens it in the person's browser);
+ * in a terminal run the tab shows it and the person clicks.
+ */
+const logins = createLoginBridge(
+	broadcast,
+	(provider, method, interaction) => modelRuntime.login(provider, method, interaction),
+	process.send ? (url) => process.send!({ ask: "open", url }) : null,
+);
+
+/**
+ * After a sign-in: bring the models up to date, and — when the session was on
+ * nothing — put it on one of the new provider's, as pi's CLI does after its
+ * own login (completeProviderAuthentication). pi's CLI takes the provider's
+ * named default; that table is not exported, so this takes what the picker
+ * would show first for the provider — the loadout, which until someone
+ * chooses is the newest models (SEED_LOADOUT) — and failing that the first
+ * the provider offers, which is its oldest. A session already on a model is
+ * left on it.
+ */
+async function afterSignIn(provider: string): Promise<void> {
+	await refreshModels();
+	if (!currentModel()) {
+		const offered = availableModels().filter((m) => m.provider === provider);
+		const keys = offered.map(modelKey);
+		const preferred = loadoutOf(readSettings().loadout, keys, null).find((key) => keys.includes(key));
+		const pick = offered.find((m) => modelKey(m) === preferred) ?? offered[0];
+		if (pick) await session().setModel(pick, { persist: true });
+	}
+	broadcast(config());
+	broadcast(contextSources());
+}
+
+/**
  * The wire form of a session event, matching what pi's own print and rpc modes
  * send. A `message_update` ships the whole message being streamed twice — as
  * `message` and again as `assistantMessageEvent.partial` — and both are
@@ -483,7 +978,13 @@ let rereadWhenSettled = false;
 function onEvent(event: AgentSessionEvent): void {
 	broadcast(toWireEvent(event));
 	// isStreaming and the queue drive the stop button and pending count.
-	if (event.type === "agent_start" || event.type === "agent_settled" || event.type === "queue_update") {
+	if (
+		event.type === "agent_start" ||
+		event.type === "agent_settled" ||
+		event.type === "queue_update" ||
+		event.type === "compaction_start" ||
+		event.type === "compaction_end"
+	) {
 		broadcast(config());
 	}
 	// Cost only moves when a message completes.
@@ -495,25 +996,112 @@ function onEvent(event: AgentSessionEvent): void {
 	// A finished run is a new branch under whatever it was asked from, so the
 	// message it answered may have just gained a sibling.
 	if (event.type === "agent_settled") broadcast(branches());
-	// And it may have written a note, or renamed one.
-	if (event.type === "agent_settled") broadcast(files());
+	// And it may have written a note, or renamed one, by a route nothing here
+	// hears — a shell command. One walk at the end of a turn, and only if what
+	// it found differs.
+	if (event.type === "agent_settled" && notes.load()) broadcast(files());
+	// A finished turn is the first moment there can be something to name the
+	// session by, and each one after is another chance while there is not.
+	if (event.type === "agent_settled") void nameSession();
+}
+
+/**
+ * The session a name is being asked for right now. Only while the question is
+ * out: two turns that end close together would otherwise ask twice. A question
+ * that came back with nothing is asked again when the next turn ends, with
+ * that turn in it — nothing was the answer because there was nothing yet.
+ */
+let namingFor: string | null = null;
+
+/**
+ * Give a name to a conversation nobody has named — see sessionName.ts. Run
+ * when a turn ends, which is the first moment there is anything to go on.
+ *
+ * A name already there is never replaced. pi keeps one name, so a name put
+ * there by a person and a name put there by this are the same field; leaving
+ * whatever is there alone is what keeps this from talking over anybody.
+ */
+async function nameSession(): Promise<void> {
+	const named = session();
+	if (named.sessionName || namingFor === named.sessionId) return;
+	// Words only: a message that only reached for a tool, or only thought, has
+	// none, and an empty line would tell the model nothing.
+	const said = named.messages.flatMap((m) =>
+		m.role === "user" || m.role === "assistant" ? [{ role: m.role, text: textOf(m.content).trim() }] : [],
+	).filter((s) => s.text);
+	if (!said.some((s) => s.role === "user") || !said.some((s) => s.role === "assistant")) return;
+	namingFor = named.sessionId;
+	try {
+		const name = await askForName({
+			cwd: CWD,
+			agentDir: getAgentDir(),
+			modelRuntime,
+			models: availableModels(),
+			said,
+		});
+		// Thinking of a name takes a moment, and in that moment the session can
+		// be replaced or named. Either way this answer is about a conversation
+		// that is no longer the one being named.
+		if (!name || session().sessionId !== named.sessionId || session().sessionName) return;
+		session().setSessionName(name);
+		broadcast(config());
+		broadcast(await sessions());
+	} catch {
+		// A courtesy. Without it the first message stands in for a name, which
+		// is what it did before there was anything to name a conversation with.
+	} finally {
+		if (namingFor === named.sessionId) namingFor = null;
+	}
 }
 
 let unsubscribe: (() => void) | undefined;
 
-/** Rebind after the runtime swaps in a different AgentSession. */
+/**
+ * Rebind after the runtime swaps in a different AgentSession.
+ *
+ * What is bound is what pi's own headless host binds: a screen for an
+ * extension to ask on (extensionUI.ts), the session moves a command may make,
+ * and where an extension's failure is said. A move made from a command swaps
+ * the session under this server the way the browser's own commands do, so it
+ * is followed by the same rebind and the same broadcast.
+ */
 async function bind(): Promise<void> {
 	unsubscribe?.();
-	await session().bindExtensions({});
-	// The extension's hook is registered inside bindExtensions (its session_start
-	// runs there), so this is the earliest point it can hear us — and it has to
-	// be repeated per bind, because a replaced session rebuilds the bus.
-	const hooked = prompts.register(eventBus);
-	if (!hooked && session().getAllTools().some((tool) => tool.name === "ask_user")) {
-		console.warn(
-			"ask_user is loaded but its prompt:register-adapter hook did not answer; questions will time out instead of showing in the UI",
-		);
-	}
+	const swapped = async () => {
+		await bind();
+		await broadcastAll();
+	};
+	await session().bindExtensions({
+		uiContext: extensionUI(prompts, broadcast),
+		commandContextActions: {
+			waitForIdle: () => session().waitForIdle(),
+			newSession: async (options) => {
+				const result = await runtime.newSession(options);
+				if (!result.cancelled) await swapped();
+				return result;
+			},
+			fork: async (entryId, options) => {
+				const result = await runtime.fork(entryId, options);
+				if (!result.cancelled) await swapped();
+				return { cancelled: result.cancelled };
+			},
+			navigateTree: async (targetId, options) => {
+				const result = await session().navigateTree(targetId, options);
+				if (!result.cancelled) await broadcastAll();
+				return { cancelled: result.cancelled };
+			},
+			switchSession: async (sessionPath, options) => {
+				const result = await runtime.switchSession(sessionPath, options);
+				if (!result.cancelled) await swapped();
+				return result;
+			},
+			reload: async () => {
+				await session().reload();
+				await broadcastAll();
+			},
+		},
+		onError: (err) => broadcast({ type: "error", message: `Extension "${err.extensionPath}" ${err.event}: ${err.error}` }),
+	});
 	unsubscribe = session().subscribe(onEvent);
 }
 
@@ -526,13 +1114,17 @@ async function bind(): Promise<void> {
  * there by design, so this picks the same mode every time instead of carrying
  * one over — no second settings store, and nothing to get out of step with pi's.
  *
+ * The web is off in it, whatever the mode: a search sends words off this
+ * machine, and that begins when the person says so — the switch is beside the
+ * modes (toolModes.ts).
+ *
  * Resumed sessions are left alone: they open the way they were left.
  */
 function openOnDefaultMode(): void {
 	const available = session()
 		.getAllTools()
 		.map((tool) => tool.name);
-	session().setActiveToolsByName(modeToolNames(readSettings().toolMode, available));
+	session().setActiveToolsByName(withWeb(modeToolNames(readSettings().toolMode, available), available, false));
 }
 
 /** Push the full server state to every client. Used after a session is replaced. */
@@ -540,32 +1132,122 @@ async function broadcastAll(): Promise<void> {
 	broadcast(config());
 	broadcast(usage());
 	broadcast(contextSources());
+	broadcast(commands());
 	broadcast(snapshot());
+	for (const msg of diagnostics()) broadcast(msg);
 	broadcast(branches());
 	broadcast(files());
 	broadcast(await sessions());
 }
 
+/**
+ * What pi had to say while setting the session up — an extension that failed
+ * to register a provider, a flag it did not know. pi's terminal prints these
+ * under its header; here they go after the snapshot, as errors in the
+ * conversation, since a snapshot replaces what came before it. Information
+ * is not a problem, so only what is.
+ */
+function diagnostics(): ErrorMsg[] {
+	// An extension that failed to load, or lost a tool to a name clash, is in
+	// the loader's errors rather than the runtime's diagnostics; pi's terminal
+	// prints both, in this wording.
+	const loading = runtime.services.resourceLoader
+		.getExtensions()
+		.errors.map((e) => ({ type: "error" as const, message: `Extension "${e.path}" error: ${e.error}` }));
+	return [...runtime.diagnostics.filter((d) => d.type !== "info").map((d) => ({ type: "error" as const, message: d.message })), ...loading];
+}
+
 await bind();
 openOnDefaultMode();
 
-if (!session().model) {
-	// The desktop shell puts whatever this prints in front of the user, and this
-	// is the one message someone starting out is likely to need.
-	console.error("No model has usable credentials. Run `pi` in a terminal, sign in with /login, then start this again.");
-	process.exit(1);
+// No model is how a first run begins, and pi's own CLI begins the same way:
+// the session opens on nothing and the login dialog is the first thing shown.
+// The server stays up for the same reason, and says so beside the picker (see
+// modelsNotice); a prompt sent meanwhile is refused by pi with its own words.
+if (!currentModel()) console.error("No model has usable credentials yet; waiting for a sign-in.");
+
+/**
+ * Keeping the model list true.
+ *
+ * pi builds the list by reading each provider's credential, and leaves out
+ * without a word any it cannot read at that moment. The file they all live in
+ * is rewritten whole whenever an OAuth token is renewed, so a pass that reads
+ * it mid-write comes back a provider short — and this process, unlike pi's
+ * CLI, does not run the pass again on its own. It ran once at startup, and
+ * one bad moment then was the list for days. See models.ts.
+ *
+ * So the pass is run again when the list can have gone stale: the
+ * credentials file changed, or a tab connected. One pass at a time; a second
+ * ask while one runs joins it. A pass that ends with pi reporting trouble, or
+ * with a provider gone that was there a moment ago, is followed by one more
+ * after a pause, since the likeliest reason is the file mid-write. Meanwhile
+ * the tabs are told why the list may be short, rather than shown a short
+ * list as if it were the whole of it.
+ */
+let modelsNotice: string | undefined = modelsNotice_([], undefined, availableModels().map(modelKey));
+let refreshing: Promise<void> | null = null;
+let lookedAgain = 0;
+/** The providers as last announced, so a pass that moved none says nothing. */
+let providersSaid = JSON.stringify(providers().providers);
+
+function refreshModels(): Promise<void> {
+	if (refreshing) return refreshing;
+	const before = availableModels().map(modelKey);
+	refreshing = (async () => {
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 15_000);
+		try {
+			await modelRuntime.refresh({ signal: controller.signal });
+		} catch {
+			// What went wrong is in getError(), read below.
+		} finally {
+			clearTimeout(timeout);
+		}
+		const after = availableModels().map(modelKey);
+		const notice = modelsNotice_(lostProviders(before, after), modelRuntime.getError(), after);
+		const changed = notice !== modelsNotice || after.join() !== before.join();
+		modelsNotice = notice;
+		if (changed) broadcast(config());
+		// Signing in and out moves this list more often than the model list —
+		// a key that reaches no model is a provider signed in with nothing
+		// offered — so it is judged on its own.
+		const now = providers();
+		const said = JSON.stringify(now.providers);
+		if (said !== providersSaid) {
+			providersSaid = said;
+			broadcast(now);
+		}
+		if (notice && lookedAgain < 2) {
+			lookedAgain++;
+			setTimeout(() => void refreshModels(), 3_000);
+		} else if (!notice) lookedAgain = 0;
+	})().finally(() => {
+		refreshing = null;
+	});
+	return refreshing;
 }
 
 // As pi's rpc mode does after startup: bring the model catalogues up to date in
 // the background, and tell the clients if that changed what is on offer.
+void refreshModels();
+
+// The credentials file is what a pass reads, so a change to it is the one sure
+// sign the list can have moved. It is replaced whole on a token renewal, which
+// a watch on the file itself does not survive, so the folder is watched and
+// the name matched. A renewal writes more than once in quick succession; the
+// pass runs when that has settled.
 {
-	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), 15_000);
-	void modelRuntime
-		.refresh({ signal: controller.signal })
-		.then(() => broadcast(config()))
-		.catch(() => {})
-		.finally(() => clearTimeout(timeout));
+	let settle: ReturnType<typeof setTimeout> | null = null;
+	try {
+		watch(getAgentDir(), (_event, name) => {
+			if (name !== "auth.json") return;
+			if (settle) clearTimeout(settle);
+			settle = setTimeout(() => void refreshModels(), 750);
+		});
+	} catch {
+		// No folder yet, or a platform without watching: the other reasons to
+		// look again still apply.
+	}
 }
 
 /**
@@ -603,6 +1285,11 @@ function text(req: IncomingMessage): Promise<string> {
 	});
 }
 
+/** This run of the server, and how many times it has written the settings. See SettingsMsg's revision. */
+const SETTINGS_BOOT = randomUUID();
+let settingsWrites = 0;
+const settingsMsg = (settings: Settings, n: number): SettingsMsg => ({ type: "settings", settings, revision: { boot: SETTINGS_BOOT, n } });
+
 const server = createServer(async (req, res) => {
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const { pathname } = url;
@@ -612,18 +1299,38 @@ const server = createServer(async (req, res) => {
 			res.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
 			res.end(JSON.stringify(body));
 		};
-		// The settings, all of them at once. Sent whole rather than a field at a
-		// time because that is what settings.ts writes; a field it did not hear
-		// about would come back as its default and quietly undo an edit.
+		// A change to the settings: the fields named, laid over what is on disk
+		// (see updateSettings). What was asked wrongly and what could not be
+		// written are told apart, since only one of them is worth asking again.
 		if (pathname === "/api/settings" && req.method === "POST") {
+			let patch: unknown;
 			try {
-				return json(200, writeSettings(JSON.parse(await text(req))));
+				patch = JSON.parse(await text(req));
 			} catch {
 				return json(400, { error: "invalid JSON" });
 			}
+			if (typeof patch !== "object" || patch === null || Array.isArray(patch)) {
+				return json(400, { error: "expected an object" });
+			}
+			let written: SettingsMsg;
+			try {
+				written = settingsMsg(updateSettings(patch as Record<string, unknown>), ++settingsWrites);
+			} catch (err) {
+				console.error("could not write settings:", err instanceof Error ? err.message : err);
+				return json(500, { error: "could not write settings" });
+			}
+			json(200, written);
+			// Every tab hears of it, the one that asked too: a settings screen open
+			// in another window would otherwise build its next edit on the old
+			// value, and the loadout is drawn on the composer, which hears about it
+			// on the socket rather than by asking.
+			broadcast(written);
+			broadcast(config());
+			return;
 		}
 		if (req.method !== "GET") return json(405, { error: "read only" });
 		if (pathname === "/api/settings") return json(200, readSettings());
+		if (pathname === "/api/models") return json(200, catalog());
 		return json(404, { error: "not found" });
 	}
 
@@ -653,6 +1360,9 @@ const wss = new WebSocketServer({ server });
 
 wss.on("connection", async (ws) => {
 	clients.add(ws);
+	// Someone is looking: a list that has gone stale since the last pass is
+	// brought up to date, and this tab hears of it like every other.
+	void refreshModels();
 	ws.on("close", () => clients.delete(ws));
 	// ws emits 'error' for a malformed frame. Node throws on an 'error' event
 	// with no listener, so without this one bad frame takes the process down.
@@ -663,13 +1373,22 @@ wss.on("connection", async (ws) => {
 	/** To this tab only: answers to what it asked, and the state it needs to start. */
 	const reply = (msg: ServerMsg) => ws.send(safeStringify(msg));
 	reply(config());
+	reply(providers());
+	reply(settingsMsg(readSettings(), settingsWrites));
 	reply(usage());
 	reply(contextSources());
+	reply(commands());
 	reply(snapshot());
+	for (const msg of diagnostics()) reply(msg);
 	reply(branches());
+	notes.load();
 	reply(files());
+	reply({ type: "property_types", types: propertyTypes.all() });
+	reply({ type: "property_names", ...propertyNames.all() });
 	// A tab opened while a question is waiting should see it too.
 	for (const prompt of prompts.open()) reply({ type: "prompt_request", prompt });
+	const asking = logins.open();
+	if (asking) reply({ type: "login_prompt", prompt: asking });
 
 	ws.on("message", async (data) => {
 		// Typed as what the browser sends, which is what lets each case below
@@ -686,7 +1405,22 @@ wss.on("connection", async (ws) => {
 			switch (msg.type) {
 				case "prompt": {
 					if (typeof msg.text !== "string") return;
-					openNote = typeof msg.note === "string" ? msg.note : null;
+					openNote =
+						typeof msg.note === "string"
+							? { path: msg.note, chosen: typeof msg.chosen === "string" && msg.chosen ? msg.chosen : null }
+							: null;
+					// Anything else said to pi takes the waiting answer with it: after
+					// this, which reply was the answer cannot be told, and a guess
+					// would write the wrong words into someone's note.
+					if (!msg.ask) settle("interrupted");
+					// An ask is the same message with what it is about attached; what
+					// pi is sent is the chosen words quoted above the question.
+					let text = msg.text;
+					if (msg.ask) {
+						const question = beginAsk(msg.ask, msg.text, ws);
+						if (question === null) return;
+						text = question;
+					}
 					// Asking an earlier question again: move the leaf to just before
 					// it, so what is sent next becomes a sibling of it rather than a
 					// reply to it, and the branch it was on is left where it is.
@@ -710,15 +1444,23 @@ wss.on("connection", async (ws) => {
 					// "steer" redirects the run in progress; "followUp" waits for it to finish.
 					const behavior = msg.behavior === "steer" ? "steer" : "followUp";
 					try {
-						// prompt() throws if the session is streaming and no behavior is given.
-						await session().prompt(
-							msg.text,
-							session().isStreaming ? { streamingBehavior: behavior } : undefined,
-						);
+						// What was typed is what is sent. Left to itself, prompt() reads a
+						// leading "/" as a command — an extension's, a skill's, a prompt
+						// template's — and runs or rewrites it before anyone sees. Only a
+						// command chosen from the list the server sent (CommandsMsg) is
+						// one; a "/" typed by hand is a character. (prompt() also throws
+						// if the session is streaming and no behavior is given.)
+						await session().prompt(text, {
+							expandPromptTemplates: msg.command === true,
+							...(msg.images?.length ? { images: msg.images.map((i) => ({ type: "image" as const, ...i })) } : {}),
+							...(session().isStreaming ? { streamingBehavior: behavior } : {}),
+						});
 					} catch (err) {
 						// A prompt that never started a run never settles, and the next
 						// run — which made no branch — would reread the file for it.
 						rereadWhenSettled = false;
+						// Nor is there a run left to answer an ask that went with it.
+						settle("failed");
 						throw err;
 					}
 					break;
@@ -726,15 +1468,17 @@ wss.on("connection", async (ws) => {
 
 				case "abort":
 					prompts.cancelAll();
+					// The run that was to answer is being stopped; nothing goes in.
+					settle("interrupted");
 					await abortWithin(5000);
 					broadcast(config());
 					break;
 
 				case "clear_queue": {
 					// pi clears the queue whole or not at all: there is no removing one
-					// message. Re-queueing the survivors is not a substitute, because
-					// steer() expands skill commands and templates again over text it
-					// already expanded once, and throws outright on an extension command.
+					// message, and re-queueing the survivors through steer() would send
+					// them through pi's command expansion, which prompt() above is told
+					// to skip.
 					//
 					// Nothing is lost by clearing: the messages come back, and go to the
 					// tab that asked so they land in the box it was typed in. Every tab
@@ -776,16 +1520,57 @@ wss.on("connection", async (ws) => {
 					break;
 				}
 
+				case "login": {
+					if (typeof msg.provider !== "string" || (msg.method !== "oauth" && msg.method !== "api_key")) return;
+					const known = providers().providers.find((p) => p.id === msg.provider);
+					if (!known?.methods.includes(msg.method)) {
+						reply({ type: "error", message: `${msg.provider} cannot be signed in to with ${msg.method === "oauth" ? "OAuth" : "an API key"} here.` });
+						return;
+					}
+					const busy = logins.busy();
+					if (busy) {
+						reply({ type: "error", message: `Already signing in to ${busy}. Finish or cancel that first.` });
+						return;
+					}
+					// Waits for the whole sign-in, and that is fine: each message from
+					// the socket is its own event, so the answers arrive meanwhile.
+					if (await logins.start(msg.provider, msg.method)) await afterSignIn(msg.provider);
+					break;
+				}
+
+				case "login_answer":
+					if (msg.cancelled === true) logins.cancel();
+					else if (typeof msg.id === "string" && typeof msg.value === "string") logins.answer(msg.id, msg.value, false);
+					break;
+
+				case "logout": {
+					if (typeof msg.provider !== "string") return;
+					// pi forgets the credential it kept; one it found elsewhere is left
+					// where it was, and providers() will go on saying so.
+					await modelRuntime.logout(msg.provider, { signal: AbortSignal.timeout(15_000) });
+					await refreshModels();
+					broadcast(config());
+					broadcast(contextSources());
+					break;
+				}
+
 				case "set_thinking": {
 					// setThinkingLevel clamps rather than rejecting, so an unknown
 					// value would silently become "off". Validate first.
-					const levels = config().thinkingLevels;
+					const model = currentModel();
+					const levels = model ? supportedLevels(model) : [];
 					if (typeof msg.level !== "string" || !levels.includes(msg.level as ThinkingLevel)) {
 						reply({ type: "error", message: `unsupported thinking level: ${msg.level}` });
 						return;
 					}
-					// As with the model: persist makes the choice outlive this session.
-					session().setThinkingLevel(msg.level as ThinkingLevel, { persist: true });
+					// Written against this model rather than as the default for every
+					// model: each entry in the loadout carries its own level, and pi puts
+					// a model back on the one it remembers when the session moves to it
+					// — so persist:true here would flatten the lot to whichever was set
+					// last. The default is left alone; it is what a model nobody has set
+					// a level for still starts from.
+					session().setThinkingLevel(msg.level as ThinkingLevel);
+					if (model) session().settingsManager.setModelThinkingLevel(model.provider, model.id, msg.level as ThinkingLevel);
 					broadcast(config());
 					break;
 				}
@@ -793,6 +1578,9 @@ wss.on("connection", async (ws) => {
 				case "new_session":
 					// A run in progress would keep writing to the session being replaced.
 					prompts.cancelAll();
+					// And an ask waiting on it would take the next session's first
+					// answer for its own.
+					settle("interrupted");
 					await abortWithin(5000);
 					await runtime.newSession();
 					await bind();
@@ -810,6 +1598,7 @@ wss.on("connection", async (ws) => {
 						return;
 					}
 					prompts.cancelAll();
+					settle("interrupted");
 					await abortWithin(5000);
 					await runtime.switchSession(msg.path);
 					await bind();
@@ -832,8 +1621,37 @@ wss.on("connection", async (ws) => {
 						reply({ type: "error", message: "Wait for the reply to finish before moving." });
 						return;
 					}
-					const result = await session().navigateTree(msg.entryId);
+					// What pi's /tree asks before it moves: whether the branch being
+					// left should be summarised into the one being joined, so what was
+					// found there is not lost. The same card as any question, and the
+					// same setting as pi's to stop asking (branchSummary.skipPrompt,
+					// which means no summary). Closing the card is not moving.
+					// The third answer is the one a terminal's list has no room for:
+					// it turns the setting off from where the question got tiresome.
+					let summarize = false;
+					if (!session().settingsManager.getBranchSummarySkipPrompt()) {
+						try {
+							const answer = await prompts.ask({
+								type: "select",
+								question: "Summarize branch?",
+								options: ["No summary", "Summarize", "No summary, don't ask again"],
+							});
+							summarize = answer === "Summarize";
+							if (answer === "No summary, don't ask again") {
+								await setBranchSummarySkipPrompt(true);
+								broadcast(config());
+							}
+						} catch (err) {
+							if (err instanceof Cancelled) return;
+							throw err;
+						}
+					}
+					const result = await session().navigateTree(msg.entryId, { summarize });
 					if (result.cancelled) return;
+					if (result.aborted) {
+						reply({ type: "notice", text: "Branch summarization cancelled" });
+						return;
+					}
 					// navigateTree emits nothing a session subscriber can hear — pi's
 					// own UI clears its screen and redraws from messages afterwards —
 					// so the new path has to be published from here.
@@ -847,6 +1665,151 @@ wss.on("connection", async (ws) => {
 					}
 					break;
 				}
+
+				// pi's /compact, by hand: the conversation so far is summarised into
+				// less, the way it would be when the window fills. The events it
+				// emits are the ones the conversation already draws a notice for.
+				case "compact":
+					if (session().isStreaming) {
+						reply({ type: "error", message: "Wait for the reply to finish before compacting." });
+						return;
+					}
+					try {
+						await session().compact();
+					} catch (err) {
+						reply({ type: "error", message: err instanceof Error ? err.message : String(err) });
+					}
+					break;
+
+				case "abort_compaction":
+					session().abortCompaction();
+					break;
+
+				// A session file to the bin, as pi's own picker does it. Not the one
+				// that is open: pi would go on writing to a file that is gone.
+				case "delete_session": {
+					if (typeof msg.path !== "string") return;
+					if (msg.path === session().sessionFile) {
+						reply({ type: "error", message: "The open session cannot be deleted; open another first." });
+						return;
+					}
+					const known = (await sessions()).sessions.some((s) => s.path === msg.path && !s.current);
+					if (!known) {
+						reply({ type: "error", message: `unknown session: ${msg.path}` });
+						return;
+					}
+					try {
+						await deleteSessionFile(msg.path);
+					} catch (err) {
+						reply({ type: "error", message: `could not delete: ${err instanceof Error ? err.message : String(err)}` });
+						return;
+					}
+					broadcast(await sessions());
+					break;
+				}
+
+				// pi's /fork: a new session with everything up to this user message
+				// copied in, and the message itself handed back as text — sent as it
+				// was, or changed first. The session under this server is swapped,
+				// so what follows is what follows any swap.
+				case "fork": {
+					if (typeof msg.entryId !== "string") return;
+					if (session().isStreaming) {
+						reply({ type: "error", message: "Wait for the reply to finish before forking." });
+						return;
+					}
+					prompts.cancelAll();
+					settle("interrupted");
+					const result = await runtime.fork(msg.entryId);
+					if (result.cancelled) return;
+					await bind();
+					await broadcastAll();
+					if (result.selectedText) reply({ type: "queue_cleared", steering: [result.selectedText], followUp: [] });
+					break;
+				}
+
+				// pi's /clone: the current branch, whole, into a new session file,
+				// and that session opened — the open one is left where it is. In pi
+				// this is a fork at the leaf rather than before it, which is how its
+				// own RPC host does it; what follows is what follows any swap.
+				case "clone_session": {
+					if (session().isStreaming) {
+						reply({ type: "error", message: "Wait for the reply to finish before cloning." });
+						return;
+					}
+					const leafId = session().sessionManager.getLeafId();
+					if (!leafId) {
+						reply({ type: "error", message: "Nothing to clone yet - start a conversation first" });
+						return;
+					}
+					prompts.cancelAll();
+					settle("interrupted");
+					const result = await runtime.fork(leafId, { position: "at" });
+					if (result.cancelled) return;
+					await bind();
+					await broadcastAll();
+					break;
+				}
+
+				// pi's /export, into the vault's own .pi/exports rather than the
+				// folder of notes, where an HTML file would be a stranger. Where it
+				// went is said in the conversation, as pi's status line says it.
+				case "export_session": {
+					if (msg.format !== "html" && msg.format !== "jsonl") return;
+					const dir = join(CWD, ".pi", "exports");
+					mkdirSync(dir, { recursive: true });
+					const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+					const target = join(dir, `session-${session().sessionId.slice(0, 8)}-${stamp}.${msg.format}`);
+					try {
+						const written = msg.format === "html" ? await session().exportToHtml(target) : session().exportToJsonl(target);
+						reply({ type: "notice", text: `Session exported to ${written}` });
+					} catch (err) {
+						reply({ type: "error", message: `could not export: ${err instanceof Error ? err.message : String(err)}` });
+					}
+					break;
+				}
+
+				// One of pi's settings, through pi's setter: it writes pi's
+				// settings.json, and pi reads the value at the moment it matters,
+				// so nothing here has to be told. Every tab sees the new value.
+				case "set_setting": {
+					const m = session().settingsManager;
+					switch (msg.setting) {
+						case "compaction.enabled":
+							if (typeof msg.value !== "boolean") return;
+							m.setCompactionEnabled(msg.value);
+							break;
+						case "retry.enabled":
+							if (typeof msg.value !== "boolean") return;
+							m.setRetryEnabled(msg.value);
+							break;
+						case "hideThinkingBlock":
+							if (typeof msg.value !== "boolean") return;
+							m.setHideThinkingBlock(msg.value);
+							break;
+						case "branchSummary.skipPrompt":
+							if (typeof msg.value !== "boolean") return;
+							await setBranchSummarySkipPrompt(msg.value);
+							break;
+						case "projectTrust":
+							if (typeof msg.value !== "boolean") return;
+							await setProjectTrust(msg.value);
+							// What is loaded changed with it: the commands, the context.
+							await broadcastAll();
+							return;
+						default:
+							return;
+					}
+					broadcast(config());
+					break;
+				}
+
+				// pi's /reload: skills, prompt templates, settings and context files
+				// read again, for what was added since the session began.
+				case "reload":
+					await session().reload();
+					await broadcastAll();
+					break;
 
 				case "set_session_name":
 					if (typeof msg.name !== "string") return;
@@ -880,7 +1843,8 @@ wss.on("connection", async (ws) => {
 						else reply({ type: "error", message: `cannot save ${msg.path}` });
 						return;
 					}
-					const changes = record(CWD, msg.path, had?.text ?? "", msg.text, { author: "me", at: Date.now() });
+					const edits = Array.isArray(msg.edits) ? msg.edits : undefined;
+					const changes = record(CWD, msg.path, had?.text ?? "", msg.text, { author: "me", at: Date.now() }, edits);
 					wrote(msg.path, had?.modified ?? null, changes);
 					break;
 				}
@@ -889,7 +1853,7 @@ wss.on("connection", async (ws) => {
 				// the truth, so a note exists once it is on disk and not before.
 				// Named Untitled; the title field is where it gets a name.
 				case "new_note": {
-					const existing = listNotes(CWD).map((f) => f.path);
+					const existing = notes.paths();
 					let path: string;
 					if (typeof msg.name === "string") {
 						const target = renameTarget("Untitled.md", msg.name);
@@ -905,12 +1869,13 @@ wss.on("connection", async (ws) => {
 					} else {
 						path = newNoteName(existing);
 					}
-					const written = writeNote(CWD, path, "", null);
+					const text = born("");
+					const written = writeNote(CWD, path, text, null);
 					if (!written.ok) {
 						reply({ type: "note_rename_failed", path: "", to: path, reason: "invalid" });
 						return;
 					}
-					record(CWD, path, "", "", { author: "me", at: Date.now() });
+					record(CWD, path, "", text, { author: "me", at: Date.now() });
 					reply({ type: "note_created", path });
 					wrote(path, null, []);
 					break;
@@ -919,6 +1884,15 @@ wss.on("connection", async (ws) => {
 				// A note's path is its name. The file and its history move together,
 				// and the version the tabs hold moves with them, so the watcher's
 				// report of the move is not taken for someone writing.
+				case "set_property_type": {
+					if (typeof msg.name !== "string" || (msg.propertyType !== null && !isPropertyType(msg.propertyType))) return;
+					if (!propertyTypes.set(msg.name, msg.propertyType)) {
+						reply({ type: "error", message: `the type of ${msg.name} is not for choosing` });
+						return;
+					}
+					broadcast({ type: "property_types", types: propertyTypes.all() });
+					return;
+				}
 				case "rename_note": {
 					if (typeof msg.path !== "string" || typeof msg.to !== "string") return;
 					const moved = renameNote(CWD, msg.path, msg.to);
@@ -933,6 +1907,7 @@ wss.on("connection", async (ws) => {
 						if (version !== undefined) known.set(msg.to, version);
 					}
 					broadcast({ type: "note_renamed", from: msg.path, to: msg.to });
+					notes.rename(msg.path, msg.to);
 					broadcast(files());
 					if (msg.path !== msg.to) {
 						// The notes that linked to the old name now link to the new one,
@@ -941,6 +1916,7 @@ wss.on("connection", async (ws) => {
 						const before = links.paths();
 						const linking = backlinksOf(Object.fromEntries(before.map((p) => [p, links.linksOf(p)])), msg.path, before);
 						links.rename(msg.path, msg.to);
+						propertyNames.rename(msg.path, msg.to);
 						for (const { path: other } of linking) {
 							const had = readNote(CWD, other);
 							if (!had) continue;
@@ -952,23 +1928,95 @@ wss.on("connection", async (ws) => {
 							wrote(other, had.modified, changes);
 						}
 						backlinksFor([msg.to]);
+						// The renamed note's tags are its own still; the notes sharing them now name it by its new path.
+						touchedBy({ backlinks: [], tagged: [msg.to, ...links.tagged(msg.to).map((t) => t.path)] });
 					}
 					break;
 				}
 
-				// To the trash, with its history, where restore_note can find it.
+				// To the machine's trash where there is a shell to ask, and to the
+				// vault's own where there is not — see trash.ts. Its log steps
+				// aside either way, and comes back with the note if the note does.
 				case "delete_note": {
 					if (typeof msg.path !== "string") return;
 					known.delete(msg.path);
-					const gone = trashNote(CWD, msg.path);
+					const gone = await deleteNote(CWD, msg.path, systemTrash);
 					if (!gone.ok) {
 						if (gone.reason === "missing") reply({ type: "note_gone", path: msg.path });
 						return;
 					}
-					moveLog(historyPath(CWD, msg.path), trashHistoryPath(CWD, gone.trashed));
-					broadcast({ type: "note_deleted", path: msg.path, trashed: gone.trashed });
+					trashLog(CWD, msg.path);
+					notes.remove(msg.path);
+					broadcast(gone.to === "vault" ? { type: "note_deleted", path: msg.path, to: "vault", trashed: gone.trashed } : { type: "note_deleted", path: msg.path, to: "system" });
 					broadcast(files());
-					backlinksFor(links.remove(msg.path));
+					touchedBy(links.remove(msg.path));
+					offered(propertyNames.remove(msg.path));
+					break;
+				}
+
+				/**
+				 * Who wrote which words. Asked for rather than always sent, and
+				 * answered about the note as it is on disk — whoever asks writes
+				 * down what they have typed first, the way anything that needs the
+				 * disk current does.
+				 *
+				 * Only what somebody else was seen to write is worth saying: a note
+				 * is mostly its writer's, and one marked all over says nothing.
+				 */
+				case "who_wrote": {
+					if (typeof msg.path !== "string") return;
+					const found = readNote(CWD, msg.path);
+					if (!found) {
+						reply({ type: "note_gone", path: msg.path });
+						return;
+					}
+					const { replayed } = settleDisk(msg.path, found.text, Date.now());
+					const spans = replayed.spans
+						// Nor what was there before the app: nobody was seen to write it.
+						.filter((span) => span.author !== "me" && span.author !== "before")
+						.map((span) => ({ from: span.from, to: span.to, author: span.author, at: span.at, ...(span.sessionId ? { session: span.sessionId } : {}) }));
+					reply({ type: "authors", path: msg.path, spans });
+					break;
+				}
+
+				/**
+				 * How one run of a note came to be there.
+				 *
+				 * The log says who and when, and what stood there before while the
+				 * run is still the whole of what its change wrote. For pi's own
+				 * writing there is more, in pi's record of the conversation: the
+				 * model it was on and the message the turn began with. That record
+				 * is not ours and a person may have deleted it, so what cannot be
+				 * found is simply left out.
+				 */
+				case "why_wrote": {
+					if (typeof msg.path !== "string" || typeof msg.pos !== "number") return;
+					const found = readNote(CWD, msg.path);
+					if (!found) {
+						reply({ type: "note_gone", path: msg.path });
+						return;
+					}
+					const { replayed } = settleDisk(msg.path, found.text, Date.now());
+					const span = replayed.spans.find((s) => s.from <= msg.pos && msg.pos < s.to);
+					if (!span) return;
+					reply({
+						type: "why",
+						path: msg.path,
+						from: span.from,
+						to: span.to,
+						author: span.author,
+						at: span.at,
+						text: found.text.slice(span.from, span.to),
+						// Present even when it is empty, which is not the same as absent:
+						// empty says the run replaced nothing, and absent says the run is
+						// no longer the whole of what its change wrote, so what it
+						// replaced is not known any more. A tab that cannot tell those
+						// apart cannot offer to put anything back.
+						...("removed" in span ? { removed: span.removed } : {}),
+						...(span.sessionId ? { session: span.sessionId } : {}),
+						...(span.entryId ? { entry: span.entryId } : {}),
+						...(await turnOf(span.sessionId, span.entryId)),
+					});
 					break;
 				}
 
@@ -979,7 +2027,9 @@ wss.on("connection", async (ws) => {
 						reply({ type: "error", message: `cannot restore ${msg.path}: ${back.reason}` });
 						return;
 					}
-					moveLog(trashHistoryPath(CWD, msg.trashed), historyPath(CWD, msg.path));
+					// The log comes back the way it does for a note put back in the
+					// Finder: the note is read, and the trash is asked whether the
+					// past waiting there replays to exactly this text.
 					reply({ type: "note_created", path: msg.path });
 					wrote(msg.path, null, []);
 					break;
@@ -989,10 +2039,67 @@ wss.on("connection", async (ws) => {
 				case "accept_note": {
 					if (typeof msg.path !== "string" || typeof msg.from !== "number" || typeof msg.to !== "number") return;
 					if (!readNote(CWD, msg.path)) return;
-					accept(CWD, msg.path, msg.from, msg.to, Date.now());
+					if (!decide(CWD, msg.path, msg.from, msg.to, Date.now(), msg.kept !== false)) {
+						// Those places name nothing to decide about, so this tab and the
+						// record do not agree about the note — it is a keystroke ahead,
+						// or something wrote while the button was being pressed. Nothing
+						// is recorded, and the note goes back as it stands, which is the
+						// answer to a tab that has it wrong. Said out loud too: it should
+						// not happen, since a decision goes down after the typing it was
+						// made over, and a log is where a should-not is worth reading.
+						console.warn(`[decide] ${msg.path} ${msg.from}–${msg.to} decides nothing; the tab is out of step`);
+						const again = note(msg.path);
+						if (again) reply(again);
+						return;
+					}
 					// Nothing in the text moved: the spans are the whole of the news.
 					const found = readNote(CWD, msg.path)!;
 					wrote(msg.path, found.modified, []);
+					break;
+				}
+
+				/**
+				 * Put back what pi wrote in one run, across every note it wrote to.
+				 *
+				 * The notes are found by their logs: one that names the session is
+				 * read, and one that says pi wrote in it during the run is a note
+				 * of this run's. Each such note goes back to the text it would have
+				 * with pi's undecided changes put back — the same "before" the diff
+				 * in the note is drawn against — as one save of the person's, which
+				 * is what pressing Undo on every chunk would have come to. A note
+				 * whose chunks were all kept has nothing to put back and is left as
+				 * it is: a kept chunk is the person's decision, and this is not a
+				 * way around it. Nor is what the person typed since touched, since
+				 * "before" holds it (see unreviewed in history.ts).
+				 *
+				 * Every log on disk is looked at — the folder walked, not the list in
+				 * memory, since a note written a moment ago may not have reached the
+				 * list yet and a button is pressed rarely — so it works on a run from
+				 * before the app was last opened; a name looked for in the raw text
+				 * first keeps the reading to the logs that could match.
+				 */
+				case "undo_run": {
+					if (typeof msg.session !== "string" || typeof msg.from !== "number" || typeof msg.to !== "number") return;
+					const at = Date.now();
+					const put: string[] = [];
+					for (const { path } of listNotes(CWD)) {
+						if (!logNames(CWD, path, msg.session)) continue;
+						if (!wroteIn(readHistory(CWD, path), msg.session, msg.from, msg.to)) continue;
+						const found = readNote(CWD, path);
+						if (!found) continue;
+						const { holed } = settleDisk(path, found.text, at);
+						const { before, holes } = undecided(holed);
+						if (holes.length === 0 || before === found.text) continue;
+						// Over the version just read: a note that moves between the
+						// read and the write — a save landing this instant — is left
+						// alone rather than written over, and reported as not put back.
+						const written = writeNote(CWD, path, before, found.modified);
+						if (!written.ok) continue;
+						const changes = record(CWD, path, found.text, before, { author: "me", at });
+						wrote(path, found.modified, changes);
+						put.push(path);
+					}
+					reply({ type: "run_undone", notes: put });
 					break;
 				}
 
@@ -1001,13 +2108,17 @@ wss.on("connection", async (ws) => {
 				// To this tab only: it is an answer to what it typed.
 				case "search_notes": {
 					if (typeof msg.query !== "string" || typeof msg.id !== "number") return;
-					const notes = function* () {
+					// The folder itself, not the list in memory: a search is for every
+					// note on disk, and one written a moment ago by something else has
+					// not reached the list yet. The walk is the small half of this
+					// anyway — every note's text is read from disk below it.
+					const texts = function* () {
 						for (const { path } of listNotes(CWD)) {
 							const found = readNote(CWD, path);
 							if (found) yield found;
 						}
 					};
-					reply({ type: "search_results", id: msg.id, query: msg.query, hits: search(notes(), msg.query) });
+					reply({ type: "search_results", id: msg.id, query: msg.query, hits: search(texts(), msg.query) });
 					break;
 				}
 
@@ -1030,26 +2141,72 @@ wss.on("connection", async (ws) => {
 	reply(await sessions());
 });
 
+/**
+ * The way to the machine's trash, or null where this run has no shell to ask.
+ * Made once: it listens for the answers on the channel, and one listener is
+ * enough for all of them.
+ */
+const systemTrash = shellTrash();
+
 // Writes that do not pass through here — see watcher.ts.
 const stopWatching = watchNotes(CWD, noticed);
 
 server.listen(PORT, HOST, () => {
 	console.log(`open http://localhost:${PORT}  (ctrl+c to stop)`);
 	if (HOST !== "127.0.0.1") console.log(`listening on ${HOST} — anyone who can reach it controls this machine`);
-	console.log(`model: ${session().model?.id ?? "none"}  thinking: ${session().thinkingLevel}`);
+	console.log(`model: ${currentModel()?.id ?? "none"}  thinking: ${session().thinkingLevel}`);
 	console.log(`session: ${session().sessionFile ?? "(not persisted)"}`);
+	console.log(`log: ${logFile}`);
 });
 
 let shuttingDown = false;
-process.on("SIGINT", async () => {
+async function shutdown(): Promise<void> {
 	if (shuttingDown) return;
 	shuttingDown = true;
 	stopWatching();
 	prompts.cancelAll();
+	logins.cancel();
 	await runtime.dispose();
 	// server.close() waits for open connections, and an upgraded WebSocket is
 	// one of them. ws does not close them for us when the http server was
 	// passed in, so a browser tab left open would hang the exit.
 	for (const client of clients) client.terminate();
 	server.close(() => process.exit(0));
-});
+}
+
+// Being asked to stop comes in two words, and only one of them is Ctrl+C. The
+// desktop shell asks the other way — child.kill() sends SIGTERM — and with no
+// listener for it the default action is to go at once, so everything above
+// this line was the path that only a terminal ever took. ⌘Q never retired an
+// extension or disposed a session.
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
+/**
+ * Whatever was not caught nearer to where it happened.
+ *
+ * A message from a tab is handled inside a try/catch that answers the tab.
+ * Everything else here is not: the watcher's callback, pi's event
+ * subscription, an extension, a timer. An error in one of those used to take
+ * the process with it, and the desktop shell reports a server that stopped by
+ * quitting — mid-answer, with the session's own last words gone.
+ *
+ * So it is said instead, in both directions: to the terminal with its stack,
+ * and to the tabs, which are otherwise left watching a spinner that will not
+ * move. And the server stays up, because nothing it holds is the only copy of
+ * anything — the notes are files, the log is a file, the session is pi's own
+ * file. Staying up with one thing broken is worth more here than a clean exit
+ * that takes the other three columns with it.
+ */
+function unhandled(what: string, err: unknown): void {
+	console.error(`[${what}]`, err instanceof Error ? (err.stack ?? err.message) : err);
+	if (shuttingDown) return;
+	// The report must not become the next uncaught error.
+	try {
+		broadcast({ type: "error", message: `${what}: ${err instanceof Error ? err.message : String(err)}` });
+	} catch {
+		// A socket that cannot be written to is not news at this point.
+	}
+}
+process.on("uncaughtException", (err) => unhandled("uncaught error", err));
+process.on("unhandledRejection", (reason) => unhandled("unhandled rejection", reason));

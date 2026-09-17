@@ -9,9 +9,17 @@ import {
 	addPrompt,
 	branchesStore,
 	setBacklinks,
+	setTagged,
 	configStore,
+	providersStore,
+	applySettings,
+	applyLogin,
+	commandsStore,
 	contextSourcesStore,
+	authorsStore,
 	filesStore,
+	whyStore,
+	filesTruncatedStore,
 	noteChangedStore,
 	noteConflictStore,
 	noteCreatedStore,
@@ -21,9 +29,12 @@ import {
 	noteRenamedStore,
 	noteStore,
 	promptsStore,
+	propertyNamesStore,
+	propertyTypesStore,
 	pushRaw,
 	removePrompt,
 	restoredStore,
+	runUndoneStore,
 	searchResultsStore,
 	sessionsStore,
 	usageStore,
@@ -61,14 +72,25 @@ const backoff = () => Math.random() * Math.min(250 * 2 ** attempt, 5000);
  */
 const STATE: Record<StateMsg["type"], true> = {
 	config: true,
+	providers: true,
+	settings: true,
+	login_prompt: true,
+	login_prompt_dismiss: true,
+	login_event: true,
+	login_done: true,
 	usage: true,
 	context_sources: true,
+	commands: true,
+	notice: true,
 	branches: true,
 	sessions: true,
 	snapshot: true,
 	files: true,
 	note: true,
 	backlinks: true,
+	tagged: true,
+	property_types: true,
+	property_names: true,
 	note_changed: true,
 	note_created: true,
 	note_renamed: true,
@@ -76,7 +98,11 @@ const STATE: Record<StateMsg["type"], true> = {
 	note_gone: true,
 	note_deleted: true,
 	note_conflict: true,
+	authors: true,
+	why: true,
 	search_results: true,
+	run_undone: true,
+	ask_done: true,
 	prompt_request: true,
 	prompt_dismiss: true,
 	queue_cleared: true,
@@ -96,11 +122,26 @@ function receive(msg: ServerMsg): void {
 		case "config":
 			configStore.set(msg);
 			return;
+		case "providers":
+			providersStore.set(msg.providers);
+			return;
+		case "settings":
+			applySettings(msg);
+			return;
+		case "login_prompt":
+		case "login_prompt_dismiss":
+		case "login_event":
+		case "login_done":
+			applyLogin(msg);
+			return;
 		case "usage":
 			usageStore.set(msg);
 			return;
 		case "context_sources":
 			contextSourcesStore.set(msg);
+			return;
+		case "commands":
+			commandsStore.set(msg.commands);
 			return;
 		// The shape of the session tree, not something that happened in the
 		// conversation: it must not reach the reducer.
@@ -112,13 +153,24 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "files":
 			filesStore.set(msg.files);
+			filesTruncatedStore.set(msg.truncated);
 			return;
 		case "note":
 			setBacklinks(msg.path, msg.backlinks);
+			setTagged(msg.path, msg.tagged);
 			noteStore.set(msg);
 			return;
 		case "backlinks":
 			setBacklinks(msg.path, msg.notes);
+			return;
+		case "tagged":
+			setTagged(msg.path, msg.notes);
+			return;
+		case "property_types":
+			propertyTypesStore.set(msg.types);
+			return;
+		case "property_names":
+			propertyNamesStore.set({ names: msg.names, values: msg.values });
 			return;
 		case "note_changed":
 			noteChangedStore.set(msg);
@@ -138,11 +190,20 @@ function receive(msg: ServerMsg): void {
 		case "note_gone":
 			noteGoneStore.set(msg);
 			return;
+		case "authors":
+			authorsStore.set(msg);
+			return;
+		case "why":
+			whyStore.set(msg);
+			return;
 		case "note_deleted":
 			noteDeletedStore.set(msg);
 			return;
 		case "search_results":
 			searchResultsStore.set(msg);
+			return;
+		case "run_undone":
+			runUndoneStore.set(msg);
 			return;
 		case "snapshot":
 			// A snapshot means the server's session may not be the one these
@@ -166,7 +227,9 @@ function receive(msg: ServerMsg): void {
 			pushRaw(msg);
 			removePrompt(msg.id);
 			return;
-		// The server's own error, which the reducer draws like pi's.
+		// The server's own error, and what an extension wanted said: the
+		// reducer draws both like pi's.
+		case "notice":
 		case "error":
 			pushRaw(msg);
 			applyServerEvent(msg);

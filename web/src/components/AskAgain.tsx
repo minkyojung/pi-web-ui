@@ -3,6 +3,7 @@ import { PencilIcon } from "lucide-react";
 
 import { askingAgainStore, configStore, restoredStore } from "../serverState";
 import { Button } from "./ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
  * Ask this question again, differently.
@@ -22,23 +23,28 @@ export function AskAgain({ entryId, text }: { entryId: string; text: string }) {
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 
 	return (
-		<Button
-			size="icon-xs"
-			variant="ghost"
-			title="Ask this again, differently"
-			// pi will not move a leaf mid-reply: the reply is being written into
-			// the branch that would be left behind.
-			disabled={config?.isStreaming ?? false}
-			className="opacity-0 transition-opacity group-hover/user:opacity-100 focus-visible:opacity-100"
-			onClick={() => {
-				askingAgainStore.set({ entryId, text });
-				// Through the same door a cleared queue uses, which appends rather
-				// than assigns: a half-written line in the box is not ours to throw
-				// away just because something else wants to be in there.
-				restoredStore.set(text);
-			}}
-		>
-			<PencilIcon />
-		</Button>
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					size="icon-xs"
+					variant="ghost"
+					aria-label="Ask this again, differently"
+					// pi will not move a leaf mid-reply: the reply is being written into
+					// the branch that would be left behind.
+					disabled={config?.isStreaming ?? false}
+					className="opacity-0 transition-opacity group-hover/user:opacity-100 focus-visible:opacity-100"
+					onClick={() => {
+						askingAgainStore.set({ entryId, text });
+						// Through the same door a cleared queue uses, which appends rather
+						// than assigns: a half-written line in the box is not ours to throw
+						// away just because something else wants to be in there.
+						restoredStore.set(text);
+					}}
+				>
+					<PencilIcon />
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent side="bottom">Ask this again, differently</TooltipContent>
+		</Tooltip>
 	);
 }
