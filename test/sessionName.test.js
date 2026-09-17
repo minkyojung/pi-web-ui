@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { WORDS, asking, cheapest, nameFrom } from "../sessionName.ts";
+import { INSTRUCTIONS, NOTHING, WORDS, asking, cheapest, nameFrom } from "../sessionName.ts";
 
 const model = (name, input, output) => ({ name, cost: { input, output } });
 
@@ -35,16 +35,35 @@ test("이름이 없는 대답은 이름이 아니다 — 빈 것, 공백뿐인 �
   assert.equal(nameFrom("..."), undefined);
 });
 
-test("물어보는 말에는 단어 수와 주고받은 것이 다 들어간다", () => {
-  const text = asking("리듀서를 다시 써줘", "이렇게 쓰면 됩니다");
-  assert.match(text, new RegExp(`at most ${WORDS} words`));
-  assert.match(text, /리듀서를 다시 써줘/);
-  assert.match(text, /이렇게 쓰면 됩니다/);
+test("이름이 아직 없다는 대답은 이름이 아니다 — 대소문자, 마침표가 붙어도", () => {
+  assert.equal(nameFrom(NOTHING), undefined);
+  assert.equal(nameFrom("None."), undefined);
+  assert.equal(nameFrom("**NONE**"), undefined);
+  assert.equal(nameFrom("None of Them"), "None of Them");
 });
 
-test("긴 메시지는 잘라서 보낸다 — 이름 세 단어에 대화 전체를 실어 보낼 이유가 없다", () => {
+const said = [
+  { role: "user", text: "리듀서를 다시 써줘" },
+  { role: "assistant", text: "이렇게 쓰면 됩니다" },
+  { role: "user", text: "테스트도" },
+];
+
+test("모델에게 보이는 대화에는 지금까지 주고받은 말이 다 들어가고, 태그 안에 있다", () => {
+  const text = asking(said);
+  assert.match(text, /^<conversation>\n[\s\S]*\n<\/conversation>$/);
+  for (const s of said) assert.ok(text.includes(s.text), s.text);
+});
+
+test("이름을 지으라는 말은 대화 쪽에 섞이지 않는다 — 섞이면 대화가 빈약할 때 그 말에 이름이 붙는다", () => {
+  const text = asking(said);
+  assert.doesNotMatch(text, /name/i);
+  assert.match(INSTRUCTIONS, new RegExp(`at most ${WORDS} words`));
+  assert.ok(INSTRUCTIONS.includes(NOTHING), "지을 게 없을 때의 대답을 알려준다");
+});
+
+test("긴 대화는 잘라서 보낸다 — 이름 세 단어에 대화 전체를 실어 보낼 이유가 없다", () => {
   const long = "가".repeat(5000);
-  const text = asking(long, long);
-  assert.ok(text.length < 5000, "두 쪽 다 잘렸다");
-  assert.match(text, /…/);
+  const text = asking([{ role: "user", text: long }, { role: "assistant", text: long }]);
+  assert.ok(text.length < 5000, "잘렸다");
+  assert.match(text, /…\n<\/conversation>$/);
 });

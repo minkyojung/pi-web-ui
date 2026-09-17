@@ -1000,16 +1000,18 @@ function onEvent(event: AgentSessionEvent): void {
 	// hears — a shell command. One walk at the end of a turn, and only if what
 	// it found differs.
 	if (event.type === "agent_settled" && notes.load()) broadcast(files());
-	// The first exchange is the first thing there is to name the session by.
+	// A finished turn is the first moment there can be something to name the
+	// session by, and each one after is another chance while there is not.
 	if (event.type === "agent_settled") void nameSession();
 }
 
 /**
- * The session a name has already been asked for. Once per conversation: a
- * model that gave nothing back for this exchange will not give something back
- * for the same one, and a second try would only spend again to say so.
+ * The session a name is being asked for right now. Only while the question is
+ * out: two turns that end close together would otherwise ask twice. A question
+ * that came back with nothing is asked again when the next turn ends, with
+ * that turn in it — nothing was the answer because there was nothing yet.
  */
-let namedFor: string | null = null;
+let namingFor: string | null = null;
 
 /**
  * Give a name to a conversation nobody has named — see sessionName.ts. Run
@@ -1021,20 +1023,21 @@ let namedFor: string | null = null;
  */
 async function nameSession(): Promise<void> {
 	const named = session();
-	if (named.sessionName || namedFor === named.sessionId) return;
-	const messages = named.messages;
-	const question = messages.find((m) => m.role === "user");
-	const answer = messages.find((m) => m.role === "assistant");
-	if (!question || !answer) return;
-	namedFor = named.sessionId;
+	if (named.sessionName || namingFor === named.sessionId) return;
+	// Words only: a message that only reached for a tool, or only thought, has
+	// none, and an empty line would tell the model nothing.
+	const said = named.messages.flatMap((m) =>
+		m.role === "user" || m.role === "assistant" ? [{ role: m.role, text: textOf(m.content).trim() }] : [],
+	).filter((s) => s.text);
+	if (!said.some((s) => s.role === "user") || !said.some((s) => s.role === "assistant")) return;
+	namingFor = named.sessionId;
 	try {
 		const name = await askForName({
 			cwd: CWD,
 			agentDir: getAgentDir(),
 			modelRuntime,
 			models: availableModels(),
-			question: textOf(question.content),
-			answer: textOf(answer.content),
+			said,
 		});
 		// Thinking of a name takes a moment, and in that moment the session can
 		// be replaced or named. Either way this answer is about a conversation
@@ -1046,6 +1049,8 @@ async function nameSession(): Promise<void> {
 	} catch {
 		// A courtesy. Without it the first message stands in for a name, which
 		// is what it did before there was anything to name a conversation with.
+	} finally {
+		if (namingFor === named.sessionId) namingFor = null;
 	}
 }
 
