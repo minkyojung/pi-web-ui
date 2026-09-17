@@ -95,7 +95,7 @@ export function ModelPicker({
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<DropdownMenuTrigger asChild>
-							<Button type="button" variant="outline" size="sm" id="model" className="h-7 min-w-0 shrink gap-1.5 px-2 text-xs shadow-none" disabled={disabled}>
+							<Button type="button" variant="ghost" size="sm" id="model" className="h-7 min-w-0 shrink gap-1.5 px-2 text-xs shadow-none" disabled={disabled}>
 								{current ? (
 									<>
 										{/* The last thing on the row to give anything up, and it
