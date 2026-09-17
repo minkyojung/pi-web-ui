@@ -485,30 +485,7 @@ const type = (page, text) =>
  * put away again. No count at all means the vault puts nothing beside it, and
  * "" is the honest answer to that rather than a wait that never ends.
  */
-const beside = async (page, id) => {
-	// "tagged" is no longer a count of its own. Each tag in the strip opens the
-	// notes that share it — the same list, by the tag it is about — so this
-	// presses the first tag that is a way through and reads what comes up.
-	if (id === "tagged") return besideTag(page);
-	// Already showing: read it rather than press again. This is called from
-	// inside `until`, and a press on an open popover is a press that shuts it —
-	// the wait would then flap between open and closed rather than settle.
-	if (await page.evaluate(`!!document.querySelector('#${id}')`)) {
-		return page.evaluate(`document.querySelector('#${id}').textContent`);
-	}
-	// And nothing else may be open over it: a click outside a popover is the
-	// click that closes it, and the trigger underneath never hears it.
-	await page.press("Escape");
-	const pressed = await page.evaluate(`(() => {
-		const b = [...document.querySelectorAll('#status button')].find((x) => x.textContent.trim().endsWith(" ${label}"));
-		if (!b) return false;
-		b.click();
-		return true;
-	})()`);
-	if (!pressed) return "";
-	await until(`the ${label} list`, () => page.evaluate(`!!document.querySelector('#${id}')`));
-	return page.evaluate(`document.querySelector('#${id}')?.textContent ?? ''`);
-};
+const beside = (page, _id) => besideTag(page);
 /**
  * The notes that share the open note's first tag, from the tag in the strip.
  *
@@ -526,15 +503,10 @@ const besideTag = async (page) => {
 	return open();
 };
 
-/** Take one of them, which is also how the list is put away. */
-const goBeside = async (page, id, path) => {
-	await beside(page, id);
-	return page.evaluate(`(() => { const b = document.querySelector('#${id} button[data-path=${JSON.stringify(path)}]'); if (!b) return false; b.click(); return true; })()`);
-};
 /** Nothing is open over the strip. */
 const shut = async (page) => {
 	await page.press("Escape");
-	await until("the list to close", () => page.evaluate(`!document.querySelector('#backlinks') && !document.querySelector('[id^="tag-"]')`));
+	await until("the list to close", () => page.evaluate(`!document.querySelector('[id^="tag-"]')`));
 };
 
 check("a row in the sidebar opens its note in the middle", async ({ app }) => {
@@ -1245,9 +1217,9 @@ check("links are drawn, a missing one differently; ⌘+click follows one and mak
 	// Follow the one that exists.
 	await app.click("#editor .cm-wikilink", 0, { meta: true });
 	await until("My note", async () => (await app.evaluate("location.hash")) === "#My%20note.md");
-	await until("its backlinks", async () => (await beside(app, "backlinks")).includes("hub"));
-	// Back by the backlink, then make the missing one.
-	assert.equal(await goBeside(app, "backlinks", "hub.md"), true);
+	// Back by the list, then make the missing one. (It used to be by the
+	// backlink in the strip, which the strip no longer carries.)
+	await pickNote(app, "hub.md");
 	await until("hub again", async () => (await app.evaluate("location.hash")) === "#hub.md" && (await app.evaluate("document.querySelectorAll('#editor .cm-wikilink').length")) === 2);
 	await app.click("#editor .cm-wikilink", 1, { meta: true });
 	await until("the new note", async () => (await app.evaluate("location.hash")) === "#nowhere%20yet.md" && (await editorStatus(app)) === "saved");
@@ -1469,17 +1441,15 @@ check("the notes beside this one are in the strip, behind their counts", async (
 	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("also #pair"));
 
 	// Nothing of it is drawn in the page any more.
-	assert.equal(await app.evaluate(`!!document.querySelector('#note [id^="tag-"], #note #backlinks')`), false, "the page holds none of this");
+	assert.equal(await app.evaluate(`!!document.querySelector('#note [id^="tag-"]')`), false, "the page holds none of this");
 
 	// The counts are in the strip, and the lists are behind them.
 	await until("the note that shares its tag", async () => (await beside(app, "tagged")).includes("foot-a"));
-	await shut(app);
-	await until("the note that names it", async () => (await beside(app, "backlinks")).includes("foot-a"));
 
 	// Taking one is going there, and puts the list away on the way.
-	assert.equal(await goBeside(app, "backlinks", "foot-a.md"), true);
+	assert.equal(await app.evaluate(`(() => { const b = document.querySelector('[id^="tag-"] button[data-path="foot-a.md"]'); if (!b) return false; b.click(); return true; })()`), true);
 	await until("the note it named", async () => (await app.evaluate("location.hash")) === "#foot-a.md");
-	await until("the list to have gone with it", () => app.evaluate("!document.querySelector('#backlinks')"));
+	await until("the list to have gone with it", () => app.evaluate(`!document.querySelector('[id^="tag-"]')`));
 });
 
 check("the strip at the foot of the window keeps its height, and says whether the note has reached the disk", async ({ app, cwd }) => {
@@ -1880,19 +1850,17 @@ check("a tag and a link written in the properties count as much as ones written 
 		return t.includes("prop-tagged") && t.includes("#crew");
 	});
 	await shut(app);
-	// And the link written in a property is a backlink on the note it names.
+	// And the link written in a property is a link like any other: renaming
+	// the note it names rewrites the property, not just the text. (That it is
+	// indexed as a backlink is linkIndex.test.js's to say; the strip no longer
+	// shows backlinks, so there is nothing on screen to ask.)
 	await app.evaluate(`document.querySelector('#notes button[data-path="prop-hub.md"]').click()`);
-	await until("its backlinks", async () => (await beside(app, "backlinks")).includes("prop-tagged"));
-	await shut(app);
-	// Renaming the note it names rewrites the property, not just the text: the backlink survives the move.
+	await until("the note it names", async () => (await app.evaluate("location.hash")) === "#prop-hub.md" && (await editorStatus(app)) === "saved");
 	await retitle(app, "prop-centre");
 	await until("the note moved", () => existsSync(join(cwd, "prop-centre.md")));
 	await until("the property rewritten", () => readFileSync(join(cwd, "prop-tagged.md"), "utf8").includes('"[[prop-centre]]"'));
-	await until("its backlinks again", async () => (await beside(app, "backlinks")).includes("prop-tagged"));
-	await shut(app);
-	// Taken out of the properties, both go.
+	// Taken out of the properties, the tag goes.
 	writeFileSync(join(cwd, "prop-tagged.md"), "---\nstatus: draft\n---\n\nnothing in the text\n");
-	await until("the backlink to go", async () => (await beside(app, "backlinks")) === "");
 	await app.evaluate(`document.querySelector('#notes button[data-path="prop-body.md"]').click()`);
 	await until("the tagged count to go", async () => (await beside(app, "tagged")) === "");
 });

@@ -24,7 +24,7 @@
  * which is the same gap a tab has at the top. Numbers matched by eye drift the
  * moment either end is touched; numbers that follow from one another do not.
  *
- * Left is where the note sits among the others — its tags, who points at it.
+ * Left is where the note sits among the others — its tags.
  * Right is how it stands right now — how much of it there is, whether it has
  * reached the disk. That is the order every status bar uses, and it is worth
  * keeping: the left changes when you file something, the right while you type.
@@ -36,7 +36,7 @@ import { useSyncExternalStore, useState } from "react";
 
 import { inFrontStore, type Saved } from "../inFront";
 import type { Authored } from "../../../protocol.ts";
-import { backlinksStore, taggedStore } from "../serverState";
+import { taggedStore } from "../serverState";
 import { titleOf } from "../noteSync";
 import type { Backlink, Tagged } from "../types";
 import { AgentStatus } from "./AgentStatus";
@@ -232,7 +232,6 @@ function Tag({ name, notes, onOpen }: { name: string; notes: Tagged[]; onOpen?: 
 
 export function StatusBar({ path, onOpen, piWidth, piFolded, onUnfoldPi }: { path: string | null; onOpen?: (path: string) => void; piWidth: number | null; piFolded: boolean; onUnfoldPi: () => void }) {
 	const front = useSyncExternalStore(inFrontStore.subscribe, inFrontStore.get);
-	const backlinks = useSyncExternalStore(backlinksStore.subscribe, backlinksStore.get);
 	const tagged = useSyncExternalStore(taggedStore.subscribe, taggedStore.get);
 	// Which of the two the count is showing. Not beside the note — it is how you
 	// like to be told, not a fact about any one note — and kept in this browser,
@@ -263,7 +262,6 @@ export function StatusBar({ path, onOpen, piWidth, piFolded, onUnfoldPi }: { pat
 	// about a note you have just closed.
 	const note = front && front.path === path && front.saved !== "loading" ? front : null;
 	const hand = note?.authored ? share(note.authored) : null;
-	const links = path ? (backlinks[path] ?? []) : [];
 	const shares = path ? (tagged[path] ?? []) : [];
 
 	return (
@@ -290,7 +288,6 @@ export function StatusBar({ path, onOpen, piWidth, piFolded, onUnfoldPi }: { pat
 						{hand.other && <span>outside {hand.other}</span>}
 					</span>
 				)}
-				<Related id="backlinks" what="linked" notes={links} onOpen={onOpen} />
 				<div className="flex-1" />
 				{note && (
 					<Item
