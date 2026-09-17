@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { apply, appendHistory, changesBetween, decide, historyPath, mapThrough, moveHistory, readHistory, reclaimLog, reconcile, record, replay, trashLog, trashHistoryPath, wroteIn, fromEdits, carriedFrom } from "../history.ts";
+import { apply, appendHistory, changesBetween, decide, historyOf, historyPath, mapThrough, moveHistory, readHistory, reclaimLog, reconcile, record, replay, trashLog, trashHistoryPath, wroteIn, fromEdits, carriedFrom } from "../history.ts";
 
 const me = { author: "me", at: 1 };
 const pi = { author: "pi", at: 2, sessionId: "s1", entryId: "e1" };
@@ -149,6 +149,43 @@ test("v:2 줄은 spans를 지니고, v:1 줄처럼 읽힌다", () => {
   const raw = readFileSync(historyPath(DIR, "v2.md"), "utf8");
   assert.ok(raw.startsWith('{"v":2,'), raw);
   assert.deepEqual(readHistory(DIR, "v2.md")[0].spans, [{ ...pi, from: 0, to: 1 }]);
+});
+
+// A log as a folder that has been here since before the lines had a `v` would
+// hold it: the first four lines are from then, the fifth is v1, the sixth v2.
+// The file is never edited — a new shape of line is a new fixture, and this
+// one goes on being read as it is for as long as the app reads logs.
+test("v가 없던 때부터 쓰인 기록장이 지금도 그대로 읽힌다", () => {
+  const fixture = readFileSync(new URL("fixtures/history-eras.jsonl", import.meta.url), "utf8");
+  const file = historyPath(DIR, "eras.md");
+  mkdirSync(join(file, ".."), { recursive: true });
+  writeFileSync(file, fixture);
+
+  const read = historyOf(DIR, "eras.md");
+  const { text, spans } = read.replayed;
+  assert.equal(read.lines, 6);
+  assert.equal(text, "Shopping list\noat milk\neggs\njam\n");
+  assert.deepEqual(
+    spans.map((s) => [s.author, text.slice(s.from, s.to), s.sessionId]),
+    [["before", "Shopping list\n", undefined], ["pi", "oat milk", "s-old"], ["me", "\n", undefined], ["pi", "eggs\njam", "s-v1"], ["me", "\n", undefined]],
+    "처음 있던 글은 누구의 것도 아니고, 옮겨 온 말은 쓴 이를 데려온다",
+  );
+  assert.deepEqual(
+    read.holed.holes,
+    [{ from: 14, to: 22, removed: "milk", accepted: true }, { from: 23, to: 28, removed: "" }],
+    "kept가 없던 때의 결정은 수락이고, 결정한 적 없는 것은 아직 열려 있다",
+  );
+
+  // The answer written down beside the log says the same as the walk did.
+  assert.deepEqual(historyOf(DIR, "eras.md", -1), read);
+  assert.deepEqual(historyOf(DIR, "eras.md"), read);
+
+  // Writing on leaves every old line as it was.
+  appendHistory(DIR, "eras.md", [{ ...me, from: 0, to: 0, inserted: "# ", removed: "" }]);
+  const after = readFileSync(file, "utf8");
+  assert.ok(after.startsWith(fixture), "옛 줄은 다시 쓰이지 않는다");
+  assert.ok(after.slice(fixture.length).startsWith('{"v":2,'));
+  assert.equal(historyOf(DIR, "eras.md").replayed.text, "# " + text);
 });
 
 // --- words moved: where they came from, and whose they were there ---
