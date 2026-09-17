@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { breakdown, compact } from "../contextBreakdown";
 import { configStore, contextSourcesStore, usageStore } from "../serverState";
+import { send } from "../ws";
 import { ContextGauge } from "./ContextGauge";
 import { Button } from "./ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
@@ -89,6 +90,21 @@ export function ContextCard() {
 					<Row label="Provider" value={provider} />
 					<Row label="Login" value={login} />
 					{sources?.untrusted && <Row label="This folder's .pi" value="Not read — not trusted" />}
+				</Section>
+
+				{/* pi's /compact by hand: the conversation so far summarised into
+				    less, before the window fills and pi does it unasked. Not while
+				    a reply is being written, since that is what would be cut. */}
+				<Section>
+					{config?.isCompacting ? (
+						<Button variant="outline" size="sm" onClick={() => send({ type: "abort_compaction" })}>
+							Stop compacting
+						</Button>
+					) : (
+						<Button variant="outline" size="sm" disabled={config?.isStreaming ?? true} onClick={() => send({ type: "compact" })}>
+							Compact the conversation
+						</Button>
+					)}
 				</Section>
 			</HoverCardContent>
 		</HoverCard>

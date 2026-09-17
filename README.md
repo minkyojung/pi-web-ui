@@ -575,6 +575,17 @@ the way to take it back out. Pasting is the one way in: the dropzone and the
 button the component brings are not used. A message is words, so an image with
 no words beside it is not sent.
 
+The rest of what pi can do to a session is here as a button each, each a
+line of pi's API: `compact` (pi's `/compact`, from the context card, while
+nothing is being written); `delete_session` (the picker's bin, not for the open
+session, through the system's bin when there is a `trash` command as pi's own
+picker does); `fork` (pi's `/fork`, from a user message: a new session with all
+before it, the message handed back as text); `export_session` (pi's `/export`,
+into the vault's `.pi/exports` rather than among the notes). And before a
+branch is left by the arrows, the same question pi's `/tree` asks — summarise
+it into the one being joined? — as the card any question is, unless pi's
+`branchSummary.skipPrompt` says not to ask.
+
 `clear_queue` empties the queue and returns what was in it, so the tab that asked
 can put the text back in its input box. It is all of them at once because that is
 the only queue edit pi has: `clearQueue()` is the whole API, and removing one

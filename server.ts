@@ -7,10 +7,10 @@
  * server's state and are rebroadcast whenever it changes.
  */
 
-import { existsSync, watch } from "node:fs";
+import { existsSync, mkdirSync, watch } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createServer, type IncomingMessage } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -35,6 +35,8 @@ import { askForName } from "./sessionName.ts";
 import { askUser } from "./askUser.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { extensionUI } from "./extensionUI.ts";
+import { deleteSessionFile } from "./sessionDelete.ts";
+import { Cancelled } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
 import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, withCreated, writeNote, type WriteResult } from "./vault.ts";
 import { FileIndex } from "./fileIndex.ts";
@@ -322,6 +324,7 @@ function config(): ConfigMsg {
 		tools: s.getAllTools().map((tool) => ({ name: tool.name, description: tool.description })),
 		activeTools: s.getActiveToolNames(),
 		isStreaming: s.isStreaming,
+		isCompacting: s.isCompacting,
 		queued: {
 			steering: [...s.getSteeringMessages()],
 			followUp: [...s.getFollowUpMessages()],
@@ -896,7 +899,13 @@ let rereadWhenSettled = false;
 function onEvent(event: AgentSessionEvent): void {
 	broadcast(toWireEvent(event));
 	// isStreaming and the queue drive the stop button and pending count.
-	if (event.type === "agent_start" || event.type === "agent_settled" || event.type === "queue_update") {
+	if (
+		event.type === "agent_start" ||
+		event.type === "agent_settled" ||
+		event.type === "queue_update" ||
+		event.type === "compaction_start" ||
+		event.type === "compaction_end"
+	) {
 		broadcast(config());
 	}
 	// Cost only moves when a message completes.
@@ -1499,8 +1508,31 @@ wss.on("connection", async (ws) => {
 						reply({ type: "error", message: "Wait for the reply to finish before moving." });
 						return;
 					}
-					const result = await session().navigateTree(msg.entryId);
+					// What pi's /tree asks before it moves: whether the branch being
+					// left should be summarised into the one being joined, so what was
+					// found there is not lost. The same card as any question, and the
+					// same setting as pi's to stop asking (branchSummary.skipPrompt,
+					// which means no summary). Closing the card is not moving.
+					let summarize = false;
+					if (!session().settingsManager.getBranchSummarySkipPrompt()) {
+						try {
+							const answer = await prompts.ask({
+								type: "select",
+								question: "Summarize the branch you are leaving?",
+								options: ["No summary", "Summarize"],
+							});
+							summarize = answer === "Summarize";
+						} catch (err) {
+							if (err instanceof Cancelled) return;
+							throw err;
+						}
+					}
+					const result = await session().navigateTree(msg.entryId, { summarize });
 					if (result.cancelled) return;
+					if (result.aborted) {
+						reply({ type: "notice", text: "Branch summarization cancelled" });
+						return;
+					}
 					// navigateTree emits nothing a session subscriber can hear — pi's
 					// own UI clears its screen and redraws from messages afterwards —
 					// so the new path has to be published from here.
@@ -1511,6 +1543,86 @@ wss.on("connection", async (ws) => {
 					// typed in.
 					if (result.editorText) {
 						reply({ type: "queue_cleared", steering: [result.editorText], followUp: [] });
+					}
+					break;
+				}
+
+				// pi's /compact, by hand: the conversation so far is summarised into
+				// less, the way it would be when the window fills. The events it
+				// emits are the ones the conversation already draws a notice for.
+				case "compact":
+					if (session().isStreaming) {
+						reply({ type: "error", message: "Wait for the reply to finish before compacting." });
+						return;
+					}
+					try {
+						await session().compact();
+					} catch (err) {
+						reply({ type: "error", message: err instanceof Error ? err.message : String(err) });
+					}
+					break;
+
+				case "abort_compaction":
+					session().abortCompaction();
+					break;
+
+				// A session file to the bin, as pi's own picker does it. Not the one
+				// that is open: pi would go on writing to a file that is gone.
+				case "delete_session": {
+					if (typeof msg.path !== "string") return;
+					if (msg.path === session().sessionFile) {
+						reply({ type: "error", message: "The open session cannot be deleted; open another first." });
+						return;
+					}
+					const known = (await sessions()).sessions.some((s) => s.path === msg.path && !s.current);
+					if (!known) {
+						reply({ type: "error", message: `unknown session: ${msg.path}` });
+						return;
+					}
+					try {
+						await deleteSessionFile(msg.path);
+					} catch (err) {
+						reply({ type: "error", message: `could not delete: ${err instanceof Error ? err.message : String(err)}` });
+						return;
+					}
+					broadcast(await sessions());
+					break;
+				}
+
+				// pi's /fork: a new session with everything up to this user message
+				// copied in, and the message itself handed back as text — sent as it
+				// was, or changed first. The session under this server is swapped,
+				// so what follows is what follows any swap.
+				case "fork": {
+					if (typeof msg.entryId !== "string") return;
+					if (session().isStreaming) {
+						reply({ type: "error", message: "Wait for the reply to finish before forking." });
+						return;
+					}
+					prompts.cancelAll();
+					settle("interrupted");
+					const result = await runtime.fork(msg.entryId);
+					if (result.cancelled) return;
+					await bind();
+					await broadcastAll();
+					if (result.selectedText) reply({ type: "queue_cleared", steering: [result.selectedText], followUp: [] });
+					break;
+				}
+
+				// pi's /export, into the vault's own .pi/exports rather than the
+				// folder of notes, where an HTML file would be a stranger. Where it
+				// went is said in the conversation, as pi's status line says it.
+				case "export_session": {
+					if (msg.format !== "html" && msg.format !== "jsonl") return;
+					const dir = join(CWD, ".pi", "exports");
+					mkdirSync(dir, { recursive: true });
+					const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+					const target = join(dir, `session-${session().sessionId.slice(0, 8)}-${stamp}.${msg.format}`);
+					try {
+						const written = msg.format === "html" ? await session().exportToHtml(target) : session().exportToJsonl(target);
+						reply({ type: "notice", text: `Session exported to ${written}` });
+					} catch (err) {
+						reply({ type: "error", message: `could not export: ${err instanceof Error ? err.message : String(err)}` });
 					}
 					break;
 				}

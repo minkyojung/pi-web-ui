@@ -788,3 +788,69 @@ it("붙여넣은 이미지는 글과 함께 pi에 간다", async () => {
   send({ type: "abort" });
   await want("agent_settled", () => true, 30_000);
 });
+
+it("압축을 손으로 시키면 pi가 하고, 할 것이 없으면 그렇다고 말한다", async () => {
+  clear();
+  send({ type: "compact" });
+  // Either pi compacts (the conversation draws its start) or refuses because
+  // there is too little to compact; both are the request reaching pi.
+  const answered = await until("pi to answer", () => inbox.find((m) => m.type === "compaction_start" || m.type === "error"), 60_000);
+  assert.ok(answered);
+  if (answered.type === "compaction_start") await want("compaction_end", () => true, 120_000);
+});
+
+it("내보내기는 vault의 .pi/exports에 파일을 쓰고, 어디에 썼는지 대화에 말한다", async () => {
+  // From an empty session, whatever the tests above left: the answer is
+  // then the same whichever tests ran before this one.
+  clear();
+  send({ type: "new_session" });
+  await want("snapshot", (m) => m.items.length === 0, 30_000);
+  clear();
+  send({ type: "export_session", format: "jsonl" });
+  const said = await want("notice", (m) => /Session exported to /.test(m.text));
+  const path = said.text.replace("Session exported to ", "");
+  assert.ok(path.startsWith(join(cwd, ".pi/exports/")), path);
+  assert.ok(existsSync(path), "the file is there");
+  // HTML is pi's page of the conversation, and of an empty one pi makes
+  // none: its refusal is what is shown, in its words.
+  clear();
+  send({ type: "export_session", format: "html" });
+  assert.match((await want("error")).message, /Nothing to export yet/);
+});
+
+it("갈래를 만들면 그 질문까지를 가진 새 세션이 열리고 질문은 글로 돌아오며, 열린 세션은 지울 수 없고 다른 세션은 지워진다", async (t) => {
+  // The session the tests above wrote to is the one to fork from, and later
+  // the one to delete. A new session first: it moves off that one, and the
+  // list that comes with it is the one to read.
+  clear();
+  send({ type: "new_session" });
+  const listed = await want("sessions", () => true, 30_000);
+  const older = listed.sessions.find((s) => !s.current && s.messageCount > 0);
+  if (!older) return t.skip("no earlier session with messages — run the whole file");
+  clear();
+  send({ type: "resume_session", path: older.path });
+  const snap = await want("snapshot", (m) => m.items.some((i) => i.kind === "user" && i.entryId));
+  const question = snap.items.find((i) => i.kind === "user" && i.entryId);
+  // A conversation with something in it exports as a page too.
+  clear();
+  send({ type: "export_session", format: "html" });
+  const html = await want("notice", (m) => /\.html$/.test(m.text), 30_000);
+  assert.ok(existsSync(html.text.replace("Session exported to ", "")), "the page is there");
+  const before = (await want("sessions")).sessions.length;
+  clear();
+  send({ type: "fork", entryId: question.entryId });
+  const back = await want("queue_cleared", () => true, 30_000);
+  assert.equal(back.steering[0], question.text, "the question comes back as text");
+  const after = await want("sessions", (m) => m.sessions.length === before + 1, 30_000);
+  const forked = after.sessions.find((s) => s.current);
+  assert.notEqual(forked.path, older.path, "a new session is open");
+  // Deleting: not the open one, and yes the other.
+  clear();
+  send({ type: "delete_session", path: forked.path });
+  assert.match((await want("error")).message, /cannot be deleted/);
+  clear();
+  send({ type: "delete_session", path: older.path });
+  const gone = await want("sessions", (m) => !m.sessions.some((s) => s.path === older.path), 30_000);
+  assert.ok(gone);
+  assert.equal(existsSync(older.path), false, "the file is gone (to the bin, or unlinked)");
+});

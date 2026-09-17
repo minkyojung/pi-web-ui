@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
-import { Check, ChevronDown, PanelLeft, PanelLeftOpen, PanelRight, PanelRightOpen, Pencil, Plus } from "lucide-react";
+import { Check, ChevronDown, Ellipsis, PanelLeft, PanelLeftOpen, PanelRight, PanelRightOpen, Pencil, Plus, Trash2 } from "lucide-react";
 
 import type { SessionInfo } from "../types";
 import { sessionsStore } from "../serverState";
@@ -7,6 +7,7 @@ import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Button } from "./ui/button";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "./ui/command";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Input } from "./ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -38,6 +39,11 @@ export const nameOf = (s: SessionInfo) => s.name ?? (s.messageCount === 0 ? "New
  */
 function Sessions({ sessions, children }: { sessions: SessionInfo[]; children: React.ReactNode }) {
 	const [open, setOpen] = useState(false);
+	// A session about to be deleted, asked once more in its own row: pi's
+	// picker asks too, and a row that turns into the question keeps the
+	// answer where the finger already is. Not the open one — pi would go on
+	// writing to it — so that row has no bin.
+	const [doomed, setDoomed] = useState<string | null>(null);
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>{children}</PopoverTrigger>
@@ -57,7 +63,40 @@ function Sessions({ sessions, children }: { sessions: SessionInfo[]; children: R
 							>
 								<Check className={s.current ? "opacity-100" : "opacity-0"} />
 								<span className="min-w-0 flex-1 truncate">{nameOf(s)}</span>
-								<span className="shrink-0 text-xs text-muted-foreground">{ago(s.modified)}</span>
+								{doomed === s.path ? (
+									<span className="flex shrink-0 items-center gap-1 text-xs">
+										<Button
+											variant="destructive"
+											size="xs"
+											aria-label="Delete this session"
+											onClick={(e) => {
+												e.stopPropagation();
+												setDoomed(null);
+												send({ type: "delete_session", path: s.path });
+											}}
+										>
+											Delete
+										</Button>
+										<Button variant="ghost" size="xs" onClick={(e) => (e.stopPropagation(), setDoomed(null))}>
+											Keep
+										</Button>
+									</span>
+								) : (
+									<>
+										<span className="shrink-0 text-xs text-muted-foreground">{ago(s.modified)}</span>
+										{!s.current && (
+											<Button
+												variant="ghost"
+												size="icon-xs"
+												aria-label="Delete session"
+												className="shrink-0 text-muted-foreground"
+												onClick={(e) => (e.stopPropagation(), setDoomed(s.path))}
+											>
+												<Trash2 />
+											</Button>
+										)}
+									</>
+								)}
 							</CommandItem>
 						))}
 					</CommandList>
@@ -255,6 +294,26 @@ export function PanelHeader() {
 				</TooltipTrigger>
 				<TooltipContent side="bottom">New session</TooltipContent>
 			</Tooltip>
+			{/* What can be done to the whole conversation and is not done often:
+			    pi's /export, as a file in the vault's .pi/exports. */}
+			<DropdownMenu>
+				<DropdownMenuTrigger asChild>
+					<Button
+						id="sessionMenu"
+						variant="ghost"
+						size="icon-xs"
+						aria-label="More"
+						className="shrink-0 text-muted-foreground"
+						disabled={!online}
+					>
+						<Ellipsis />
+					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end">
+					<DropdownMenuItem onSelect={() => send({ type: "export_session", format: "html" })}>Export as HTML</DropdownMenuItem>
+					<DropdownMenuItem onSelect={() => send({ type: "export_session", format: "jsonl" })}>Export as JSONL</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
 		</div>
 	);
 }

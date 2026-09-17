@@ -5,6 +5,7 @@ import type { Item } from "../types";
 import { send } from "../ws";
 import { Navigate } from "./BranchSwitch";
 import { ConversationView } from "./ConversationView";
+import { ForkFrom } from "./Fork";
 import { PromptCard } from "./PromptCard";
 
 /**
@@ -14,6 +15,11 @@ import { PromptCard } from "./PromptCard";
  */
 const navigate = (entryId: string) => {
 	send({ type: "navigate", entryId });
+};
+
+/** Forking is the server's too: it swaps the session and publishes the new one. */
+const fork = (entryId: string) => {
+	send({ type: "fork", entryId });
 };
 
 /**
@@ -30,10 +36,12 @@ function OpenPrompts() {
 /** The conversation, with the agent's open questions under it. */
 export function Conversation({ items }: { items: Item[] }) {
 	return (
-		<Navigate value={navigate}>
-			<ConversationView items={items}>
-				<OpenPrompts />
-			</ConversationView>
-		</Navigate>
+		<ForkFrom value={fork}>
+			<Navigate value={navigate}>
+				<ConversationView items={items}>
+					<OpenPrompts />
+				</ConversationView>
+			</Navigate>
+		</ForkFrom>
 	);
 }

@@ -69,6 +69,15 @@ export type ClientMsg =
 	| { type: "prompt_response"; id: string; answer?: string; cancelled?: boolean }
 	| { type: "navigate"; entryId: string }
 	| { type: "set_session_name"; name: string }
+	/** Summarise the conversation so far into less, now rather than when it fills. pi's /compact. */
+	| { type: "compact" }
+	| { type: "abort_compaction" }
+	/** A session other than the open one, to the bin (or unlinked where there is none), as pi's picker does. */
+	| { type: "delete_session"; path: string }
+	/** A new session that begins at this user message, with all before it. pi's /fork. */
+	| { type: "fork"; entryId: string }
+	/** The session as a file in the vault's .pi/exports, in the shape asked for. pi's /export. */
+	| { type: "export_session"; format: "html" | "jsonl" }
 	/** A note to look at. Answered with `note`, or `note_gone` if there is no such note. */
 	| { type: "open_note"; path: string }
 	/**
@@ -225,6 +234,8 @@ export interface ConfigMsg {
 	tools: { name: string; description?: string }[];
 	activeTools: string[];
 	isStreaming: boolean;
+	/** A compaction is being written; the box is closed to prompts until it is done. */
+	isCompacting: boolean;
 	queued: { steering: string[]; followUp: string[] };
 	sessionId: string;
 	sessionName: string | null;

@@ -6,6 +6,11 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 ### Added
+- The context card can compact the conversation now, before it fills up and pi does it on its own.
+- A session other than the open one can be deleted from the session list; it goes to the bin where there is one.
+- Hover a question and fork: a new session that begins there, with the question back in the box to send or change.
+- Export the conversation as HTML or JSONL from the ⋯ menu; the file goes under the folder's `.pi/exports`.
+- Stepping to another answer with the arrows asks whether to keep a summary of the one you are leaving. pi's `branchSummary.skipPrompt` setting stops the asking.
 - Paste an image into the message box and it goes to pi with your words. It shows above the box until you send, with an × to take it out.
 - Type `@` anywhere in the message box and your notes are listed; pick one and its path goes in, so pi knows which note you mean.
 - Type `/` in the message box and the commands pi can run are listed — the web search extension's, your prompt templates, your skills. Up and down choose, Enter fills it in, Enter again sends. A command an extension runs can ask you something, and it comes up as the same card pi's questions do.
