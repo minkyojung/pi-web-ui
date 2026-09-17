@@ -69,6 +69,7 @@ export type ClientMsg =
 	| { type: "prompt_response"; id: string; answer?: string; cancelled?: boolean }
 	| { type: "navigate"; entryId: string }
 	| { type: "set_session_name"; name: string }
+	| ({ type: "set_setting" } & PiSetting)
 	/** Summarise the conversation so far into less, now rather than when it fills. pi's /compact. */
 	| { type: "compact" }
 	| { type: "abort_compaction" }
@@ -236,6 +237,8 @@ export interface ConfigMsg {
 	isStreaming: boolean;
 	/** A compaction is being written; the box is closed to prompts until it is done. */
 	isCompacting: boolean;
+	/** pi's own settings that Octave shows a switch for. See PiSettings. */
+	pi: PiSettings;
 	queued: { steering: string[]; followUp: string[] };
 	sessionId: string;
 	sessionName: string | null;
@@ -244,6 +247,19 @@ export interface ConfigMsg {
 	/** Where this server writes down what it says, so that a person can go and read it. See log.ts. */
 	log: string;
 }
+
+/**
+ * What pi keeps in its settings.json and Octave lets be switched from here,
+ * read from pi's SettingsManager and written back through its setters — so
+ * the terminal and this window see one value. The two thresholds are read
+ * only: pi has no setter for them, and its own screen does not offer them.
+ */
+export interface PiSettings {
+	compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number };
+}
+
+/** One of pi's settings, to be written through pi's setter for it. */
+export type PiSetting = { setting: "compaction.enabled"; value: boolean };
 
 export interface UsageMsg {
 	type: "usage";

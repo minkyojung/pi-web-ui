@@ -10,6 +10,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Accounts } from "@/components/Accounts";
 import { Loadout } from "@/components/Loadout";
@@ -23,6 +24,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { readTheme, setTheme, type Theme } from "@/theme";
 import { configStore, providersStore } from "../serverState";
+import { send } from "../ws";
 import { settingsOpenStore } from "../settingsOpen";
 
 /** settings.ts, as it arrives. Declared again rather than imported: that module reads files. */
@@ -232,6 +234,7 @@ function Panel({ section }: { section: Section }) {
               The session already running keeps the mode on its own control.
             </p>
           </div>
+          <PiSwitches />
         </>
       )}
 
@@ -241,6 +244,39 @@ function Panel({ section }: { section: Section }) {
         </p>
       )}
     </section>
+  );
+}
+
+/** Thousands, the way pi's own screen says token counts: 16384 → "16k". */
+const k = (n: number) => `${Math.round(n / 1000)}k`;
+
+/**
+ * pi's own settings, each behind a switch that calls pi's setter for it —
+ * pi's settings.json is the one store, so the terminal sees the same value.
+ * What pi has no setter for is said rather than offered: the two compaction
+ * thresholds, which pi's own screen does not offer either.
+ */
+function PiSwitches() {
+  const pi = useSyncExternalStore(configStore.subscribe, configStore.get)?.pi;
+  if (!pi) return null;
+  return (
+    <div className="flex flex-col gap-3">
+      <Heading title="pi">What pi does on its own. Kept in pi&apos;s own settings, shared with its terminal.</Heading>
+      <div className="flex items-start gap-2">
+        <Checkbox
+          id="compaction"
+          checked={pi.compaction.enabled}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "compaction.enabled", value: v === true })}
+        />
+        <div className="flex flex-col gap-0.5">
+          <Label htmlFor="compaction">Compact the conversation automatically</Label>
+          <p className="text-xs text-muted-foreground">
+            When {k(pi.compaction.reserveTokens)} tokens of the context window are left, keeping the last{" "}
+            {k(pi.compaction.keepRecentTokens)}. Those two are pi&apos;s to change, in ~/.pi/agent/settings.json.
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -69,6 +69,7 @@ import type {
 	ModelInfo,
 	NoteChangedMsg,
 	NoteMsg,
+	PiSettings,
 	PiEventMsg,
 	ProvidersMsg,
 	ServerMsg,
@@ -325,6 +326,7 @@ function config(): ConfigMsg {
 		activeTools: s.getActiveToolNames(),
 		isStreaming: s.isStreaming,
 		isCompacting: s.isCompacting,
+		pi: piSettings(),
 		queued: {
 			steering: [...s.getSteeringMessages()],
 			followUp: [...s.getFollowUpMessages()],
@@ -399,6 +401,12 @@ function contextSources(): ContextSourcesMsg {
 			subscription: provider ? modelRuntime.isUsingSubscription(provider) : false,
 		},
 	};
+}
+
+/** pi's settings as pi reads them now, for the switches in Settings. */
+function piSettings(): PiSettings {
+	const m = session().settingsManager;
+	return { compaction: m.getCompactionSettings() };
 }
 
 /**
@@ -1624,6 +1632,23 @@ wss.on("connection", async (ws) => {
 					} catch (err) {
 						reply({ type: "error", message: `could not export: ${err instanceof Error ? err.message : String(err)}` });
 					}
+					break;
+				}
+
+				// One of pi's settings, through pi's setter: it writes pi's
+				// settings.json, and pi reads the value at the moment it matters,
+				// so nothing here has to be told. Every tab sees the new value.
+				case "set_setting": {
+					const m = session().settingsManager;
+					switch (msg.setting) {
+						case "compaction.enabled":
+							if (typeof msg.value !== "boolean") return;
+							m.setCompactionEnabled(msg.value);
+							break;
+						default:
+							return;
+					}
+					broadcast(config());
 					break;
 				}
 

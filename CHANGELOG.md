@@ -6,6 +6,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 ### Added
+- Settings › Agent has a "pi" section: switch automatic compaction off or on. It is pi's own setting, so the terminal sees the same value; the two thresholds are shown there with where to change them.
 - The context card can compact the conversation now, before it fills up and pi does it on its own.
 - A session other than the open one can be deleted from the session list; it goes to the bin where there is one.
 - Hover a question and fork: a new session that begins there, with the question back in the box to send or change.
