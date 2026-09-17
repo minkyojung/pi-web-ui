@@ -220,18 +220,34 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 				// made further down, after this first session is.
 				{ name: "ask", factory: askUser(() => prompts.ask) },
 			],
-			// Only the five above. The packages in the person's own pi were
-			// installed for its terminal, and one of them loaded here has cost a
-			// second on every new session, registered nothing, and thrown inside
-			// its own start; a session that fails to open then looks like
-			// Octave's fault, and a tool that appears in one install and not
-			// another is a tool nobody can be told about. So what pi loads from
-			// ~/.pi/agent is not loaded, and what Octave brings is all there is.
-			noExtensions: true,
-			// Which noExtensions does not cover: these are loaded whatever it
-			// says (resource-loader.js), and that is what makes the line above a
-			// line about *whose* extensions rather than about having none.
+			// The extensions installed for the person's own pi — ~/.pi/agent/
+			// extensions, the packages in its settings — load here as they load
+			// there, unless the Settings switch says not to: one of them has cost
+			// a second on every new session, and that is the person's to weigh.
+			// What Octave brings (above, and pi-web-access below) loads either way.
+			noExtensions: !readSettings().loadExtensions,
 			additionalExtensionPaths: [WEB_ACCESS],
+			// A tool of the person's extensions that has the name of one of
+			// Octave's own — ask_user, the note tools — would be the one pi kept,
+			// since files load before inline factories and the first owner of a
+			// name keeps it (detectExtensionConflicts). Octave's wins here, and the
+			// extension is told in pi's own words, in the conversation.
+			extensionsOverride: (loaded) => {
+				const ours = new Map<string, string>();
+				for (const ext of loaded.extensions) {
+					if (ext.path.startsWith("<inline:")) for (const name of ext.tools.keys()) ours.set(name, ext.path);
+				}
+				for (const ext of loaded.extensions) {
+					if (ext.path.startsWith("<inline:")) continue;
+					for (const name of [...ext.tools.keys()]) {
+						const owner = ours.get(name);
+						if (!owner) continue;
+						ext.tools.delete(name);
+						loaded.errors.push({ path: ext.path, error: `Tool "${name}" conflicts with ${owner}; Octave's is kept` });
+					}
+				}
+				return loaded;
+			},
 		},
 		resourceLoaderReloadOptions: { resolveProjectTrust: async () => trusted },
 	});
@@ -393,6 +409,9 @@ function contextSources(): ContextSourcesMsg {
 			active: active.has(tool.name),
 		})),
 		skills: loader.getSkills().skills.length,
+		extensions: loader
+			.getExtensions()
+			.extensions.filter((e) => !e.path.startsWith("<inline:") && !e.resolvedPath.startsWith(WEB_ACCESS)).length,
 		memoryFiles: { count: files.length, chars: files.reduce((n, f) => n + f.content.length, 0) },
 		// The vault has a .pi/ pi would read as a project's, and was not let to.
 		untrusted: hasTrustRequiringProjectResources(CWD) && !s.settingsManager.isProjectTrusted(),
@@ -1106,7 +1125,13 @@ async function broadcastAll(): Promise<void> {
  * is not a problem, so only what is.
  */
 function diagnostics(): ErrorMsg[] {
-	return runtime.diagnostics.filter((d) => d.type !== "info").map((d) => ({ type: "error", message: d.message }));
+	// An extension that failed to load, or lost a tool to a name clash, is in
+	// the loader's errors rather than the runtime's diagnostics; pi's terminal
+	// prints both, in this wording.
+	const loading = runtime.services.resourceLoader
+		.getExtensions()
+		.errors.map((e) => ({ type: "error" as const, message: `Extension "${e.path}" error: ${e.error}` }));
+	return [...runtime.diagnostics.filter((d) => d.type !== "info").map((d) => ({ type: "error" as const, message: d.message })), ...loading];
 }
 
 await bind();

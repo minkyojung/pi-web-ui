@@ -20,7 +20,7 @@ test("없는 파일은 기본값이고, 읽는다고 생기지 않는다", () =>
 });
 
 test("쓴 것이 그대로 다시 읽힌다", () => {
-  const next = { toolMode: "plan", loadout: ["openai/gpt-5.6-sol"], created: false };
+  const next = { toolMode: "plan", loadout: ["openai/gpt-5.6-sol"], created: false, loadExtensions: false };
   assert.deepEqual(writeSettings(next), next);
   assert.deepEqual(readSettings(), next);
 });
@@ -32,7 +32,7 @@ test("모르는 툴 모드는 기본 모드가 된다", () => {
 });
 
 test("모르는 칸은 버려진다 — 파일을 손으로 고칠 수 있으므로", () => {
-  assert.deepEqual(coerce({ toolMode: "coding", feedDays: 3 }), { toolMode: "coding", loadout: [], created: true });
+  assert.deepEqual(coerce({ toolMode: "coding", feedDays: 3 }), { toolMode: "coding", loadout: [], created: true, loadExtensions: true });
 });
 
 test("로드아웃은 문자열만 남기고, 목록이 아니면 비운다", () => {

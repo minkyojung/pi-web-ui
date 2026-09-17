@@ -38,12 +38,20 @@ export interface Settings {
 	 * carried nothing they did not write.
 	 */
 	created: boolean;
+	/**
+	 * Whether the extensions installed for pi's terminal — ~/.pi/agent/extensions,
+	 * the packages in pi's settings — are loaded here too. pi has no setting for
+	 * this, since for pi they simply are; the question only exists in a second
+	 * host, which is why it is Octave's. Read when a session is made.
+	 */
+	loadExtensions: boolean;
 }
 
 export const DEFAULTS: Settings = {
 	toolMode: DEFAULT_MODE,
 	loadout: [],
 	created: true,
+	loadExtensions: true,
 };
 
 /**
@@ -62,6 +70,7 @@ export function coerce(raw: unknown): Settings {
 			? o.loadout.filter((key) => typeof key === "string").slice(0, LOADOUT_SLOTS)
 			: [],
 		created: typeof o.created === "boolean" ? o.created : DEFAULTS.created,
+		loadExtensions: typeof o.loadExtensions === "boolean" ? o.loadExtensions : DEFAULTS.loadExtensions,
 	};
 }
 

@@ -126,7 +126,8 @@ export function ContextCard({
 					{sources && (
 						<div className="flex items-center justify-between gap-2 text-xs">
 							<span className="text-muted-foreground">
-								Skills {sources.skills} · prompts {prompts} · context files {sources.memoryFiles.count}
+								Skills {sources.skills} · prompts {prompts} · extensions {sources.extensions} · context files{" "}
+								{sources.memoryFiles.count}
 							</span>
 							<Button variant="ghost" size="xs" onClick={() => send({ type: "reload" })}>
 								Reload

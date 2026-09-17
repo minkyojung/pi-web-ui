@@ -380,6 +380,8 @@ export interface ContextSourcesMsg {
 	systemPromptChars: number;
 	tools: { name: string; chars: number; active: boolean }[];
 	skills: number;
+	/** Extensions loaded from the person's own pi — not Octave's own, not pi-web-access. */
+	extensions: number;
 	memoryFiles: { count: number; chars: number };
 	login: { oauth: boolean; subscription: boolean };
 	/**

@@ -606,6 +606,20 @@ offered. Trusting the folder is a switch too: pi's `trust.json`, then
 is read on the spot. The context card counts what was read in and has pi's
 `/reload` behind a button.
 
+The extensions installed for the person's own pi — `~/.pi/agent/extensions`,
+the packages in pi's settings — load here as they load there, through pi's own
+loader, unless the switch in Settings › Agent says not to. The switch is
+Octave's setting, not pi's, because for pi the question does not exist: the
+one place a second host can differ is whether it honours that list at all. It
+is read when a session is made, so it applies to the next one. What such an
+extension registers arrives through what is already here: its tools in the
+tool list (outside the ladder), its commands on the `/` list, its questions as
+the card, its failures as errors. One rule is Octave's: a tool of theirs with
+the name of one of Octave's own — `ask_user`, the note tools — would be the
+one pi kept, since files load before inline factories and the first owner of
+a name keeps it; here Octave's is kept and the extension is told, in the
+conversation, in pi's words (`extensionsOverride`).
+
 `clear_queue` empties the queue and returns what was in it, so the tab that asked
 can put the text back in its input box. It is all of them at once because that is
 the only queue edit pi has: `clearQueue()` is the whole API, and removing one

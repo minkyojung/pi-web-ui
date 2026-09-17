@@ -31,6 +31,7 @@ import { settingsOpenStore } from "../settingsOpen";
 type Settings = {
   toolMode: ToolModeId;
   loadout: string[];
+  loadExtensions: boolean;
 };
 
 const SECTIONS = ["Accounts", "Appearance", "Agent", "Loadout", "Keys"] as const;
@@ -233,6 +234,21 @@ function Panel({ section }: { section: Section }) {
             <p className="text-xs text-muted-foreground">
               The session already running keeps the mode on its own control.
             </p>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-0.5">
+              <Label htmlFor="loadExtensions">Load the extensions installed for pi&apos;s terminal</Label>
+              <p className="text-xs text-muted-foreground">
+                Their tools and commands appear here as they do there. Applies when the next session starts. One of
+                them registering a tool Octave has — ask_user, the note tools — keeps Octave&apos;s.
+              </p>
+            </div>
+            <Switch
+              id="loadExtensions"
+              disabled={!settings}
+              checked={settings?.loadExtensions ?? true}
+              onCheckedChange={(v) => void save({ loadExtensions: v === true })}
+            />
           </div>
           <PiSwitches />
         </>
