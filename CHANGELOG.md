@@ -6,6 +6,8 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 
+## [0.0.1] - 2026-09-17
+
 The first release. Octave is a notes app for the Mac with an agent that works in the same notes you do.
 
 ### Added
@@ -22,4 +24,5 @@ The first release. Octave is a notes app for the Mac with an agent that works in
 - A signed, notarized disk image for Apple Silicon Macs. Octave updates itself: a new version is downloaded in the background and offered, with its notes, when it is ready.
 - Octave is free software under the AGPL-3.0; the licences of everything it is built on ship inside it.
 
-[Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/reader-v1...HEAD
+[Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/minkyojung/pi-web-ui/releases/tag/v0.0.1
