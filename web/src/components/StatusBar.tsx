@@ -24,9 +24,9 @@
  * which is the same gap a tab has at the top. Numbers matched by eye drift the
  * moment either end is touched; numbers that follow from one another do not.
  *
- * Two things, both about the note as it stands: how much of it the agent
- * wrote, on the left, and how much of it there is — with whether it has
- * reached the disk, when it has not — on the right. Where the note sits among
+ * Two things, both about the note as it stands and both against the left
+ * edge: how much of it there is, and how much of it the agent wrote — then
+ * whether it has reached the disk, only when it has not. Where the note sits among
  * the others, its tags and what links to it, was here once and is not the
  * strip's to say: those are ways to go somewhere, and this is a place to read.
  *
@@ -170,14 +170,11 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi }: { path: strin
 			    told where the divider is. No gap between them for the same reason
 			    — a gap here would be width that belongs to neither. */}
 			<div id="note-status" className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden">
-				{hand && (
-					<span id="authored" className="px-1.5" title={hand.title} data-agent={hand.agent ?? undefined} data-other={hand.other ?? undefined}>
-						{hand.agent && <span>agent {hand.agent}</span>}
-						{hand.agent && hand.other && " · "}
-						{hand.other && <span>outside {hand.other}</span>}
-					</span>
-				)}
-				<div className="flex-1" />
+				{/* All of it against the left edge, where the note's own text begins.
+				    The count first, because it is always there: the agent's share is
+				    only on the notes it has written in, and coming and going after
+				    the count it moves nothing, where before it the count would shift
+				    every time a note was opened. */}
 				{note && (
 					<Item
 						title={counting === "words" ? "Count characters instead" : "Count words instead"}
@@ -187,6 +184,13 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi }: { path: strin
 							{note[counting].toLocaleString()} {counting === "words" ? (note.words === 1 ? "word" : "words") : note.characters === 1 ? "character" : "characters"}
 						</span>
 					</Item>
+				)}
+				{hand && (
+					<span id="authored" className="px-1.5" title={hand.title} data-agent={hand.agent ?? undefined} data-other={hand.other ?? undefined}>
+						{hand.agent && <span>agent {hand.agent}</span>}
+						{hand.agent && hand.other && " · "}
+						{hand.other && <span>outside {hand.other}</span>}
+					</span>
 				)}
 				{note && (
 					<span data-saved={note.saved} className="px-1.5">
