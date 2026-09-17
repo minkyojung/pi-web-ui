@@ -10,8 +10,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Accounts } from "@/components/Accounts";
 import { Loadout } from "@/components/Loadout";
 import {
@@ -262,12 +262,7 @@ function PiSwitches() {
   return (
     <div className="flex flex-col gap-3">
       <Heading title="pi">What pi does on its own. Kept in pi&apos;s own settings, shared with its terminal.</Heading>
-      <div className="flex items-start gap-2">
-        <Checkbox
-          id="compaction"
-          checked={pi.compaction.enabled}
-          onCheckedChange={(v) => send({ type: "set_setting", setting: "compaction.enabled", value: v === true })}
-        />
+      <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
           <Label htmlFor="compaction">Compact the conversation automatically</Label>
           <p className="text-xs text-muted-foreground">
@@ -275,51 +270,50 @@ function PiSwitches() {
             {k(pi.compaction.keepRecentTokens)}. Those two are pi&apos;s to change, in ~/.pi/agent/settings.json.
           </p>
         </div>
-      </div>
-      <div className="flex items-start gap-2">
-        <Checkbox
-          id="retry"
-          checked={pi.retryEnabled}
-          onCheckedChange={(v) => send({ type: "set_setting", setting: "retry.enabled", value: v === true })}
+        <Switch
+          id="compaction"
+          checked={pi.compaction.enabled}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "compaction.enabled", value: v === true })}
         />
+      </div>
+      <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
           <Label htmlFor="retry">Retry a failed call on its own</Label>
           <p className="text-xs text-muted-foreground">
             A few times, with growing waits, before giving up. Each attempt is said in the conversation.
           </p>
         </div>
-      </div>
-      <div className="flex items-start gap-2">
-        <Checkbox
-          id="hideThinking"
-          checked={pi.hideThinkingBlock}
-          onCheckedChange={(v) => send({ type: "set_setting", setting: "hideThinkingBlock", value: v === true })}
+        <Switch
+          id="retry"
+          checked={pi.retryEnabled}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "retry.enabled", value: v === true })}
         />
+      </div>
+      <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
           <Label htmlFor="hideThinking">Hide the model&apos;s thinking</Label>
           <p className="text-xs text-muted-foreground">The thinking rows are left out of the conversation; the answers stay.</p>
         </div>
-      </div>
-      <div className="flex items-start gap-2">
-        <Checkbox
-          id="askBranchSummary"
-          checked={pi.askBranchSummary}
-          onCheckedChange={(v) => send({ type: "set_setting", setting: "branchSummary.skipPrompt", value: v !== true })}
+        <Switch
+          id="hideThinking"
+          checked={pi.hideThinkingBlock}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "hideThinkingBlock", value: v === true })}
         />
+      </div>
+      <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
           <Label htmlFor="askBranchSummary">Ask to summarize when leaving a branch</Label>
           <p className="text-xs text-muted-foreground">
             Stepping to another answer with the arrows asks first whether to keep a summary of the one left. Off, it moves without one.
           </p>
         </div>
-      </div>
-      <div className="flex items-start gap-2">
-        <Checkbox
-          id="projectTrust"
-          checked={pi.projectTrust === "trusted"}
-          disabled={pi.projectTrust === "nothing"}
-          onCheckedChange={(v) => send({ type: "set_setting", setting: "projectTrust", value: v === true })}
+        <Switch
+          id="askBranchSummary"
+          checked={pi.askBranchSummary}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "branchSummary.skipPrompt", value: v !== true })}
         />
+      </div>
+      <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
           <Label htmlFor="projectTrust">Let pi read this folder&apos;s own .pi</Label>
           <p className="text-xs text-muted-foreground">
@@ -328,6 +322,12 @@ function PiSwitches() {
               : "Its settings, skills, prompt templates and SYSTEM.md, as pi reads a trusted project's. Remembered in pi's trust.json, where pi's terminal keeps its /trust answer."}
           </p>
         </div>
+        <Switch
+          id="projectTrust"
+          checked={pi.projectTrust === "trusted"}
+          disabled={pi.projectTrust === "nothing"}
+          onCheckedChange={(v) => send({ type: "set_setting", setting: "projectTrust", value: v === true })}
+        />
       </div>
     </div>
   );
