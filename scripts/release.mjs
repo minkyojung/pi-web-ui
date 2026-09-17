@@ -115,7 +115,9 @@ async function main() {
 
 	const date = new Date().toISOString().slice(0, 10);
 	writeFileSync("CHANGELOG.md", cut(changelog, version, date, previous));
-	execFileSync("npm", ["version", version, "--no-git-tag-version"], { stdio: "ignore" });
+	// The first release is the version package.json was given when the app was
+	// named, and npm refuses a version that is not a change unless told.
+	execFileSync("npm", ["version", version, "--no-git-tag-version", "--allow-same-version"], { stdio: "ignore" });
 	git("add", "CHANGELOG.md", "package.json", "package-lock.json");
 	git("commit", "-q", "-m", `Octave ${version}`);
 	git("tag", "-a", `v${version}`, "-m", `Octave ${version}\n\n${notes}`);
