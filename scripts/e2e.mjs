@@ -2572,7 +2572,13 @@ check("the loadout screen keeps a model pi does not offer, and shows a change an
 			app.evaluate("(() => { const i = [...document.querySelectorAll('[role=dialog] nav button')].findIndex((x) => x.textContent === 'Loadout'); return i < 0 ? null : String(i); })()"),
 		);
 		await app.click("[role=dialog] nav button", Number(section));
-		await until("the missing model in its place", async () => /^1nobody\/not-offeredNot available/.test(await places()));
+		// Says what the list held when it gives up: this one has failed on GitHub's
+		// runner, one run in three, and "timed out" is all it had to say for itself.
+		await until("the missing model in its place", async () => {
+			const seen = await places();
+			if (/^1nobody\/not-offeredNot available/.test(seen)) return true;
+			throw new Error(`the places read ${JSON.stringify(seen)}, the file ${JSON.stringify(await stored())}, the dialog ${JSON.stringify(await app.evaluate("(document.querySelector('[role=dialog]')?.innerText ?? 'no dialog').slice(0, 300)"))}`);
+		});
 		await app.shot("loadout-missing");
 
 		// An edit that has nothing to do with it leaves it where it was.
