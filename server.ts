@@ -273,6 +273,9 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 			services,
 			sessionManager,
 			sessionStartEvent,
+			// pi registers powershell on every platform; off Windows there is no
+			// PowerShell to run it, so it would only be a tool that always fails.
+			excludeTools: process.platform === "win32" ? undefined : ["powershell"],
 		})),
 		services,
 		diagnostics: services.diagnostics,
