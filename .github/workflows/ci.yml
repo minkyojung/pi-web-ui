@@ -34,9 +34,18 @@ on:
   push:
   pull_request:
 
+# One run per branch: a newer push makes the older run's answer moot, and the
+# runners it would have held are the ones the newer run is waiting for.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: macos-latest
+    # A minute's work. GitHub's own limit is six hours, which is how long a
+    # stuck job holds a runner if nothing here says otherwise.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,6 +70,9 @@ jobs:
   # the runner already; scripts/e2e.mjs looks for it where macOS keeps it.
   e2e:
     runs-on: macos-latest
+    # Four minutes on a laptop. The suite gives up on a silent browser by
+    # itself (scripts/e2e.mjs); this is for whatever that does not catch.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

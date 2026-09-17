@@ -136,10 +136,22 @@ async function openPage(devtoolsPort, url) {
 	});
 	await new Promise((resolve) => socket.addEventListener("open", resolve, { once: true }));
 
+	// A browser that stops answering is said so, by name, after a minute. The
+	// suite once sat on GitHub's runner for six hours at a time — a different
+	// check each run — because a call that is never answered is a promise that
+	// is never settled, and nothing here was counting.
 	const call = (method, params = {}) =>
-		new Promise((resolve) => {
+		new Promise((resolve, reject) => {
 			const n = ++id;
-			pending.set(n, resolve);
+			const late = setTimeout(() => {
+				pending.delete(n);
+				const asked = method === "Runtime.evaluate" ? `: ${String(params.expression).replace(/\s+/g, " ").slice(0, 160)}` : "";
+				reject(new Error(`the browser did not answer ${method} within a minute${asked}`));
+			}, 60_000);
+			pending.set(n, (message) => {
+				clearTimeout(late);
+				resolve(message);
+			});
 			socket.send(JSON.stringify({ id: n, method, params }));
 		});
 
