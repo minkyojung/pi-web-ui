@@ -1686,6 +1686,29 @@ wss.on("connection", async (ws) => {
 					break;
 				}
 
+				// pi's /clone: the current branch, whole, into a new session file,
+				// and that session opened — the open one is left where it is. In pi
+				// this is a fork at the leaf rather than before it, which is how its
+				// own RPC host does it; what follows is what follows any swap.
+				case "clone_session": {
+					if (session().isStreaming) {
+						reply({ type: "error", message: "Wait for the reply to finish before cloning." });
+						return;
+					}
+					const leafId = session().sessionManager.getLeafId();
+					if (!leafId) {
+						reply({ type: "error", message: "Nothing to clone yet - start a conversation first" });
+						return;
+					}
+					prompts.cancelAll();
+					settle("interrupted");
+					const result = await runtime.fork(leafId, { position: "at" });
+					if (result.cancelled) return;
+					await bind();
+					await broadcastAll();
+					break;
+				}
+
 				// pi's /export, into the vault's own .pi/exports rather than the
 				// folder of notes, where an HTML file would be a stranger. Where it
 				// went is said in the conversation, as pi's status line says it.

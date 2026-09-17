@@ -79,6 +79,8 @@ export type ClientMsg =
 	| { type: "delete_session"; path: string }
 	/** A new session that begins at this user message, with all before it. pi's /fork. */
 	| { type: "fork"; entryId: string }
+	/** A new session with the whole of the current branch copied in, the open one left as it is. pi's /clone. */
+	| { type: "clone_session" }
 	/** The session as a file in the vault's .pi/exports, in the shape asked for. pi's /export. */
 	| { type: "export_session"; format: "html" | "jsonl" }
 	/** A note to look at. Answered with `note`, or `note_gone` if there is no such note. */

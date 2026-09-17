@@ -310,6 +310,7 @@ export function PanelHeader() {
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end">
+					<DropdownMenuItem onSelect={() => send({ type: "clone_session" })}>Clone session</DropdownMenuItem>
 					<DropdownMenuItem onSelect={() => send({ type: "export_session", format: "html" })}>Export as HTML</DropdownMenuItem>
 					<DropdownMenuItem onSelect={() => send({ type: "export_session", format: "jsonl" })}>Export as JSONL</DropdownMenuItem>
 				</DropdownMenuContent>

@@ -822,6 +822,39 @@ it("내보내기는 vault의 .pi/exports에 파일을 쓰고, 어디에 썼는�
   assert.match((await want("error")).message, /Nothing to export yet/);
 });
 
+it("복제하면 지금 가지가 통째로 든 새 세션이 열리고, 원래 세션은 그대로 남는다; 빈 세션은 복제할 것이 없다", async (t) => {
+  // The tests above leave a session with messages; the export test moved off
+  // it, so find it and open it again.
+  clear();
+  send({ type: "new_session" });
+  const listed = await want("sessions", () => true, 30_000);
+  const source = listed.sessions.find((s) => !s.current && s.messageCount > 0);
+  if (!source) return t.skip("no earlier session with messages — run the whole file");
+  clear();
+  send({ type: "resume_session", path: source.path });
+  const before = await want("snapshot", (m) => m.items.some((i) => i.kind === "user"));
+  const count = (await want("sessions")).sessions.length;
+  clear();
+  send({ type: "clone_session" });
+  const after = await want("sessions", (m) => m.sessions.length === count + 1, 30_000);
+  const clone = after.sessions.find((s) => s.current);
+  assert.notEqual(clone.path, source.path, "a new session is open");
+  assert.ok(after.sessions.some((s) => s.path === source.path), "the original is still there");
+  const copied = await want("snapshot");
+  assert.deepEqual(
+    copied.items.filter((i) => i.kind === "user").map((i) => i.text),
+    before.items.filter((i) => i.kind === "user").map((i) => i.text),
+    "the same questions, in the same order",
+  );
+  // And a session with nothing in it has nothing to clone: pi refuses, in
+  // its own words, before anything here has to.
+  clear();
+  send({ type: "new_session" });
+  await want("snapshot", (m) => m.items.length === 0, 30_000);
+  clear();
+  send({ type: "clone_session" });
+  assert.match((await want("error")).message, /has not been saved yet/);
+});
 it("갈래를 만들면 그 질문까지를 가진 새 세션이 열리고 질문은 글로 돌아오며, 열린 세션은 지울 수 없고 다른 세션은 지워진다", async (t) => {
   // The session the tests above wrote to is the one to fork from, and later
   // the one to delete. A new session first: it moves off that one, and the

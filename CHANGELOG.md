@@ -12,6 +12,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - The context card can compact the conversation now, before it fills up and pi does it on its own.
 - A session other than the open one can be deleted from the session list; it goes to the bin where there is one.
 - Hover a question and fork: a new session that begins there, with the question back in the box to send or change.
+- Clone the conversation from the ⋯ menu: a new session with everything so far copied in, the original left as it is.
 - Export the conversation as HTML or JSONL from the ⋯ menu; the file goes under the folder's `.pi/exports`.
 - Stepping to another answer with the arrows asks whether to keep a summary of the one you are leaving. pi's `branchSummary.skipPrompt` setting stops the asking.
 - Paste an image into the message box and it goes to pi with your words. It shows above the box until you send, with an × to take it out.

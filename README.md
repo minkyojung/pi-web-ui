@@ -588,7 +588,8 @@ line of pi's API: `compact` (pi's `/compact`, from the context card, while
 nothing is being written); `delete_session` (the picker's bin, not for the open
 session, through the system's bin when there is a `trash` command as pi's own
 picker does); `fork` (pi's `/fork`, from a user message: a new session with all
-before it, the message handed back as text); `export_session` (pi's `/export`,
+before it, the message handed back as text); `clone_session` (pi's `/clone`,
+a fork at the leaf rather than before it, as pi's own RPC host does it); `export_session` (pi's `/export`,
 into the vault's `.pi/exports` rather than among the notes). And before a
 branch is left by the arrows, the same question pi's `/tree` asks — summarise
 it into the one being joined? — as the card any question is, unless pi's
