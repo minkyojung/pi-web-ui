@@ -28,6 +28,7 @@ import { getConnection, subscribe } from "../store";
 import type { Settings, SettingsMsg } from "../types";
 import { send } from "../ws";
 import { settingsOpenStore } from "../settingsOpen";
+import { updateStore } from "../update";
 
 const SECTIONS = ["Accounts", "Appearance", "Agent", "Loadout", "Keys"] as const;
 type Section = (typeof SECTIONS)[number];
@@ -63,6 +64,8 @@ export function Settings() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const updateReady = useSyncExternalStore(updateStore.subscribe, updateStore.get)?.phase === "ready";
+
   // Asked for from elsewhere — the picker's last item — on a section by name.
   const wanted = useSyncExternalStore(settingsOpenStore.subscribe, settingsOpenStore.get);
   useEffect(() => {
@@ -97,9 +100,12 @@ export function Settings() {
               variant="ghost"
               size="icon-sm"
               aria-label="Settings"
-              className="shrink-0 text-muted-foreground"
+              className="relative shrink-0 text-muted-foreground"
             >
               <SettingsIcon className="size-3.5" />
+              {/* A new version is ready and the offer was waved away: what is
+                  left of it, until the restart. */}
+              {updateReady && <span aria-label="An update is ready" className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary" />}
             </Button>
           </DialogTrigger>
         </TooltipTrigger>
