@@ -275,7 +275,18 @@ async function openPage(devtoolsPort, url) {
 	};
 	/** A syllable half typed and left so: the composition is open, nothing committed. */
 	const compose = (text) => call("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length });
-	return { evaluate, shot, errors, click, clickAt, moveTo, drag, dragTo, press, keys, ime, compose, close: () => socket.close() };
+	/**
+	 * A script run in every document this page loads from now on, before the
+	 * page's own — what a preload would have given it. Returns the way to stop.
+	 * For standing in for the shell: a browser has no window.pi.
+	 */
+	const onNewDocument = async (source) => {
+		// The Page domain has to be on for the script to be run.
+		await call("Page.enable");
+		const { identifier } = await call("Page.addScriptToEvaluateOnNewDocument", { source });
+		return () => call("Page.removeScriptToEvaluateOnNewDocument", { identifier });
+	};
+	return { evaluate, shot, errors, click, clickAt, moveTo, drag, dragTo, press, keys, ime, compose, onNewDocument, close: () => socket.close() };
 }
 
 /**
@@ -2600,6 +2611,82 @@ check("the loadout screen keeps a model pi does not offer, and shows a change an
 	} finally {
 		await app.press("Escape");
 		await post({ loadout: [] });
+	}
+});
+
+check("a version ready to install is offered in the corner; Restart takes it, × leaves a dot on the settings button", async ({ app }) => {
+	// The shell's bridge, stood in for: the page is served to a browser here,
+	// where there is no window.pi. What the stub is told is what the page is
+	// told, and what the page asks of it is written down.
+	let bodyDone = false;
+	// Installed only while sessionStorage says so: the checks after this one
+	// are of a browser, and a script on new documents outlives its removal
+	// through a reload.
+	const stopStanding = await app.onNewDocument(`
+		if (sessionStorage.getItem("stand-in-for-the-shell") === "1") {
+		window.__update = { listeners: [], calls: [], state: { phase: "idle", version: null, progress: null, error: null, justUpdated: null },
+			say(state) { this.state = state; for (const l of this.listeners) l(state); } };
+		// The rest of the bridge too, as the shell has it: the page reads the folder off it when it is there.
+		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {}, update: {
+			state: async () => window.__update.state,
+			onState: (l) => { window.__update.listeners.push(l); return () => {}; },
+			check: async () => window.__update.calls.push("check"),
+			restart: async () => window.__update.calls.push("restart"),
+			seen: async () => window.__update.calls.push("seen"),
+		} };
+		}`);
+	try {
+		await app.evaluate(`sessionStorage.setItem("stand-in-for-the-shell", "1"); location.reload()`);
+		// window.pi is an element of that id once the page has drawn (the agent's
+		// column), so it is the stub itself that is looked for.
+		await until("the page back, with the stub", async () => {
+			const seen = await app.evaluate("JSON.stringify({ stub: !!window.__update, sidebar: !!document.querySelector('#notes button[data-path=\"first.md\"]'), body: document.body.innerText.slice(0, 80) })");
+			if (seen.startsWith('{"stub":true,"sidebar":true')) return true;
+			throw new Error(`${seen} errors=${JSON.stringify(app.errors.slice(-1))}`);
+		});
+		assert.equal(await app.evaluate("document.querySelectorAll('[data-sonner-toast]').length"), 0, "nothing offered while nothing is ready");
+
+		await app.evaluate(`window.__update.say({ phase: "ready", version: "9.9.9", progress: 100, error: null, justUpdated: null })`);
+		const toast = () => app.evaluate("document.querySelector('[data-sonner-toast]')?.innerText ?? ''");
+		await until("the offer", async () => (await toast()).includes("Octave 9.9.9 is ready"));
+		assert.match(await toast(), /Restart/, "with a Restart");
+		const laid = await app.evaluate(`(() => { const r = document.querySelector('[data-sonner-toast]').getBoundingClientRect(); return { right: innerWidth - r.right, bottom: innerHeight - r.bottom }; })()`);
+		assert.ok(laid.right < 60 && laid.bottom < 60, `in the bottom-right corner, not ${JSON.stringify(laid)}`);
+
+		// Restart asks the shell, and the offer stays where it is meanwhile. The
+		// toast slides in; a press before it has come to rest lands where it was.
+		await until("the toast at rest", () => app.evaluate("document.querySelector('[data-sonner-toast]')?.getAttribute('data-mounted') === 'true'"));
+		await new Promise((r) => setTimeout(r, 500));
+		await app.shot("update-offer");
+		assert.ok(await app.click("[data-sonner-toast] button[data-button]"), "the Restart button is there");
+		await until("the restart asked of the shell", async () => {
+			if (await app.evaluate("window.__update.calls.includes('restart')")) return true;
+			throw new Error(await app.evaluate("JSON.stringify({ calls: window.__update.calls, buttons: [...document.querySelectorAll('[data-sonner-toast] button')].map((b) => b.outerHTML.slice(0, 160)) })"));
+		});
+
+		// Waved away: gone from the corner, a dot on the settings button, and not back for this version.
+		assert.ok(await app.click("[data-sonner-toast] [data-close-button]"), "the × is there");
+		await until("the corner empty", async () => (await toast()) === "");
+		await until("the dot", () => app.evaluate("!!document.querySelector('button[aria-label=\"Settings\"] [aria-label=\"An update is ready\"]')"));
+		await app.evaluate(`window.__update.say({ phase: "ready", version: "9.9.9", progress: 100, error: null, justUpdated: null })`);
+		await new Promise((r) => setTimeout(r, 300));
+		assert.equal(await toast(), "", "the same version, said again, is not offered again");
+		// A newer one is.
+		await app.evaluate(`window.__update.say({ phase: "ready", version: "9.9.10", progress: 100, error: null, justUpdated: null })`);
+		await until("the newer offer", async () => (await toast()).includes("9.9.10"));
+		await app.click("[data-sonner-toast] [data-close-button]");
+		bodyDone = true;
+	} finally {
+		await stopStanding();
+		await app.evaluate(`sessionStorage.removeItem("stand-in-for-the-shell"); location.reload()`);
+		await until("the page back as a browser", async () => {
+			const seen = await app.evaluate("JSON.stringify({ stub: !!window.__update, bridge: !!window.pi?.update, sidebar: !!document.querySelector('#notes button[data-path=\"first.md\"]'), body: document.body.innerText.slice(0, 80) })");
+			if (seen.startsWith('{"stub":false,"bridge":false,"sidebar":true')) return true;
+			throw new Error(`${seen} bodyDone=${bodyDone} errors=${JSON.stringify(app.errors.slice(-1))}`);
+		});
+		// A reload comes back with no note open; the checks after this one expect one.
+		await app.evaluate(`document.querySelector('#notes button[data-path="first.md"]').click()`);
+		await until("a note open again", () => app.evaluate("!!document.querySelector('#editor .cm-content')"));
 	}
 });
 

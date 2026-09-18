@@ -5,6 +5,8 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+### Changed
+- A new version, once it is downloaded, is offered in the corner of the window rather than in a box over your work: Restart takes it, and while the agent is working the button waits for it to finish first. Wave the offer away and a dot on the settings button keeps it; quitting installs the new version on the way out.
 
 ## [0.0.3] - 2026-09-18
 ### Changed

@@ -12,7 +12,9 @@ import { WhyCard } from "./components/WhyCard";
 import { Title } from "./components/Title";
 import { Boundary } from "./components/Boundary";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
+import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
+import { UpdateToast } from "./components/UpdateToast";
 import type { Place } from "../../links.ts";
 import { hashForNote, noteFromHash } from "./noteSync";
 import { NoteHeader } from "./components/NoteHeader";
@@ -452,6 +454,9 @@ export function App() {
 			<Search open={searching} onOpenChange={setSearching} onPick={setOpen} />
 			{/* Beside the words it is about, when one of them has been asked about. */}
 			<WhyCard />
+			{/* The corner: the one place something not about the note or the agent may speak up. */}
+			<Toaster position="bottom-right" offset={{ bottom: 44, right: 16 }} />
+			<UpdateToast />
 			<div className="relative flex h-screen flex-col">
 			{/* Two rows, not three and not one: the window's controls over the
 			    list, and the note tabs over everything else.

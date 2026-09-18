@@ -315,24 +315,10 @@ function watchForUpdates() {
 		// check that runs on its own says nothing and tries again next time.
 		sayUpdate({ phase: "idle", progress: null, error: err.message });
 	});
-	// Still a dialog here, until the page draws the offer itself (update-flow.md,
-	// PR 3); the state above is already what that page will read.
-	autoUpdater.on("update-downloaded", async (info) => {
-		sayUpdate({ phase: "ready", version: info.version, progress: 100 });
-		const notes = typeof info.releaseNotes === "string" ? info.releaseNotes.replace(/<[^>]+>/g, "").trim() : "";
-		const { response } = await dialog.showMessageBox({
-			type: "info",
-			title: `Octave ${info.version}`,
-			message: `Octave ${info.version} is ready to install.`,
-			detail: notes || undefined,
-			buttons: ["Restart now", "Later"],
-			defaultId: 0,
-			cancelId: 1,
-		});
-		if (response !== 0) return;
-		if (child) await endServer();
-		autoUpdater.quitAndInstall();
-	});
+	// The offer is the page's (UpdateToast.tsx), drawn from this state: a
+	// toast in the corner rather than a dialog over the work, and one that
+	// waits for the agent to finish when asked to.
+	autoUpdater.on("update-downloaded", (info) => sayUpdate({ phase: "ready", version: info.version, progress: 100 }));
 	const check = () => autoUpdater.checkForUpdates().catch(() => {});
 	check();
 	setInterval(check, 4 * 60 * 60 * 1000).unref();
