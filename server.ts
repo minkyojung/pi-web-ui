@@ -48,6 +48,7 @@ import { noteTools } from "./noteEdit.ts";
 import { claimAppDir } from "./appDir.ts";
 import { wall } from "./wall.ts";
 import { documents } from "./documents.ts";
+import { MAX_BYTES, saveAttachment, type Saved } from "./attach.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { watchNotes } from "./watcher.ts";
@@ -1299,6 +1300,23 @@ function text(req: IncomingMessage): Promise<string> {
 	});
 }
 
+/** A file's bytes, whole, or a refusal once they pass the cap — the connection is dropped there, not read to its end. */
+function bytes(req: IncomingMessage, max: number): Promise<Buffer> {
+	return new Promise((resolve, reject) => {
+		const chunks: Buffer[] = [];
+		let size = 0;
+		req.on("data", (chunk: Buffer) => {
+			size += chunk.length;
+			if (size > max) {
+				reject(new Error("too large"));
+				req.destroy();
+			} else chunks.push(chunk);
+		});
+		req.on("end", () => resolve(Buffer.concat(chunks)));
+		req.on("error", reject);
+	});
+}
+
 /** This run of the server, and how many times it has written the settings. See SettingsMsg's revision. */
 const SETTINGS_BOOT = randomUUID();
 let settingsWrites = 0;
@@ -1341,6 +1359,38 @@ const server = createServer(async (req, res) => {
 			broadcast(written);
 			broadcast(config());
 			return;
+		}
+		// A file dropped on the app, into the folder — see attach.ts. This writes
+		// a file because a request said so, so it answers only a page of its own:
+		// the body must be declared as bytes, which a page from elsewhere cannot
+		// send without asking first (and this server grants nobody), and an
+		// Origin, where the browser sends one, must be the host that was asked.
+		if (pathname === "/api/attachment" && req.method === "POST") {
+			const origin = req.headers.origin;
+			if (origin && URL.parse(origin)?.host !== req.headers.host) return json(403, { error: "not from this app" });
+			if (req.headers["content-type"] !== "application/octet-stream") return json(415, { error: "expected application/octet-stream" });
+			if (Number(req.headers["content-length"] ?? 0) > MAX_BYTES) return json(413, { error: "too large" });
+			let body: Buffer;
+			try {
+				body = await bytes(req, MAX_BYTES);
+			} catch {
+				return json(413, { error: "too large" });
+			}
+			let saved: Saved;
+			try {
+				saved = saveAttachment(CWD, url.searchParams.get("name") ?? "", body);
+			} catch (err) {
+				console.error("could not save an attachment:", err instanceof Error ? err.message : err);
+				return json(500, { error: "could not save the file" });
+			}
+			if (!saved.ok) {
+				const refusal = { name: [400, "not a usable file name"], kind: [415, "not a kind of file Octave takes"], size: [413, "empty or too large"] } as const;
+				return json(refusal[saved.reason][0], { error: refusal[saved.reason][1] });
+			}
+			// The watcher would say so in a moment; whoever dropped it is about to
+			// name it, so the list hears now.
+			if (documentAt(CWD, saved.path) && notes.sawDocument(saved.path, true)) broadcast(files());
+			return json(201, { path: saved.path });
 		}
 		if (req.method !== "GET") return json(405, { error: "read only" });
 		if (pathname === "/api/settings") return json(200, readSettings());

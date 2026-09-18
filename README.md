@@ -601,9 +601,19 @@ does not, so this one is Octave's, over the same note list the sidebar and ⌘P
 read. The words are the mention, not the note: reading it is pi's `read`
 tool's job, which is why nothing is copied in. The PDFs in the folder are on
 the list too, after the notes, since pi reads those the same way
-(`documents.ts`); they are in no other list, because nothing else here opens one. The two lists — commands after
-`/`, notes after `@` — are one component (`SuggestMenu`) with two sources
-(`commandMenu.ts`, `noteMention.ts`), and never open together.
+(`documents.ts`); they are in no other list, because nothing else here opens
+one. The two lists — commands after `/`, notes after `@` — are one component
+(`SuggestMenu`) with two sources (`commandMenu.ts`, `noteMention.ts`), and
+never open together.
+
+A file from outside the folder comes in by one door, `POST /api/attachment`
+(`attach.ts`): a name and bytes, since that is all a page can give, written
+into `attachments/` at the top of the folder — where Obsidian users most often
+point its own setting — under the first spelling of the name nobody has, never
+over what is there. It takes the documents pi reads and images, and nothing
+else, and answers only a page of its own: the body has to be declared as
+bytes, which a page from elsewhere cannot send without asking first, and this
+server grants nobody.
 
 An image pasted into the box goes with the message, as pi's `prompt()` takes
 images — base64 and a media type — and is shown above the box until then, with

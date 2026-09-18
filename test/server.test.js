@@ -895,6 +895,26 @@ it("갈래를 만들면 그 질문까지를 가진 새 세션이 열리고 질�
   assert.equal(existsSync(older.path), false, "the file is gone (to the bin, or unlinked)");
 });
 
+// A file dropped on the app arrives as a name and its bytes — see attach.ts.
+test("떨어뜨린 파일은 attachments/에 놓이고, PDF면 목록이 바로 듣는다 — 남의 페이지가 보낸 것은 아니다", async () => {
+  const url = (name) => `http://127.0.0.1:${port}/api/attachment?name=${encodeURIComponent(name)}`;
+  const post = (name, body, headers = { "content-type": "application/octet-stream" }) => fetch(url(name), { method: "POST", headers, body });
+  clear();
+  const saved = await post("dropped paper.pdf", readFileSync(join(root, "test/fixtures/three-pages.pdf")));
+  assert.equal(saved.status, 201);
+  assert.deepEqual(await saved.json(), { path: "attachments/dropped paper.pdf" });
+  assert.ok(existsSync(join(cwd, "attachments/dropped paper.pdf")));
+  const listed = await want("files", (m) => m.documents.includes("attachments/dropped paper.pdf"));
+  assert.ok(!listed.files.some((f) => f.path.endsWith(".pdf")), "노트 목록에는 없다");
+  assert.deepEqual(await (await post("dropped paper.pdf", "again")).json(), { path: "attachments/dropped paper 2.pdf" }, "같은 이름은 옆에");
+  assert.equal((await post("run.sh", "x")).status, 415, "안 받는 종류");
+  assert.equal((await post("../.pdf", "x")).status, 400, "쓸 수 없는 이름");
+  assert.equal((await post("a.pdf", "")).status, 413, "빈 것");
+  assert.equal((await post("a.pdf", "x", { "content-type": "text/plain" })).status, 415, "바이트라고 밝히지 않은 것 — 남의 페이지가 물어보지 않고 보낼 수 있는 모양");
+  assert.equal((await post("a.pdf", "x", { "content-type": "application/octet-stream", origin: "https://elsewhere.example" })).status, 403, "다른 곳에서 온 것");
+  assert.ok(!existsSync(join(cwd, "attachments/a.pdf")), "거절된 것은 쓰이지 않는다");
+});
+
 // Not `it`: none of this needs a model, and saving a setting is what a person
 // without credentials does first. Last in the file, and on a socket of its own
 // — a second window — since the checks above read what the first one was sent
