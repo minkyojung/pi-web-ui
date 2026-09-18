@@ -616,3 +616,32 @@
 	border-radius: 6px;
 	vertical-align: text-bottom;
 }
+
+/* A table drawn as one, off the cursor. */
+.cm-table {
+	border-collapse: collapse;
+	margin: 0.25rem 0;
+	font-size: 0.95em;
+}
+.cm-table th,
+.cm-table td {
+	border: 1px solid var(--border);
+	padding: 0.3rem 0.7rem;
+	vertical-align: top;
+}
+.cm-table th {
+	font-weight: 600;
+	background: color-mix(in oklab, var(--muted) 60%, transparent);
+}
+
+/* A footnote's number, in the text and at its note. */
+.cm-footnote {
+	font-size: 0.7em;
+	line-height: 1;
+	color: var(--primary);
+	cursor: pointer;
+	padding: 0 0.1em;
+}
+.cm-footnote-def::after {
+	content: ".";
+}
