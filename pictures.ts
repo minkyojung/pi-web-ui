@@ -10,7 +10,7 @@
  *
  * Only images, only inside the folder (fileAt), never under a dot-folder.
  */
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, posix } from "node:path";
 
 import { fileAt } from "./vault.ts";
@@ -81,4 +81,26 @@ function findByName(root: string, name: string): { path: string; dir: string; de
 	};
 	walk(root, "", 0);
 	return out;
+}
+
+/**
+ * Where a picture pasted into a note is kept: the folder Obsidian was told
+ * to use, if the vault is one and it was told (`.obsidian/app.json`,
+ * `attachmentFolderPath` — a folder, `./` for beside the note, or `/` for the
+ * root), else `attachments/`. Obsidian's own default is the root, which a
+ * folder of notes fills with screenshots; a folder of their own is what most
+ * vaults are set to anyway.
+ */
+export function attachmentFolder(root: string, from: string): string {
+	let told: string | undefined;
+	try {
+		told = JSON.parse(readFileSync(join(root, ".obsidian", "app.json"), "utf8")).attachmentFolderPath;
+	} catch {
+		// Not an Obsidian vault, or not told: the default below.
+	}
+	if (typeof told !== "string" || told === "") return "attachments";
+	if (told === "/") return "";
+	if (told === "./") return posix.dirname(from) === "." ? "" : posix.dirname(from);
+	if (told.startsWith("./")) return posix.normalize(posix.join(posix.dirname(from), told.slice(2)));
+	return told.replace(/^\/|\/$/g, "");
 }

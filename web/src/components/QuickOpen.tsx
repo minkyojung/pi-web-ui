@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { FilePlus } from "lucide-react";
 
 import { titleOf } from "../noteSync";
-import { filesStore } from "../serverState";
+import { documentsStore, filesStore } from "../serverState";
 import { send } from "../ws";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
@@ -29,12 +29,13 @@ export function QuickOpen({
 	onPick: (path: string) => void;
 }) {
 	const files = useSyncExternalStore(filesStore.subscribe, filesStore.get);
+	const documents = useSyncExternalStore(documentsStore.subscribe, documentsStore.get);
 	const [query, setQuery] = useState("");
 	useEffect(() => {
 		if (open) setQuery("");
 	}, [open]);
 
-	const paths = new Set(files.map((f) => f.path));
+	const paths = new Set([...files.map((f) => f.path), ...documents]);
 	const recentHere = recent.filter((p) => paths.has(p));
 	const trimmed = query.trim();
 	const exact = trimmed && files.some((f) => titleOf(f.path).toLowerCase() === trimmed.toLowerCase());
@@ -70,6 +71,16 @@ export function QuickOpen({
 								</CommandItem>
 							))}
 						</CommandGroup>
+						{documents.length > 0 && (
+							<CommandGroup heading="Documents">
+								{documents.map((path) => (
+									<CommandItem key={path} value={path} onSelect={() => pick(path)}>
+										{titleOf(path)}
+										{path.includes("/") && <span className="ml-auto text-xs text-muted-foreground">{path.slice(0, path.lastIndexOf("/"))}</span>}
+									</CommandItem>
+								))}
+							</CommandGroup>
+						)}
 						{trimmed && !exact && (
 							<CommandGroup forceMount heading="New">
 								<CommandItem

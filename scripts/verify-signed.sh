@@ -26,6 +26,12 @@ spctl --assess --type execute --verbose=2 "$APP"
 echo "== notarization ticket"
 xcrun stapler validate "$APP"
 
+echo "== the search tools are inside, signed, and run"
+for tool in rg fd; do
+	codesign --verify --strict "$APP/Contents/Resources/bin/$tool"
+	"$APP/Contents/Resources/bin/$tool" --version | head -1
+done
+
 echo "== server starts under ELECTRON_RUN_AS_NODE"
 ELECTRON_RUN_AS_NODE=1 "$APP/Contents/MacOS/Octave" -e 'console.log("node " + process.version + " inside " + process.execPath.split("/").slice(-1)[0])'
 

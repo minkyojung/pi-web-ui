@@ -120,9 +120,15 @@ function startServer(port, workdir) {
 	// ELECTRON_RUN_AS_NODE turns this same binary into plain node, so the app does
 	// not depend on whatever node the machine happens to have. The server is
 	// pre-bundled rather than compiled at startup: `npm run build` writes it.
+	// The search tools the agent runs — ripgrep and fd — travel with the app
+	// (electron-builder.yml extraResources; scripts/tools.mjs fetches them for
+	// a dev build) and go first on the server's PATH, which is where pi looks
+	// for them before it thinks of downloading its own.
+	const tools = app.isPackaged ? join(process.resourcesPath, "bin") : here("../build/bin");
 	child = spawn(process.execPath, [here("../dist-server/server.mjs")], {
 		env: {
 			...process.env,
+			PATH: `${tools}:${process.env.PATH ?? ""}`,
 			ELECTRON_RUN_AS_NODE: "1",
 			PORT: String(port),
 			HOST,
@@ -269,7 +275,10 @@ async function endServer() {
  * decides when that has been seen: the page says (update:seen), and the
  * version it saw is kept beside the last version run.
  */
-let update = { current: app.getVersion(), phase: "idle", version: null, progress: null, error: null, justUpdated: null };
+// The guides are files in the repository, read on GitHub: one copy, current with the latest release.
+const DOCS = "https://github.com/minkyojung/pi-web-ui/blob/main";
+
+let update = { current: app.getVersion(), phase: "idle", version: null, progress: null, error: null, justUpdated: null, welcomed: true };
 
 function sayUpdate(patch) {
 	update = { ...update, ...patch };
@@ -292,6 +301,12 @@ function serveUpdates() {
 	ipcMain.handle("update:restart", async () => {
 		if (child) await endServer();
 		autoUpdater.quitAndInstall();
+	});
+	// The first run's page: shown until the person says Done, then not again.
+	update.welcomed = readSettings().welcomed === true;
+	ipcMain.handle("welcome:done", () => {
+		writeSettings({ ...readSettings(), welcomed: true });
+		sayUpdate({ welcomed: true });
 	});
 	ipcMain.handle("update:seen", () => {
 		writeSettings({ ...readSettings(), whatsNewSeen: app.getVersion() });
@@ -427,7 +442,10 @@ function buildMenu(workdir) {
 			{
 				role: "help",
 				submenu: [
+					{ label: "Welcome", click: () => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send("open-page", "welcome"); } },
 					{ label: "What's New", click: () => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send("open-page", "whats-new"); } },
+					{ label: "Getting Started", click: () => void shell.openExternal(`${DOCS}/GETTING_STARTED.md`) },
+					{ label: "What Leaves Your Mac", click: () => void shell.openExternal(`${DOCS}/PRIVACY.md`) },
 					{ type: "separator" },
 					{ label: "Report a Problem…", click: reportProblem },
 					{ label: "Show Log in Finder", click: showLog },

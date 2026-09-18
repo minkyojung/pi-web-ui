@@ -2,9 +2,11 @@ import { useState } from "react";
 import { ChevronRightIcon, PauseIcon, PlayIcon, RotateCcwIcon, SkipForwardIcon } from "lucide-react";
 
 import { ConversationView } from "../components/ConversationView";
+import { Question } from "../components/Question";
 import { ToolSummaries } from "../components/ToolRow";
 import { Button } from "../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { questions } from "./questions";
 import { useReplay } from "./replay";
 import { scenarios } from "./scenarios";
 
@@ -37,6 +39,14 @@ export function GalleryPage() {
 	// Off shows the same run the way it looked before tool headers carried a
 	// summary, which is the only way to tell whether the summary is an improvement.
 	const [summaries, setSummaries] = useState(true);
+
+	// A question under the conversation, where the app puts one: in place of
+	// the message box, which the bench does not have. What it was answered with
+	// is shown rather than sent — there is no socket here to send it on.
+	const [asking, setAsking] = useState("none");
+	const [asked, setAsked] = useState(0);
+	const [answered, setAnswered] = useState<string | null>(null);
+	const question = questions.find((q) => q.id === asking);
 
 	const replay = useReplay(scenario);
 
@@ -145,6 +155,27 @@ export function GalleryPage() {
 					<Button size="xs" variant={showRaw ? "secondary" : "ghost"} onClick={() => setShowRaw((on) => !on)}>
 						Events
 					</Button>
+
+					<Select
+						value={asking}
+						onValueChange={(v) => {
+							setAsking(v);
+							setAsked((n) => n + 1);
+							setAnswered(null);
+						}}
+					>
+						<SelectTrigger id="asking" size="sm" aria-label="Question" className="w-56">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="none">No question</SelectItem>
+							{questions.map((q) => (
+								<SelectItem key={q.id} value={q.id} data-question={q.id}>
+									{q.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
 				</div>
 
 				{scenario.note && <p className="text-xs leading-snug text-muted-foreground">{scenario.note}</p>}
@@ -157,6 +188,24 @@ export function GalleryPage() {
 						<ToolSummaries value={summaries}>
 							<ConversationView items={replay.items} />
 						</ToolSummaries>
+						{question && (
+							<div className="flex max-h-[60%] shrink-0 flex-col p-3">
+								<Question
+									key={asked}
+									prompt={question.prompt}
+									streaming={question.streaming ?? false}
+									autoFocus
+									onAnswer={(answer) => (setAnswered(answer), true)}
+									onCancel={() => (setAnswered("(closed without answering)"), true)}
+									onStop={() => setAnswered("(the run was stopped)")}
+								/>
+							</div>
+						)}
+						{answered !== null && (
+							<pre id="answered" className="shrink-0 border-t px-3 py-2 font-mono text-[11px] whitespace-pre-wrap">
+								{answered}
+							</pre>
+						)}
 					</div>
 				</div>
 

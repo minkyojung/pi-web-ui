@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameS
 import { writeAtomic } from "./atomic.ts";
 import { propertiesOf, setProperty, withProperties } from "./properties.ts";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { isDocument } from "./documentKinds.ts";
 
 export type NoteFile = {
 	/** Relative to the folder, with forward slashes, so it reads as a name. */
@@ -44,8 +45,15 @@ const SKIP = new Set(["node_modules", "dist", "dist-server", "release", "build",
  */
 export const LIMIT = 50_000;
 
-export function listNotes(root: string): NoteFile[] {
+/**
+ * The notes, and beside them the documents — the files pi reads as text
+ * though they are not (documents.ts): a PDF kept beside the note about it.
+ * One walk for both, since the walk is the cost. Documents are paths only;
+ * nothing that lists them orders by when they were written.
+ */
+export function listFiles(root: string): { notes: NoteFile[]; documents: string[] } {
 	const out: NoteFile[] = [];
+	const documents: string[] = [];
 	const walk = (dir: string) => {
 		let entries;
 		try {
@@ -59,6 +67,8 @@ export function listNotes(root: string): NoteFile[] {
 			const full = join(dir, entry.name);
 			if (entry.isDirectory()) {
 				walk(full);
+			} else if (entry.isFile() && isDocument(entry.name)) {
+				documents.push(relative(root, full).split(sep).join("/"));
 			} else if (entry.isFile() && entry.name.endsWith(".md")) {
 				try {
 					out.push({ path: relative(root, full).split(sep).join("/"), modified: statSync(full).mtimeMs });
@@ -69,8 +79,10 @@ export function listNotes(root: string): NoteFile[] {
 		}
 	};
 	walk(root);
-	return out.sort((a, b) => b.modified - a.modified || a.path.localeCompare(b.path));
+	return { notes: out.sort((a, b) => b.modified - a.modified || a.path.localeCompare(b.path)), documents: documents.sort() };
 }
+
+export const listNotes = (root: string): NoteFile[] => listFiles(root).notes;
 
 /**
  * A path as the file system itself spells it.
@@ -143,6 +155,16 @@ export function fileAt(root: string, given: string): { path: string; full: strin
 export function resolveNote(root: string, path: string): string | null {
 	if (isAbsolute(path)) return null;
 	return noteAt(root, path)?.full ?? null;
+}
+
+/**
+ * The document a path from the folder names, as the vault names it, or null:
+ * fileAt's placing, and of a kind documentKinds.ts lists.
+ */
+export function documentAt(root: string, given: string): string | null {
+	if (isAbsolute(given)) return null;
+	const file = fileAt(root, given);
+	return file && isDocument(file.path) ? file.path : null;
 }
 
 /**

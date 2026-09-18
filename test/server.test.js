@@ -40,7 +40,7 @@ const until = async (what, get, ms = 15000) => {
   }
 };
 
-let cwd, appDir, server, port, log = "", skip = false;
+let cwd, appDir, clientDir, server, port, log = "", skip = false;
 let ws, inbox;
 
 test.before(async () => {
@@ -55,9 +55,14 @@ test.before(async () => {
   // they add differs from machine to machine, and one of them is slow to
   // start. The switch that says so is Octave's own setting.
   writeFileSync(join(appDir, "settings.json"), JSON.stringify({ loadExtensions: false }));
+  // A built page of its own, so what the server says of a built file can be asked: see the .mjs check.
+  clientDir = mkdtempSync(join(tmpdir(), "server-test-client-"));
+  mkdirSync(join(clientDir, "assets"));
+  writeFileSync(join(clientDir, "index.html"), "<!doctype html><title>test</title>");
+  writeFileSync(join(clientDir, "assets", "worker.mjs"), "export {};\n");
   server = spawn(join(root, "node_modules/.bin/tsx"), ["server.ts"], {
     cwd: root,
-    env: { ...process.env, WORKDIR: cwd, PORT: String(port), APP_DIR: appDir },
+    env: { ...process.env, WORKDIR: cwd, PORT: String(port), APP_DIR: appDir, CLIENT_DIR: clientDir },
     stdio: ["ignore", "pipe", "pipe"],
   });
   server.stdout.on("data", (d) => (log += d));
@@ -83,6 +88,7 @@ test.after(async () => {
   }
   if (cwd) rmSync(cwd, { recursive: true, force: true });
   if (appDir) rmSync(appDir, { recursive: true, force: true });
+  if (clientDir) rmSync(clientDir, { recursive: true, force: true });
 });
 
 const send = (m) => ws.send(JSON.stringify(m));
@@ -150,6 +156,26 @@ it("a note's text is read for an embed of it; anything that is not a note in the
     rmSync(outside, { force: true });
   }
   assert.equal((await get("not-a-picture.txt")).status, 404, "a note is a .md file");
+});
+
+it("a picture pasted into a note is kept in the folder, under a name the note can use", async () => {
+  const png = Buffer.from("89504e470d0a1a0a", "hex");
+  const post = (name, body = png) => fetch(`http://127.0.0.1:${port}/api/attachment?from=a.md&name=${encodeURIComponent(name)}`, { method: "POST", headers: { "content-type": "application/octet-stream" }, body });
+  let r = await post("Pasted image 20260918040506.png");
+  assert.equal(r.status, 201);
+  const { path } = await r.json();
+  const name = "Pasted image 20260918040506.png";
+  assert.equal(path, `attachments/${name}`);
+  assert.equal(readFileSync(join(cwd, path)).toString("hex"), png.toString("hex"), "the bytes, as sent");
+  r = await fetch(`http://127.0.0.1:${port}/vault/${encodeURIComponent(name)}?from=a.md`);
+  assert.equal(r.status, 200, "and the note can show it by name alone");
+  assert.equal((await post("notes.txt", Buffer.from("x"))).status, 415, "not a kind the folder takes");
+});
+
+it("a built module is served as JavaScript: a browser will not run pdf.js's worker as anything else", async () => {
+  const r = await fetch(`http://127.0.0.1:${port}/assets/worker.mjs`);
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get("content-type"), /^text\/javascript/);
 });
 
 it("a version's notes come from the changelog beside the server, cut as the release script cuts them", async () => {
@@ -518,6 +544,14 @@ it("새 노트를 청하면 Untitled로 만들어져 이 탭에 이름이 오고
   clear();
   send({ type: "new_note" });
   assert.equal((await want("note_created")).path, "Untitled 2.md");
+});
+
+it("새 노트에 이름과 첫 글을 함께 주면 그대로 만들어진다", async () => {
+  clear();
+  send({ type: "new_note", name: "Welcome to Octave", text: "# Welcome\n\nHello.\n" });
+  const made = await want("note_created");
+  assert.equal(made.path, "Welcome to Octave.md");
+  assert.match(readFileSync(join(cwd, made.path), "utf8"), /^---\ncreated: [^\n]+\n---\n# Welcome\n\nHello\.\n$/);
 });
 
 it("이름을 바꾸면 파일과 로그가 함께 옮겨지고 모든 탭이 듣는다", async () => {
@@ -943,6 +977,43 @@ it("갈래를 만들면 그 질문까지를 가진 새 세션이 열리고 질�
   const gone = await want("sessions", (m) => !m.sessions.some((s) => s.path === older.path), 30_000);
   assert.ok(gone);
   assert.equal(existsSync(older.path), false, "the file is gone (to the bin, or unlinked)");
+});
+
+test("폴더의 PDF는 /vault/로 제 경로에서만, PDF로 나간다", async () => {
+  mkdirSync(join(cwd, "papers"), { recursive: true });
+  const bytes = readFileSync(join(root, "test/fixtures/three-pages.pdf"));
+  writeFileSync(join(cwd, "papers/served paper.pdf"), bytes);
+  const get = (path) => fetch(`http://127.0.0.1:${port}/vault/${path}`);
+  const found = await get("papers/served%20paper.pdf");
+  assert.equal(found.status, 200);
+  assert.equal(found.headers.get("content-type"), "application/pdf");
+  assert.equal(Buffer.from(await found.arrayBuffer()).equals(bytes), true, "바이트 그대로");
+  assert.equal((await get("served%20paper.pdf")).status, 404, "그림과 달리 이름만으로 찾아 주지는 않는다");
+  assert.equal((await get("a.md")).status, 404, "노트는 이 길로 나가지 않는다");
+  assert.equal((await get("..%2Fpapers%2Fserved%20paper.pdf")).status, 404);
+  mkdirSync(join(cwd, ".pi/x"), { recursive: true });
+  writeFileSync(join(cwd, ".pi/x/hidden.pdf"), bytes);
+  assert.equal((await get(".pi/x/hidden.pdf")).status, 404, "앱의 폴더 안은 아니다");
+});
+
+// A file dropped on the app arrives as a name and its bytes — see attach.ts.
+test("떨어뜨린 파일은 attachments/에 놓이고, PDF면 목록이 바로 듣는다 — 남의 페이지가 보낸 것은 아니다", async () => {
+  const url = (name) => `http://127.0.0.1:${port}/api/attachment?name=${encodeURIComponent(name)}`;
+  const post = (name, body, headers = { "content-type": "application/octet-stream" }) => fetch(url(name), { method: "POST", headers, body });
+  clear();
+  const saved = await post("dropped paper.pdf", readFileSync(join(root, "test/fixtures/three-pages.pdf")));
+  assert.equal(saved.status, 201);
+  assert.deepEqual(await saved.json(), { path: "attachments/dropped paper.pdf" });
+  assert.ok(existsSync(join(cwd, "attachments/dropped paper.pdf")));
+  const listed = await want("files", (m) => m.documents.includes("attachments/dropped paper.pdf"));
+  assert.ok(!listed.files.some((f) => f.path.endsWith(".pdf")), "노트 목록에는 없다");
+  assert.deepEqual(await (await post("dropped paper.pdf", "again")).json(), { path: "attachments/dropped paper 2.pdf" }, "같은 이름은 옆에");
+  assert.equal((await post("run.sh", "x")).status, 415, "안 받는 종류");
+  assert.equal((await post("../.pdf", "x")).status, 400, "쓸 수 없는 이름");
+  assert.equal((await post("a.pdf", "")).status, 413, "빈 것");
+  assert.equal((await post("a.pdf", "x", { "content-type": "text/plain" })).status, 415, "바이트라고 밝히지 않은 것 — 남의 페이지가 물어보지 않고 보낼 수 있는 모양");
+  assert.equal((await post("a.pdf", "x", { "content-type": "application/octet-stream", origin: "https://elsewhere.example" })).status, 403, "다른 곳에서 온 것");
+  assert.ok(!existsSync(join(cwd, "attachments/a.pdf")), "거절된 것은 쓰이지 않는다");
 });
 
 // Not `it`: none of this needs a model, and saving a setting is what a person

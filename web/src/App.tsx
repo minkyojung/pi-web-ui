@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type PanelImperativeHandle, useDefaultLayout } from "react-resizable-panels";
 
 import { Editor } from "./components/Editor";
@@ -15,11 +15,16 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./componen
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { UpdateToast } from "./components/UpdateToast";
-import type { Place } from "../../links.ts";
+import { pageNamed, type Place } from "../../links.ts";
 import { hashForNote, noteFromHash } from "./noteSync";
-import { pageOf, whatsNewPath } from "./pages";
+import { pageOf, WELCOME, whatsNewPath } from "./pages";
 import { pageAskedStore, updateStore } from "./update";
+import { Welcome } from "./components/Welcome";
 import { WhatsNew } from "./components/WhatsNew";
+
+// pdf.js is larger than the rest of the window put together, and most days no
+// PDF is opened: it is fetched when the first one is.
+const Pdf = lazy(() => import("./components/Pdf"));
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
 import { bump, forget, readRecent, writeRecent } from "./recent";
@@ -318,10 +323,18 @@ export function App() {
 		if (update?.justUpdated) setOpen(whatsNewPath(update.justUpdated.to));
 	}, [update?.justUpdated?.to, setOpen]);
 	useEffect(() => {
-		if (pageAsked !== "whats-new" || !update) return;
+		if (!pageAsked || !update) return;
 		pageAskedStore.set(null);
-		setOpen(whatsNewPath(update.current));
+		if (pageAsked === "whats-new") setOpen(whatsNewPath(update.current));
+		if (pageAsked === "welcome") setOpen(WELCOME);
 	}, [pageAsked, update, setOpen]);
+	// The first run: the welcome page in front, until Done is pressed on it.
+	const welcomedOnce = useRef(false);
+	useEffect(() => {
+		if (welcomedOnce.current || update?.welcomed !== false) return;
+		welcomedOnce.current = true;
+		setOpen(WELCOME);
+	}, [update?.welcomed, setOpen]);
 
 	const [tabs, setTabs] = useState(readTabs);
 	useEffect(() => {
@@ -539,7 +552,8 @@ export function App() {
 					    rather than in it, and the list begins below it. */}
 					<div className="h-11 shrink-0" />
 					<Boundary name="list of notes">
-						<Sidebar open={note} onOpen={setOpen} />
+						{/* A document in front is a row of the list like a note is, so it is lit there too. */}
+						<Sidebar open={page?.kind === "document" ? page.path : note} onOpen={setOpen} />
 					</Boundary>
 				</ResizablePanel>
 				<ResizableHandle />
@@ -609,7 +623,15 @@ export function App() {
 					    be had, and the room was the one to go: a note short enough for
 					    this to matter is a note that does not scroll, and room to scroll
 					    into is nothing to a page that has nowhere to go. */}
-					{page ? (
+					{page?.kind === "welcome" ? (
+						<Welcome onDone={() => closeTab(WELCOME)} />
+					) : page?.kind === "document" ? (
+						<Boundary name="document" hint="The file itself is untouched.">
+							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
+								<Pdf key={page.path} path={page.path} page={pageNamed(place)} />
+							</Suspense>
+						</Boundary>
+					) : page ? (
 						<WhatsNew key={page.version} version={page.version} />
 					) : open && deleted?.path !== open ? (
 						<div id="note" className="no-scrollbar edge-top flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -693,7 +715,9 @@ export function App() {
 						    a step down does not need saying twice. */}
 						<div className="surface-panel m-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-sm border">
 							<Boundary name="conversation">
-								<Pi note={note} raw={raw} />
+								{/* A PDF in front is what the message is beside, as a note is:
+								    the agent is told which, and what was chosen on its pages. */}
+								<Pi note={page?.kind === "document" ? page.path : note} raw={raw} />
 							</Boundary>
 						</div>
 					</ResizablePanel>

@@ -2,16 +2,16 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ArrowUpIcon, CornerDownLeftIcon, PencilIcon, SquareIcon, TextQuoteIcon, X } from "lucide-react";
 
-import { imagesOf } from "../attachments";
+import { attach, filesToAttach, imagesOf } from "../attachments";
 import { type Chosen as ChosenWords, chosenStore } from "../chosen";
 import { acceptCommand, commandQuery, matchCommands, namesCommand } from "../commandMenu";
 import { draftStore } from "../draft";
-import { acceptMention, matchNotes, mentionQuery } from "../noteMention";
+import { acceptMention, insertMention, matchNotes, mentionQuery } from "../noteMention";
 import { titleOf } from "../noteSync";
 import { appendRestored } from "../queue";
 import { flushSaves } from "../saves";
-import { askingAgainStore, commandsStore, configStore, filesStore, restoredStore } from "../serverState";
-import { getConnection, subscribe } from "../store";
+import { askingAgainStore, commandsStore, configStore, documentsStore, filesStore, restoredStore } from "../serverState";
+import { applyServerEvent, getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -72,7 +72,7 @@ function submit(
 		...(note ? { note } : {}),
 		// What was chosen in the note, for this turn: pi is told what the
 		// question is about, and the words stay out of the message itself.
-		...(chosen && chosen.path === note ? { chosen: chosen.text } : {}),
+		...(chosen && chosen.path === note ? { chosen: chosen.text, ...(chosen.page ? { page: chosen.page } : {}) } : {}),
 		...(command ? { command } : {}),
 		...(images.length ? { images } : {}),
 		behavior,
@@ -126,6 +126,8 @@ function Chosen({ chosen, onDrop }: { chosen: ChosenWords | null; onDrop: () => 
 		<PromptInputHeader id="chosen">
 			<Badge variant="secondary" className="max-w-full gap-1 font-normal" title={chosen.text}>
 				<TextQuoteIcon className="size-3 shrink-0" />
+				{/* Where in a PDF: its pages are the only address the words have. */}
+				{chosen.page && <span className="shrink-0 text-muted-foreground">p. {chosen.page}</span>}
 				<span className="min-w-0 truncate">{chosen.text}</span>
 				<Button
 					variant="ghost"
@@ -143,9 +145,9 @@ function Chosen({ chosen, onDrop }: { chosen: ChosenWords | null; onDrop: () => 
 
 /**
  * What was pasted into the box, above it, each with the way to take it back
- * out. Images only: the box accepts nothing else, and pi's models read those.
- * Pasting is the one way in — a dropzone and a button are what the component
- * brings and what is deliberately not used here.
+ * out. Images only: those are what ride with a message, since pi's models
+ * read them. Any other file goes into the folder and is named in the text
+ * instead — see `take` in Composer.
  */
 function Attached() {
 	const attachments = usePromptInputAttachments();
@@ -198,6 +200,7 @@ export function Composer({ note }: { note: string | null }) {
 	const [caret, setCaret] = useState(0);
 	const commands = useSyncExternalStore(commandsStore.subscribe, commandsStore.get);
 	const files = useSyncExternalStore(filesStore.subscribe, filesStore.get);
+	const documents = useSyncExternalStore(documentsStore.subscribe, documentsStore.get);
 	// Escape puts the list away for the text as it stands; typing brings it back.
 	const [dismissed, setDismissed] = useState<string | null>(null);
 	const [selected, setSelected] = useState("");
@@ -211,6 +214,25 @@ export function Composer({ note }: { note: string | null }) {
 		const behavior = steering.current ? "steer" : "followUp";
 		steering.current = false;
 		if (submit(form, value, behavior, note, pointing, files)) setText("");
+	};
+	// A file that is not an image, dropped or pasted: it goes into the folder
+	// and its path into the message, where the cursor is, as a mention — the
+	// box is read when the answer comes, since the person may have typed on.
+	// The form below still sees the same event and takes the images from it.
+	const [adding, setAdding] = useState<string[]>([]);
+	const take = (list: FileList | undefined | null) => {
+		for (const file of filesToAttach(list ?? [])) {
+			setAdding((names) => [...names, file.name]);
+			attach(file)
+				.then((path) => {
+					const el = box.current;
+					if (!el) return;
+					const next = insertMention(el.value, el.selectionStart, path);
+					write(next.text, next.cursor);
+				})
+				.catch((err: Error) => applyServerEvent({ type: "error", message: `Could not add ${file.name}: ${err.message}` }))
+				.finally(() => setAdding((names) => names.filter((n, i) => i !== names.indexOf(file.name))));
+		}
 	};
 	const write = (value: string, cursor = value.length) => {
 		if (!box.current) return;
@@ -241,7 +263,9 @@ export function Composer({ note }: { note: string | null }) {
 	} else if (dismissed !== text && mention !== null) {
 		list = {
 			id: "mentions",
-			items: matchNotes(files.map((f) => f.path), mention.query)
+			// The documents after the notes: a PDF is named the way a note is, and
+			// its title keeps its extension, which is how the row says what it is.
+			items: matchNotes([...files.map((f) => f.path), ...documents], mention.query)
 				.slice(0, NOTES_OFFERED)
 				.map((path) => ({ value: path, label: titleOf(path), detail: folderOf(path) })),
 			pick: (path) => {
@@ -301,12 +325,17 @@ export function Composer({ note }: { note: string | null }) {
 			{/* The list sits over the box's top edge, so it is placed from out here:
 			    the box clips what is inside it (overflow-hidden), and a list drawn
 			    inside was there and could not be seen. */}
-			<div className="relative">
+			<div className="relative" onDropCapture={(e) => take(e.dataTransfer?.files)} onPasteCapture={(e) => take(e.clipboardData?.files)}>
 			{list && (
 				<SuggestMenu id={list.id} items={list.items} selected={current?.value ?? ""} onSelect={setSelected} onPick={list.pick} />
 			)}
 			<PromptInput accept="image/*" onSubmit={(message, event) => send_(event.currentTarget, message.text, message.files)}>
 				<Attached />
+				{adding.length > 0 && (
+					<PromptInputHeader id="adding" className="text-xs text-muted-foreground">
+						Adding {adding.join(", ")} to the folder…
+					</PromptInputHeader>
+				)}
 				<Chosen chosen={pointing} onDrop={() => setDropped(pointing?.text ?? null)} />
 				<PromptInputBody>
 					{/* The component asks for four lines of empty box; one is enough until

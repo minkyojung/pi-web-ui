@@ -21,7 +21,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -249,7 +249,7 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x: b[0], y: b[1], button: "left", buttons: 0, clickCount: 1 });
 		return true;
 	};
-	const CODES = { Enter: 13, Backspace: 8, Delete: 46, Escape: 27, End: 35, Tab: 9, "[": 219, "]": 221, b: 66, e: 69, f: 70, i: 73, k: 75, n: 78, p: 80, t: 84, z: 90 };
+	const CODES = { 1: 49, Enter: 13, Backspace: 8, Delete: 46, Escape: 27, End: 35, Tab: 9, "[": 219, "]": 221, b: 66, d: 68, e: 69, f: 70, i: 73, k: 75, n: 78, p: 80, t: 84, z: 90 };
 	const NAMES = { "[": "BracketLeft", "]": "BracketRight" };
 	const press = async (key, { meta = false, shift = false, alt = false } = {}) => {
 		const modifiers = (meta ? 4 : 0) | (shift ? 8 : 0) | (alt ? 1 : 0);
@@ -369,15 +369,24 @@ const press = (page, title) =>
 	page.evaluate(
 		`(() => { const b = [...document.querySelectorAll('#chat button[aria-label=${JSON.stringify(title)}]')].find((x) => !x.disabled); if (!b) return false; b.click(); return true; })()`,
 	);
+/** The choice of the open question that reads `choice`, as an expression for the page. */
+const choiceOf = (choice) =>
+	`[...document.querySelectorAll('#question [data-slot=questionnaire-choice]')].find((c) => c.querySelector('[data-slot=questionnaire-choice-label]').textContent.trim() === ${JSON.stringify(choice)})`;
+/** Answer the question that is where the message box was: take the choice, send, and see it go. */
+const answer = async (page, choice) => {
+	await until("the question", () => page.evaluate(`!!${choiceOf(choice)}`));
+	await page.evaluate(`${choiceOf(choice)}.querySelector('input').click()`);
+	await page.evaluate("document.querySelector('#question [data-slot=questionnaire-submit]').click()");
+	await until("the question answered", () => page.evaluate("!document.getElementById('question')"));
+};
 /**
- * Step to another answer with an arrow, and answer the card that comes first:
- * before the arrows leave a branch, the server asks — as pi's /tree does —
- * whether to summarise it, and "No summary" is the move without one.
+ * Step to another answer with an arrow, and answer the question that comes
+ * first: before the arrows leave a branch, the server asks — as pi's /tree
+ * does — whether to summarise it, and "No summary" is the move without one.
  */
 const step = async (page, title) => {
 	if (!(await press(page, title))) return false;
-	await until("the summary card", () => page.evaluate("[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'No summary')"));
-	await page.evaluate("[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'No summary').click()");
+	await answer(page, "No summary");
 	return true;
 };
 const allDisabled = (page, title) =>
@@ -430,6 +439,57 @@ check("the first branch offers no previous", async ({ app }) => {
 check("and forward again", async ({ app }) => {
 	assert.equal(await step(app, "Next answer"), true);
 	await until("the second branch", async () => (await marks(app)).includes("ANSWER-BETA"));
+});
+
+check("a question takes the message box's place, is answered from the keys, and gives the box back with what was in it", async ({ app }) => {
+	const boxShown = () => app.evaluate("document.querySelector('textarea[placeholder=\"Message the agent\"]').offsetParent !== null");
+	const asked = () => app.evaluate("!!document.getElementById('question')");
+	const before = await marks(app);
+	await app.click('textarea[placeholder="Message the agent"]');
+	await app.keys("DRAFT");
+
+	// The server's own question, which no model has to be called for.
+	assert.equal(await press(app, "Previous answer"), true);
+	await until("the question", asked);
+	assert.equal(await boxShown(), false, "the box is out of sight while there is a question");
+	assert.equal(await app.evaluate("!!document.querySelector('#chat #question')"), false, "and the question is not in the conversation");
+	assert.equal(await app.evaluate("!!document.querySelector('#question [data-slot=questionnaire-input]')"), false, "a question that is not ask_user's has no line to write in");
+	assert.equal(await app.evaluate("!!document.querySelector('#question [aria-label=Stop]')"), false, "and nothing to stop when no run is going");
+	await until("the keys on the question", () => app.evaluate("document.getElementById('question').contains(document.activeElement)"));
+
+	// The raw view has no conversation, and used to have no question either.
+	await app.press("d", { meta: true, shift: true });
+	await until("the raw view", () => app.evaluate("!!document.getElementById('raw')"));
+	assert.equal(await asked(), true, "the question is under the raw view too");
+	await app.press("d", { meta: true, shift: true });
+	await until("the conversation again", () => app.evaluate("!!document.getElementById('chat')"));
+
+	// Closed without an answer: nothing moves, and the box is back as it was left.
+	await app.evaluate("document.querySelector('#question input').focus()");
+	await app.press("Escape");
+	await until("the question closed", async () => !(await asked()));
+	assert.equal(await boxShown(), true);
+	assert.equal(await app.evaluate("document.querySelector('textarea[placeholder=\"Message the agent\"]').value"), "DRAFT");
+	await until("the keys back on the box", () => app.evaluate("document.activeElement?.placeholder === 'Message the agent'"));
+	assert.equal(await marks(app), before);
+
+	// Answered from the keys: a number takes a choice, and nothing is sent until Enter.
+	assert.equal(await press(app, "Previous answer"), true);
+	await until("the question again", asked);
+	await until("the keys on the question", () => app.evaluate("document.getElementById('question').contains(document.activeElement)"));
+	await app.press("1");
+	await until("the first choice taken", () => app.evaluate("document.querySelector('#question input:checked')?.value === '0'"));
+	assert.equal(await asked(), true, "taking a choice does not send it");
+	await app.press("Enter");
+	await until("the move", async () => (await marks(app)).includes("ANSWER-ALPHA"));
+	assert.equal(await asked(), false);
+
+	// Back where the checks after this one expect to be, with an empty box.
+	assert.equal(await step(app, "Next answer"), true);
+	await until("the second branch", async () => (await marks(app)) === before);
+	await app.click('textarea[placeholder="Message the agent"]');
+	for (const _ of "DRAFT") await app.press("Backspace");
+	assert.equal(await app.evaluate("document.querySelector('textarea[placeholder=\"Message the agent\"]').value"), "");
 });
 
 check("asking a question again fills the box without moving anything", async ({ app }) => {
@@ -1206,6 +1266,28 @@ check("⌘F finds in the note, and Escape puts the panel away", async ({ app }) 
 	assert.equal(await app.evaluate("document.activeElement?.classList.contains('cm-content')"), true, "focus goes back to the note");
 });
 
+check("a picture pasted into a note is kept in the folder and named where the cursor was, and then drawn", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "paste.md"), "# paste\n\nbefore \n\nafter\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="paste.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="paste.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	// The cursor at the end of "before ", then a paste of a 2×2 PNG, as the clipboard would hand it over.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.toString().indexOf("before ") + 7 } }); })()`);
+	await app.evaluate(`(() => {
+		const bytes = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR42mNk+M9QDwADhQGA6UhwXAAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
+		const dt = new DataTransfer();
+		dt.items.add(new File([bytes], "image.png", { type: "image/png" }));
+		document.querySelector('#editor .cm-content').dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+	})()`);
+	await until("the note naming the picture", async () => /before !\[\[Pasted image \d{14}\.png\]\]/.test(await editorText(app)));
+	const name = (await editorText(app)).match(/Pasted image \d{14}\.png/)[0];
+	await until("the file in the folder", () => existsSync(join(cwd, "attachments", name)));
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	// Off the line, it is a picture.
+	await app.press("End", { meta: true });
+	await until("drawn", () => app.evaluate("document.querySelector('#editor img.cm-image')?.naturalWidth === 2"));
+});
+
 check("pictures are drawn where the note says there are pictures, and as written on the cursor's line", async ({ app, cwd }) => {
 	// A 2×2 PNG, so what the browser draws has a size of its own to be measured.
 	const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR42mNk+M9QDwADhQGA6UhwXAAAAABJRU5ErkJggg==", "base64");
@@ -1293,6 +1375,15 @@ check("another note is shown in place — all of it, a section, a block — and 
 	// The cursor in the markup: the card gone for that line, the markup back.
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("![[Source#Part two]]") + 3; v.dispatch({ selection: { anchor: at } }); })()`);
 	await until("that line as written", async () => (await shownText(app)).includes("![[Source#Part two]]") && (await cards()).length === 3);
+	// The other note changes on disk: the card that shows it is read again.
+	await app.press("End", { meta: true });
+	await until("four cards again", async () => (await cards()).length === 4);
+	writeFileSync(join(cwd, "Source.md"), "# Source\n\nThe source's NEW first words.\n\n## Part two\n\n- one **two**\n- three\n\n## Part three\n\nlast, with an id. ^p3\n");
+	await until("the card read again", async () => (await cards())[0][1].includes("NEW first words"));
+	// A click on a card's body: the cursor on its line, the markup back.
+	await app.evaluate("document.querySelector('#editor .cm-embed-body').scrollIntoView({ block: 'center' })");
+	assert.ok(await app.click("#editor .cm-embed-body", 0), "a body to click");
+	await until("that line as written, from a click", async () => (await shownText(app)).includes("![[Source]]"));
 	// The card's title opens the note.
 	await app.press("End", { meta: true });
 	// Read again, not only drawn: a card grows as its note arrives, and a title
@@ -1361,6 +1452,72 @@ check("the little HTML a note holds is drawn from a list, a script is not, and s
 	// The cursor inside a pair: the tags back.
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("underlined") + 2; v.dispatch({ selection: { anchor: at } }); })()`);
 	await until("the tags back under the cursor", async () => (await shownText(app)).includes("<u>underlined</u>"));
+});
+
+check("in a table, a click lands in its cell, Tab walks the cells and makes a row, Enter adds one, and the pipes square up on leaving", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "edit-table.md"), "# edit\n\n| Name | Amount |\n|:--|--:|\n| Apples | 3 |\n|Pears|12|\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="edit-table.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="edit-table.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.press("End", { meta: true });
+	await until("the table drawn", () => app.evaluate("!!document.querySelector('#editor table.cm-table')"));
+	// A click on "Pears": the cursor in that cell, the pipes back.
+	assert.ok(await app.click("#editor table.cm-table tbody tr:nth-child(2) td:first-child"), "the Pears cell");
+	const sel = () => app.evaluate("(() => { const s = document.querySelector('#editor .cm-content').cmTile.root.view.state; const r = s.selection.main; return { from: r.from, to: r.to, at: s.doc.sliceString(Math.max(0, r.from - 6), r.to + 1) }; })()");
+	await until("the cursor in the Pears cell", async () => (await sel()).at.includes("Pears|") && (await shownText(app)).includes("|Pears|12|"));
+	// Tab: the next cell's words chosen; Shift-Tab: back.
+	await app.press("Tab");
+	await until("12 chosen", async () => {
+		const s = await sel();
+		if (s.to - s.from === 2 && s.at.endsWith("12|")) return true;
+		throw new Error(JSON.stringify(s));
+	});
+	await app.press("Tab", { shift: true });
+	await until("Pears chosen", async () => { const s = await sel(); return s.to - s.from === 5 && s.at.includes("Pears"); });
+	// Tab from the last cell: a new row, the cursor in its first cell.
+	await app.press("Tab");
+	await app.press("Tab");
+	await until("a new row", async () => (await editorText(app)).includes("|Pears|12|\n| | |"));
+	// Enter: a row under this one.
+	await app.press("Enter");
+	await until("another row", async () => (await editorText(app)).includes("|Pears|12|\n| | |\n| | |"));
+	// Off the table: squared.
+	await app.press("End", { meta: true });
+	await until("the pipes squared", async () => (await editorText(app)).includes("| Name   | Amount |\n| :----- | -----: |\n| Apples | 3      |\n| Pears  | 12     |\n|        |        |\n|        |        |"));
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.ok(readFileSync(join(cwd, "edit-table.md"), "utf8").includes("| Pears  | 12     |"), "squared on disk");
+});
+
+check("typing [^ offers the footnotes and a new one, and a footnote's number says its note on hover", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "fn.md"), "# fn\n\nA claim.[^note] More.\n\n[^note]: What the note says.\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="fn.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="fn.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	// After "More." type [^ : the note there is, with its words, and a new one.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("More.") + 5; v.dispatch({ selection: { anchor: at } }); })()`);
+	await app.keys("[^");
+	const offered = () => app.evaluate("[...document.querySelectorAll('.cm-tooltip-autocomplete li')].map((l) => l.textContent)");
+	await until("the offers", async () => (await offered()).length === 2);
+	const list = await offered();
+	assert.ok(list[0].startsWith("note") && list[0].includes("What the note says"), `the footnote there is, with its words: ${list[0]}`);
+	assert.ok(list[1].startsWith("New footnote") && list[1].includes("[^1]"), `a new one, numbered next: ${list[1]}`);
+	// The new one: [^1] in the text, its note begun under the last, the cursor in it.
+	await app.press("ArrowDown");
+	await until("the new one chosen", () => app.evaluate(`document.querySelector('.cm-tooltip-autocomplete li[aria-selected="true"]')?.textContent.startsWith("New footnote")`));
+	await app.press("Enter");
+	await until("the reference and its note", async () => {
+		const text = await editorText(app);
+		if (text.includes("More.[^1]") && text.includes("[^note]: What the note says.\n[^1]: ")) return true;
+		throw new Error(JSON.stringify(text.slice(-80)));
+	});
+	await app.keys("Written here.");
+	await until("the note written", async () => (await editorText(app)).includes("[^1]: Written here."));
+	// Off the line, the number; hovered, its note.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 0 } }); })()`);
+	await until("the numbers", () => app.evaluate("document.querySelectorAll('#editor sup.cm-footnote-ref').length === 2"));
+	const at = await app.evaluate("(() => { const r = document.querySelectorAll('#editor sup.cm-footnote-ref')[1].getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
+	await app.moveTo(at.x, at.y);
+	await until("its note on hover", () => app.evaluate("document.querySelector('.cm-tooltip-footnote')?.textContent === 'Written here.'"));
 });
 
 check("links are drawn, a missing one differently; ⌘+click follows one and makes the other", async ({ app, cwd }) => {
@@ -2721,6 +2878,129 @@ check("typing @ in the message box offers the notes, and Enter writes the chosen
 	await app.keys("and more");
 	assert.deepEqual(await listed(), []);
 	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+	// A PDF in the folder is offered too, after the notes, with its extension for a title.
+	writeFileSync(join(cwd, "mentionable.pdf"), "%PDF-1.4\n");
+	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.focus(); t.value = ''; })()");
+	await app.keys("see @mentionable.p");
+	await until("the PDF to be listed", async () => (await listed()).some((t) => t.startsWith("mentionable.pdf")));
+	await app.press("Enter");
+	await until("the PDF's path written in", async () => (await box()) === "see @mentionable.pdf ");
+	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+});
+
+/**
+ * A PDF in the folder is a row of the tree, where it is on disk, and opens in
+ * a tab of its own drawn by pdf.js — with a layer of real text over the page,
+ * which is what makes its words choosable. The fixture's words are the check.
+ */
+check("a PDF in the folder is in the tree, and opens in a tab with its words on the page", async ({ app, cwd }) => {
+	mkdirSync(join(cwd, "papers"), { recursive: true });
+	writeFileSync(join(cwd, "papers/three pages.pdf"), readFileSync(join(root, "test/fixtures/three-pages.pdf")));
+	await pickNote(app, "papers/three pages.pdf");
+	await until("the first page's words in the text layer", () => app.evaluate("[...document.querySelectorAll('#page .textLayer')].some((l) => l.textContent.includes('The first page.'))"), 30000);
+	assert.equal(await app.evaluate("document.querySelectorAll('#page .pdfViewer .page').length"), 3, "every page has its place");
+	assert.equal(await app.evaluate("document.querySelector('#note')"), null, "no editor under it");
+	assert.equal(await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.textContent.trim()"), "three pages.pdf", "the tab says its name, extension and all");
+	assert.equal(await app.evaluate("document.querySelector('#notes button[data-path=\"papers/three pages.pdf\"]').dataset.active"), "true", "its row is lit");
+	assert.equal(await app.evaluate("decodeURIComponent(location.hash)"), "#papers/three pages.pdf", "the address is its path, as a note's is");
+	// The page is fitted to the column rather than drawn at its own size.
+	const widths = await app.evaluate("(() => { const p = document.querySelector('#page .pdfViewer .page').getBoundingClientRect().width; const c = document.querySelector('#page').getBoundingClientRect().width; return [p, c]; })()");
+	assert.ok(widths[0] > widths[1] * 0.8 && widths[0] <= widths[1], `the page fits the column: ${widths}`);
+	// Reloaded at that address, it comes back as it was.
+	await app.evaluate("location.reload()");
+	await until("the words again after a reload", () => app.evaluate("[...document.querySelectorAll('#page .textLayer')].some((l) => l.textContent.includes('The first page.'))"), 30000);
+});
+
+/**
+ * `[[paper.pdf#page=2]]`, as Obsidian writes it: the link is a link to
+ * something that is there, ⌘-click opens the document at that page, another
+ * link to another page moves the document already open, and neither it nor a
+ * link to a document that is not there makes a note called "….pdf". Embedded
+ * with `!`, it is not drawn as a note that could not be found.
+ */
+check("a link to a page of a PDF opens it there, and never makes a note of its name", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "linked.pdf"), readFileSync(join(root, "test/fixtures/three-pages.pdf")));
+	writeFileSync(join(cwd, "cites.md"), "See [[linked.pdf#page=2]] and [[linked.pdf#page=3]].\n\nNot here: [[gone.pdf]].\n\n![[linked.pdf#page=2]]\n\nThe end.\n");
+	await pickNote(app, "cites.md");
+	await until("the links drawn: two found, one missing, and the embed's", async () => (await app.evaluate("[...document.querySelectorAll('#editor .cm-wikilink')].map((l) => l.classList.contains('cm-wikilink-missing') ? 'x' : 'o').join('')")) === "ooxo");
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-embed').length"), 0, "no card for a document");
+	const current = () => app.evaluate("(() => { const pages = [...document.querySelectorAll('#page .pdfViewer .page')]; const top = document.querySelector('#page > div')?.getBoundingClientRect().top ?? 0; const at = pages.find((p) => p.getBoundingClientRect().bottom > top + 40); return at ? Number(at.dataset.pageNumber) : 0; })()");
+	await app.click("#editor .cm-wikilink", 0, { meta: true });
+	await until("the document, at its second page", async () => (await app.evaluate("document.querySelector('#page')?.dataset.document ?? ''")) === "linked.pdf" && (await current()) === 2, 30000);
+	// Back to the note, and the other link: the same tab, moved to the third page.
+	await pickNote(app, "cites.md");
+	await until("the note again", () => app.evaluate("!!document.querySelector('#editor .cm-wikilink')"));
+	await app.click("#editor .cm-wikilink", 1, { meta: true });
+	await until("the third page", async () => (await app.evaluate("document.querySelector('#page')?.dataset.document ?? ''")) === "linked.pdf" && (await current()) === 3, 30000);
+	await pickNote(app, "cites.md");
+	await until("the note once more", () => app.evaluate("!!document.querySelector('#editor .cm-wikilink-missing')"));
+	await app.click("#editor .cm-wikilink-missing", 0, { meta: true });
+	await new Promise((r) => setTimeout(r, 500));
+	assert.deepEqual(readdirSync(cwd).filter((f) => /\.pdf\.md$|^gone/.test(f)), [], "no note made of a document's name");
+	assert.equal(await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.textContent.trim()"), "cites", "and the note is still what is open");
+});
+
+/**
+ * Words dragged across in a PDF are chosen the way words in a note are: they
+ * show above the box with their page, stay there when the box is clicked into
+ * — which empties the browser's selection, the one thing a note's editor does
+ * not do — and go beside the message, not in it.
+ */
+check("words dragged across in a PDF show above the box with their page, and go beside the message", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "chosen from.pdf"), readFileSync(join(root, "test/fixtures/three-pages.pdf")));
+	await pickNote(app, "chosen from.pdf");
+	await until("the second page's words", () => app.evaluate("[...document.querySelectorAll('#page .textLayer span')].some((s) => s.textContent.includes('Page two'))"), 30000);
+	await app.evaluate("[...document.querySelectorAll('#page .textLayer span')].find((s) => s.textContent.includes('Page two')).scrollIntoView({ block: 'center' })");
+	await app.evaluate("[...document.querySelectorAll('#page .textLayer span')].find((s) => s.textContent.includes('Page two')).setAttribute('data-e2e', 'two')");
+	assert.equal(await app.drag("#page .textLayer span[data-e2e=two]"), true);
+	const chip = () => app.evaluate("document.getElementById('chosen')?.textContent ?? ''");
+	// The whole of what was dragged across, under its page: the selection grows as the pointer moves, and the chip follows it.
+	await until("the chip with the page and the words", async () => (await chip()) === "p. 2Page two says hello.");
+	// Into the box to ask: the browser lets go of the selection, the words stay.
+	await app.click("textarea");
+	await new Promise((r) => setTimeout(r, 300));
+	assert.match(await chip(), /^p\. 2/, "clicking into the box does not take them away");
+	// What goes out: the words and the page beside the message, the PDF as what is in front.
+	await app.evaluate("(() => { window.__sent = []; const send = WebSocket.prototype.send; WebSocket.prototype.send = function (d) { window.__sent.push(d); return send.call(this, d); }; })()");
+	await app.keys("what does this mean");
+	await app.press("Enter");
+	const prompt = await until("the prompt to go", async () => (await app.evaluate("window.__sent.map((d) => JSON.parse(d)).find((m) => m.type === 'prompt') ?? null")));
+	assert.equal(prompt.text, "what does this mean", "the message is only what was typed");
+	assert.equal(prompt.note, "chosen from.pdf");
+	assert.equal(prompt.page, "2");
+	assert.match(prompt.chosen, /Page two says hello/);
+	// A click on the pages unchooses, as it does anywhere.
+	const blank = await app.evaluate("(() => { const r = document.querySelector('#page .textLayer span[data-e2e=two]').getBoundingClientRect(); return [r.left + 20, r.bottom + 80]; })()");
+	await app.clickAt(blank[0], blank[1]);
+	await until("the chip to go", async () => (await chip()) === "");
+});
+
+/**
+ * A PDF dropped on the message box goes into the folder and is named in the
+ * message. The drop is a real DragEvent carrying a real File, so what is
+ * checked is the whole path: the box, the door, the disk, the list.
+ */
+check("a PDF dropped on the message box is put in attachments/ and named in the message", async ({ app, cwd }) => {
+	const box = () => app.evaluate("document.querySelector('textarea').value");
+	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.focus(); t.value = 'about'; t.setSelectionRange(5, 5); t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+	await app.evaluate(`(() => {
+		const data = new DataTransfer();
+		data.items.add(new File([new TextEncoder().encode("%PDF-1.4 dropped")], "dropped here.pdf", { type: "application/pdf" }));
+		document.querySelector('textarea').dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
+	})()`);
+	await until("the path written in", async () => (await box()) === "about @attachments/dropped here.pdf ");
+	assert.equal(readFileSync(join(cwd, "attachments/dropped here.pdf"), "utf8"), "%PDF-1.4 dropped", "the bytes are in the folder");
+	assert.equal(await app.evaluate("document.querySelector('#adding') === null"), true, "the line saying so is gone once it is there");
+	assert.equal(await app.evaluate("document.querySelector('#attached') === null"), true, "it is not an image riding with the message");
+	// A kind the folder does not take is refused, in the conversation, and nothing is written in.
+	await app.evaluate(`(() => {
+		const data = new DataTransfer();
+		data.items.add(new File(["x"], "script.sh", { type: "text/x-sh" }));
+		document.querySelector('textarea').dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
+	})()`);
+	await until("the refusal said", () => app.evaluate("document.body.innerText.includes('Could not add script.sh')"));
+	assert.equal(await box(), "about @attachments/dropped here.pdf ");
+	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
 });
 
 check("the loadout screen keeps a model pi does not offer, and shows a change another window made", async ({ app, api }) => {
@@ -2771,7 +3051,7 @@ check("the loadout screen keeps a model pi does not offer, and shows a change an
 	}
 });
 
-check("a version ready to install is offered in the corner, × leaves a dot, About answers a check, and a new version opens What's new", async ({ app }) => {
+check("a version ready to install is offered in the corner, × leaves a dot, About answers a check, and a new version opens What's new, and the first run opens Welcome", async ({ app, cwd }) => {
 	// The shell's bridge, stood in for: the page is served to a browser here,
 	// where there is no window.pi. What the stub is told is what the page is
 	// told, and what the page asks of it is written down.
@@ -2790,6 +3070,7 @@ check("a version ready to install is offered in the corner, × leaves a dot, Abo
 			check: async () => window.__update.calls.push("check"),
 			restart: async () => window.__update.calls.push("restart"),
 			seen: async () => window.__update.calls.push("seen"),
+			welcomed: async () => window.__update.calls.push("welcomed"),
 		}, onOpenSettings: (l) => { window.__update.opens.push(l); return () => {}; }, onOpenPage: (l) => { window.__update.pages.push(l); return () => {}; } };
 		}`);
 	try {
@@ -2873,6 +3154,38 @@ check("a version ready to install is offered in the corner, × leaves a dot, Abo
 		await until("the tab back, from Help", async () => (await tabs()).includes("What's new in 0.0.3"));
 		await app.press("w", { meta: true });
 		await until("the tab closed again", async () => !(await tabs()).includes("What's new"));
+
+		// The first run: the shell says nobody has been welcomed, and the
+		// Welcome page opens in front with its three steps — the folder is
+		// ticked from the start, the note's button writes the note into the
+		// folder with its text, and Done tells the shell and closes the tab.
+		await app.evaluate(`window.__update.say({ welcomed: false })`);
+		await until("the Welcome tab, in front", async () => (await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.textContent ?? ''")).includes("Welcome"));
+		const steps = () => app.evaluate("[...document.querySelectorAll('#page [data-step]')].map((s) => s.dataset.done).join(',')");
+		await until("the folder step ticked, the note's not", async () => {
+			const seen = await steps();
+			if (seen.startsWith("true,") && seen.endsWith(",false")) return true;
+			throw new Error(seen);
+		});
+		await app.evaluate("document.querySelector('#page [data-step=\"3\"] button').scrollIntoView({ block: 'center' })");
+		assert.ok(await app.click("#page [data-step='3'] button"), "the note's button");
+		await until("the welcome note, in the folder and open", async () => {
+			const tab = await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.textContent ?? ''");
+			if (existsSync(join(cwd, "Welcome to Octave.md")) && tab.includes("Welcome to Octave")) return true;
+			throw new Error(JSON.stringify({ file: existsSync(join(cwd, "Welcome to Octave.md")), tab, steps: await steps() }));
+		});
+		assert.match(readFileSync(join(cwd, "Welcome to Octave.md"), "utf8"), /^---\ncreated: [^\n]+\n---\n# Welcome to Octave\n/, "the note's text, under the created stamp");
+		assert.ok(await app.click("[role=tab]", await app.evaluate("[...document.querySelectorAll('[role=tab]')].findIndex((t) => t.textContent.trim() === 'Welcome')")), "the Welcome tab");
+		await until("the note step ticked", async () => (await steps()).endsWith(",true"));
+		await app.evaluate("[...document.querySelectorAll('#page button')].find((b) => b.textContent === 'Done').scrollIntoView({ block: 'center' })");
+		assert.ok(await app.click("#page button", await app.evaluate("[...document.querySelectorAll('#page button')].findIndex((b) => b.textContent === 'Done')")), "Done");
+		// The note's tab says Welcome too: the page's is the one that says only that.
+		const welcomeTab = async () => (await tabs()).split("|").some((t) => t.trim() === "Welcome");
+		await until("the shell told, the tab gone", async () => (await app.evaluate("window.__update.calls.includes('welcomed')")) && !(await welcomeTab()));
+		await app.evaluate("window.__update.pages.forEach((l) => l('welcome'))");
+		await until("the page back, from Help", welcomeTab);
+		await app.press("w", { meta: true });
+		await until("the Welcome tab closed", async () => !(await welcomeTab()));
 		bodyDone = true;
 	} finally {
 		await stopStanding();
@@ -2901,6 +3214,22 @@ check("the bench renders every scenario it knows", async ({ bench }) => {
 	}
 	// Away again, so the check after this one does not read a page with a menu over it.
 	await bench.press("Escape");
+});
+
+check("the bench draws a question where the app does, and says what it was answered with", async ({ bench }) => {
+	await bench.click("#asking");
+	const questions = await until("the questions", () =>
+		bench.evaluate("[...document.querySelectorAll('[role=option]')].map((o) => o.dataset.question).join(',')"),
+	);
+	for (const id of ["confirm", "select", "multiselect", "input", "editor", "batch"]) {
+		assert.ok(questions.split(",").includes(id), `the bench is missing the ${id} question`);
+	}
+	await bench.click('[data-question="confirm"]');
+	// Not `answer`: the bench keeps the question up, having nothing to dismiss it.
+	await until("the question", () => bench.evaluate(`!!${choiceOf("Yes")}`));
+	await bench.evaluate(`${choiceOf("Yes")}.querySelector('input').click()`);
+	await bench.evaluate("document.querySelector('#question [data-slot=questionnaire-submit]').click()");
+	await until("what it was answered with", async () => (await bench.evaluate("document.getElementById('answered')?.textContent")) === "true");
 });
 
 check("nothing was written to the console", async ({ app, bench }) => {

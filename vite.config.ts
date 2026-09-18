@@ -1,8 +1,10 @@
+import { cp, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 
 const dir = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
@@ -10,11 +12,40 @@ const dir = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 const apiPort = process.env.PORT ?? "3000";
 const apiHost = process.env.HOST ?? "127.0.0.1";
 
+/**
+ * What pdf.js fetches beside itself while it reads a file: the character maps
+ * a PDF in Korean, Japanese or Chinese names its text by, the fourteen fonts
+ * a PDF may use without carrying, and the decoders for the image kinds the
+ * browser has none for. They are plain files it asks for by name under one
+ * address, so they cannot be imports; they are given out from the package
+ * while developing and copied beside the build when building — under /pdfjs/,
+ * which is where Pdf.tsx says they are. Without them most PDFs still open,
+ * and one written in Hangul with its fonts left out opens as empty boxes.
+ */
+const PDFJS = dir("./node_modules/pdfjs-dist");
+const PDFJS_ASSETS = ["cmaps", "standard_fonts", "wasm"];
+const pdfjsAssets = (): Plugin => ({
+	name: "pdfjs-assets",
+	configureServer(server) {
+		server.middlewares.use("/pdfjs", (req, res, next) => {
+			const name = decodeURIComponent((req.url ?? "").split("?")[0]).replace(/^\/+/, "");
+			if (!PDFJS_ASSETS.some((d) => name.startsWith(`${d}/`)) || name.includes("..")) return next();
+			readFile(join(PDFJS, name)).then(
+				(body) => res.setHeader("content-type", name.endsWith(".wasm") ? "application/wasm" : "application/octet-stream").end(body),
+				() => next(),
+			);
+		});
+	},
+	async closeBundle() {
+		for (const d of PDFJS_ASSETS) await cp(join(PDFJS, d), join(dir("./dist/pdfjs"), d), { recursive: true });
+	},
+});
+
 export default defineConfig({
 	// The client lives in web/ rather than at the repo root so its index.html
 	// does not collide with the old one while both are still around.
 	root: dir("./web"),
-	plugins: [react(), tailwindcss()],
+	plugins: [react(), tailwindcss(), pdfjsAssets()],
 	resolve: { alias: { "@": dir("./web/src") } },
 	server: {
 		port: 5173,

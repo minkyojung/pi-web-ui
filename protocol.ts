@@ -54,6 +54,8 @@ export type ClientMsg =
 			 * whatever is chosen then, which is nothing to do with this one.
 			 */
 			chosen?: string;
+			/** Where in a document those words are — "3", "3-4" — when `note` is a PDF rather than a note. */
+			page?: string;
 			/**
 			 * Asking about a chosen part of the open note rather than typing in the
 			 * box: `text` is the question and this is what it is about. The chosen
@@ -112,7 +114,7 @@ export type ClientMsg =
 	 * that name is taken or not a note's. Answered with `note_created` to this
 	 * tab and `note` to every tab.
 	 */
-	| { type: "new_note"; name?: string }
+	| { type: "new_note"; name?: string; text?: string }
 	/** Give a note another path. Answered with `note_renamed` to every tab, or `note_rename_failed` to this one. */
 	| { type: "rename_note"; path: string; to: string }
 	/** Put a note in the trash. Answered with `note_deleted` to every tab. */
@@ -471,6 +473,8 @@ export interface SnapshotMsg {
 export interface FilesMsg {
 	type: "files";
 	files: NoteFile[];
+	/** The documents beside the notes — files the agent reads as text, a PDF — by path, for naming one in a message. */
+	documents: string[];
 	truncated: boolean;
 }
 

@@ -30,6 +30,17 @@ files:
   # an update.
   - CHANGELOG.md
 
+# The agent's search tools, fetched by scripts/tools.mjs into build/bin and
+# carried in Resources/bin — pi would otherwise download them from GitHub the
+# first time it searched a folder on a Mac without them. main.js puts the
+# folder on the server's PATH, which is where pi looks. Signed with the app:
+# a Mach-O the signer did not sign is a notarization refused.
+extraResources:
+  - from: build/bin/rg
+    to: bin/rg
+  - from: build/bin/fd
+    to: bin/fd
+
 # The server runs as a child process, and a child process cannot load an ES
 # module out of an asar archive. Unpacking just the server does not help either:
 # it would then resolve `@earendil-works/pi-coding-agent` from disk and find
@@ -66,6 +77,9 @@ mac:
   # `electronFuses` says otherwise — so it is not set here, and
   # scripts/verify-signed.sh checks the packaged app still starts its server.
   notarize: true
+  binaries:
+    - Contents/Resources/bin/rg
+    - Contents/Resources/bin/fd
 
 dmg:
   # One window, the app and a link to Applications, no background art yet.

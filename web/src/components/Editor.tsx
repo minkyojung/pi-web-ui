@@ -21,12 +21,15 @@ import { leaveTextUp } from "../features/pageMove";
 import { properties, propertiesField } from "../features/properties";
 import { fromServer, serverChange } from "../features/origin";
 import { embeds } from "../features/embeds";
+import { footnoteCompletion } from "../features/footnoteCompletion";
 import { footnotesExtension } from "../features/footnotes";
 import { images } from "../features/images";
+import { tableEdit } from "../features/tableEdit";
 import { tablesExtension } from "../features/tables";
 import { landOn, links, notesChanged } from "../features/links";
 import { html } from "../features/html";
 import { mathExtension } from "../features/mathview";
+import { pasteImage } from "../features/pasteImage";
 import { closeDiff, diffFor, keepChunk, review, showDiff, undoChunk } from "../features/review";
 import { toggleBold, toggleItalic } from "../features/toggleMarks";
 import { fitted, leaving, scrollBack } from "../features/viewPlace";
@@ -39,7 +42,7 @@ import { tagsIn, type Place } from "../../../links.ts";
 import type { Left } from "../nav";
 import type { Edit } from "../types";
 import type { Authored } from "../../../protocol.ts";
-import { authorsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
+import { authorsStore, documentsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
 import { inFrontStore, say as sayInFront } from "../inFront";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { flushSaves, registerSave } from "../saves";
@@ -343,6 +346,7 @@ export function Editor({
 			authors(() => at.current),
 			links({
 				notes: () => filesStore.get().map((f) => f.path),
+				documents: () => documentsStore.get(),
 				here: () => at.current,
 				open: (p, at) => onOpen?.(p, at),
 			}),
@@ -350,10 +354,16 @@ export function Editor({
 			// tables; footnotes as numbers.
 			images(() => at.current),
 			tablesExtension,
+			// Tab between cells, Enter for a row, the pipes squared on leaving.
+			tableEdit,
 			footnotesExtension,
+			// `[^` offers the footnotes and a new one; a number says its note on hover.
+			footnoteCompletion,
 			mathExtension,
 			// The little HTML a note holds, from an allowlist.
 			html(() => at.current),
+			// A picture pasted or dropped in goes into the folder, and the note names it.
+			pasteImage(() => at.current),
 			// Another note, in place: a card with its text, or a section of it.
 			embeds({ notes: () => filesStore.get().map((f) => f.path), here: () => at.current, open: (p) => onOpen?.(p) }),
 			linkCompletion(() => filesStore.get().map((f) => f.path)),
@@ -527,9 +537,10 @@ export function Editor({
 
 	// A note made or renamed elsewhere may be the one a link here names.
 	const notes = useSyncExternalStore(filesStore.subscribe, filesStore.get);
+	const documents = useSyncExternalStore(documentsStore.subscribe, documentsStore.get);
 	useEffect(() => {
 		view.current?.dispatch({ effects: notesChanged.of(null) });
-	}, [notes]);
+	}, [notes, documents]);
 
 	// The note whole: the answer to open_note, and the fallback for a change
 	// on a version this editor does not have.

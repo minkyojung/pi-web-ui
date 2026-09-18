@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { listNotes, newNoteName, notePath, readNote, renameNote, resolveNote, restoreNote, trashNote, withCreated, writeNote } from "../vault.ts";
+import { documentAt, listFiles, listNotes, newNoteName, notePath, readNote, renameNote, resolveNote, restoreNote, trashNote, withCreated, writeNote } from "../vault.ts";
 
 const DIR = mkdtempSync(join(tmpdir(), "notes-"));
 /** What the disk calls DIR: on a Mac the temp folder is reached through a symlink. */
@@ -28,6 +28,21 @@ test("마크다운만, 하위 폴더까지, 최근 것이 먼저", () => {
     listNotes(DIR).map((f) => f.path),
     ["a.md", "b.md", "deep/er/c.md"],
   );
+});
+
+test("문서는 노트 곁에, 같은 걸음으로, 경로만 이름순으로", () => {
+  put("paper.pdf", 50);
+  put("papers/Deep.PDF", 60);
+  put(".pi/cache.pdf", 70);
+  const { notes, documents } = listFiles(DIR);
+  assert.deepEqual(documents, ["paper.pdf", "papers/Deep.PDF"]);
+  assert.ok(notes.every((f) => f.path.endsWith(".md")), "노트 목록에 문서는 없다");
+  assert.deepEqual(listNotes(DIR), notes);
+  assert.equal(documentAt(DIR, "papers/Deep.PDF"), "papers/Deep.PDF");
+  assert.equal(documentAt(DIR, ".pi/cache.pdf"), null, "숨김 폴더는 아니다");
+  assert.equal(documentAt(DIR, "a.md"), null, "노트는 문서가 아니다");
+  assert.equal(documentAt(DIR, "../x.pdf"), null);
+  assert.equal(documentAt(DIR, join(DIR, "paper.pdf")), null, "절대 경로는 폴더 이름이 아니다");
 });
 
 test("숨김 폴더와 의존성 폴더는 들어가지 않는다", () => {

@@ -47,3 +47,20 @@ test("only images, only inside the folder, never under a dot-folder", () => {
 	assert.equal(imageType("a.PNG"), "image/png");
 	assert.equal(imageType("a.md"), null);
 });
+
+import { attachmentFolder } from "../pictures.ts";
+
+test("a pasted picture goes where Obsidian was told to keep them, else in attachments/", () => {
+	assert.equal(attachmentFolder(ROOT, "notes.md"), "attachments", "not told: attachments/");
+	mkdirSync(join(ROOT, ".obsidian"), { recursive: true });
+	const told = (value) => writeFileSync(join(ROOT, ".obsidian", "app.json"), JSON.stringify({ attachmentFolderPath: value }));
+	told("assets/pics");
+	assert.equal(attachmentFolder(ROOT, "book/ch1/notes.md"), "assets/pics", "a folder of the vault's");
+	told("/");
+	assert.equal(attachmentFolder(ROOT, "book/ch1/notes.md"), "", "the root");
+	told("./");
+	assert.equal(attachmentFolder(ROOT, "book/ch1/notes.md"), "book/ch1", "beside the note");
+	told("./img");
+	assert.equal(attachmentFolder(ROOT, "book/ch1/notes.md"), "book/ch1/img", "under the note's folder");
+	rmSync(join(ROOT, ".obsidian", "app.json"));
+});

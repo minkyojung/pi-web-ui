@@ -127,13 +127,37 @@ const field = StateField.define<DecorationSet>({
 
 export const tablesExtension: Extension = [
 	field,
-	// A click on the drawn table: the cursor goes to the table's first line,
-	// which brings the pipes back under it.
+	// A click on the drawn table: the cursor goes into the cell that was
+	// clicked — its row and column counted in the drawn table, then found in
+	// the tree — which brings the pipes back with the cursor where the eye is.
 	EditorView.domEventHandlers({
 		mousedown(event, view) {
-			const table = (event.target as HTMLElement).closest?.(".cm-table");
+			const el = event.target as HTMLElement;
+			const table = el.closest?.(".cm-table") as HTMLTableElement | null;
 			if (!table) return false;
-			const pos = view.posAtDOM(table);
+			const cell = el.closest("td, th") as HTMLTableCellElement | null;
+			const tr = cell?.parentElement as HTMLTableRowElement | null;
+			const row = tr ? [...table.querySelectorAll("tr")].indexOf(tr) : -1;
+			const col = cell ? cell.cellIndex : -1;
+			let pos = view.posAtDOM(table);
+			if (row >= 0 && col >= 0) {
+				syntaxTree(view.state).iterate({
+					from: pos,
+					to: pos,
+					enter: (node) => {
+						if (node.name !== "Table") return;
+						let r = 0;
+						for (let n = node.node.firstChild; n; n = n.nextSibling) {
+							if (n.name !== "TableHeader" && n.name !== "TableRow") continue;
+							if (r++ !== row) continue;
+							const cells = n.getChildren("TableCell");
+							const c = cells[Math.min(col, cells.length - 1)];
+							if (c) pos = c.to;
+						}
+						return false;
+					},
+				});
+			}
 			view.dispatch({ selection: { anchor: pos } });
 			view.focus();
 			return true;

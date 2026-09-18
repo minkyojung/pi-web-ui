@@ -7,11 +7,13 @@
  * the note. A note that is not there says so. One level: an embed inside
  * an embedded note is a link.
  */
+import { isDocument } from "../../../documentKinds.ts";
 import { syntaxTree } from "@codemirror/language";
 import { type EditorState, type Extension, type Range, type SelectionRange, StateEffect } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 
 import { readWikiLink, resolve } from "../../../links.ts";
+import { noteChangedStore } from "../serverState";
 import { blocksDom } from "./blocksDom.ts";
 import { sectionOf } from "./embed.ts";
 import { notesChanged } from "./links";
@@ -112,7 +114,8 @@ function cards(view: EditorView, ctx: Ctx): DecorationSet {
 				const link = node.node.getChild("WikiLink");
 				if (!link) return false;
 				const { target, heading, block } = readWikiLink(link, slice).link;
-				if (IMAGE.test(target) || onLines(state, state.selection.ranges, node.from, node.to)) return false;
+				// A document is not shown in place: its link stays a link, which opens it at its page.
+				if (IMAGE.test(target) || isDocument(target) || onLines(state, state.selection.ranges, node.from, node.to)) return false;
 				const path = resolve(target, notes, here);
 				if (path) fetchNote(path, view);
 				const have = path ? (fetched.get(path) ?? "loading") : "missing";
@@ -128,8 +131,22 @@ export function embeds(ctx: Ctx): Extension {
 	return ViewPlugin.fromClass(
 		class {
 			decorations: DecorationSet;
+			stop: () => void;
 			constructor(view: EditorView) {
 				this.decorations = cards(view, ctx);
+				// A note that changed on disk — written here in another tab, by the
+				// agent, or from outside — is read again if a card shows it: the
+				// server says so to every tab (note_changed), and the card is only
+				// as current as what it was drawn from.
+				this.stop = noteChangedStore.subscribe(() => {
+					const path = noteChangedStore.get()?.path;
+					if (!path || !fetched.has(path)) return;
+					fetched.delete(path);
+					fetchNote(path, view);
+				});
+			}
+			destroy() {
+				this.stop();
 			}
 			update(u: ViewUpdate) {
 				const poked = u.transactions.some((tr) => tr.effects.some((e) => e.is(notesChanged) || e.is(loaded)));

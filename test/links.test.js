@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { parser as markdown } from "@lezer/markdown";
 
-import { backlinksOf, linksIn, markdownLinkTo, resolve, retarget } from "../links.ts";
+import { backlinksOf, linksIn, markdownLinkTo, pageNamed, resolve, resolveDocument, retarget } from "../links.ts";
 import { propertiesOf } from "../properties.ts";
 import { wikiLink } from "../wikilink.ts";
 
@@ -198,4 +198,18 @@ test("새 이름에 따옴표가 있어도 블록은 깨지지 않는다 — 인
   const after = retarget(note, "Alpha.md", 'He said "hi".md', ["Alpha.md", "n.md"], "n.md");
   assert.deepEqual(linksIn(after).map((l) => l.target), ['He said "hi"'], "다시 읽으면 새 이름이 나온다");
   assert.equal(propertiesOf(after).errors.length, 0, "블록은 여전히 읽힌다");
+});
+
+test("a link to a document finds it by name or by path, and says which page it names", () => {
+  const documents = ["papers/Deep Learning.pdf", "book/ch1/Deep Learning.pdf", "scan.pdf"];
+  assert.equal(resolveDocument("scan.pdf", documents, "a.md"), "scan.pdf");
+  assert.equal(resolveDocument("SCAN.PDF", documents, "a.md"), "scan.pdf", "as a note's name is: whatever the case");
+  assert.equal(resolveDocument("Deep Learning.pdf", documents, "book/ch1/notes.md"), "book/ch1/Deep Learning.pdf", "the nearest of two");
+  assert.equal(resolveDocument("papers/Deep Learning.pdf", documents, "book/ch1/notes.md"), "papers/Deep Learning.pdf", "a path is that path");
+  assert.equal(resolveDocument("missing.pdf", documents, "a.md"), null);
+  assert.equal(pageNamed({ heading: "page=3", block: null }), 3);
+  assert.equal(pageNamed({ heading: "Page=12", block: null }), 12);
+  assert.equal(pageNamed({ heading: "Results", block: null }), null, "a heading is not a page");
+  assert.equal(pageNamed({ heading: null, block: null }), null);
+  assert.equal(pageNamed(null), null);
 });

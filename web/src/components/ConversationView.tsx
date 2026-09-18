@@ -17,8 +17,9 @@ import { RunAnswer, RunWrote } from "./TurnFooter";
  * and brings a jump-to-bottom button with it.
  *
  * Its own file, not a second export of Conversation.tsx: the gallery mounts
- * this list and must not open a socket, and PromptCard — which answers over
- * one — would come with the module whether or not the export was used.
+ * this list and must not open a socket, and what Conversation.tsx moves the
+ * session with — which sends over one — would come with the module whether
+ * or not the export was used.
  */
 /**
  * Says whether the conversation is at its end, for what is not inside it — the
@@ -31,7 +32,7 @@ function AtEnd() {
 	return null;
 }
 
-export function ConversationView({ items, children }: { items: Item[]; children?: React.ReactNode }) {
+export function ConversationView({ items }: { items: Item[] }) {
 	// Through a ref, so the lookup a footer holds does not change identity when
 	// the list does — a new one every render would re-render every finished run
 	// on every delta, which memoizing the rows exists to avoid.
@@ -54,7 +55,6 @@ export function ConversationView({ items, children }: { items: Item[]; children?
 							<ItemView key={row.index} item={items[row.index]} index={row.index} />
 						),
 					)}
-					{children}
 				</ConversationContent>
 				<ConversationScrollButton />
 				<AtEnd />

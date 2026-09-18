@@ -20,6 +20,8 @@ export interface UpdateState {
 	progress: number | null;
 	error: string | null;
 	justUpdated: { from: string; to: string } | null;
+	/** The first run's page has been seen through. Absent in a browser, where there is no first run. */
+	welcomed?: boolean;
 }
 
 export interface UpdateBridge {
@@ -28,10 +30,12 @@ export interface UpdateBridge {
 	check: () => Promise<void>;
 	restart: () => Promise<void>;
 	seen: () => Promise<void>;
+	welcomed?: () => Promise<void>;
 }
 
 type Shell = {
 	update?: UpdateBridge;
+	choose?: () => Promise<void>;
 	onOpenSettings?: (listen: (section: string) => void) => () => void;
 	onOpenPage?: (listen: (page: string) => void) => () => void;
 };

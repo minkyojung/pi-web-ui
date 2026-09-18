@@ -20,6 +20,7 @@ test("select, confirm, input, editor는 ask_user의 카드로 나가고 답이 �
 	const { sent, prompts, ui } = screen();
 	const chosen = ui.select("Which?", ["a", "b"]);
 	assert.deepEqual(asked(sent), { ...asked(sent), type: "select", question: "Which?", options: ["a", "b"] });
+	assert.equal(asked(sent).metadata?.other, undefined, "확장은 내놓은 것 중 하나를 돌려받는다고 믿는다: 자기 말로 답할 자리는 없다");
 	prompts.answer(asked(sent).id, "b", false);
 	assert.equal(await chosen, "b");
 

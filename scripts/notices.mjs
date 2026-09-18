@@ -23,6 +23,7 @@
  *   node scripts/notices.mjs           writes THIRD_PARTY_NOTICES.md
  *   node scripts/notices.mjs --check   exits non-zero on a licence not on the list
  */
+import { TOOLS as TOOLS_CARRIED } from "./tools.mjs";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -83,6 +84,12 @@ function visit(name, from) {
 
 for (const name of roots) visit(name, root);
 
+// The two search tools carried in Resources/bin are not packages; their
+// licences come from the archives scripts/tools.mjs unpacked.
+for (const tool of TOOLS_CARRIED) {
+	const text = readFileSync(join(root, "build", "bin", "licences", `${tool.name}.txt`), "utf8");
+	seen.set(`tool:${tool.name}`, { name: tool.licence.project, version: tool.version, license: tool.licence.spdx, author: null, text });
+}
 const entries = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
 const out = [
 	"# Third-party notices",

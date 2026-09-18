@@ -133,6 +133,9 @@ export const branchesStore = createStore<BranchPoint[]>([]);
 /** The notes in the working folder, as the server last listed them. */
 export const filesStore = createStore<NoteFile[]>([]);
 
+/** The documents beside the notes — a PDF the agent can read — by path, as the server last listed them. */
+export const documentsStore = createStore<string[]>([]);
+
 /**
  * The folder held more notes than the walk would take, so this list is not all
  * of them. Worth a line on screen: a note that is in the folder and in no list
