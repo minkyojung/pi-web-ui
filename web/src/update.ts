@@ -30,19 +30,27 @@ export interface UpdateBridge {
 	seen: () => Promise<void>;
 }
 
-type Shell = { update?: UpdateBridge; onOpenSettings?: (listen: (section: string) => void) => () => void };
+type Shell = {
+	update?: UpdateBridge;
+	onOpenSettings?: (listen: (section: string) => void) => () => void;
+	onOpenPage?: (listen: (page: string) => void) => () => void;
+};
 export const bridge = (): UpdateBridge | null => (window as unknown as { pi?: Shell }).pi?.update ?? null;
 export const shell = (): Shell | null => (window as unknown as { pi?: Shell }).pi ?? null;
 
 export const updateStore = createStore<UpdateState | null>(null);
 
-/** Once, as the page starts: the state now, and every change after; and the shell's asks to open Settings. */
+/** A page the shell asked for — Help › What's New — until the app has opened it. */
+export const pageAskedStore = createStore<string | null>(null);
+
+/** Once, as the page starts: the state now, and every change after; and the shell's asks to open Settings or a page. */
 export function wireUpdates(onOpenSettings: (section: string) => void): void {
 	const pi = bridge();
 	if (!pi) return;
 	void pi.state().then(updateStore.set);
 	pi.onState(updateStore.set);
 	shell()?.onOpenSettings?.(onOpenSettings);
+	shell()?.onOpenPage?.(pageAskedStore.set);
 }
 
 /** The agent has nothing in hand and nothing waiting: the moment a restart costs nobody an answer. */

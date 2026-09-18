@@ -2614,7 +2614,7 @@ check("the loadout screen keeps a model pi does not offer, and shows a change an
 	}
 });
 
-check("a version ready to install is offered in the corner, × leaves a dot on the settings button, and About answers a check", async ({ app }) => {
+check("a version ready to install is offered in the corner, × leaves a dot, About answers a check, and a new version opens What's new", async ({ app }) => {
 	// The shell's bridge, stood in for: the page is served to a browser here,
 	// where there is no window.pi. What the stub is told is what the page is
 	// told, and what the page asks of it is written down.
@@ -2624,7 +2624,7 @@ check("a version ready to install is offered in the corner, × leaves a dot on t
 	// through a reload.
 	const stopStanding = await app.onNewDocument(`
 		if (sessionStorage.getItem("stand-in-for-the-shell") === "1") {
-		window.__update = { listeners: [], calls: [], opens: [], state: { current: "0.0.3", phase: "idle", version: null, progress: null, error: null, justUpdated: null },
+		window.__update = { listeners: [], calls: [], opens: [], pages: [], state: { current: "0.0.3", phase: "idle", version: null, progress: null, error: null, justUpdated: null },
 			say(patch) { this.state = { ...this.state, ...patch }; for (const l of this.listeners) l(this.state); } };
 		// The rest of the bridge too, as the shell has it: the page reads the folder off it when it is there.
 		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {}, update: {
@@ -2633,7 +2633,7 @@ check("a version ready to install is offered in the corner, × leaves a dot on t
 			check: async () => window.__update.calls.push("check"),
 			restart: async () => window.__update.calls.push("restart"),
 			seen: async () => window.__update.calls.push("seen"),
-		}, onOpenSettings: (l) => { window.__update.opens.push(l); return () => {}; } };
+		}, onOpenSettings: (l) => { window.__update.opens.push(l); return () => {}; }, onOpenPage: (l) => { window.__update.pages.push(l); return () => {}; } };
 		}`);
 	try {
 		await app.evaluate(`sessionStorage.setItem("stand-in-for-the-shell", "1"); location.reload()`);
@@ -2697,6 +2697,25 @@ check("a version ready to install is offered in the corner, × leaves a dot on t
 		await until("could not check", async () => (await about()).includes("Could not check right now"));
 		await app.press("Escape");
 		await until("Settings away", async () => (await about()) === "");
+
+		// The first run of a new version: a tab with what is new, from the
+		// changelog beside the server, and the shell told it has been seen.
+		await app.evaluate(`window.__update.say({ justUpdated: { from: "0.0.2", to: "0.0.3" } })`);
+		const tabs = () => app.evaluate("[...document.querySelectorAll('[role=tab]')].map((t) => t.textContent).join('|')");
+		await until("the What's new tab, in front", async () => (await tabs()).includes("What's new in 0.0.3") && (await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.textContent ?? ''")).includes("What's new"));
+		const page = () => app.evaluate("document.getElementById('page')?.innerText ?? ''");
+		await until("the notes, from the changelog", async () => /What's new in 0\.0\.3[\s\S]*CHANGED[\s\S]*PowerShell/.test(await page()));
+		await until("the shell told it was seen", () => app.evaluate("window.__update.calls.includes('seen')"));
+		assert.equal(await app.evaluate("!!document.querySelector('#editor .cm-content')"), false, "no editor under a page");
+		await app.shot("whats-new");
+
+		// Closed like any tab; asked for from Help, back again.
+		await app.press("w", { meta: true });
+		await until("the tab closed", async () => !(await tabs()).includes("What's new"));
+		await app.evaluate("window.__update.pages.forEach((l) => l('whats-new'))");
+		await until("the tab back, from Help", async () => (await tabs()).includes("What's new in 0.0.3"));
+		await app.press("w", { meta: true });
+		await until("the tab closed again", async () => !(await tabs()).includes("What's new"));
 		bodyDone = true;
 	} finally {
 		await stopStanding();

@@ -427,6 +427,8 @@ function buildMenu(workdir) {
 			{
 				role: "help",
 				submenu: [
+					{ label: "What's New", click: () => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send("open-page", "whats-new"); } },
+					{ type: "separator" },
 					{ label: "Report a Problem…", click: reportProblem },
 					{ label: "Show Log in Finder", click: showLog },
 				],

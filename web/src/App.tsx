@@ -17,6 +17,9 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import { UpdateToast } from "./components/UpdateToast";
 import type { Place } from "../../links.ts";
 import { hashForNote, noteFromHash } from "./noteSync";
+import { pageOf, whatsNewPath } from "./pages";
+import { pageAskedStore, updateStore } from "./update";
+import { WhatsNew } from "./components/WhatsNew";
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
 import { bump, forget, readRecent, writeRecent } from "./recent";
@@ -301,6 +304,25 @@ export function App() {
 	// Which notes are open in the middle column, left to right. Opening a note
 	// adds a tab; the address says which is in front. A rename follows the way
 	// the recent list does, and closing the one in front puts its neighbour there.
+	// A page in front: the middle column is its, and what reads the address as
+	// a note — the crumbs, the sidebar's open folders, the strip, the agent's
+	// idea of which note is open — is told there is none.
+	const page = pageOf(open);
+	const note = page ? null : open;
+
+	// What is new, on the first run of a version (the shell says so, once, until
+	// it is told it has been seen) and whenever Help asks.
+	const update = useSyncExternalStore(updateStore.subscribe, updateStore.get);
+	const pageAsked = useSyncExternalStore(pageAskedStore.subscribe, pageAskedStore.get);
+	useEffect(() => {
+		if (update?.justUpdated) setOpen(whatsNewPath(update.justUpdated.to));
+	}, [update?.justUpdated?.to, setOpen]);
+	useEffect(() => {
+		if (pageAsked !== "whats-new" || !update) return;
+		pageAskedStore.set(null);
+		setOpen(whatsNewPath(update.current));
+	}, [pageAsked, update, setOpen]);
+
 	const [tabs, setTabs] = useState(readTabs);
 	useEffect(() => {
 		if (open) setTabs((list) => addTab(list, open));
@@ -517,7 +539,7 @@ export function App() {
 					    rather than in it, and the list begins below it. */}
 					<div className="h-11 shrink-0" />
 					<Boundary name="list of notes">
-						<Sidebar open={open} onOpen={setOpen} />
+						<Sidebar open={note} onOpen={setOpen} />
 					</Boundary>
 				</ResizablePanel>
 				<ResizableHandle />
@@ -569,7 +591,7 @@ export function App() {
 					<div className={`flex min-h-0 flex-1 flex-col pr-2 ${sidebarOpen ? "" : "pl-2"}`}>
 					<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-background" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
 					<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
-					<NoteHeader path={open} onOpen={setOpen} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
+					<NoteHeader path={note} onOpen={setOpen} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
@@ -587,7 +609,9 @@ export function App() {
 					    be had, and the room was the one to go: a note short enough for
 					    this to matter is a note that does not scroll, and room to scroll
 					    into is nothing to a page that has nowhere to go. */}
-					{open && deleted?.path !== open ? (
+					{page ? (
+						<WhatsNew key={page.version} version={page.version} />
+					) : open && deleted?.path !== open ? (
 						<div id="note" className="no-scrollbar edge-top flex min-h-0 flex-1 flex-col overflow-y-auto">
 							{/* Inside the scroller, not around it: #note is what the editor,
 							    the steps and the checks all look up, and it should be there
@@ -669,7 +693,7 @@ export function App() {
 						    a step down does not need saying twice. */}
 						<div className="surface-panel m-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-sm border">
 							<Boundary name="conversation">
-								<Pi note={open} raw={raw} />
+								<Pi note={note} raw={raw} />
 							</Boundary>
 						</div>
 					</ResizablePanel>
@@ -688,7 +712,7 @@ export function App() {
 					    part of the window and reaches its edge, as VS Code's and Zed's
 					    do, and then there is only one place for anything to be centred
 					    in. */}
-					<StatusBar path={open} piWidth={piWidth} piFolded={!piOpen} onUnfoldPi={unfoldPi} />
+					<StatusBar path={note} piWidth={piWidth} piFolded={!piOpen} onUnfoldPi={unfoldPi} />
 				</ResizablePanel>
 			</ResizablePanelGroup>
 			</div>
