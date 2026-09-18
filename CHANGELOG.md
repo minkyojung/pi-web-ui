@@ -5,6 +5,8 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+
+## [0.0.5] - 2026-09-18
 ### Added
 - The HTML a note may hold is drawn: `<u>`, `<sub>`, `<sup>`, `<kbd>`, `<mark>` and their like around words, `<br>` for a line broken by hand, `<img>` with a width, and a `<details>` block — from a short list, with no script run and no style applied. Anything not on the list is left as written.
 - `H~2~O` and `x^2^` sit below and above the line, their marks hidden off the cursor.
@@ -50,7 +52,8 @@ The first release. Octave is a notes app for the Mac with an agent that works in
 - A signed, notarized disk image for Apple Silicon Macs. Octave updates itself: a new version is downloaded in the background and offered, with its notes, when it is ready.
 - Octave is free software under the AGPL-3.0; the licences of everything it is built on ship inside it.
 
-[Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.4...HEAD
+[Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.5...HEAD
+[0.0.5]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.1...v0.0.2
