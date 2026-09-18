@@ -5,6 +5,8 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+
+## [0.0.6] - 2026-09-18
 ### Added
 - A PDF in your folder can be talked about: name it in the message by its path, as you would a note, and the agent reads it page by page. A long one it reads in parts, as it does a long file.
 - Type `@` in the message box and the PDFs in your folder are offered after the notes, so one can be named without typing its path.
@@ -74,7 +76,8 @@ The first release. Octave is a notes app for the Mac with an agent that works in
 - A signed, notarized disk image for Apple Silicon Macs. Octave updates itself: a new version is downloaded in the background and offered, with its notes, when it is ready.
 - Octave is free software under the AGPL-3.0; the licences of everything it is built on ship inside it.
 
-[Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.5...HEAD
+[Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.6...HEAD
+[0.0.6]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.2...v0.0.3
