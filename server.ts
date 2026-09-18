@@ -7,7 +7,7 @@
  * server's state and are rebroadcast whenever it changes.
  */
 
-import { existsSync, mkdirSync, watch, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, watch, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -58,6 +58,7 @@ import { PropertyRegistry } from "./propertyRegistry.ts";
 import { isPropertyType } from "./propertyTypes.ts";
 import { backlinksOf, retarget } from "./links.ts";
 import { search } from "./search.ts";
+import { sectionFor } from "./changelog.mjs";
 import type {
 	Authored,
 	BranchesMsg,
@@ -1336,6 +1337,21 @@ const server = createServer(async (req, res) => {
 		if (req.method !== "GET") return json(405, { error: "read only" });
 		if (pathname === "/api/settings") return json(200, readSettings());
 		if (pathname === "/api/models") return json(200, catalog());
+		// What changed in a version, in the words of CHANGELOG.md — the file
+		// ships beside dist-server (electron-builder.yml), and the section is
+		// cut the way the release script cuts it. The page shows this after an
+		// update, rather than the HTML GitHub hands the updater.
+		if (pathname === "/api/changelog") {
+			const version = url.searchParams.get("version") ?? "";
+			if (!/^\d+\.\d+\.\d+$/.test(version)) return json(400, { error: "expected ?version=x.y.z" });
+			// Beside server.ts when run from the repo, one up from dist-server/ in
+			// the app — the same two places CLIENT_DIR is looked for in.
+			const file = [new URL("CHANGELOG.md", import.meta.url), new URL("../CHANGELOG.md", import.meta.url)].find((u) => existsSync(u));
+			if (!file) return json(404, { error: "no changelog beside this server" });
+			const changelog = readFileSync(file, "utf8");
+			const notes = sectionFor(changelog, version);
+			return notes === null ? json(404, { error: `no section for ${version}` }) : json(200, { version, notes });
+		}
 		return json(404, { error: "not found" });
 	}
 
