@@ -113,7 +113,10 @@ async function main() {
 		}
 	}
 
-	const date = new Date().toISOString().slice(0, 10);
+	// The day here, not the day in Greenwich: 0.0.2 was cut on a Friday morning
+	// in Seoul and the changelog said Thursday.
+	const now = new Date();
+	const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 	writeFileSync("CHANGELOG.md", cut(changelog, version, date, previous));
 	// The first release is the version package.json was given when the app was
 	// named, and npm refuses a version that is not a change unless told.
