@@ -47,6 +47,7 @@ import { createLoginBridge } from "./login.ts";
 import { noteTools } from "./noteEdit.ts";
 import { claimAppDir } from "./appDir.ts";
 import { wall } from "./wall.ts";
+import { documents } from "./documents.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { watchNotes } from "./watcher.ts";
@@ -213,6 +214,9 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 				// Then the wall: what the guard let through, the shell runs behind
 				// it, where a note cannot be written. See wall.ts.
 				{ name: "wall", factory: wall(CWD) },
+				// A PDF read with pi's read comes back as its text, page by page —
+				// see documents.ts.
+				{ name: "documents", factory: documents(CWD) },
 				// The one pair a note is written by — what the guard above sends
 				// edit and write to when they reach for one. See noteEdit.ts.
 				{ name: "notes", factory: noteTools(CWD, piWrote) },

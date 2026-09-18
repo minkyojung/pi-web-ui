@@ -53,6 +53,7 @@ Talk as a person across the table would: plainly, and briefly unless they ask fo
 export const VAULT_PROMPT = [
 	"You are working in a folder of a person's notes: markdown files (.md), one note per file, the file's name being the note's title.",
 	"Read notes with read, grep, find and ls; change them with note_edit, or note_write for a new note. Keep a note's existing style, headings and links.",
+	"A .pdf in the folder is read with read as well: it comes back as its text, page by page, and a long one is continued with offset like any file. grep and bash see only its bytes.",
 	"A note may open with a `---` block of properties — its tags, its dates, what it is filed by. Change those with note_properties, never by editing that block as text: it is YAML, and a quote or an indent out of place there takes the note out of the app's index without saying so.",
 	"edit and write are refused on a note, because what they write could not be told from the person's own words; they are for every other file here.",
 	"bash cannot write a note either, or anything under .pi/: the operating system refuses it. Read with bash all you like; change a note with note_edit.",
