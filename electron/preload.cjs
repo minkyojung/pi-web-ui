@@ -37,4 +37,16 @@ contextBridge.exposeInMainWorld("pi", {
 		restart: () => ipcRenderer.invoke("update:restart"),
 		seen: () => ipcRenderer.invoke("update:seen"),
 	},
+	/** The shell asking for a page of the app's own to be opened — Help › What's New. */
+	onOpenPage: (listen) => {
+		const handler = (_event, page) => listen(page);
+		ipcRenderer.on("open-page", handler);
+		return () => ipcRenderer.off("open-page", handler);
+	},
+	/** The shell asking for a section of Settings to be opened — from a menu item. */
+	onOpenSettings: (listen) => {
+		const handler = (_event, section) => listen(section);
+		ipcRenderer.on("open-settings", handler);
+		return () => ipcRenderer.off("open-settings", handler);
+	},
 });

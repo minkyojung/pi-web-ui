@@ -269,7 +269,7 @@ async function endServer() {
  * decides when that has been seen: the page says (update:seen), and the
  * version it saw is kept beside the last version run.
  */
-let update = { phase: "idle", version: null, progress: null, error: null, justUpdated: null };
+let update = { current: app.getVersion(), phase: "idle", version: null, progress: null, error: null, justUpdated: null };
 
 function sayUpdate(patch) {
 	update = { ...update, ...patch };
@@ -324,20 +324,14 @@ function watchForUpdates() {
 	setInterval(check, 4 * 60 * 60 * 1000).unref();
 }
 
-/** The same check, asked for from the menu, which answers either way. */
-async function checkForUpdatesNow() {
-	if (!app.isPackaged) {
-		dialog.showMessageBox({ type: "info", message: "A dev run does not update." });
-		return;
-	}
-	try {
-		const result = await autoUpdater.checkForUpdates();
-		if (!result?.isUpdateAvailable) {
-			dialog.showMessageBox({ type: "info", message: `Octave ${app.getVersion()} is the latest.` });
-		}
-	} catch (err) {
-		dialog.showMessageBox({ type: "warning", message: "Could not check for updates.", detail: err.message });
-	}
+/**
+ * The same check, asked for from the menu. The answer — the latest already,
+ * a download under way, a version ready, could not check — is the page's to
+ * say, in Settings › About, which is opened for it.
+ */
+function checkForUpdatesNow() {
+	for (const window of BrowserWindow.getAllWindows()) window.webContents.send("open-settings", "About");
+	if (app.isPackaged) autoUpdater.checkForUpdates().catch(() => {});
 }
 
 /**
@@ -433,6 +427,8 @@ function buildMenu(workdir) {
 			{
 				role: "help",
 				submenu: [
+					{ label: "What's New", click: () => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send("open-page", "whats-new"); } },
+					{ type: "separator" },
 					{ label: "Report a Problem…", click: reportProblem },
 					{ label: "Show Log in Finder", click: showLog },
 				],

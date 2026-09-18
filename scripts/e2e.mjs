@@ -2614,7 +2614,7 @@ check("the loadout screen keeps a model pi does not offer, and shows a change an
 	}
 });
 
-check("a version ready to install is offered in the corner; Restart takes it, × leaves a dot on the settings button", async ({ app }) => {
+check("a version ready to install is offered in the corner, × leaves a dot, About answers a check, and a new version opens What's new", async ({ app }) => {
 	// The shell's bridge, stood in for: the page is served to a browser here,
 	// where there is no window.pi. What the stub is told is what the page is
 	// told, and what the page asks of it is written down.
@@ -2624,8 +2624,8 @@ check("a version ready to install is offered in the corner; Restart takes it, ×
 	// through a reload.
 	const stopStanding = await app.onNewDocument(`
 		if (sessionStorage.getItem("stand-in-for-the-shell") === "1") {
-		window.__update = { listeners: [], calls: [], state: { phase: "idle", version: null, progress: null, error: null, justUpdated: null },
-			say(state) { this.state = state; for (const l of this.listeners) l(state); } };
+		window.__update = { listeners: [], calls: [], opens: [], pages: [], state: { current: "0.0.3", phase: "idle", version: null, progress: null, error: null, justUpdated: null },
+			say(patch) { this.state = { ...this.state, ...patch }; for (const l of this.listeners) l(this.state); } };
 		// The rest of the bridge too, as the shell has it: the page reads the folder off it when it is there.
 		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {}, update: {
 			state: async () => window.__update.state,
@@ -2633,7 +2633,7 @@ check("a version ready to install is offered in the corner; Restart takes it, ×
 			check: async () => window.__update.calls.push("check"),
 			restart: async () => window.__update.calls.push("restart"),
 			seen: async () => window.__update.calls.push("seen"),
-		} };
+		}, onOpenSettings: (l) => { window.__update.opens.push(l); return () => {}; }, onOpenPage: (l) => { window.__update.pages.push(l); return () => {}; } };
 		}`);
 	try {
 		await app.evaluate(`sessionStorage.setItem("stand-in-for-the-shell", "1"); location.reload()`);
@@ -2646,7 +2646,7 @@ check("a version ready to install is offered in the corner; Restart takes it, ×
 		});
 		assert.equal(await app.evaluate("document.querySelectorAll('[data-sonner-toast]').length"), 0, "nothing offered while nothing is ready");
 
-		await app.evaluate(`window.__update.say({ phase: "ready", version: "9.9.9", progress: 100, error: null, justUpdated: null })`);
+		await app.evaluate(`window.__update.say({ phase: "ready", version: "9.9.9", progress: 100 })`);
 		const toast = () => app.evaluate("document.querySelector('[data-sonner-toast]')?.innerText ?? ''");
 		await until("the offer", async () => (await toast()).includes("Octave 9.9.9 is ready"));
 		assert.match(await toast(), /Restart/, "with a Restart");
@@ -2668,13 +2668,54 @@ check("a version ready to install is offered in the corner; Restart takes it, ×
 		assert.ok(await app.click("[data-sonner-toast] [data-close-button]"), "the × is there");
 		await until("the corner empty", async () => (await toast()) === "");
 		await until("the dot", () => app.evaluate("!!document.querySelector('button[aria-label=\"Settings\"] [aria-label=\"An update is ready\"]')"));
-		await app.evaluate(`window.__update.say({ phase: "ready", version: "9.9.9", progress: 100, error: null, justUpdated: null })`);
+		await app.evaluate(`window.__update.say({ phase: "ready", version: "9.9.9", progress: 100 })`);
 		await new Promise((r) => setTimeout(r, 300));
 		assert.equal(await toast(), "", "the same version, said again, is not offered again");
 		// A newer one is.
-		await app.evaluate(`window.__update.say({ phase: "ready", version: "9.9.10", progress: 100, error: null, justUpdated: null })`);
+		await app.evaluate(`window.__update.say({ phase: "ready", version: "9.9.10", progress: 100 })`);
 		await until("the newer offer", async () => (await toast()).includes("9.9.10"));
 		await app.click("[data-sonner-toast] [data-close-button]");
+
+		// Settings › About: the version this is, and the one place a check's
+		// answer is given. The menu's Check for Updates… opens it.
+		await app.evaluate(`window.__update.say({ phase: "idle", version: null, progress: null })`);
+		await app.evaluate("window.__update.opens.forEach((l) => l('About'))");
+		const about = () => app.evaluate("document.querySelector('[role=dialog]')?.innerText ?? ''");
+		await until("About open, saying the version", async () => (await about()).includes("Octave 0.0.3"));
+		await until("no answer before a check was asked for", async () => /looks for a new version/.test(await about()));
+		assert.ok(await app.click("[role=dialog] button:not([data-close-button])", await app.evaluate("[...document.querySelectorAll('[role=dialog] button')].findIndex((b) => b.textContent === 'Check for Updates')")), "the Check button");
+		await until("the check asked of the shell", () => app.evaluate("window.__update.calls.filter((c) => c === 'check').length === 1"));
+		await app.evaluate(`window.__update.say({ phase: "checking" })`);
+		await until("checking", async () => (await about()).includes("Checking…"));
+		await app.evaluate(`window.__update.say({ phase: "idle" })`);
+		await until("the latest", async () => (await about()).includes("0.0.3 is the latest"));
+		await app.evaluate(`window.__update.say({ phase: "downloading", version: "9.9.11", progress: 40 })`);
+		await until("the download's progress", async () => (await about()).includes("Downloading 9.9.11 — 40%"));
+		await app.evaluate(`window.__update.say({ phase: "ready", version: "9.9.11", progress: 100 })`);
+		await until("ready, with a Restart of its own", async () => /9\.9\.11 is ready\.\s*Restart/.test(await about()));
+		await app.evaluate(`window.__update.say({ phase: "idle", version: null, progress: null, error: "boom" })`);
+		await until("could not check", async () => (await about()).includes("Could not check right now"));
+		await app.press("Escape");
+		await until("Settings away", async () => (await about()) === "");
+
+		// The first run of a new version: a tab with what is new, from the
+		// changelog beside the server, and the shell told it has been seen.
+		await app.evaluate(`window.__update.say({ justUpdated: { from: "0.0.2", to: "0.0.3" } })`);
+		const tabs = () => app.evaluate("[...document.querySelectorAll('[role=tab]')].map((t) => t.textContent).join('|')");
+		await until("the What's new tab, in front", async () => (await tabs()).includes("What's new in 0.0.3") && (await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.textContent ?? ''")).includes("What's new"));
+		const page = () => app.evaluate("document.getElementById('page')?.innerText ?? ''");
+		await until("the notes, from the changelog", async () => /What's new in 0\.0\.3[\s\S]*CHANGED[\s\S]*PowerShell/.test(await page()));
+		await until("the shell told it was seen", () => app.evaluate("window.__update.calls.includes('seen')"));
+		assert.equal(await app.evaluate("!!document.querySelector('#editor .cm-content')"), false, "no editor under a page");
+		await app.shot("whats-new");
+
+		// Closed like any tab; asked for from Help, back again.
+		await app.press("w", { meta: true });
+		await until("the tab closed", async () => !(await tabs()).includes("What's new"));
+		await app.evaluate("window.__update.pages.forEach((l) => l('whats-new'))");
+		await until("the tab back, from Help", async () => (await tabs()).includes("What's new in 0.0.3"));
+		await app.press("w", { meta: true });
+		await until("the tab closed again", async () => !(await tabs()).includes("What's new"));
 		bodyDone = true;
 	} finally {
 		await stopStanding();

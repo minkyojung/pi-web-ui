@@ -1,3 +1,5 @@
+// With the extension: node runs the tests unbundled (see the export below).
+import { isPage } from "./pages.ts";
 import { ChangeSet } from "@codemirror/state";
 
 import type { Change } from "./types";
@@ -49,7 +51,7 @@ export function noteFromHash(hash: string): string | null {
 	if (!hash.startsWith("#") || hash.length < 2) return null;
 	try {
 		const path = decodeURIComponent(hash.slice(1));
-		return path.endsWith(".md") ? path : null;
+		return path.endsWith(".md") || isPage(path) ? path : null;
 	} catch {
 		return null;
 	}

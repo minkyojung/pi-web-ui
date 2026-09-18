@@ -6,6 +6,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Plus, X } from "lucide-react";
 
 import { titleOf, wholePath } from "../noteSync";
+import { pageOf } from "../pages";
 import { configStore } from "../serverState";
 import { others, toTheRight } from "../tabs";
 import { Button } from "./ui/button";
@@ -168,11 +169,11 @@ function NoteTab({
 				onCloseByKey();
 			}}
 		>
-			<span className="truncate">{titleOf(path)}</span>
+			<span className="truncate">{pageOf(path)?.title ?? titleOf(path)}</span>
 			<span
 				role="button"
 				tabIndex={-1}
-				aria-label={`Close ${titleOf(path)}`}
+				aria-label={`Close ${pageOf(path)?.title ?? titleOf(path)}`}
 				className="rounded-sm p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover/tab:opacity-100 group-data-[state=active]/tab:opacity-100 hover:bg-accent hover:text-foreground"
 				onClick={(e) => {
 					e.stopPropagation();
