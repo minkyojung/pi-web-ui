@@ -20,6 +20,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renam
 import { basename, dirname, join } from "node:path";
 import { diffWordsWithSpace } from "diff";
 
+import { bodyStart } from "./properties.ts";
 import { forgetSnapshot, readSnapshot, writeSnapshot } from "./snapshot.ts";
 
 /**
@@ -311,6 +312,30 @@ export const unreviewed = (changes: Change[], from?: Holed) => undecided(holesOf
  */
 export function wroteIn(changes: Change[], sessionId: string, from: number, to: number): boolean {
 	return changes.some((c) => c.author === "pi" && c.sessionId === sessionId && from <= c.at && c.at <= to && !isTouch(c));
+}
+
+/**
+ * How much of a note somebody other than the person reading it wrote, from the
+ * spans the log replays to. See Authored in protocol.ts.
+ *
+ * Only pi and outside are counted. `me` is the person's own and `before` is
+ * what was there when the app first saw the note, which nobody was seen to
+ * write — neither is somebody else's hand.
+ *
+ * Of the body, as the count in the strip is: the front matter is what the note
+ * is filed under rather than anything written in it, and properties the agent
+ * filled in are not words of the note's it wrote.
+ */
+export function shareOf(spans: { from: number; to: number; author: string }[], text: string): { pi: number; other: number; total: number } {
+	const start = bodyStart(text);
+	const within = (span: { from: number; to: number }) => Math.max(0, Math.min(span.to, text.length) - Math.max(span.from, start));
+	let pi = 0;
+	let other = 0;
+	for (const span of spans) {
+		if (span.author === "pi") pi += within(span);
+		else if (span.author === "outside") other += within(span);
+	}
+	return { pi, other, total: text.length - start };
 }
 
 /**
