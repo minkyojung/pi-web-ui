@@ -20,6 +20,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - Paste a picture into a note, or drop one in, and it is kept in the folder — where Obsidian keeps pictures if the folder is a vault that says, else in `attachments/` — and the note says `![[its name]]` where the cursor was.
 
 ### Changed
+- A note shown inside another with `![[Note]]` keeps up: when that note changes — in another tab, by the agent, or outside Octave — the card is redrawn, where before it kept the old words until the note holding it was reopened. A click on the card's text puts the cursor on its line and brings the markup back.
 - A question from the agent comes up where the message box is, and the box comes back — with whatever you had typed or pasted in it — once you answer or close the question. Take a choice with a number key or a click and send it with Enter, so you can change your mind before it goes; Esc closes the question without answering. A question in several parts asks one at a time, with a way back, and while the agent is running the question has the button to stop it.
 - The two search tools the agent uses to find things in your notes come inside the app now. Before, on a Mac without them, the agent downloaded them from GitHub the first time it searched; nothing is downloaded any more, and searching works offline.
 
