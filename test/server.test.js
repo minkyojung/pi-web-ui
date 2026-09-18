@@ -152,6 +152,20 @@ it("a note's text is read for an embed of it; anything that is not a note in the
   assert.equal((await get("not-a-picture.txt")).status, 404, "a note is a .md file");
 });
 
+it("a picture pasted into a note is kept in the folder, under a name the note can use", async () => {
+  const png = Buffer.from("89504e470d0a1a0a", "hex");
+  const post = (name, body = png) => fetch(`http://127.0.0.1:${port}/api/attachment?from=a.md&name=${encodeURIComponent(name)}`, { method: "POST", headers: { "content-type": "image/png" }, body });
+  let r = await post("image.png");
+  assert.equal(r.status, 200);
+  const { path, name } = await r.json();
+  assert.match(name, /^Pasted image \d{14}\.png$/);
+  assert.equal(path, `attachments/${name}`);
+  assert.equal(readFileSync(join(cwd, path)).toString("hex"), png.toString("hex"), "the bytes, as sent");
+  r = await fetch(`http://127.0.0.1:${port}/vault/${encodeURIComponent(name)}?from=a.md`);
+  assert.equal(r.status, 200, "and the note can show it by name alone");
+  assert.equal((await post("notes.txt", Buffer.from("x"))).status, 400, "only pictures");
+});
+
 it("a version's notes come from the changelog beside the server, cut as the release script cuts them", async () => {
   const r = await fetch(`http://127.0.0.1:${port}/api/changelog?version=0.0.1`);
   assert.equal(r.status, 200);

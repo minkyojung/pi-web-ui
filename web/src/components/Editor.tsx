@@ -27,6 +27,7 @@ import { tablesExtension } from "../features/tables";
 import { landOn, links, notesChanged } from "../features/links";
 import { html } from "../features/html";
 import { mathExtension } from "../features/mathview";
+import { pasteImage } from "../features/pasteImage";
 import { closeDiff, diffFor, keepChunk, review, showDiff, undoChunk } from "../features/review";
 import { toggleBold, toggleItalic } from "../features/toggleMarks";
 import { fitted, leaving, scrollBack } from "../features/viewPlace";
@@ -354,6 +355,8 @@ export function Editor({
 			mathExtension,
 			// The little HTML a note holds, from an allowlist.
 			html(() => at.current),
+			// A picture pasted or dropped in goes into the folder, and the note names it.
+			pasteImage(() => at.current),
 			// Another note, in place: a card with its text, or a section of it.
 			embeds({ notes: () => filesStore.get().map((f) => f.path), here: () => at.current, open: (p) => onOpen?.(p) }),
 			linkCompletion(() => filesStore.get().map((f) => f.path)),

@@ -1206,6 +1206,28 @@ check("⌘F finds in the note, and Escape puts the panel away", async ({ app }) 
 	assert.equal(await app.evaluate("document.activeElement?.classList.contains('cm-content')"), true, "focus goes back to the note");
 });
 
+check("a picture pasted into a note is kept in the folder and named where the cursor was, and then drawn", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "paste.md"), "# paste\n\nbefore \n\nafter\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="paste.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="paste.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	// The cursor at the end of "before ", then a paste of a 2×2 PNG, as the clipboard would hand it over.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.toString().indexOf("before ") + 7 } }); })()`);
+	await app.evaluate(`(() => {
+		const bytes = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR42mNk+M9QDwADhQGA6UhwXAAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
+		const dt = new DataTransfer();
+		dt.items.add(new File([bytes], "image.png", { type: "image/png" }));
+		document.querySelector('#editor .cm-content').dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+	})()`);
+	await until("the note naming the picture", async () => /before !\[\[Pasted image \d{14}\.png\]\]/.test(await editorText(app)));
+	const name = (await editorText(app)).match(/Pasted image \d{14}\.png/)[0];
+	await until("the file in the folder", () => existsSync(join(cwd, "attachments", name)));
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	// Off the line, it is a picture.
+	await app.press("End", { meta: true });
+	await until("drawn", () => app.evaluate("document.querySelector('#editor img.cm-image')?.naturalWidth === 2"));
+});
+
 check("pictures are drawn where the note says there are pictures, and as written on the cursor's line", async ({ app, cwd }) => {
 	// A 2×2 PNG, so what the browser draws has a size of its own to be measured.
 	const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR42mNk+M9QDwADhQGA6UhwXAAAAABJRU5ErkJggg==", "base64");

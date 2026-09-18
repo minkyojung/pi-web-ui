@@ -5,6 +5,9 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+### Added
+- Paste a picture into a note, or drop one in, and it is kept in the folder — where Obsidian keeps pictures if the folder is a vault that says, else in `attachments/` — and the note says `![[its name]]` where the cursor was.
+
 ### Changed
 - The two search tools the agent uses to find things in your notes come inside the app now. Before, on a Mac without them, the agent downloaded them from GitHub the first time it searched; nothing is downloaded any more, and searching works offline.
 

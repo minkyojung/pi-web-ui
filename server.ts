@@ -40,7 +40,7 @@ import { deleteSessionFile } from "./sessionDelete.ts";
 import { Cancelled } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
 import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, withCreated, writeNote, type WriteResult } from "./vault.ts";
-import { attachmentAt } from "./pictures.ts";
+import { attachmentAt, savePicture } from "./pictures.ts";
 import { FileIndex } from "./fileIndex.ts";
 import { startLogging } from "./log.ts";
 import { deleteNote, shellTrash } from "./trash.ts";
@@ -1280,6 +1280,25 @@ const CONTENT_TYPES: Record<string, string> = {
 
 
 /** A small request body, whole. Capped: the one endpoint that takes one takes a few fields. */
+/** The body as bytes, up to a limit — a pasted picture is not a settings patch. */
+function bytes(req: IncomingMessage, limit: number): Promise<Buffer> {
+	return new Promise((resolve, reject) => {
+		const chunks: Buffer[] = [];
+		let size = 0;
+		req.on("data", (chunk: Buffer) => {
+			size += chunk.length;
+			if (size > limit) {
+				reject(new Error("too large"));
+				req.destroy();
+				return;
+			}
+			chunks.push(chunk);
+		});
+		req.on("end", () => resolve(Buffer.concat(chunks)));
+		req.on("error", reject);
+	});
+}
+
 function text(req: IncomingMessage): Promise<string> {
 	return new Promise((resolve, reject) => {
 		let out = "";
@@ -1334,6 +1353,20 @@ const server = createServer(async (req, res) => {
 			broadcast(written);
 			broadcast(config());
 			return;
+		}
+		// A picture pasted or dropped into a note: the bytes, saved where the
+		// folder keeps pictures (pictures.ts), and its name back for the note.
+		if (pathname === "/api/attachment" && req.method === "POST") {
+			const from = url.searchParams.get("from") ?? "";
+			const given = url.searchParams.get("name") ?? "";
+			let body: Buffer;
+			try {
+				body = await bytes(req, 50 * 1024 * 1024);
+			} catch {
+				return json(413, { error: "too large" });
+			}
+			const saved = savePicture(CWD, from, given, body);
+			return saved ? json(200, saved) : json(400, { error: "not a picture, or nowhere to put it" });
 		}
 		if (req.method !== "GET") return json(405, { error: "read only" });
 		if (pathname === "/api/settings") return json(200, readSettings());
