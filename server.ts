@@ -40,7 +40,7 @@ import { deleteSessionFile } from "./sessionDelete.ts";
 import { Cancelled } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
 import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, withCreated, writeNote, type WriteResult } from "./vault.ts";
-import { attachmentAt } from "./attachments.ts";
+import { attachmentAt } from "./pictures.ts";
 import { FileIndex } from "./fileIndex.ts";
 import { startLogging } from "./log.ts";
 import { deleteNote, shellTrash } from "./trash.ts";
@@ -1357,7 +1357,7 @@ const server = createServer(async (req, res) => {
 	}
 
 	// A picture in the folder, for the note that shows it: found as Obsidian
-	// would find it (attachments.ts), and only ever an image inside the folder
+	// would find it (pictures.ts), and only ever an image inside the folder
 	// — pi's tools reach every file, the page is handed pictures.
 	if (pathname.startsWith("/vault/")) {
 		let given: string;

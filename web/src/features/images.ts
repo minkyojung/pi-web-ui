@@ -5,7 +5,7 @@
  * image off the cursor, and as written on its line — the way every other
  * mark in the note behaves (livePreview.ts). A picture on the web is fetched
  * from the web; one in the folder is fetched from the server's /vault, which
- * finds it the way Obsidian would (attachments.ts), so a name alone is enough.
+ * finds it the way Obsidian would (pictures.ts), so a name alone is enough.
  */
 import { syntaxTree } from "@codemirror/language";
 import type { EditorState, Extension, Range, SelectionRange } from "@codemirror/state";
