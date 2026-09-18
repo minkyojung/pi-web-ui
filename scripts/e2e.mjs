@@ -1236,6 +1236,41 @@ check("pictures are drawn where the note says there are pictures, and as written
 	await until("drawn again", async () => (await drawn()).length === 4);
 });
 
+check("a table is drawn as a table off the cursor and as pipes on it, and footnotes are numbers that go to each other", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "table.md"), "# table\n\n| Name | Amount |\n| :-- | --: |\n| **Apples** | 3 |\n| Pears [[first]] | 12 |\n\nA claim.[^note] Another.[^2] And the first again.[^note]\n\n[^note]: What the note says.\n[^2]: The second.\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="table.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="table.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.press("End", { meta: true });
+	const table = () => app.evaluate(`(() => { const t = document.querySelector('#editor table.cm-table'); if (!t) return null; return { header: [...t.tHead.rows[0].cells].map((c) => c.textContent), rows: [...t.tBodies[0].rows].map((r) => [...r.cells].map((c) => c.innerHTML)), align: [...t.tBodies[0].rows[0].cells].map((c) => c.style.textAlign) }; })()`);
+	await until("the table drawn", async () => (await table()) !== null);
+	assert.deepEqual(await table(), {
+		header: ["Name", "Amount"],
+		rows: [["<strong>Apples</strong>", "3"], ['Pears <span class="cm-wikilink">first</span>', "12"]],
+		align: ["left", "right"],
+	});
+	assert.ok(!(await shownText(app)).includes("| Name"), "the pipes are gone from the text");
+
+	// The footnotes: numbers in the order first referred to, the notes labelled the same.
+	const sups = () => app.evaluate("[...document.querySelectorAll('#editor sup.cm-footnote')].map((s) => s.className.replace('cm-footnote cm-footnote-', '') + ':' + s.textContent)");
+	await until("the numbers", async () => (await sups()).length === 5);
+	assert.deepEqual(await sups(), ["ref:1", "ref:2", "ref:1", "def:1", "def:2"]);
+	// A click on the first number goes to its note; on the note's number, back to the text.
+	await app.click("#editor sup.cm-footnote-ref", 0);
+	await until("at the note", async () => (await shownText(app)).includes("[^note]: What the note says."));
+	// Off the note's line again, so its number is drawn to be clicked.
+	await app.press("End", { meta: true });
+	await until("the note's number back", async () => (await sups()).filter((s) => s === "def:1").length === 1);
+	await app.click("#editor sup.cm-footnote-def", 0);
+	await until("back at the text", async () => (await shownText(app)).includes("A claim.[^note]"));
+
+	// A click on the drawn table brings the pipes back under the cursor.
+	await app.press("End", { meta: true });
+	await until("the table drawn again", async () => (await table()) !== null);
+	assert.ok(await app.click("#editor table.cm-table td"), "a cell to click");
+	await until("the pipes back", async () => (await shownText(app)).includes("| Name | Amount |") && (await table()) === null);
+});
+
 check("links are drawn, a missing one differently; ⌘+click follows one and makes the other", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "hub.md"), "go to [[My note]] or [[nowhere yet]]\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="hub.md"]')`));

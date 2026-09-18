@@ -6,6 +6,8 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 ### Added
+- A table is drawn as a table, with its columns sitting as the `:--` and `--:` say; the pipes come back when the cursor is in it, or when you click it.
+- Footnotes: `[^1]` in the text is a small number, the note it points to is labelled with the same, and a click on either goes to the other.
 - Pictures in a note are shown as pictures: `![[photo.png]]` and `![[photo.png|300]]` as Obsidian writes them, `![alt](images/photo.png)`, and a picture on the web. A picture named alone is found wherever it is in the folder, as Obsidian finds it. On the cursor's line the markup shows, as with everything else.
 
 ## [0.0.4] - 2026-09-18
