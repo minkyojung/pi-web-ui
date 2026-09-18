@@ -16,6 +16,7 @@ import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
 import updater from "electron-updater";
 
 import { reportUrl } from "./report.js";
+import { opened, projectsOf } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
@@ -90,13 +91,16 @@ async function askForWorkdir(current) {
  * so the page can offer them the way Obsidian offers its vaults. Ones that
  * have since been deleted or moved are dropped as they are read: a list that
  * offers a folder which is not there is worse than a short list.
+ *
+ * The folder is also one of the projects, the list the sidebar is to draw —
+ * see workspaces.js. Kept beside the recent list until the sidebar draws it.
  */
 const RECENT = 8;
 function remember(settings, workdir) {
 	const recent = [workdir, ...(settings.recent ?? []).filter((path) => path !== workdir)]
 		.filter((path) => existsSync(path))
 		.slice(0, RECENT);
-	return { ...settings, workdir, recent };
+	return { ...settings, workdir, recent, projects: opened(projectsOf(settings, existsSync), workdir) };
 }
 
 async function resolveWorkdir() {
