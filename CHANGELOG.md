@@ -6,6 +6,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 ### Added
+- Type `[^` and the note's footnotes are offered, with what each says, and a new one numbered next whose note is started at the end for you to write. Point at a footnote's number and its note is shown.
 - Inside a table, Tab moves to the next cell and Shift-Tab to the one before, Tab from the last cell starts a new row, Enter puts a row under this one, and the pipes are lined up whenever the cursor leaves the table. A click on a drawn table puts the cursor in the cell you clicked.
 - Paste a picture into a note, or drop one in, and it is kept in the folder — where Obsidian keeps pictures if the folder is a vault that says, else in `attachments/` — and the note says `![[its name]]` where the cursor was.
 

@@ -21,6 +21,7 @@ import { leaveTextUp } from "../features/pageMove";
 import { properties, propertiesField } from "../features/properties";
 import { fromServer, serverChange } from "../features/origin";
 import { embeds } from "../features/embeds";
+import { footnoteCompletion } from "../features/footnoteCompletion";
 import { footnotesExtension } from "../features/footnotes";
 import { images } from "../features/images";
 import { tableEdit } from "../features/tableEdit";
@@ -355,6 +356,8 @@ export function Editor({
 			// Tab between cells, Enter for a row, the pipes squared on leaving.
 			tableEdit,
 			footnotesExtension,
+			// `[^` offers the footnotes and a new one; a number says its note on hover.
+			footnoteCompletion,
 			mathExtension,
 			// The little HTML a note holds, from an allowlist.
 			html(() => at.current),

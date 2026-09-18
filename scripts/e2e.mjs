@@ -1428,6 +1428,38 @@ check("in a table, a click lands in its cell, Tab walks the cells and makes a ro
 	assert.ok(readFileSync(join(cwd, "edit-table.md"), "utf8").includes("| Pears  | 12     |"), "squared on disk");
 });
 
+check("typing [^ offers the footnotes and a new one, and a footnote's number says its note on hover", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "fn.md"), "# fn\n\nA claim.[^note] More.\n\n[^note]: What the note says.\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="fn.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="fn.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	// After "More." type [^ : the note there is, with its words, and a new one.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("More.") + 5; v.dispatch({ selection: { anchor: at } }); })()`);
+	await app.keys("[^");
+	const offered = () => app.evaluate("[...document.querySelectorAll('.cm-tooltip-autocomplete li')].map((l) => l.textContent)");
+	await until("the offers", async () => (await offered()).length === 2);
+	const list = await offered();
+	assert.ok(list[0].startsWith("note") && list[0].includes("What the note says"), `the footnote there is, with its words: ${list[0]}`);
+	assert.ok(list[1].startsWith("New footnote") && list[1].includes("[^1]"), `a new one, numbered next: ${list[1]}`);
+	// The new one: [^1] in the text, its note begun under the last, the cursor in it.
+	await app.press("ArrowDown");
+	await until("the new one chosen", () => app.evaluate(`document.querySelector('.cm-tooltip-autocomplete li[aria-selected="true"]')?.textContent.startsWith("New footnote")`));
+	await app.press("Enter");
+	await until("the reference and its note", async () => {
+		const text = await editorText(app);
+		if (text.includes("More.[^1]") && text.includes("[^note]: What the note says.\n[^1]: ")) return true;
+		throw new Error(JSON.stringify(text.slice(-80)));
+	});
+	await app.keys("Written here.");
+	await until("the note written", async () => (await editorText(app)).includes("[^1]: Written here."));
+	// Off the line, the number; hovered, its note.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 0 } }); })()`);
+	await until("the numbers", () => app.evaluate("document.querySelectorAll('#editor sup.cm-footnote-ref').length === 2"));
+	const at = await app.evaluate("(() => { const r = document.querySelectorAll('#editor sup.cm-footnote-ref')[1].getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
+	await app.moveTo(at.x, at.y);
+	await until("its note on hover", () => app.evaluate("document.querySelector('.cm-tooltip-footnote')?.textContent === 'Written here.'"));
+});
+
 check("links are drawn, a missing one differently; ⌘+click follows one and makes the other", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "hub.md"), "go to [[My note]] or [[nowhere yet]]\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="hub.md"]')`));
