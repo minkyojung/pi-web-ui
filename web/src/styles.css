@@ -607,3 +607,12 @@
   interpolate-size: allow-keywords;
   transition: width 220ms cubic-bezier(0.2, 0, 0, 1);
 }
+
+/* A picture in a note: as wide as its markup allows or the column, never wider. */
+.cm-image {
+	display: inline-block;
+	max-width: 100%;
+	height: auto;
+	border-radius: 6px;
+	vertical-align: text-bottom;
+}

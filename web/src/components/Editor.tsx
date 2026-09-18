@@ -20,6 +20,7 @@ import { livePreview, toggleLivePreview, toggleTask } from "../features/livePrev
 import { leaveTextUp } from "../features/pageMove";
 import { properties, propertiesField } from "../features/properties";
 import { fromServer, serverChange } from "../features/origin";
+import { images } from "../features/images";
 import { landOn, links, notesChanged } from "../features/links";
 import { closeDiff, diffFor, keepChunk, review, showDiff, undoChunk } from "../features/review";
 import { toggleBold, toggleItalic } from "../features/toggleMarks";
@@ -338,6 +339,8 @@ export function Editor({
 				here: () => at.current,
 				open: (p, at) => onOpen?.(p, at),
 			}),
+			// Pictures in the place of their markup, off the cursor.
+			images(() => at.current),
 			linkCompletion(() => filesStore.get().map((f) => f.path)),
 			// Markup hidden where the cursor is not; Mod-e shows it all again.
 			livePreview,
