@@ -8,6 +8,9 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 ### Changed
 - Opening another folder no longer restarts Octave. The folder you left keeps running — a reply the agent was writing there carries on — and going back to it finds your tabs where they were.
 
+### Fixed
+- Opened from the Dock or the Finder, the agent's commands now find the tools your terminal finds — Homebrew's, nvm's, your `npm`, `node` and `gh` — where before they found only the system's.
+
 ## [0.0.6] - 2026-09-18
 ### Added
 - A PDF in your folder can be talked about: name it in the message by its path, as you would a note, and the agent reads it page by page. A long one it reads in parts, as it does a long file.

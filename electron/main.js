@@ -17,6 +17,7 @@ import updater from "electron-updater";
 
 import { reportUrl } from "./report.js";
 import { createServers } from "./servers.js";
+import { shellEnv } from "./shellEnv.js";
 import { opened, projectsOf } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
@@ -518,6 +519,14 @@ async function main() {
 	serveFolders();
 	serveUpdates();
 	noteVersionRun();
+	// Before anything is started, so the servers and every command they run
+	// find what a terminal would — see shellEnv.js. A dev run was started from
+	// a terminal and has it already.
+	if (app.isPackaged) {
+		const env = await shellEnv({ shell: process.env.SHELL || "/bin/zsh", node: process.execPath });
+		if (env) Object.assign(process.env, env);
+		else console.error("[shell] the login shell's environment could not be read; going on with the app's own");
+	}
 	const workdir = devUrl ? process.cwd() : await resolveWorkdir();
 	if (!workdir) {
 		app.quit();
