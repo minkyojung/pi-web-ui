@@ -134,6 +134,24 @@ it("a picture in the folder is served for the note that shows it; anything else 
   assert.equal((await get("a.md")).status, 404, "a note is not a picture");
 });
 
+it("a note's text is read for an embed of it; anything that is not a note in the folder is not", async () => {
+  writeFileSync(join(cwd, "embedded.md"), "# embedded\n\nwords\n");
+  const get = (path) => fetch(`http://127.0.0.1:${port}/api/note?path=${encodeURIComponent(path)}`);
+  const r = await get("embedded.md");
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { path: "embedded.md", text: "# embedded\n\nwords\n" });
+  assert.equal((await get("nowhere.md")).status, 404);
+  // A real note one folder up: reachable by .. as a path, refused as a note.
+  const outside = join(cwd, "..", `octave-outside-${basename(cwd)}.md`);
+  writeFileSync(outside, "# outside\n");
+  try {
+    assert.equal((await get(`../${basename(outside)}`)).status, 404, "not outside by ..");
+  } finally {
+    rmSync(outside, { force: true });
+  }
+  assert.equal((await get("not-a-picture.txt")).status, 404, "a note is a .md file");
+});
+
 it("a version's notes come from the changelog beside the server, cut as the release script cuts them", async () => {
   const r = await fetch(`http://127.0.0.1:${port}/api/changelog?version=0.0.1`);
   assert.equal(r.status, 200);
