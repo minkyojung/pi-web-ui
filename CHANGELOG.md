@@ -5,6 +5,9 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+### Added
+- The sidebar lists your repositories, and under each its workspaces by branch. Click one to move into it; + on a repository makes a new workspace — a folder and a branch of its own, started from the latest on the remote — and moves you into it.
+
 ### Changed
 - Opening another folder no longer restarts Octave. The folder you left keeps running — a reply the agent was writing there carries on — and going back to it finds your tabs where they were.
 

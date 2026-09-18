@@ -1,7 +1,7 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { cn } from "cn";
-import { ChevronLeftIcon, ChevronRightIcon, FileIcon, FileTextIcon, FolderIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, FileIcon, FileTextIcon, FolderIcon, GitBranchIcon, PlusIcon } from "lucide-react";
 
 import { titleOf } from "../noteSync";
 import { isDocument } from "../../../documentKinds.ts";
@@ -14,6 +14,7 @@ import { Settings } from "./Settings";
 import { Button } from "./ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
+import { Spinner } from "./ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
@@ -69,6 +70,7 @@ export function Sidebar({
 
 	return (
 		<nav className="flex min-h-0 flex-1 flex-col text-sidebar-foreground">
+			<Workspaces />
 			{files.length === 0 ? (
 				<div className="flex flex-1 items-center justify-center p-4 text-center text-sm text-muted-foreground">
 					No notes in this folder yet
@@ -155,6 +157,148 @@ const row = cn(
 	// would be cut off by the edge it scrolls under.
 	"focus-visible:ring-sidebar-ring/50 focus-visible:ring-inset",
 );
+
+/** The list the shell keeps — see electron/workspaces.js and preload.cjs. */
+interface WorkspaceList {
+	current: string | null;
+	projects: { path: string; name: string; worktrees: { path: string; name: string; branch: string }[] }[];
+}
+
+/** The shell's side of the list, absent in a browser tab. */
+const workspaceShell = (
+	window as {
+		pi?: {
+			workspaces?: {
+				list(): Promise<WorkspaceList | null>;
+				create(root: string): Promise<string | null>;
+				open(path: string): Promise<void>;
+				onChange(listen: () => void): () => void;
+			};
+		};
+	}
+).pi?.workspaces;
+
+/**
+ * What a workspace's row says: its branch, less the owner every branch here
+ * starts with — `minkyojung/email-auth` is `email-auth` in a list of the
+ * same person's work. The whole of it is the row's tooltip.
+ */
+const branchName = (branch: string) => branch.slice(branch.indexOf("/") + 1);
+
+/**
+ * The repositories and their workspaces, as Conductor lists them: a row for
+ * the repository that folds, a + on it for a new workspace, and under it a
+ * row for each workspace, named by its branch. The shell keeps the list and
+ * does the moving — the page asks, and the window is put on the workspace
+ * chosen. In a browser tab, or a dev run, there is no shell to ask, and
+ * nothing is drawn.
+ */
+function Workspaces() {
+	const [list, setList] = useState<WorkspaceList | null>(null);
+	const [making, setMaking] = useState<string | null>(null);
+	const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
+
+	useEffect(() => {
+		if (!workspaceShell) return;
+		let live = true;
+		const load = () => {
+			workspaceShell.list().then(
+				(next) => live && setList(next),
+				() => {},
+			);
+		};
+		load();
+		const stop = workspaceShell.onChange(load);
+		// A branch renamed inside a workspace — by the agent, by hand — is news
+		// only git has, so the list is asked again when the window comes back.
+		window.addEventListener("focus", load);
+		return () => {
+			live = false;
+			stop();
+			window.removeEventListener("focus", load);
+		};
+	}, []);
+
+	if (!workspaceShell || !list || list.projects.length === 0) return null;
+	const shell = workspaceShell;
+
+	const make = (root: string) => {
+		setMaking(root);
+		shell.create(root).finally(() => setMaking(null));
+	};
+	const fold = (root: string) =>
+		setFolded((was) => {
+			const next = new Set(was);
+			if (!next.delete(root)) next.add(root);
+			return next;
+		});
+
+	return (
+		<ul id="workspaces" className="no-scrollbar max-h-[45%] shrink-0 overflow-y-auto overscroll-contain px-2 py-1">
+			{list.projects.map((project) => (
+				<li key={project.path}>
+					<Collapsible open={!folded.has(project.path)} onOpenChange={() => fold(project.path)} className="group/repo">
+						<div className="flex items-center gap-0.5">
+							<CollapsibleTrigger asChild>
+								<Button variant="ghost" size="sm" data-repo={project.path} className={cn(row, "min-w-0 flex-1 font-medium text-sidebar-foreground")}>
+									<ChevronRightIcon className="transition-transform group-data-[state=open]/repo:rotate-90" />
+									<span className="truncate">{project.name}</span>
+								</Button>
+							</CollapsibleTrigger>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										data-new-workspace={project.path}
+										aria-label={`New workspace in ${project.name}`}
+										disabled={making !== null}
+										onClick={() => make(project.path)}
+										className="shrink-0 text-muted-foreground"
+									>
+										{making === project.path ? <Spinner /> : <PlusIcon />}
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent side="right">New workspace</TooltipContent>
+							</Tooltip>
+						</div>
+						<CollapsibleContent asChild>
+							<ul className="flex flex-col pl-3">
+								{project.worktrees.map((worktree) => {
+									const active = worktree.path === list.current;
+									return (
+										<li key={worktree.path}>
+											<Tooltip>
+												<TooltipTrigger asChild>
+													<Button
+														variant="ghost"
+														size="sm"
+														data-workspace={worktree.path}
+														data-active={active}
+														aria-current={active ? "page" : undefined}
+														onClick={() => !active && shell.open(worktree.path)}
+														className={cn(
+															row,
+															"data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground",
+														)}
+													>
+														<GitBranchIcon />
+														<span className="truncate">{branchName(worktree.branch)}</span>
+													</Button>
+												</TooltipTrigger>
+												<TooltipContent side="right">{worktree.branch}</TooltipContent>
+											</Tooltip>
+										</li>
+									);
+								})}
+							</ul>
+						</CollapsibleContent>
+					</Collapsible>
+				</li>
+			))}
+		</ul>
+	);
+}
 
 function Tree({
 	node,
