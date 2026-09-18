@@ -26,6 +26,8 @@ export default defineConfig({
 		proxy: {
 			"/ws": { target: `ws://${apiHost}:${apiPort}`, ws: true },
 			"/api": { target: `http://${apiHost}:${apiPort}` },
+			// The pictures in the folder, served by the API server (attachments.ts).
+			"/vault": { target: `http://${apiHost}:${apiPort}` },
 		},
 	},
 	build: { outDir: dir("./dist"), emptyOutDir: true },

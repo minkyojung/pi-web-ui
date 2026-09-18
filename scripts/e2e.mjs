@@ -1206,6 +1206,36 @@ check("⌘F finds in the note, and Escape puts the panel away", async ({ app }) 
 	assert.equal(await app.evaluate("document.activeElement?.classList.contains('cm-content')"), true, "focus goes back to the note");
 });
 
+check("pictures are drawn where the note says there are pictures, and as written on the cursor's line", async ({ app, cwd }) => {
+	// A 2×2 PNG, so what the browser draws has a size of its own to be measured.
+	const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR42mNk+M9QDwADhQGA6UhwXAAAAABJRU5ErkJggg==", "base64");
+	mkdirSync(join(cwd, "images"), { recursive: true });
+	writeFileSync(join(cwd, "images", "shot.png"), png);
+	writeFileSync(join(cwd, "pictures.md"), "# pictures\n\nObsidian: ![[shot.png]]\n\nSized: ![[shot.png|40]]\n\nMarkdown: ![a shot](images/shot.png)\n\nWeb: ![w](https://example.com/w.png)\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="pictures.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="pictures.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	// The cursor at the end: off every picture's line.
+	await app.press("End", { meta: true });
+	const drawn = () => app.evaluate("[...document.querySelectorAll('#editor img.cm-image')].map((i) => [i.getAttribute('src'), i.getAttribute('width'), i.alt])");
+	await until("four pictures", async () => (await drawn()).length === 4);
+	assert.deepEqual(await drawn(), [
+		["/vault/shot.png?from=pictures.md", null, ""],
+		["/vault/shot.png?from=pictures.md", "40", ""],
+		["/vault/images/shot.png?from=pictures.md", null, "a shot"],
+		["https://example.com/w.png", null, "w"],
+	]);
+	// The ones in the folder were found and fetched: a real picture has a size.
+	await until("the first picture loaded", () => app.evaluate("document.querySelector('#editor img.cm-image').naturalWidth === 2"));
+	assert.ok(!(await shownText(app)).includes("![["), "the markup is gone from the text");
+	// The cursor in the markup: the picture gone for that line and the markup
+	// back, marks and all, until the cursor leaves.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("![[shot.png|40]]") + 3; v.dispatch({ selection: { anchor: at } }); })()`);
+	await until("that line as written", async () => (await shownText(app)).includes("![[shot.png|40]]") && (await drawn()).length === 3);
+	await app.press("End", { meta: true });
+	await until("drawn again", async () => (await drawn()).length === 4);
+});
+
 check("links are drawn, a missing one differently; ⌘+click follows one and makes the other", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "hub.md"), "go to [[My note]] or [[nowhere yet]]\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="hub.md"]')`));

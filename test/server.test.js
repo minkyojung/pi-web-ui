@@ -13,7 +13,7 @@ import test from "node:test";
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -111,6 +111,27 @@ it("확장 스위치가 꺼져 있으면 도구는 pi의 것과 우리 것뿐이
   if (process.platform !== "win32") assert.ok(!names.includes("powershell"), "no powershell where there is none to run");
   assert.ok(!log.includes("sendFlowsList"), "the dashboard bridge never started");
   assert.ok(!log.includes("did not answer"), "nothing warned about a missing hook");
+});
+
+it("a picture in the folder is served for the note that shows it; anything else is not", async () => {
+  mkdirSync(join(cwd, "images"), { recursive: true });
+  mkdirSync(join(cwd, ".pi"), { recursive: true });
+  const png = Buffer.from("89504e470d0a1a0a", "hex");
+  writeFileSync(join(cwd, "images", "shot.png"), png);
+  writeFileSync(join(cwd, ".pi", "secret.png"), png);
+  writeFileSync(join(cwd, "not-a-picture.txt"), "x");
+  const get = (path) => fetch(`http://127.0.0.1:${port}/vault/${path}`);
+  let r = await get("images/shot.png");
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get("content-type"), "image/png");
+  assert.equal(Buffer.from(await r.arrayBuffer()).toString("hex"), png.toString("hex"));
+  r = await get("shot.png?from=a.md");
+  assert.equal(r.status, 200, "by name alone, wherever it is");
+  assert.equal((await get("../" + basename(cwd) + "/images/shot.png")).status, 404, "not outside by ..");
+  assert.equal((await get(".pi/secret.png")).status, 404, "not under the app's folder");
+  assert.equal((await get("secret.png")).status, 404, "nor by name");
+  assert.equal((await get("not-a-picture.txt")).status, 404, "only pictures");
+  assert.equal((await get("a.md")).status, 404, "a note is not a picture");
 });
 
 it("a version's notes come from the changelog beside the server, cut as the release script cuts them", async () => {
