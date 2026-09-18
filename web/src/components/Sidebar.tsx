@@ -18,8 +18,9 @@ import { Spinner } from "./ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
- * The left column: the notes in the folder pi works in, as a tree of its
- * folders.
+ * The left column. In the app, the repositories and their workspaces (see
+ * Workspaces below); where there is no shell to keep that list, the notes in
+ * the folder pi works in, as a tree of its folders.
  *
  * The list comes from the server, which re-sends it after every write, so a
  * note pi just wrote is on it without anyone asking. A row opens its note in
@@ -61,6 +62,7 @@ export function Sidebar({
 	const documents = useSyncExternalStore(documentsStore.subscribe, documentsStore.get);
 	const truncated = useSyncExternalStore(filesTruncatedStore.subscribe, filesTruncatedStore.get);
 	const openFolders = useSyncExternalStore(openFoldersStore.subscribe, openFoldersStore.get);
+	const workspaces = useWorkspaceList();
 
 	// The open note is in view: its folders open as it is opened, or as it is
 	// renamed into one. They stay open until closed by hand.
@@ -70,8 +72,14 @@ export function Sidebar({
 
 	return (
 		<nav className="flex min-h-0 flex-1 flex-col text-sidebar-foreground">
-			<Workspaces />
-			{files.length === 0 ? (
+			{/* In the app the column is the repositories and their workspaces, and
+			    the notes are not listed — Octave works in code now, and a tree of
+			    a repository's markdown alone is not a view of it. Where there is
+			    no shell to keep that list, the notes are what there is to show. */}
+			{workspaces !== null ? (
+				// Until the shell answers, the room it will take, so the foot stays put.
+				workspaces ? <Workspaces list={workspaces} /> : <div className="flex-1" />
+			) : files.length === 0 ? (
 				<div className="flex flex-1 items-center justify-center p-4 text-center text-sm text-muted-foreground">
 					No notes in this folder yet
 				</div>
@@ -193,18 +201,19 @@ const branchName = (branch: string) => branch.slice(branch.indexOf("/") + 1);
  * chosen. In a browser tab, or a dev run, there is no shell to ask, and
  * nothing is drawn.
  */
-function Workspaces() {
-	const [list, setList] = useState<WorkspaceList | null>(null);
-	const [making, setMaking] = useState<string | null>(null);
-	const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
-
+/**
+ * The shell's list, kept up: `undefined` until the shell has answered, then
+ * the list, or null where there is none — a browser tab, a dev run.
+ */
+function useWorkspaceList(): WorkspaceList | null | undefined {
+	const [list, setList] = useState<WorkspaceList | null | undefined>(workspaceShell ? undefined : null);
 	useEffect(() => {
 		if (!workspaceShell) return;
 		let live = true;
 		const load = () => {
 			workspaceShell.list().then(
 				(next) => live && setList(next),
-				() => {},
+				() => live && setList((was) => was ?? null),
 			);
 		};
 		load();
@@ -218,9 +227,13 @@ function Workspaces() {
 			window.removeEventListener("focus", load);
 		};
 	}, []);
+	return list;
+}
 
-	if (!workspaceShell || !list || list.projects.length === 0) return null;
-	const shell = workspaceShell;
+function Workspaces({ list }: { list: WorkspaceList }) {
+	const [making, setMaking] = useState<string | null>(null);
+	const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
+	const shell = workspaceShell!;
 
 	const make = (root: string) => {
 		setMaking(root);
@@ -234,7 +247,7 @@ function Workspaces() {
 		});
 
 	return (
-		<ul id="workspaces" className="no-scrollbar max-h-[45%] shrink-0 overflow-y-auto overscroll-contain px-2 py-1">
+		<ul id="workspaces" className="no-scrollbar flex-1 overflow-y-auto overscroll-contain px-2 py-1">
 			{list.projects.map((project) => (
 				<li key={project.path}>
 					<Collapsible open={!folded.has(project.path)} onOpenChange={() => fold(project.path)} className="group/repo">

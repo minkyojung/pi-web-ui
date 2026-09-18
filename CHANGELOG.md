@@ -11,6 +11,9 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 ### Changed
 - Opening another folder no longer restarts Octave. The folder you left keeps running — a reply the agent was writing there carries on — and going back to it finds your tabs where they were.
 
+### Removed
+- The sidebar no longer lists the folder's notes; it lists your repositories and their workspaces instead. ⌘P still finds a note.
+
 ### Fixed
 - Opened from the Dock or the Finder, the agent's commands now find the tools your terminal finds — Homebrew's, nvm's, your `npm`, `node` and `gh` — where before they found only the system's.
 
