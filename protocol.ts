@@ -112,7 +112,7 @@ export type ClientMsg =
 	 * that name is taken or not a note's. Answered with `note_created` to this
 	 * tab and `note` to every tab.
 	 */
-	| { type: "new_note"; name?: string }
+	| { type: "new_note"; name?: string; text?: string }
 	/** Give a note another path. Answered with `note_renamed` to every tab, or `note_rename_failed` to this one. */
 	| { type: "rename_note"; path: string; to: string }
 	/** Put a note in the trash. Answered with `note_deleted` to every tab. */

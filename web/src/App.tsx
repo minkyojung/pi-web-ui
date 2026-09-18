@@ -17,8 +17,9 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import { UpdateToast } from "./components/UpdateToast";
 import type { Place } from "../../links.ts";
 import { hashForNote, noteFromHash } from "./noteSync";
-import { pageOf, whatsNewPath } from "./pages";
+import { pageOf, WELCOME, whatsNewPath } from "./pages";
 import { pageAskedStore, updateStore } from "./update";
+import { Welcome } from "./components/Welcome";
 import { WhatsNew } from "./components/WhatsNew";
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
@@ -318,10 +319,18 @@ export function App() {
 		if (update?.justUpdated) setOpen(whatsNewPath(update.justUpdated.to));
 	}, [update?.justUpdated?.to, setOpen]);
 	useEffect(() => {
-		if (pageAsked !== "whats-new" || !update) return;
+		if (!pageAsked || !update) return;
 		pageAskedStore.set(null);
-		setOpen(whatsNewPath(update.current));
+		if (pageAsked === "whats-new") setOpen(whatsNewPath(update.current));
+		if (pageAsked === "welcome") setOpen(WELCOME);
 	}, [pageAsked, update, setOpen]);
+	// The first run: the welcome page in front, until Done is pressed on it.
+	const welcomedOnce = useRef(false);
+	useEffect(() => {
+		if (welcomedOnce.current || update?.welcomed !== false) return;
+		welcomedOnce.current = true;
+		setOpen(WELCOME);
+	}, [update?.welcomed, setOpen]);
 
 	const [tabs, setTabs] = useState(readTabs);
 	useEffect(() => {
@@ -609,7 +618,9 @@ export function App() {
 					    be had, and the room was the one to go: a note short enough for
 					    this to matter is a note that does not scroll, and room to scroll
 					    into is nothing to a page that has nowhere to go. */}
-					{page ? (
+					{page?.kind === "welcome" ? (
+						<Welcome onDone={() => closeTab(WELCOME)} />
+					) : page ? (
 						<WhatsNew key={page.version} version={page.version} />
 					) : open && deleted?.path !== open ? (
 						<div id="note" className="no-scrollbar edge-top flex min-h-0 flex-1 flex-col overflow-y-auto">

@@ -534,6 +534,14 @@ it("새 노트를 청하면 Untitled로 만들어져 이 탭에 이름이 오고
   assert.equal((await want("note_created")).path, "Untitled 2.md");
 });
 
+it("새 노트에 이름과 첫 글을 함께 주면 그대로 만들어진다", async () => {
+  clear();
+  send({ type: "new_note", name: "Welcome to Octave", text: "# Welcome\n\nHello.\n" });
+  const made = await want("note_created");
+  assert.equal(made.path, "Welcome to Octave.md");
+  assert.match(readFileSync(join(cwd, made.path), "utf8"), /^---\ncreated: [^\n]+\n---\n# Welcome\n\nHello\.\n$/);
+});
+
 it("이름을 바꾸면 파일과 로그가 함께 옮겨지고 모든 탭이 듣는다", async () => {
   clear();
   send({ type: "open_note", path: "a.md" });

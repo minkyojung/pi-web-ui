@@ -275,7 +275,7 @@ async function endServer() {
  * decides when that has been seen: the page says (update:seen), and the
  * version it saw is kept beside the last version run.
  */
-let update = { current: app.getVersion(), phase: "idle", version: null, progress: null, error: null, justUpdated: null };
+let update = { current: app.getVersion(), phase: "idle", version: null, progress: null, error: null, justUpdated: null, welcomed: true };
 
 function sayUpdate(patch) {
 	update = { ...update, ...patch };
@@ -298,6 +298,12 @@ function serveUpdates() {
 	ipcMain.handle("update:restart", async () => {
 		if (child) await endServer();
 		autoUpdater.quitAndInstall();
+	});
+	// The first run's page: shown until the person says Done, then not again.
+	update.welcomed = readSettings().welcomed === true;
+	ipcMain.handle("welcome:done", () => {
+		writeSettings({ ...readSettings(), welcomed: true });
+		sayUpdate({ welcomed: true });
 	});
 	ipcMain.handle("update:seen", () => {
 		writeSettings({ ...readSettings(), whatsNewSeen: app.getVersion() });
@@ -433,6 +439,7 @@ function buildMenu(workdir) {
 			{
 				role: "help",
 				submenu: [
+					{ label: "Welcome", click: () => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send("open-page", "welcome"); } },
 					{ label: "What's New", click: () => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send("open-page", "whats-new"); } },
 					{ type: "separator" },
 					{ label: "Report a Problem…", click: reportProblem },

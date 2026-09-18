@@ -1956,7 +1956,7 @@ wss.on("connection", async (ws) => {
 					} else {
 						path = newNoteName(existing);
 					}
-					const text = born("");
+					const text = born(typeof msg.text === "string" ? msg.text : "");
 					const written = writeNote(CWD, path, text, null);
 					if (!written.ok) {
 						reply({ type: "note_rename_failed", path: "", to: path, reason: "invalid" });

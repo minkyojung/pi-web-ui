@@ -8,12 +8,14 @@
  * as a file asks pageOf first. VS Code's untitled: is the same move.
  */
 const WHATS_NEW = "octave://whats-new/";
+export const WELCOME = "octave://welcome";
 
-export type Page = { kind: "whats-new"; version: string; title: string };
+export type Page = { kind: "whats-new"; version: string; title: string } | { kind: "welcome"; title: string };
 
 export const whatsNewPath = (version: string): string => `${WHATS_NEW}${version}`;
 
 export function pageOf(path: string | null): Page | null {
+	if (path === WELCOME) return { kind: "welcome", title: "Welcome" };
 	if (!path?.startsWith(WHATS_NEW)) return null;
 	const version = path.slice(WHATS_NEW.length);
 	return /^\d+\.\d+\.\d+$/.test(version) ? { kind: "whats-new", version, title: `What's new in ${version}` } : null;

@@ -85,6 +85,8 @@ export function Settings() {
   const offered = useRef(false);
   useEffect(() => {
     if (offered.current || !config || !providers) return;
+    // In the app the welcome page does this, with the rest of the first run.
+    if (bridge()) return;
     if (config.model !== null || providers.some((p) => p.signedIn)) return;
     offered.current = true;
     setSection("Accounts");
