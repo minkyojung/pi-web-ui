@@ -1334,6 +1334,35 @@ check("math is set as math off the cursor, in a line and as a block, and is the 
 	await until("the source under the cursor", async () => (await shownText(app)).includes("$E = mc^2$") && (await set()).length === 1);
 });
 
+check("the little HTML a note holds is drawn from a list, a script is not, and sub- and superscript sit off the line", async ({ app, cwd }) => {
+	const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR42mNk+M9QDwADhQGA6UhwXAAAAABJRU5ErkJggg==", "base64");
+	writeFileSync(join(cwd, "shot2.png"), png);
+	writeFileSync(join(cwd, "html.md"), "# html\n\nSome <u>underlined</u> and <kbd>⌘K</kbd> words, a break<br>here, <img src=\"shot2.png\" width=\"30\"> and <script>alert(1)</script> stays.\n\nH~2~O and x^2^ are set.\n\n<details open>\n<summary>More</summary>\n<p>Hidden <b>words</b> <a href=\"javascript:alert(1)\">bad</a> <a href=\"https://octave.run\">good</a></p>\n</details>\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="html.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="html.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.press("End", { meta: true });
+	await until("the underline", () => app.evaluate("document.querySelector('#editor .cm-html-u')?.textContent === 'underlined'"));
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-html-kbd')?.textContent"), "⌘K");
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor br.cm-html-br').length"), 1, "a break drawn");
+	assert.equal(await app.evaluate("document.querySelector('#editor img.cm-image')?.getAttribute('width')"), "30", "the picture, at its width");
+	await until("the picture loaded", () => app.evaluate("document.querySelector('#editor img.cm-image')?.naturalWidth === 2"));
+	const text = await shownText(app);
+	assert.ok(!text.includes("<u>") && !text.includes("<kbd>") && !text.includes("<br>"), "the tags on the list are hidden");
+	assert.ok(text.includes("<script>alert(1)</script>"), "a script is left as written, and does not run");
+	// The block: its DOM, sanitized.
+	const block = () => app.evaluate("(() => { const d = document.querySelector('#editor .cm-html-block details'); return d && { open: d.open, summary: d.querySelector('summary')?.textContent, bold: d.querySelector('b')?.textContent, links: [...d.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')]) }; })()");
+	await until("the details block", async () => (await block()) !== null);
+	assert.deepEqual(await block(), { open: true, summary: "More", bold: "words", links: [["bad", null], ["good", "https://octave.run"]] });
+	// Sub- and superscript: set off the line, marks hidden.
+	assert.ok(!text.includes("~2~") && !text.includes("^2^"), "their marks are hidden");
+	const styled = await app.evaluate("[...document.querySelectorAll('#editor .cm-line span')].filter((s) => /sub|super/.test(getComputedStyle(s).verticalAlign)).map((s) => [s.textContent, getComputedStyle(s).verticalAlign])");
+	assert.deepEqual(styled, [["2", "sub"], ["2", "super"]]);
+	// The cursor inside a pair: the tags back.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("underlined") + 2; v.dispatch({ selection: { anchor: at } }); })()`);
+	await until("the tags back under the cursor", async () => (await shownText(app)).includes("<u>underlined</u>"));
+});
+
 check("links are drawn, a missing one differently; ⌘+click follows one and makes the other", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "hub.md"), "go to [[My note]] or [[nowhere yet]]\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="hub.md"]')`));
