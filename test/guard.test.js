@@ -69,6 +69,19 @@ test("고른 글이 있으면 인용으로 붙고, 그게 무엇에 대한 물�
   assert.ok(said.endsWith("> 첫 줄\n> 둘째 줄"), "고른 글은 인용된 채 마지막에 온다");
 });
 
+test("PDF를 열어 두었으면 문서라고 말하고, 고른 글에는 쪽이 붙는다", () => {
+  assert.equal(
+    looking({ path: "papers/a.pdf", chosen: null }),
+    "When they sent this message, the person had this document open beside the conversation: papers/a.pdf (read it with read; it comes back page by page)",
+  );
+  const said = looking({ path: "papers/a.pdf", chosen: "첫 줄\n둘째 줄", page: "3" });
+  assert.match(said, /They have chosen these words in it on page 3, which is what their message is about/);
+  assert.ok(said.endsWith("> 첫 줄\n> 둘째 줄"));
+  assert.match(looking({ path: "a.pdf", chosen: "x", page: "3-4" }), /on page 3 to 4,/);
+  assert.match(looking({ path: "a.pdf", chosen: "x" }), /chosen these words in it, which/, "쪽을 모르면 말하지 않는다");
+  assert.doesNotMatch(looking({ path: "a.md", chosen: "x", page: "3" }), /on page/, "노트에는 쪽이 없다");
+});
+
 // --- what the guard refuses, as pi's runner would ask it ---
 
 /** The handler pi would call, from a guard bound to `root`. */

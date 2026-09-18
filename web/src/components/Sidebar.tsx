@@ -1,10 +1,11 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { cn } from "cn";
-import { ChevronLeftIcon, ChevronRightIcon, FileTextIcon, FolderIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, FileIcon, FileTextIcon, FolderIcon } from "lucide-react";
 
 import { titleOf } from "../noteSync";
-import { filesStore, filesTruncatedStore } from "../serverState";
+import { isDocument } from "../../../documentKinds.ts";
+import { documentsStore, filesStore, filesTruncatedStore } from "../serverState";
 import { type Node, openFoldersStore, reveal, setOpenFolders, toggle, treeOf } from "../tree";
 import { FolderPicker } from "./FolderPicker";
 import { noteActions } from "../noteActions";
@@ -54,6 +55,9 @@ export function Sidebar({
 	onOpen: (path: string) => void;
 }) {
 	const files = useSyncExternalStore(filesStore.subscribe, filesStore.get);
+	// The documents in the folder — PDFs — sit in the tree where they are on
+	// disk, among the notes: the tree answers "where is it", of any file that opens.
+	const documents = useSyncExternalStore(documentsStore.subscribe, documentsStore.get);
 	const truncated = useSyncExternalStore(filesTruncatedStore.subscribe, filesTruncatedStore.get);
 	const openFolders = useSyncExternalStore(openFoldersStore.subscribe, openFoldersStore.get);
 
@@ -73,7 +77,7 @@ export function Sidebar({
 				// The rows are inset by the same gutter the foot keeps, so a row's
 				// highlight ends where the settings button does.
 				<ul id="notes" className="no-scrollbar flex-1 overflow-y-auto overscroll-contain px-2 py-1">
-					{treeOf(files.map((f) => f.path)).map((node) => (
+					{treeOf([...files.map((f) => f.path), ...documents]).map((node) => (
 						<Tree key={node.path} node={node} open={open} openFolders={openFolders} onOpen={onOpen} />
 					))}
 					{/* A note that is in the folder and in no list would be missing from
@@ -195,7 +199,9 @@ function Tree({
 						>
 							{/* The icon takes the row's colour, so it is raised with the
 							    label rather than left behind at second rank. */}
-							<FileTextIcon />
+							{/* A document keeps its extension, and a plainer sheet: the row
+							    says it is not a note before it is opened. */}
+							{isDocument(node.path) ? <FileIcon /> : <FileTextIcon />}
 							<span className="truncate">{titleOf(node.path)}</span>
 						</Button>
 						</ContextMenuTrigger>

@@ -39,8 +39,8 @@ import { extensionUI } from "./extensionUI.ts";
 import { deleteSessionFile } from "./sessionDelete.ts";
 import { Cancelled } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, withCreated, writeNote, type WriteResult } from "./vault.ts";
-import { attachmentAt, savePicture } from "./pictures.ts";
+import { documentAt, listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, withCreated, writeNote, type WriteResult } from "./vault.ts";
+import { attachmentAt } from "./pictures.ts";
 import { FileIndex } from "./fileIndex.ts";
 import { startLogging } from "./log.ts";
 import { deleteNote, shellTrash } from "./trash.ts";
@@ -48,6 +48,9 @@ import { createLoginBridge } from "./login.ts";
 import { noteTools } from "./noteEdit.ts";
 import { claimAppDir } from "./appDir.ts";
 import { wall } from "./wall.ts";
+import { documents } from "./documents.ts";
+import { MAX_BYTES, saveAttachment, type Saved } from "./attach.ts";
+import { documentType } from "./documentKinds.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { watchNotes } from "./watcher.ts";
@@ -156,7 +159,7 @@ const availableModels = () => modelRuntime.getAvailableSnapshot();
  * words chosen in it, given to pi beside the prompt as a hidden message — see
  * guard.ts. One value, not one per tab: pi has one conversation.
  */
-let openNote: { path: string; chosen: string | null } | null = null;
+let openNote: { path: string; chosen: string | null; page?: string } | null = null;
 
 /**
  * The ask waiting for an answer, if there is one: what was chosen, where the
@@ -215,6 +218,9 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 				// Then the wall: what the guard let through, the shell runs behind
 				// it, where a note cannot be written. See wall.ts.
 				{ name: "wall", factory: wall(CWD) },
+				// A PDF read with pi's read comes back as its text, page by page —
+				// see documents.ts.
+				{ name: "documents", factory: documents(CWD) },
 				// The one pair a note is written by — what the guard above sends
 				// edit and write to when they reach for one. See noteEdit.ts.
 				{ name: "notes", factory: noteTools(CWD, piWrote) },
@@ -543,7 +549,7 @@ function branches(): BranchesMsg {
 
 /** The notes in the working folder. See vault.ts. */
 function files(): FilesMsg {
-	return { type: "files", files: notes.all(), truncated: notes.truncated };
+	return { type: "files", files: notes.all(), documents: notes.documents(), truncated: notes.truncated };
 }
 
 /**
@@ -666,6 +672,11 @@ const known = new Map<string, number>();
  * could have a version of it yet. A note that is gone is only news to the list.
  */
 function noticed(path: string): void {
+	// A document has no log and no tab: the only news is that it is there or not.
+	if (documentAt(CWD, path)) {
+		if (notes.sawDocument(path, existsSync(join(CWD, path)))) broadcast(files());
+		return;
+	}
 	const found = readNote(CWD, path);
 	if (!found) {
 		// Gone from under a tab that had it: news. Gone after the app itself
@@ -1276,29 +1287,11 @@ const CONTENT_TYPES: Record<string, string> = {
 	".map": "application/json; charset=utf-8",
 	".ico": "image/x-icon",
 	".woff2": "font/woff2",
+	".wasm": "application/wasm",
 };
 
 
 /** A small request body, whole. Capped: the one endpoint that takes one takes a few fields. */
-/** The body as bytes, up to a limit — a pasted picture is not a settings patch. */
-function bytes(req: IncomingMessage, limit: number): Promise<Buffer> {
-	return new Promise((resolve, reject) => {
-		const chunks: Buffer[] = [];
-		let size = 0;
-		req.on("data", (chunk: Buffer) => {
-			size += chunk.length;
-			if (size > limit) {
-				reject(new Error("too large"));
-				req.destroy();
-				return;
-			}
-			chunks.push(chunk);
-		});
-		req.on("end", () => resolve(Buffer.concat(chunks)));
-		req.on("error", reject);
-	});
-}
-
 function text(req: IncomingMessage): Promise<string> {
 	return new Promise((resolve, reject) => {
 		let out = "";
@@ -1307,6 +1300,23 @@ function text(req: IncomingMessage): Promise<string> {
 			if (out.length > 4096) reject(new Error("too large"));
 		});
 		req.on("end", () => resolve(out));
+		req.on("error", reject);
+	});
+}
+
+/** A file's bytes, whole, or a refusal once they pass the cap — the connection is dropped there, not read to its end. */
+function bytes(req: IncomingMessage, max: number): Promise<Buffer> {
+	return new Promise((resolve, reject) => {
+		const chunks: Buffer[] = [];
+		let size = 0;
+		req.on("data", (chunk: Buffer) => {
+			size += chunk.length;
+			if (size > max) {
+				reject(new Error("too large"));
+				req.destroy();
+			} else chunks.push(chunk);
+		});
+		req.on("end", () => resolve(Buffer.concat(chunks)));
 		req.on("error", reject);
 	});
 }
@@ -1354,19 +1364,37 @@ const server = createServer(async (req, res) => {
 			broadcast(config());
 			return;
 		}
-		// A picture pasted or dropped into a note: the bytes, saved where the
-		// folder keeps pictures (pictures.ts), and its name back for the note.
+		// A file dropped on the app, into the folder — see attach.ts. This writes
+		// a file because a request said so, so it answers only a page of its own:
+		// the body must be declared as bytes, which a page from elsewhere cannot
+		// send without asking first (and this server grants nobody), and an
+		// Origin, where the browser sends one, must be the host that was asked.
 		if (pathname === "/api/attachment" && req.method === "POST") {
-			const from = url.searchParams.get("from") ?? "";
-			const given = url.searchParams.get("name") ?? "";
+			const origin = req.headers.origin;
+			if (origin && URL.parse(origin)?.host !== req.headers.host) return json(403, { error: "not from this app" });
+			if (req.headers["content-type"] !== "application/octet-stream") return json(415, { error: "expected application/octet-stream" });
+			if (Number(req.headers["content-length"] ?? 0) > MAX_BYTES) return json(413, { error: "too large" });
 			let body: Buffer;
 			try {
-				body = await bytes(req, 50 * 1024 * 1024);
+				body = await bytes(req, MAX_BYTES);
 			} catch {
 				return json(413, { error: "too large" });
 			}
-			const saved = savePicture(CWD, from, given, body);
-			return saved ? json(200, saved) : json(400, { error: "not a picture, or nowhere to put it" });
+			let saved: Saved;
+			try {
+				saved = saveAttachment(CWD, url.searchParams.get("name") ?? "", body);
+			} catch (err) {
+				console.error("could not save an attachment:", err instanceof Error ? err.message : err);
+				return json(500, { error: "could not save the file" });
+			}
+			if (!saved.ok) {
+				const refusal = { name: [400, "not a usable file name"], kind: [415, "not a kind of file Octave takes"], size: [413, "empty or too large"] } as const;
+				return json(refusal[saved.reason][0], { error: refusal[saved.reason][1] });
+			}
+			// The watcher would say so in a moment; whoever dropped it is about to
+			// name it, so the list hears now.
+			if (documentAt(CWD, saved.path) && notes.sawDocument(saved.path, true)) broadcast(files());
+			return json(201, { path: saved.path });
 		}
 		if (req.method !== "GET") return json(405, { error: "read only" });
 		if (pathname === "/api/settings") return json(200, readSettings());
@@ -1406,7 +1434,11 @@ const server = createServer(async (req, res) => {
 			res.writeHead(400).end("Bad path");
 			return;
 		}
-		const found = attachmentAt(CWD, given, url.searchParams.get("from") ?? "");
+		// A picture a note refers to, or a document by its own path: what the tab
+		// that shows a PDF reads (Pdf.tsx). A document is named exactly, never
+		// looked for by name, since nothing embeds one yet.
+		const document = documentAt(CWD, given);
+		const found = attachmentAt(CWD, given, url.searchParams.get("from") ?? "") ?? (document ? { full: join(CWD, document), type: documentType(document)! } : null);
 		if (!found) {
 			res.writeHead(404).end("Not found");
 			return;
@@ -1494,7 +1526,12 @@ wss.on("connection", async (ws) => {
 					if (typeof msg.text !== "string") return;
 					openNote =
 						typeof msg.note === "string"
-							? { path: msg.note, chosen: typeof msg.chosen === "string" && msg.chosen ? msg.chosen : null }
+							? {
+									path: msg.note,
+									chosen: typeof msg.chosen === "string" && msg.chosen ? msg.chosen : null,
+									// Digits and a dash, since it is said to pi as it came.
+									...(typeof msg.page === "string" && /^\d{1,6}(-\d{1,6})?$/.test(msg.page) ? { page: msg.page } : {}),
+								}
 							: null;
 					// Anything else said to pi takes the waiting answer with it: after
 					// this, which reply was the answer cannot be told, and a guess

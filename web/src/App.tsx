@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type PanelImperativeHandle, useDefaultLayout } from "react-resizable-panels";
 
 import { Editor } from "./components/Editor";
@@ -21,6 +21,10 @@ import { pageOf, WELCOME, whatsNewPath } from "./pages";
 import { pageAskedStore, updateStore } from "./update";
 import { Welcome } from "./components/Welcome";
 import { WhatsNew } from "./components/WhatsNew";
+
+// pdf.js is larger than the rest of the window put together, and most days no
+// PDF is opened: it is fetched when the first one is.
+const Pdf = lazy(() => import("./components/Pdf"));
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
 import { bump, forget, readRecent, writeRecent } from "./recent";
@@ -548,7 +552,8 @@ export function App() {
 					    rather than in it, and the list begins below it. */}
 					<div className="h-11 shrink-0" />
 					<Boundary name="list of notes">
-						<Sidebar open={note} onOpen={setOpen} />
+						{/* A document in front is a row of the list like a note is, so it is lit there too. */}
+						<Sidebar open={page?.kind === "document" ? page.path : note} onOpen={setOpen} />
 					</Boundary>
 				</ResizablePanel>
 				<ResizableHandle />
@@ -620,6 +625,12 @@ export function App() {
 					    into is nothing to a page that has nowhere to go. */}
 					{page?.kind === "welcome" ? (
 						<Welcome onDone={() => closeTab(WELCOME)} />
+					) : page?.kind === "document" ? (
+						<Boundary name="document" hint="The file itself is untouched.">
+							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
+								<Pdf key={page.path} path={page.path} />
+							</Suspense>
+						</Boundary>
 					) : page ? (
 						<WhatsNew key={page.version} version={page.version} />
 					) : open && deleted?.path !== open ? (
@@ -704,7 +715,9 @@ export function App() {
 						    a step down does not need saying twice. */}
 						<div className="surface-panel m-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-sm border">
 							<Boundary name="conversation">
-								<Pi note={note} raw={raw} />
+								{/* A PDF in front is what the message is beside, as a note is:
+								    the agent is told which, and what was chosen on its pages. */}
+								<Pi note={page?.kind === "document" ? page.path : note} raw={raw} />
 							</Boundary>
 						</div>
 					</ResizablePanel>

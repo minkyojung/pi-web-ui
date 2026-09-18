@@ -26,10 +26,12 @@
  * git's own index all have: events for the usual traffic, a re-read at a
  * moment nobody is typing.
  */
-import { LIMIT, listNotes, type NoteFile } from "./vault.ts";
+import { LIMIT, listFiles, type NoteFile } from "./vault.ts";
 
 export class FileIndex {
 	private notes = new Map<string, number>();
+	/** The documents (documents.ts) beside the notes, by path. Listed so a message can name one; nothing orders them. */
+	private docs = new Set<string>();
 	private root: string;
 	private cut = false;
 
@@ -40,10 +42,16 @@ export class FileIndex {
 
 	/** Read the folder. True when the set of notes is not what it was. */
 	load(): boolean {
-		const found = listNotes(this.root);
+		const { notes: found, documents } = listFiles(this.root);
 		const next = new Map(found.map((f) => [f.path, f.modified] as const));
-		const changed = next.size !== this.notes.size || [...next.keys()].some((path) => !this.notes.has(path));
+		const docs = new Set(documents);
+		const changed =
+			next.size !== this.notes.size ||
+			[...next.keys()].some((path) => !this.notes.has(path)) ||
+			docs.size !== this.docs.size ||
+			[...docs].some((path) => !this.docs.has(path));
 		this.notes = next;
+		this.docs = docs;
 		// The walk stops at LIMIT, so a list that long is one that was cut. A
 		// folder holding exactly that many notes reads as cut and is told so
 		// wrongly — the cheap wrong answer, at a number no folder of notes
@@ -78,6 +86,19 @@ export class FileIndex {
 
 	has(path: string): boolean {
 		return this.notes.has(path);
+	}
+
+	/** A document appeared, or went. True when that is news to the list. */
+	sawDocument(path: string, there: boolean): boolean {
+		if (there === this.docs.has(path)) return false;
+		if (there) this.docs.add(path);
+		else this.docs.delete(path);
+		return true;
+	}
+
+	/** The documents, by path. */
+	documents(): string[] {
+		return [...this.docs].sort();
 	}
 
 	paths(): string[] {

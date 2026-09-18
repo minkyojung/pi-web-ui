@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { blocksOf, isPage, pageOf, spansOf, whatsNewPath } from "../web/src/pages.ts";
+import { blocksOf, isPage, pageOf, spansOf, vaultUrl, whatsNewPath } from "../web/src/pages.ts";
+import { noteFromHash } from "../web/src/noteSync.ts";
 
 test("a page's address is under a scheme no note has, and only a version makes one", () => {
 	assert.equal(whatsNewPath("0.0.4"), "octave://whats-new/0.0.4");
@@ -10,6 +11,16 @@ test("a page's address is under a scheme no note has, and only a version makes o
 	assert.equal(pageOf("ideas/second.md"), null, "a note");
 	assert.equal(pageOf(null), null);
 	assert.equal(isPage("octave://whats-new/1.2.3"), true);
+});
+
+test("a document's address is its path, and it is a page and not a note", () => {
+	assert.deepEqual(pageOf("papers/Attention is all.pdf"), { kind: "document", path: "papers/Attention is all.pdf", title: "Attention is all.pdf" });
+	assert.deepEqual(pageOf("A.PDF"), { kind: "document", path: "A.PDF", title: "A.PDF" });
+	assert.equal(pageOf("about pdf.md"), null, "a note about one is a note");
+	assert.equal(isPage("a.pdf"), true);
+	assert.equal(noteFromHash("#papers/a%20b.pdf"), "papers/a b.pdf", "and the address bar may hold it");
+	assert.equal(noteFromHash("#run.sh"), null);
+	assert.equal(vaultUrl("papers/a b#1.pdf"), "/vault/papers/a%20b%231.pdf");
 });
 
 test("a changelog section is headings, lists and paragraphs, with code set apart", () => {

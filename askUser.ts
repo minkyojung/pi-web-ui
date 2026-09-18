@@ -168,11 +168,23 @@ export function decodeBatch(answer: string): unknown[] {
 
 type Question = Omit<PromptRequest, "id" | "pipeline">;
 
-/** The question as the card reads it, from the arguments as the schema passed them. */
+/** The kinds that are a choice from a list, where the person may say something that is not on it. */
+const chooses = (kind: string) => kind === "select" || kind === "multiselect";
+
+/**
+ * The question as the card reads it, from the arguments as the schema passed them.
+ *
+ * A choice is marked `other`: the card offers a line to write in beside the
+ * options, and what is written comes back as the answer — a string is what a
+ * select answers with either way, and the model reads it as one. The mark is
+ * put on here and nowhere else, because the other askers on the same card
+ * (extensionUI.ts, the server's own) compare the answer with what they offered.
+ */
 export function questionOf(params: AskUserParams): Question {
 	const title = params.title || params.message || "Question";
 	const metadata: Record<string, unknown> = {};
 	if (params.message) metadata.message = params.message;
+	if (chooses(params.method)) metadata.other = true;
 	if (params.method === "batch") {
 		metadata.questions = (params.questions ?? []).map((q) => ({
 			method: q.method,
@@ -180,13 +192,14 @@ export function questionOf(params: AskUserParams): Question {
 			...(q.message ? { message: q.message } : {}),
 			...(q.options ? { options: q.options } : {}),
 			...(q.placeholder ? { placeholder: q.placeholder } : {}),
+			...(chooses(q.method) ? { other: true } : {}),
 		}));
 		return { type: "batch", question: params.title || "Questions", metadata };
 	}
 	return {
 		type: params.method,
 		question: title,
-		...(params.method === "select" || params.method === "multiselect" ? { options: params.options } : {}),
+		...(chooses(params.method) ? { options: params.options } : {}),
 		...(params.method === "input" && params.placeholder ? { defaultValue: params.placeholder } : {}),
 		...(Object.keys(metadata).length ? { metadata } : {}),
 	};
@@ -223,6 +236,7 @@ export const askUser = (ask: () => (question: Question) => Promise<string>) => (
 			"Ask the person a question and wait for the answer. Use it when what to do next depends on something only they know: a choice between real alternatives, a fact you cannot find, a yes or no before something hard to undo. Five kinds: confirm (yes/no), select (one of options[]), multiselect (several of options[]), input (free text), batch (several questions answered together, none of them a batch). Send options as a plain string[], not [{label, value}]. " +
 			"Ask with this rather than ending the turn with a question in your text: the tool waits for the answer, the text does not. " +
 			"Prefer select over input when the alternatives are known; the person picks rather than types. " +
+			"Beside the options of a select or multiselect the person is always given a line to answer in their own words, so do not add an option like 'Other' — and the answer may be one that was not among the options. " +
 			"Several related questions go in one batch, so the person sees one card.",
 		parameters: schema,
 		prepareArguments: (args) => normalize(args) as AskUserParams,

@@ -592,7 +592,7 @@ space for its arguments, and a second Enter sends. Only a first word that names
 a command on that list is sent as one (`command` on the prompt, which turns
 pi's expansion back on for that message); any other `/` is a character,
 however it was typed. That is what makes it safe to have bound an extension
-its `ctx.ui` — its questions come up as ask_user's card, its `notify` goes
+its `ctx.ui` — its questions come up where ask_user's do, its `notify` goes
 into the conversation, and the terminal it would draw on is taken and put
 nowhere, as pi's own RPC host does (`extensionUI.ts`).
 
@@ -601,15 +601,67 @@ the word, and the chosen one goes in as its path (`@folder/note.md`), the way
 pi's own `@file` argument names a file. pi's terminal has this; its library
 does not, so this one is Octave's, over the same note list the sidebar and ⌘P
 read. The words are the mention, not the note: reading it is pi's `read`
-tool's job, which is why nothing is copied in. The two lists — commands after
-`/`, notes after `@` — are one component (`SuggestMenu`) with two sources
-(`commandMenu.ts`, `noteMention.ts`), and never open together.
+tool's job, which is why nothing is copied in. The PDFs in the folder are on
+the list too, after the notes, since pi reads those the same way
+(`documents.ts`); they are in no other list, because nothing else here opens
+one. The two lists — commands after `/`, notes after `@` — are one component
+(`SuggestMenu`) with two sources (`commandMenu.ts`, `noteMention.ts`), and
+never open together.
+
+A file from outside the folder comes in by one door, `POST /api/attachment`
+(`attach.ts`): a name and bytes, since that is all a page can give, written
+into `attachments/` at the top of the folder — where Obsidian users most often
+point its own setting — under the first spelling of the name nobody has, never
+over what is there. It takes the documents pi reads and images, and nothing
+else, and answers only a page of its own: the body has to be declared as
+bytes, which a page from elsewhere cannot send without asking first, and this
+server grants nobody.
 
 An image pasted into the box goes with the message, as pi's `prompt()` takes
 images — base64 and a media type — and is shown above the box until then, with
 the way to take it back out. Pasting is the one way in: the dropzone and the
 button the component brings are not used. A message is words, so an image with
 no words beside it is not sent.
+
+Any other file dropped or pasted there does not ride with the message: it goes
+into the folder by the door above, and its path goes into the message where
+the cursor is, as a mention — so a PDF from the desktop ends up exactly where
+one already in the folder would be, a file the message names and pi reads.
+Which kinds the folder takes is the server's to say, since it holds the one
+list of what pi can read; a refusal is said in the conversation. The
+conversation keeps the path and not the pages, which is what keeps it light.
+
+A PDF is a row of the tree where it is on disk, and opens in a tab. The tab
+row holds addresses and a PDF's address is its path, as a note's is, so
+nothing about tabs, the way back or the address bar learned a new kind of
+thing: `pageOf` (`pages.ts`) is asked what an address is before anything reads
+it as a note, and answers "a document" by the one list of what a document is
+(`documentKinds.ts`, at the root, which the server and pi's reader share).
+What draws it is pdf.js's own viewer (`Pdf.tsx`) — the part that lays real
+text over each page, so words are chosen with the mouse as anywhere else, and
+draws only the pages in view; it is what Firefox and Obsidian show one with.
+It is fetched when the first PDF is opened, being larger than the rest of the
+window together, and the character maps and fonts it reads beside itself are
+copied next to the build (`vite.config.ts`), without which a PDF in Hangul
+that left its fonts out opens as boxes. The bytes come from `/vault/`, the
+route the pictures in a note come by, which gives a document out by its exact
+path and nothing else that is not a picture. Renaming and deleting are not
+offered on one: those are done through a note's title and its log, and a PDF
+has neither here.
+
+Words dragged across in a PDF are chosen as words in a note are: the same
+store (`chosen.ts`), the same chip above the box, the same ride beside the
+message. It is the browser's own selection that is read, since choosing in
+pdf.js's text layer is that, and two things differ from the editor's report.
+The page rides along — read off the pages the selection starts and ends in —
+because a PDF's pages are the only address its words have, and pi's `read`
+names each page, so the page is where pi goes to read around them. And an
+empty selection is news only when it was emptied by a click on the pages:
+clicking into the message box to ask empties the browser's selection too,
+which an editor that keeps its own never had to think about. What is in front
+is said to pi as what it is — "this document, open beside the conversation"
+and not "this note, in their editor" (`looking` in `guard.ts`) — so a PDF
+merely open is one pi can be asked about without naming it.
 
 The rest of what pi can do to a session is here as a button each, each a
 line of pi's API: `compact` (pi's `/compact`, from the context card, while
@@ -620,7 +672,7 @@ before it, the message handed back as text); `clone_session` (pi's `/clone`,
 a fork at the leaf rather than before it, as pi's own RPC host does it); `export_session` (pi's `/export`,
 into the vault's `.pi/exports` rather than among the notes). And before a
 branch is left by the arrows, the same question pi's `/tree` asks — summarise
-it into the one being joined? — as the card any question is, unless pi's
+it into the one being joined? — asked where any question is, unless pi's
 `branchSummary.skipPrompt` says not to ask.
 
 Settings › Agent has a "pi" section, and everything in it is pi's own: each
@@ -705,11 +757,36 @@ package the shadcn components already use.
 
 `ask_user` is Octave's own tool (`askUser.ts`): the same name and the same five
 kinds of question pi already knows how to ask, so nothing about pi changes.
-Each question goes out to every tab as `prompt_request`, is drawn as a card
-under the waiting tool, and the first `prompt_response` from any tab settles
-it; every tab then gets `prompt_dismiss` (`prompts.ts`). Nothing waits it out —
-the card stays until it is answered or closed, and Stop, New and switching
-sessions cancel open questions first, which is what lets the abort through.
+Each question goes out to every tab as `prompt_request`, and the first
+`prompt_response` from any tab settles it; every tab then gets `prompt_dismiss`
+(`prompts.ts`). Nothing waits it out — the question stays until it is answered
+or closed, and Stop, New and switching sessions cancel open questions first,
+which is what lets the abort through.
+
+It is drawn where the message box is, in the box's place (`Foot` in `Pi.tsx`,
+`Question.tsx`). It used to be a card under the waiting tool, over a box that
+was still there to write in; but while a question is open there is one thing
+to say to the agent, and the agents that ask at all — Claude Code, Cursor —
+put the asking where the answering is done. The box is hidden and not taken
+down, since it holds what is not text: a pasted image, a file still on its way
+into the folder. The form is shadcn's Questionnaire (`ui/questionnaire.tsx`
+over `@shadcn/react`, pinned while that is short of 1.0): a choice is taken —
+a number key, a click — and then sent with Enter, so it can be changed before
+it goes, where the card sent on the click; a batch goes one question at a
+time with a way back; several that may be none say None. The keys are the
+question's unless something else is being written in: one that comes up over
+a note being typed leaves the keys there, and the strip says the agent waits.
+
+A select or multiselect of ask_user's has a line under the choices to answer in
+one's own words, and the tool's description tells the model so, so that it does
+not offer an "Other" of its own. ask_user's alone: `questionOf` marks them
+(`metadata.other`), and the other two askers on the same form — an extension's
+`ctx.ui.select`, whose contract in pi is one of the options or nothing, and the
+server's own question before a branch is left — are not marked and get no line.
+What the form holds is read by place and not by text (`answerOf` in
+`promptAnswer.ts`), since a model may offer the same words twice, and the line
+is read apart from the choices, so a "2" written is the text. An extension's
+`editor` is a page of text and keeps a textarea: Enter there is a new line.
 
 It began as the dashboard extension's tool, reached over that extension's bus,
 and the bus cost a second on every new session and threw on the second load.

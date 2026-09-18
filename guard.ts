@@ -33,6 +33,7 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, relative, sep } from "node:path";
+import { isDocument } from "./documentKinds.ts";
 import { notePath } from "./vault.ts";
 
 /** What the app keeps beside the notes. Nothing of pi's may go there. */
@@ -53,6 +54,7 @@ Talk as a person across the table would: plainly, and briefly unless they ask fo
 export const VAULT_PROMPT = [
 	"You are working in a folder of a person's notes: markdown files (.md), one note per file, the file's name being the note's title.",
 	"Read notes with read, grep, find and ls; change them with note_edit, or note_write for a new note. Keep a note's existing style, headings and links.",
+	"A .pdf in the folder is read with read as well: it comes back as its text, page by page, and a long one is continued with offset like any file. grep and bash see only its bytes.",
 	"A note may open with a `---` block of properties — its tags, its dates, what it is filed by. Change those with note_properties, never by editing that block as text: it is YAML, and a quote or an indent out of place there takes the note out of the app's index without saying so.",
 	"edit and write are refused on a note, because what they write could not be told from the person's own words; they are for every other file here.",
 	"bash cannot write a note either, or anything under .pi/: the operating system refuses it. Read with bash all you like; change a note with note_edit.",
@@ -81,18 +83,24 @@ export function mentionsAppDir(command: string): boolean {
 }
 
 /** The note open in the editor, and the words chosen in it, if any. */
-export type OpenNote = () => { path: string; chosen: string | null } | null;
+export type OpenNote = () => { path: string; chosen: string | null; page?: string } | null;
 
 /**
  * What the person was looking at, said beside their message. Kept in the
  * conversation with it, so it is said as of that message rather than as now.
  */
-export function looking(note: { path: string; chosen: string | null }): string {
-	const line = `When they sent this message, the person had this note open in their editor: ${note.path}`;
+export function looking(note: { path: string; chosen: string | null; page?: string }): string {
+	// A PDF in front is said as one: pi reads it with read, not as a note, and
+	// the page is where to read around the chosen words — read names each page.
+	const document = isDocument(note.path);
+	const line = document
+		? `When they sent this message, the person had this document open beside the conversation: ${note.path} (read it with read; it comes back page by page)`
+		: `When they sent this message, the person had this note open in their editor: ${note.path}`;
 	if (!note.chosen) return line;
+	const where = document && note.page ? ` on page ${note.page.replace("-", " to ")}` : "";
 	// Quoted, and said to be a part of the note rather than a thing to answer
 	// about on its own: the question is the message, this is what it points at.
-	return `${line}\nThey have chosen these words in it, which is what their message is about unless they say otherwise:\n${note.chosen
+	return `${line}\nThey have chosen these words in it${where}, which is what their message is about unless they say otherwise:\n${note.chosen
 		.split("\n")
 		.map((words) => `> ${words}`)
 		.join("\n")}`;

@@ -6,6 +6,12 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 ### Added
+- A PDF in your folder can be talked about: name it in the message by its path, as you would a note, and the agent reads it page by page. A long one it reads in parts, as it does a long file.
+- Type `@` in the message box and the PDFs in your folder are offered after the notes, so one can be named without typing its path.
+- Drop a PDF on the message box, or paste one, and it is saved in your folder under `attachments/` and named in your message, ready to ask about. A file of the same name is never replaced; the new one gets a number.
+- The PDFs in your folder are in the sidebar where they are on disk, and in ⌘P. Click one and it opens in a tab, fitted to the column; its words can be selected and copied.
+- Select words in a PDF and they show above the message box with their page, as words chosen in a note do; ask, and the agent knows which words and where. With a PDF open and nothing selected, the agent still knows which PDF you mean.
+- When the agent asks you to choose, there is a line under the choices to answer in your own words instead.
 - Help › Getting Started and Help › What Leaves Your Mac open two short guides: how to begin, what comes over from Obsidian, the keys; and what is sent where, where every file is kept, and how to remove it all.
 - The first run opens a Welcome page: your folder and what the agent may do in it, signing in, and a button that writes a welcome note into the folder with five minutes of things to try. Done closes it; Help › Welcome opens it again.
 - Type `[^` and the note's footnotes are offered, with what each says, and a new one numbered next whose note is started at the end for you to write. Point at a footnote's number and its note is shown.
@@ -13,7 +19,12 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - Paste a picture into a note, or drop one in, and it is kept in the folder — where Obsidian keeps pictures if the folder is a vault that says, else in `attachments/` — and the note says `![[its name]]` where the cursor was.
 
 ### Changed
+- A question from the agent comes up where the message box is, and the box comes back — with whatever you had typed or pasted in it — once you answer or close the question. Take a choice with a number key or a click and send it with Enter, so you can change your mind before it goes; Esc closes the question without answering. A question in several parts asks one at a time, with a way back, and while the agent is running the question has the button to stop it.
 - The two search tools the agent uses to find things in your notes come inside the app now. Before, on a Mac without them, the agent downloaded them from GitHub the first time it searched; nothing is downloaded any more, and searching works offline.
+
+### Fixed
+- A question from the agent could not be seen or answered while the raw view was open.
+- A question arriving while you were typing in a note could take the keyboard away from the note. It now leaves the keys where you are writing, and the strip at the foot of the window says the agent is waiting.
 
 ## [0.0.5] - 2026-09-18
 ### Added

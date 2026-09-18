@@ -30,12 +30,13 @@ test("questions가 있으면 batch이고, 제목이 없으면 첫 질문의 것�
 
 test("카드가 읽는 모양으로 나간다", () => {
 	assert.deepEqual(questionOf({ method: "confirm", title: "Sure?", message: "Why" }), { type: "confirm", question: "Sure?", metadata: { message: "Why" } });
-	assert.deepEqual(questionOf({ method: "select", title: "Which?", options: ["a", "b"] }), { type: "select", question: "Which?", options: ["a", "b"] });
+	assert.deepEqual(questionOf({ method: "select", title: "Which?", options: ["a", "b"] }), { type: "select", question: "Which?", options: ["a", "b"], metadata: { other: true } });
+	assert.deepEqual(questionOf({ method: "multiselect", title: "Which?", options: ["a"] }), { type: "multiselect", question: "Which?", options: ["a"], metadata: { other: true } }, "고르는 물음에는 자기 말로 답할 자리가 있다");
 	assert.deepEqual(questionOf({ method: "input", title: "Name?", placeholder: "e.g. Kim" }), { type: "input", question: "Name?", defaultValue: "e.g. Kim" });
 	assert.deepEqual(questionOf({ method: "input", message: "only a message" }), { type: "input", question: "only a message", metadata: { message: "only a message" } });
 	assert.deepEqual(
 		questionOf({ method: "batch", title: "Setup", questions: [{ method: "select", title: "A?", options: ["x"] }, { method: "input", title: "B?", placeholder: "p" }] }),
-		{ type: "batch", question: "Setup", metadata: { questions: [{ method: "select", title: "A?", options: ["x"] }, { method: "input", title: "B?", placeholder: "p" }] } },
+		{ type: "batch", question: "Setup", metadata: { questions: [{ method: "select", title: "A?", options: ["x"], other: true }, { method: "input", title: "B?", placeholder: "p" }] } },
 	);
 });
 
@@ -65,7 +66,7 @@ test("도구는 등록되고, 물음을 내고, 답을 pi에게 말한다", asyn
 	const run = (args) => tool.execute("call-1", tool.prepareArguments(args), undefined, undefined, {});
 
 	let out = await run({ method: "select", question: "Which?", options: '["a","b"]' });
-	assert.deepEqual(asked.at(-1), { type: "select", question: "Which?", options: ["a", "b"] });
+	assert.deepEqual(asked.at(-1), { type: "select", question: "Which?", options: ["a", "b"], metadata: { other: true } });
 	assert.equal(out.content[0].text, 'User responded: "a"');
 	assert.deepEqual(out.details, { method: "select", result: "a", cancelled: false });
 
