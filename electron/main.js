@@ -11,17 +11,18 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain, net, protocol, shell } from "electron";
 import updater from "electron-updater";
 
+import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
 import { createServers } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
 import { branchOf, makeWorkspace, repositoryOf } from "./git.js";
 import { login } from "./github.js";
-import { projectsOf, withWorkspace } from "./workspaces.js";
+import { firstWorkspace, projectsOf, withWorkspace } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
@@ -80,13 +81,13 @@ function writeSettings(next) {
 	writeFileSync(settingsFile(), JSON.stringify(next, null, 2));
 }
 
-async function askForWorkdir(current) {
+async function askForRepository() {
 	const { canceled, filePaths } = await dialog.showOpenDialog({
-		title: "Choose a working folder",
-		message: "The folder the agent will read and write files in.",
-		buttonLabel: "Use this folder",
-		defaultPath: current ?? app.getPath("home"),
-		properties: ["openDirectory", "createDirectory"],
+		title: "Open a repository",
+		message: "A folder with a git repository in it. Its workspaces are made from it.",
+		buttonLabel: "Open",
+		defaultPath: app.getPath("home"),
+		properties: ["openDirectory"],
 	});
 	return canceled ? null : filePaths[0];
 }
@@ -103,13 +104,6 @@ function remember(settings, workdir) {
 		.filter((path) => existsSync(path))
 		.slice(0, RECENT);
 	return { ...settings, workdir, recent };
-}
-
-async function resolveWorkdir() {
-	const settings = readSettings();
-	const known = settings.workdir && existsSync(settings.workdir) ? settings.workdir : await askForWorkdir(settings.workdir);
-	if (known) writeSettings(remember(settings, known));
-	return known;
 }
 
 /**
@@ -481,13 +475,44 @@ function openWorkspace(path) {
 	if (known) void show(path);
 }
 
+/** The screen that adds a repository, when there is no workspace to put in front. */
+async function showStart() {
+	++asked;
+	front = null;
+	window.setTitle("Octave");
+	await window.loadURL(pageUrl("start.html")).catch((err) => console.error(`[window] ${err.message}`));
+}
+
+/**
+ * A repository chosen in the Finder, added to the list, and a workspace of it
+ * put in front — its first, or one made now if it has none, as Conductor
+ * makes one on adding a repository. A folder anywhere inside a repository
+ * adds that repository. Says why not when the folder is in none; a choice
+ * cancelled says nothing.
+ */
+async function openLocalRepository() {
+	const picked = await askForRepository();
+	if (!picked) return null;
+	const root = await repositoryOf(picked);
+	if (!root) return { error: `${basename(picked)} is not in a git repository.` };
+	const projects = withWorkspace(projectsOf(readSettings(), isCheckout), root);
+	writeSettings({ ...readSettings(), projects });
+	workspacesChanged();
+	const first = projects.find((project) => project.path === root)?.worktrees[0];
+	if (first) void show(first.path);
+	else await newWorkspace(root);
+	return {};
+}
+
+/** The same, from the menu, where there is no page to say why not. */
+async function openRepositoryFromMenu() {
+	const result = await openLocalRepository();
+	if (result?.error) dialog.showErrorBox("That folder cannot be opened", result.error);
+}
+
 function openWorkdir(picked) {
 	if (!picked || !existsSync(picked)) return;
 	void show(picked);
-}
-
-async function changeWorkdir() {
-	openWorkdir(await askForWorkdir(front ?? readSettings().workdir));
 }
 
 /**
@@ -500,7 +525,8 @@ function serveFolders() {
 		if (devUrl) return { current: null, recent: [] };
 		return { current: front, recent: (readSettings().recent ?? []).filter((path) => existsSync(path)) };
 	});
-	ipcMain.handle("folder:choose", changeWorkdir);
+	ipcMain.handle("folder:choose", openRepositoryFromMenu);
+	ipcMain.handle("repository:open", () => (devUrl ? null : openLocalRepository()));
 	// The list, and the two things done to it. In a dev run the dev server owns
 	// the folder, so there is no list to switch in.
 	ipcMain.handle("workspaces", () => (devUrl ? null : workspaces()));
@@ -555,8 +581,9 @@ function buildMenu(workdir) {
 			{
 				label: "Folder",
 				submenu: [
-					{ label: "Change working folder…", accelerator: "CmdOrCtrl+O", click: changeWorkdir },
-					{ label: "Reveal in Finder", click: () => shell.openPath(front ?? workdir) },
+					{ label: "Open Repository…", accelerator: "CmdOrCtrl+O", click: openRepositoryFromMenu },
+					// Nothing is in front on the start screen, and nothing is revealed.
+					{ label: "Reveal in Finder", click: () => (front ?? workdir) && shell.openPath(front ?? workdir) },
 				],
 			},
 			{ role: "editMenu" },
@@ -620,12 +647,14 @@ async function main() {
 		if (env) Object.assign(process.env, env);
 		else console.error("[shell] the login shell's environment could not be read; going on with the app's own");
 	}
-	const workdir = devUrl ? process.cwd() : await resolveWorkdir();
-	if (!workdir) {
-		app.quit();
-		return;
-	}
-	buildMenu(workdir);
+	// The app's own pages — see appScheme.js.
+	protocol.handle(SCHEME, (request) => {
+		const file = fileFor(here("../dist"), request.url);
+		return file ? net.fetch(pathToFileURL(file).toString()) : new Response("Not found", { status: 404 });
+	});
+	const settings = readSettings();
+	const first = devUrl ? null : firstWorkspace(projectsOf(settings, isCheckout), settings.workdir);
+	buildMenu(devUrl ? process.cwd() : null);
 	window = new BrowserWindow({
 		width: 1200,
 		height: 820,
@@ -663,13 +692,19 @@ async function main() {
 			return;
 		}
 		await window.loadURL(devUrl);
-	} else {
-		await show(workdir);
+	} else if (first) {
+		await show(first);
 		if (!front) return; // Its server did not answer, and the app is on its way out.
+	} else {
+		await showStart();
 	}
 	window.show();
 	watchForUpdates();
 }
+
+// Before the app is ready, as Electron requires: a scheme of the app's own
+// that behaves as a web page's would, so the start page's modules load.
+protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
 app.whenReady().then(main);
 app.on("window-all-closed", () => app.quit());

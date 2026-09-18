@@ -21,6 +21,14 @@ contextBridge.exposeInMainWorld("pi", {
 	/** Show a file in the Finder. Takes the whole path; the page knows it. */
 	reveal: (path) => ipcRenderer.invoke("file:reveal", path),
 	/**
+	 * A repository chosen in the Finder and added, with a workspace of it put
+	 * in front. Answers `{ error }` when the folder is in no repository, and
+	 * null when the choice was cancelled.
+	 */
+	repositories: {
+		openLocal: () => ipcRenderer.invoke("repository:open"),
+	},
+	/**
 	 * The repositories and their workspaces, which the shell keeps: the list,
 	 * a new workspace of a repository, and one put in front. `onChange` says
 	 * the list is to be asked for again, and returns the way to stop listening.

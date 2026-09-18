@@ -61,3 +61,15 @@ export function withWorkspace(projects, root, worktree = null) {
 	if (had) return next === had ? projects : projects.map((p) => (p === had ? next : p));
 	return [...projects, next];
 }
+
+/**
+ * The workspace to open on starting: the one in front last time if it is
+ * still on the list, else the first on it, else none — and with none, the
+ * app starts on the screen that adds a repository. A folder in front that is
+ * not a listed workspace — a repository's own clone, a folder of notes from
+ * before — is not opened: work happens in a workspace.
+ */
+export function firstWorkspace(projects, workdir) {
+	const all = projects.flatMap((project) => project.worktrees);
+	return (all.find((worktree) => worktree.path === workdir) ?? all[0])?.path ?? null;
+}

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { projectsOf, withWorkspace } from "../electron/workspaces.js";
+import { firstWorkspace, projectsOf, withWorkspace } from "../electron/workspaces.js";
 
 const everywhere = () => true;
 const tree = (path, name = "trenton") => ({ path, branch: `me/${name}`, name });
@@ -49,4 +49,13 @@ test("what is already there leaves the list as it was", () => {
 	const projects = [{ path: "/a", worktrees: [tree("/w")] }];
 	assert.equal(withWorkspace(projects, "/a"), projects);
 	assert.equal(withWorkspace(projects, "/a", tree("/w")), projects);
+});
+
+test("starting opens the workspace in front last time, else the first listed, else none", () => {
+	const projects = [{ path: "/a", worktrees: [tree("/a-1", "one")] }, { path: "/b", worktrees: [tree("/b-1", "two")] }];
+	assert.equal(firstWorkspace(projects, "/b-1"), "/b-1");
+	assert.equal(firstWorkspace(projects, "/gone"), "/a-1");
+	assert.equal(firstWorkspace([{ path: "/a", worktrees: [] }, ...projects.slice(1)], null), "/b-1");
+	assert.equal(firstWorkspace([{ path: "/a", worktrees: [] }], "/a"), null, "a repository's own clone is not a workspace");
+	assert.equal(firstWorkspace([], "/notes"), null);
 });

@@ -61,5 +61,12 @@ export default defineConfig({
 			"/vault": { target: `http://${apiHost}:${apiPort}` },
 		},
 	},
-	build: { outDir: dir("./dist"), emptyOutDir: true },
+	build: {
+		outDir: dir("./dist"),
+		emptyOutDir: true,
+		// Two pages: the app, served by a workspace's server, and the screen
+		// the app opens on before there is any workspace — served by the shell
+		// itself (electron/appScheme.js).
+		rollupOptions: { input: { main: dir("./web/index.html"), start: dir("./web/start.html") } },
+	},
 });
