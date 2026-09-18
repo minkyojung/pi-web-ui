@@ -4,7 +4,7 @@ import test from "node:test";
 import { configStore } from "../web/src/serverState.ts";
 import { agentIdle, offer, restartWhenIdle } from "../web/src/update.ts";
 
-const ready = { phase: "ready", version: "0.0.4", progress: 100, error: null, justUpdated: null };
+const ready = { current: "0.0.3", phase: "ready", version: "0.0.4", progress: 100, error: null, justUpdated: null };
 const config = (isStreaming, followUp = []) => ({ isStreaming, queued: { steering: [], followUp } });
 
 test("the agent is idle when nothing is in hand and nothing is waiting", () => {

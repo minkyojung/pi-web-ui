@@ -37,4 +37,10 @@ contextBridge.exposeInMainWorld("pi", {
 		restart: () => ipcRenderer.invoke("update:restart"),
 		seen: () => ipcRenderer.invoke("update:seen"),
 	},
+	/** The shell asking for a section of Settings to be opened — from a menu item. */
+	onOpenSettings: (listen) => {
+		const handler = (_event, section) => listen(section);
+		ipcRenderer.on("open-settings", handler);
+		return () => ipcRenderer.off("open-settings", handler);
+	},
 });
