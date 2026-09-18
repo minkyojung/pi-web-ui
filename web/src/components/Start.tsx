@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { FolderGit2Icon } from "lucide-react";
 
+import { CloneRepository } from "./CloneRepository";
 import { Button } from "./ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "./ui/empty";
 import { Spinner } from "./ui/spinner";
@@ -11,7 +12,8 @@ const repositories = (window as { pi?: { repositories?: { openLocal(): Promise<{
 
 /**
  * No repository yet: shadcn's Empty, saying what the app works in and
- * offering the way to add one. Adding it makes its first workspace and moves
+ * offering the two ways to add one — a clone already on this Mac, or one
+ * cloned from GitHub. Adding it makes its first workspace and moves
  * the window into it, as Conductor does, so this screen is left behind.
  *
  * The top strip is the window's to drag by — there is no title bar — and
@@ -20,6 +22,7 @@ const repositories = (window as { pi?: { repositories?: { openLocal(): Promise<{
 export function Start() {
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [cloning, setCloning] = useState(false);
 
 	const openLocal = () => {
 		if (!repositories) return;
@@ -44,10 +47,15 @@ export function Start() {
 					<EmptyDescription>Octave works in a git repository. Each task gets a workspace of its own — a folder and a branch — made from it.</EmptyDescription>
 				</EmptyHeader>
 				<EmptyContent>
-					<Button id="open-local" onClick={openLocal} disabled={busy || !repositories}>
-						{busy && <Spinner />}
-						Open local repository
-					</Button>
+					<div className="flex gap-2">
+						<Button id="open-local" onClick={openLocal} disabled={busy || !repositories}>
+							{busy && <Spinner />}
+							Open local repository
+						</Button>
+						<Button id="clone-github" variant="outline" onClick={() => setCloning(true)} disabled={busy || !repositories}>
+							Clone from GitHub
+						</Button>
+					</div>
 					{error && (
 						<p id="start-error" role="alert" className="text-sm text-destructive">
 							{error}
@@ -55,6 +63,7 @@ export function Start() {
 					)}
 				</EmptyContent>
 			</Empty>
+			<CloneRepository open={cloning} onOpenChange={setCloning} />
 		</div>
 	);
 }

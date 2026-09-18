@@ -21,12 +21,16 @@ contextBridge.exposeInMainWorld("pi", {
 	/** Show a file in the Finder. Takes the whole path; the page knows it. */
 	reveal: (path) => ipcRenderer.invoke("file:reveal", path),
 	/**
-	 * A repository chosen in the Finder and added, with a workspace of it put
-	 * in front. Answers `{ error }` when the folder is in no repository, and
-	 * null when the choice was cancelled.
+	 * A repository added, with a workspace of it put in front: one chosen in
+	 * the Finder, or one cloned from GitHub by owner/name or address. Each
+	 * answers `{ error }` when it cannot be done, and a Finder choice
+	 * cancelled answers null. `github` is the signed-in person's repositories,
+	 * or null when gh cannot say.
 	 */
 	repositories: {
 		openLocal: () => ipcRenderer.invoke("repository:open"),
+		clone: (source) => ipcRenderer.invoke("repository:clone", source),
+		github: () => ipcRenderer.invoke("github:repositories"),
 	},
 	/**
 	 * The repositories and their workspaces, which the shell keeps: the list,

@@ -8,6 +8,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 ### Added
 - The sidebar lists your repositories, and under each its workspaces by branch. Click one to move into it; + on a repository makes a new workspace — a folder and a branch of its own, started from the latest on the remote — and moves you into it.
 - With no repository yet, Octave opens on a screen that adds one: Open local repository, choose its folder, and its first workspace is made and opened. Folder › Open Repository… (⌘O) does the same from anywhere.
+- Clone from GitHub: your repositories are listed to search — signed in with `gh`, private ones too — or give any by owner/name or its address. It is cloned into `~/octave/repos`, and its first workspace is made and opened.
 
 ### Changed
 - Octave opens where you left off — the workspace you were last in — and works only in repositories now: a folder of notes is no longer opened, and the first run no longer asks for a folder.

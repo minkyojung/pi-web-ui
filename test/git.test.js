@@ -124,3 +124,15 @@ test("with no gh to ask, there is no one signed in", async () => {
 		process.env.PATH = path;
 	}
 });
+
+test("a clone is asked for by owner/name or by a GitHub address, and nothing else", async () => {
+	const { repositoryName } = await import("../electron/github.js");
+	const want = { owner: "minkyojung", name: "pi-web-ui" };
+	for (const source of ["minkyojung/pi-web-ui", " minkyojung/pi-web-ui.git ", "https://github.com/minkyojung/pi-web-ui", "https://github.com/minkyojung/pi-web-ui.git", "https://github.com/minkyojung/pi-web-ui/", "git@github.com:minkyojung/pi-web-ui.git"]) {
+		assert.deepEqual(repositoryName(source), want, source);
+	}
+	assert.deepEqual(repositoryName("a/b.c_d-e"), { owner: "a", name: "b.c_d-e" });
+	for (const source of ["", "pi-web-ui", "a/b/c", "a/..", "a/.", "https://gitlab.com/a/b", "http://github.com/a/b", "https://github.com/a/b/tree/main", "--upload-pack=x/y", "a/b; rm -rf ~", "file:///etc/passwd", null]) {
+		assert.equal(repositoryName(source), null, String(source));
+	}
+});

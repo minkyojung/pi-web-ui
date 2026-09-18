@@ -10,7 +10,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
-import { basename, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { BrowserWindow, Menu, app, dialog, ipcMain, net, protocol, shell } from "electron";
@@ -20,8 +20,8 @@ import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
 import { createServers } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
-import { branchOf, makeWorkspace, repositoryOf } from "./git.js";
-import { login } from "./github.js";
+import { branchOf, git, makeWorkspace, repositoryOf } from "./git.js";
+import { clone, login, repositories, repositoryName } from "./github.js";
 import { firstWorkspace, projectsOf, withWorkspace } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
@@ -495,12 +495,45 @@ async function openLocalRepository() {
 	if (!picked) return null;
 	const root = await repositoryOf(picked);
 	if (!root) return { error: `${basename(picked)} is not in a git repository.` };
+	await addRepository(root);
+	return {};
+}
+
+/** A repository's clone added to the list, and its first workspace put in front — made now if it has none. */
+async function addRepository(root) {
 	const projects = withWorkspace(projectsOf(readSettings(), isCheckout), root);
 	writeSettings({ ...readSettings(), projects });
 	workspacesChanged();
 	const first = projects.find((project) => project.path === root)?.worktrees[0];
 	if (first) void show(first.path);
 	else await newWorkspace(root);
+}
+
+/**
+ * A GitHub repository cloned into `~/octave/repos/{name}` and added, as a
+ * folder chosen in the Finder is. A clone of the same repository already
+ * there is used rather than cloned again; any other folder there is not
+ * touched. Says why not in gh's or git's words.
+ */
+async function cloneRepository(source) {
+	const repo = repositoryName(source);
+	if (!repo) return { error: "Give a repository as owner/name, or its GitHub address." };
+	const into = join(home(), "repos", repo.name);
+	if (existsSync(into)) {
+		const origin = (await repositoryOf(into)) === into ? await git(into, ["remote", "get-url", "origin"]).catch(() => null) : null;
+		const same = repositoryName(origin);
+		if (!same || same.owner.toLowerCase() !== repo.owner.toLowerCase() || same.name.toLowerCase() !== repo.name.toLowerCase()) {
+			return { error: `There is already a folder at ${into}, and it is not ${repo.owner}/${repo.name}.` };
+		}
+	} else {
+		mkdirSync(dirname(into), { recursive: true });
+		try {
+			await clone(repo, into);
+		} catch (err) {
+			return { error: err.message };
+		}
+	}
+	await addRepository(into);
 	return {};
 }
 
@@ -527,6 +560,9 @@ function serveFolders() {
 	});
 	ipcMain.handle("folder:choose", openRepositoryFromMenu);
 	ipcMain.handle("repository:open", () => (devUrl ? null : openLocalRepository()));
+	ipcMain.handle("repository:clone", (_event, source) => (devUrl ? null : cloneRepository(source)));
+	// What the clone dialog offers, or null when gh cannot say.
+	ipcMain.handle("github:repositories", () => (devUrl ? null : repositories()));
 	// The list, and the two things done to it. In a dev run the dev server owns
 	// the folder, so there is no list to switch in.
 	ipcMain.handle("workspaces", () => (devUrl ? null : workspaces()));
