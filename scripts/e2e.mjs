@@ -1315,6 +1315,25 @@ check("another note is shown in place — all of it, a section, a block — and 
 	await pickNote(app, "embeds.md");
 });
 
+check("math is set as math off the cursor, in a line and as a block, and is the source under it", async ({ app, cwd }) => {
+	// The block straight under a line of prose, as Obsidian users write it.
+	writeFileSync(join(cwd, "math.md"), "# math\n\nInline $E = mc^2$ here, and $5 is money.\n$$\n\\int_0^1 x^2\\,dx\n$$\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="math.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="math.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.press("End", { meta: true });
+	const set = () => app.evaluate("[...document.querySelectorAll('#editor .cm-math')].map((m) => [m.classList.contains('cm-math-block'), m.querySelector('.katex') !== null, m.textContent.replace(/\\s+/g, '').slice(0, 12)])");
+	await until("both set", async () => (await set()).length === 2);
+	const drawn = await set();
+	assert.deepEqual(drawn.map(([block, katex]) => [block, katex]), [[false, true], [true, true]], "an inline and a block, both by KaTeX");
+	assert.ok(drawn[0][2].includes("E=mc"), `the inline one says E=mc², not ${drawn[0][2]}`);
+	const text = await shownText(app);
+	assert.ok(!text.includes("$E") && text.includes("$5 is money"), "the math's source is gone from the text; the money is not math");
+	// The cursor in the inline math: its source back, the block still set.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("mc^2"); v.dispatch({ selection: { anchor: at } }); })()`);
+	await until("the source under the cursor", async () => (await shownText(app)).includes("$E = mc^2$") && (await set()).length === 1);
+});
+
 check("links are drawn, a missing one differently; ⌘+click follows one and makes the other", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "hub.md"), "go to [[My note]] or [[nowhere yet]]\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="hub.md"]')`));

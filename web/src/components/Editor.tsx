@@ -25,6 +25,7 @@ import { footnotesExtension } from "../features/footnotes";
 import { images } from "../features/images";
 import { tablesExtension } from "../features/tables";
 import { landOn, links, notesChanged } from "../features/links";
+import { mathExtension } from "../features/mathview";
 import { closeDiff, diffFor, keepChunk, review, showDiff, undoChunk } from "../features/review";
 import { toggleBold, toggleItalic } from "../features/toggleMarks";
 import { fitted, leaving, scrollBack } from "../features/viewPlace";
@@ -347,6 +348,7 @@ export function Editor({
 			images(() => at.current),
 			tablesExtension,
 			footnotesExtension,
+			mathExtension,
 			// Another note, in place: a card with its text, or a section of it.
 			embeds({ notes: () => filesStore.get().map((f) => f.path), here: () => at.current, open: (p) => onOpen?.(p) }),
 			linkCompletion(() => filesStore.get().map((f) => f.path)),

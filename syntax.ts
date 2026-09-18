@@ -16,6 +16,7 @@ import { comment } from "./comment.ts";
 import { frontMatter } from "./frontmatter.ts";
 import { footnote } from "./footnote.ts";
 import { highlight } from "./highlight.ts";
+import { math } from "./math.ts";
 import { tag } from "./tag.ts";
 import { wikiLink } from "./wikilink.ts";
 
@@ -29,7 +30,7 @@ export const inlineCodeTag = Tag.define(tags.monospace);
 const inlineCode = { props: [styleTags({ "InlineCode/...": inlineCodeTag })] };
 
 /** The note syntax, for the editor to add to its markdown language. */
-export const noteSyntax: MarkdownExtension = [wikiLink, frontMatter, highlight, tag, comment, footnote, inlineCode];
+export const noteSyntax: MarkdownExtension = [wikiLink, frontMatter, highlight, tag, comment, footnote, math, inlineCode];
 
 /** The whole language, for the server: what the editor parses with, without the editor. */
 export const parser = commonmark.configure([GFM, Subscript, Superscript, Emoji, noteSyntax]);
