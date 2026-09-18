@@ -25,13 +25,14 @@ import { footnotesExtension } from "../features/footnotes";
 import { images } from "../features/images";
 import { tablesExtension } from "../features/tables";
 import { landOn, links, notesChanged } from "../features/links";
+import { html } from "../features/html";
 import { mathExtension } from "../features/mathview";
 import { closeDiff, diffFor, keepChunk, review, showDiff, undoChunk } from "../features/review";
 import { toggleBold, toggleItalic } from "../features/toggleMarks";
 import { fitted, leaving, scrollBack } from "../features/viewPlace";
 import { wrapSelection } from "../features/wrapSelection";
 import { highlightTag } from "../../../highlight.ts";
-import { inlineCodeTag, noteSyntax } from "../../../syntax.ts";
+import { inlineCodeTag, noteSyntax, subscriptTag, superscriptTag } from "../../../syntax.ts";
 import { bodyStart, type Properties as PropertiesRead } from "../../../properties.ts";
 import { tagTag } from "../../../tag.ts";
 import { tagsIn, type Place } from "../../../links.ts";
@@ -175,6 +176,8 @@ const markup = HighlightStyle.define([
 		borderRadius: "3px",
 		padding: "0.1em 0.3em",
 	},
+	{ tag: subscriptTag, verticalAlign: "sub", fontSize: "0.8em" },
+	{ tag: superscriptTag, verticalAlign: "super", fontSize: "0.8em" },
 	{ tag: tags.processingInstruction, color: "var(--muted-foreground)" },
 	{ tag: tags.quote, color: "var(--muted-foreground)" },
 	{ tag: tags.meta, color: "var(--muted-foreground)" },
@@ -349,6 +352,8 @@ export function Editor({
 			tablesExtension,
 			footnotesExtension,
 			mathExtension,
+			// The little HTML a note holds, from an allowlist.
+			html(() => at.current),
 			// Another note, in place: a card with its text, or a section of it.
 			embeds({ notes: () => filesStore.get().map((f) => f.path), here: () => at.current, open: (p) => onOpen?.(p) }),
 			linkCompletion(() => filesStore.get().map((f) => f.path)),

@@ -6,6 +6,8 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 ### Added
+- The HTML a note may hold is drawn: `<u>`, `<sub>`, `<sup>`, `<kbd>`, `<mark>` and their like around words, `<br>` for a line broken by hand, `<img>` with a width, and a `<details>` block — from a short list, with no script run and no style applied. Anything not on the list is left as written.
+- `H~2~O` and `x^2^` sit below and above the line, their marks hidden off the cursor.
 - Math is set as math: `$x^2$` in a line and a `$$` block on lines of its own, the way Obsidian writes them; the source comes back when the cursor is in it.
 - Another note embedded with `![[Note]]` is shown in place, as a card with its text — or the section under a heading with `![[Note#Heading]]`, or one block with `![[Note#^id]]`. The card's title opens the note. A note that is not there says so.
 - A table is drawn as a table, with its columns sitting as the `:--` and `--:` say; the pipes come back when the cursor is in it, or when you click it.

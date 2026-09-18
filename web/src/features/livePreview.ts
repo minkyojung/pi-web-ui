@@ -67,6 +67,8 @@ const MARKUP: Record<string, Set<string>> = {
 	Link: new Set(["LinkMark", "URL", "LinkTitle"]),
 	WikiLink: new Set(["WikiLinkMark"]),
 	Highlight: new Set(["HighlightMark"]),
+	Subscript: new Set(["SubscriptMark"]),
+	Superscript: new Set(["SuperscriptMark"]),
 	Comment: new Set(["CommentMark"]),
 	/** `\*`: the backslash is the mark; the node has no children, so it is handled by hand below. */
 	Escape: new Set(),
