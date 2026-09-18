@@ -8,6 +8,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [0.0.4] - 2026-09-18
 ### Added
+- Settings has an About: the version you are on, a Check for Updates button, and one line saying what came of it — the latest already, a download under way, a version ready to restart into, or that it could not check right now. Octave › Check for Updates… opens it.
 - The first time a new version runs, a tab opens with what changed in it, in the words of the release notes; Help › What's New opens it again any time.
 
 ### Changed
