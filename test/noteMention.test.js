@@ -24,6 +24,12 @@ test("the list narrows by title first, then by path, case aside", () => {
 	assert.deepEqual(matchNotes(paths, "zzz"), []);
 });
 
+test("a document is matched by its title like a note, and its title keeps its extension", () => {
+	const paths = ["ideas.md", "papers/attention.pdf", "attention notes.md"];
+	assert.deepEqual(matchNotes(paths, "att"), ["papers/attention.pdf", "attention notes.md"]);
+	assert.deepEqual(matchNotes(paths, "pdf"), ["papers/attention.pdf"]);
+});
+
 test("accepting writes the path in for the word, with a space after, and puts the cursor after it", () => {
 	assert.deepEqual(acceptMention("see @rea and", 4, 8, "Reading list.md"), { text: "see @Reading list.md  and", cursor: 21 });
 	assert.deepEqual(acceptMention("@", 0, 1, "daily/2026-09-17.md"), { text: "@daily/2026-09-17.md ", cursor: 21 });

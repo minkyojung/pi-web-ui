@@ -2553,6 +2553,14 @@ check("typing @ in the message box offers the notes, and Enter writes the chosen
 	await app.keys("and more");
 	assert.deepEqual(await listed(), []);
 	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+	// A PDF in the folder is offered too, after the notes, with its extension for a title.
+	writeFileSync(join(cwd, "mentionable.pdf"), "%PDF-1.4\n");
+	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.focus(); t.value = ''; })()");
+	await app.keys("see @mentionable.p");
+	await until("the PDF to be listed", async () => (await listed()).some((t) => t.startsWith("mentionable.pdf")));
+	await app.press("Enter");
+	await until("the PDF's path written in", async () => (await box()) === "see @mentionable.pdf ");
+	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
 });
 
 check("the loadout screen keeps a model pi does not offer, and shows a change another window made", async ({ app, api }) => {

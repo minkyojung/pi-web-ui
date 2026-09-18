@@ -39,7 +39,7 @@ import { extensionUI } from "./extensionUI.ts";
 import { deleteSessionFile } from "./sessionDelete.ts";
 import { Cancelled } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, withCreated, writeNote, type WriteResult } from "./vault.ts";
+import { documentAt, listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, withCreated, writeNote, type WriteResult } from "./vault.ts";
 import { FileIndex } from "./fileIndex.ts";
 import { startLogging } from "./log.ts";
 import { deleteNote, shellTrash } from "./trash.ts";
@@ -545,7 +545,7 @@ function branches(): BranchesMsg {
 
 /** The notes in the working folder. See vault.ts. */
 function files(): FilesMsg {
-	return { type: "files", files: notes.all(), truncated: notes.truncated };
+	return { type: "files", files: notes.all(), documents: notes.documents(), truncated: notes.truncated };
 }
 
 /**
@@ -668,6 +668,11 @@ const known = new Map<string, number>();
  * could have a version of it yet. A note that is gone is only news to the list.
  */
 function noticed(path: string): void {
+	// A document has no log and no tab: the only news is that it is there or not.
+	if (documentAt(CWD, path)) {
+		if (notes.sawDocument(path, existsSync(join(CWD, path)))) broadcast(files());
+		return;
+	}
 	const found = readNote(CWD, path);
 	if (!found) {
 		// Gone from under a tab that had it: news. Gone after the app itself

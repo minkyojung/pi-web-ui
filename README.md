@@ -599,7 +599,9 @@ the word, and the chosen one goes in as its path (`@folder/note.md`), the way
 pi's own `@file` argument names a file. pi's terminal has this; its library
 does not, so this one is Octave's, over the same note list the sidebar and ⌘P
 read. The words are the mention, not the note: reading it is pi's `read`
-tool's job, which is why nothing is copied in. The two lists — commands after
+tool's job, which is why nothing is copied in. The PDFs in the folder are on
+the list too, after the notes, since pi reads those the same way
+(`documents.ts`); they are in no other list, because nothing else here opens one. The two lists — commands after
 `/`, notes after `@` — are one component (`SuggestMenu`) with two sources
 (`commandMenu.ts`, `noteMention.ts`), and never open together.
 

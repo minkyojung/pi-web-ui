@@ -471,6 +471,8 @@ export interface SnapshotMsg {
 export interface FilesMsg {
 	type: "files";
 	files: NoteFile[];
+	/** The documents beside the notes — files the agent reads as text, a PDF — by path, for naming one in a message. */
+	documents: string[];
 	truncated: boolean;
 }
 

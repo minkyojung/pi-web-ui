@@ -51,6 +51,14 @@ test("노트가 아닌 것은 보고되지 않는다 — 로그, 숨김 폴더, 
   assert.deepEqual(seen, []);
 });
 
+test("문서가 생기면 노트처럼 보고되고, 숨김 폴더의 것은 아니다", async () => {
+  const seen = await report(() => {
+    writeFileSync(join(DIR, "deep", "paper.pdf"), "x\n");
+    writeFileSync(join(DIR, ".pi", "cache.pdf"), "x\n");
+  });
+  assert.deepEqual(seen, ["deep/paper.pdf"]);
+});
+
 test("멈춘 뒤에는 아무것도 보고되지 않는다", async () => {
   const seen = [];
   const stop = watchNotes(DIR, (path) => seen.push(path), 40);

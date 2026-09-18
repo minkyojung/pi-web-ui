@@ -17,6 +17,7 @@ import {
 	commandsStore,
 	contextSourcesStore,
 	authorsStore,
+	documentsStore,
 	filesStore,
 	whyStore,
 	filesTruncatedStore,
@@ -153,6 +154,7 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "files":
 			filesStore.set(msg.files);
+			documentsStore.set(msg.documents);
 			filesTruncatedStore.set(msg.truncated);
 			return;
 		case "note":

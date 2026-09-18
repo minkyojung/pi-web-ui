@@ -10,7 +10,7 @@ import { acceptMention, matchNotes, mentionQuery } from "../noteMention";
 import { titleOf } from "../noteSync";
 import { appendRestored } from "../queue";
 import { flushSaves } from "../saves";
-import { askingAgainStore, commandsStore, configStore, filesStore, restoredStore } from "../serverState";
+import { askingAgainStore, commandsStore, configStore, documentsStore, filesStore, restoredStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Badge } from "./ui/badge";
@@ -198,6 +198,7 @@ export function Composer({ note }: { note: string | null }) {
 	const [caret, setCaret] = useState(0);
 	const commands = useSyncExternalStore(commandsStore.subscribe, commandsStore.get);
 	const files = useSyncExternalStore(filesStore.subscribe, filesStore.get);
+	const documents = useSyncExternalStore(documentsStore.subscribe, documentsStore.get);
 	// Escape puts the list away for the text as it stands; typing brings it back.
 	const [dismissed, setDismissed] = useState<string | null>(null);
 	const [selected, setSelected] = useState("");
@@ -241,7 +242,9 @@ export function Composer({ note }: { note: string | null }) {
 	} else if (dismissed !== text && mention !== null) {
 		list = {
 			id: "mentions",
-			items: matchNotes(files.map((f) => f.path), mention.query)
+			// The documents after the notes: a PDF is named the way a note is, and
+			// its title keeps its extension, which is how the row says what it is.
+			items: matchNotes([...files.map((f) => f.path), ...documents], mention.query)
 				.slice(0, NOTES_OFFERED)
 				.map((path) => ({ value: path, label: titleOf(path), detail: folderOf(path) })),
 			pick: (path) => {

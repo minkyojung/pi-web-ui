@@ -33,6 +33,26 @@ test("폴더를 한 번 읽고, 다시 읽어도 달라진 것이 없으면 없�
   }
 });
 
+test("문서는 걸음마다 세어지고, 나타나거나 사라지는 것만 소식이다", () => {
+  const root = vault("a.md", "paper.pdf");
+  try {
+    const files = new FileIndex(root);
+    files.load();
+    assert.deepEqual(files.documents(), ["paper.pdf"]);
+    assert.deepEqual(files.paths(), ["a.md"], "노트 목록은 노트만");
+    assert.equal(files.sawDocument("paper.pdf", true), false, "이미 있던 것은 소식이 아니다");
+    assert.equal(files.sawDocument("new.pdf", true), true);
+    assert.equal(files.sawDocument("new.pdf", false), true);
+    assert.equal(files.sawDocument("new.pdf", false), false, "없던 것이 없어진 것도 소식이 아니다");
+    writeFileSync(join(root, "b.pdf"), "x");
+    assert.equal(files.load(), true, "바깥에서 생긴 문서도 다시 걸으면 달라진 것이다");
+    assert.deepEqual(files.documents(), ["b.pdf", "paper.pdf"]);
+    assert.equal(files.load(), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("글자만 바뀐 저장은 목록의 소식이 아니다 — 새 노트는 소식이다", () => {
   const root = vault("a.md");
   try {

@@ -15,7 +15,7 @@
  */
 import { type FSWatcher, watch } from "node:fs";
 import { sep } from "node:path";
-import { resolveNote } from "./vault.ts";
+import { documentAt, resolveNote } from "./vault.ts";
 
 /** How long after the last event on a path before it is reported. A save is several events. */
 const SETTLE_MS = 80;
@@ -29,8 +29,8 @@ export function watchNotes(root: string, onEvent: OnNoteEvent, settleMs = SETTLE
 		watcher = watch(root, { recursive: true }, (_event, filename) => {
 			if (!filename) return;
 			const path = String(filename).split(sep).join("/");
-			// Not a note — a dotfolder, the history itself, a non-markdown file — is not news.
-			if (!resolveNote(root, path)) return;
+			// Not a note or a document — a dotfolder, the history itself, any other file — is not news.
+			if (!resolveNote(root, path) && !documentAt(root, path)) return;
 			const pending = timers.get(path);
 			if (pending) clearTimeout(pending);
 			timers.set(
