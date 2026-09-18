@@ -25,10 +25,20 @@ const ASSETS = "/pdfjs/";
  * Loaded when a PDF is first opened and not before (App.tsx): pdf.js is
  * larger than the rest of the window put together.
  */
-export default function Pdf({ path }: { path: string }) {
+export default function Pdf({ path, page = null }: { path: string; page?: number | null }) {
 	const scroller = useRef<HTMLDivElement>(null);
 	const pages = useRef<HTMLDivElement>(null);
 	const [failed, setFailed] = useState<string | null>(null);
+	// The page a link asked for — `[[paper.pdf#page=3]]`. Read when the pages
+	// are first laid out, and again whenever another link names another page
+	// of the document already open.
+	const viewerRef = useRef<PDFViewer | null>(null);
+	const asked = useRef(page);
+	asked.current = page;
+	useEffect(() => {
+		const viewer = viewerRef.current;
+		if (page && viewer?.pagesCount) viewer.currentPageNumber = Math.min(page, viewer.pagesCount);
+	}, [page]);
 
 	useEffect(() => {
 		const container = scroller.current;
@@ -46,7 +56,11 @@ export default function Pdf({ path }: { path: string }) {
 		const fit = () => {
 			if (viewer.pagesCount && container.offsetParent) viewer.currentScaleValue = "page-width";
 		};
-		eventBus.on("pagesinit", fit);
+		viewerRef.current = viewer;
+		eventBus.on("pagesinit", () => {
+			fit();
+			if (asked.current) viewer.currentPageNumber = Math.min(asked.current, viewer.pagesCount);
+		});
 		const resized = new ResizeObserver(fit);
 		resized.observe(container);
 
@@ -88,6 +102,7 @@ export default function Pdf({ path }: { path: string }) {
 			document.removeEventListener("selectionchange", chosen);
 			// Nothing is chosen in a PDF that is not open.
 			if (chosenStore.get()?.path === path) chosenStore.set(null);
+			viewerRef.current = null;
 			resized.disconnect();
 			viewer.setDocument(null as never);
 			void task.destroy();

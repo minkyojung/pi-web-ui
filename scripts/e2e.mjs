@@ -21,7 +21,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -2909,6 +2909,35 @@ check("a PDF in the folder is in the tree, and opens in a tab with its words on 
 	// Reloaded at that address, it comes back as it was.
 	await app.evaluate("location.reload()");
 	await until("the words again after a reload", () => app.evaluate("[...document.querySelectorAll('#page .textLayer')].some((l) => l.textContent.includes('The first page.'))"), 30000);
+});
+
+/**
+ * `[[paper.pdf#page=2]]`, as Obsidian writes it: the link is a link to
+ * something that is there, ⌘-click opens the document at that page, another
+ * link to another page moves the document already open, and neither it nor a
+ * link to a document that is not there makes a note called "….pdf". Embedded
+ * with `!`, it is not drawn as a note that could not be found.
+ */
+check("a link to a page of a PDF opens it there, and never makes a note of its name", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "linked.pdf"), readFileSync(join(root, "test/fixtures/three-pages.pdf")));
+	writeFileSync(join(cwd, "cites.md"), "See [[linked.pdf#page=2]] and [[linked.pdf#page=3]].\n\nNot here: [[gone.pdf]].\n\n![[linked.pdf#page=2]]\n\nThe end.\n");
+	await pickNote(app, "cites.md");
+	await until("the links drawn: two found, one missing, and the embed's", async () => (await app.evaluate("[...document.querySelectorAll('#editor .cm-wikilink')].map((l) => l.classList.contains('cm-wikilink-missing') ? 'x' : 'o').join('')")) === "ooxo");
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-embed').length"), 0, "no card for a document");
+	const current = () => app.evaluate("(() => { const pages = [...document.querySelectorAll('#page .pdfViewer .page')]; const top = document.querySelector('#page > div')?.getBoundingClientRect().top ?? 0; const at = pages.find((p) => p.getBoundingClientRect().bottom > top + 40); return at ? Number(at.dataset.pageNumber) : 0; })()");
+	await app.click("#editor .cm-wikilink", 0, { meta: true });
+	await until("the document, at its second page", async () => (await app.evaluate("document.querySelector('#page')?.dataset.document ?? ''")) === "linked.pdf" && (await current()) === 2, 30000);
+	// Back to the note, and the other link: the same tab, moved to the third page.
+	await pickNote(app, "cites.md");
+	await until("the note again", () => app.evaluate("!!document.querySelector('#editor .cm-wikilink')"));
+	await app.click("#editor .cm-wikilink", 1, { meta: true });
+	await until("the third page", async () => (await app.evaluate("document.querySelector('#page')?.dataset.document ?? ''")) === "linked.pdf" && (await current()) === 3, 30000);
+	await pickNote(app, "cites.md");
+	await until("the note once more", () => app.evaluate("!!document.querySelector('#editor .cm-wikilink-missing')"));
+	await app.click("#editor .cm-wikilink-missing", 0, { meta: true });
+	await new Promise((r) => setTimeout(r, 500));
+	assert.deepEqual(readdirSync(cwd).filter((f) => /\.pdf\.md$|^gone/.test(f)), [], "no note made of a document's name");
+	assert.equal(await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.textContent.trim()"), "cites", "and the note is still what is open");
 });
 
 /**

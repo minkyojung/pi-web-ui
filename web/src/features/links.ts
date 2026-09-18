@@ -25,7 +25,8 @@ import { type Extension, RangeSetBuilder, StateEffect } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 
-import { type Link, markdownLinkTo, type Place, readWikiLink, resolve } from "../../../links.ts";
+import { isDocument } from "../../../documentKinds.ts";
+import { type Link, markdownLinkTo, type Place, readWikiLink, resolve, resolveDocument } from "../../../links.ts";
 import { send } from "../ws";
 
 /** The list of notes changed: build the marks again, since a missing note may now exist. */
@@ -36,7 +37,11 @@ const missing = Decoration.mark({ class: "cm-wikilink cm-wikilink-missing" });
 /** The `!` of `![[a note]]`. The note is not shown in place — this is the source — so the mark is all that says it would be. */
 const embed = Decoration.mark({ class: "cm-wikiembed" });
 
-type Ctx = { notes: () => string[]; here: () => string; open: (path: string, place?: Place) => void };
+type Ctx = { notes: () => string[]; documents: () => string[]; here: () => string; open: (path: string, place?: Place) => void };
+
+/** What a link's target is in the folder: a note, or — named with its extension — a document. */
+const find = (target: string, ctx: Ctx, here: string): string | null =>
+	isDocument(target) ? resolveDocument(target, ctx.documents(), here) : resolve(target, ctx.notes(), here);
 
 /** How long a jump may wait for the parser to reach the end of a long note. */
 const PARSE_MS = 500;
@@ -98,7 +103,6 @@ export function landOn(view: EditorView, place: Place): void {
 
 function marks(view: EditorView, ctx: Ctx): DecorationSet {
 	const builder = new RangeSetBuilder<Decoration>();
-	const notes = ctx.notes();
 	const here = ctx.here();
 	const slice = (from: number, to: number) => view.state.doc.sliceString(from, to);
 	for (const { from, to } of view.visibleRanges) {
@@ -110,7 +114,7 @@ function marks(view: EditorView, ctx: Ctx): DecorationSet {
 				if (node.name === "WikiEmbed") return void builder.add(node.from, node.from + 1, embed);
 				if (node.name !== "WikiLink") return;
 				const { target } = readWikiLink(node.node, slice).link;
-				builder.add(node.from, node.to, resolve(target, notes, here) ? link : missing);
+				builder.add(node.from, node.to, find(target, ctx, here) ? link : missing);
 				return false;
 			},
 		});
@@ -151,11 +155,12 @@ export function links(ctx: Ctx): Extension {
 					return true;
 				}
 				event.preventDefault();
-				const found = resolve(hit.target, ctx.notes(), ctx.here());
+				const found = find(hit.target, ctx, ctx.here());
 				if (found === ctx.here()) landOn(view, hit);
 				else if (found) ctx.open(found, hit);
 				// No name and no note to be it — this note is not on the list — is nothing to make.
-				else if (hit.target) send({ type: "new_note", name: hit.target.replace(/\.md$/i, "") });
+				// Nor is a document that is not there: a note called "paper.pdf" is not what was meant.
+				else if (hit.target && !isDocument(hit.target)) send({ type: "new_note", name: hit.target.replace(/\.md$/i, "") });
 				return true;
 			},
 		}),

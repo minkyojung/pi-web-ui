@@ -170,6 +170,28 @@ export function resolve(target: string, paths: Iterable<string>, from = ""): str
 }
 
 /**
+ * The document a link names — `[[paper.pdf]]` — among the folder's documents.
+ * A document is named with its extension, which is how it is told from a
+ * note; otherwise as a note is found: a path is that path, and a name alone
+ * is the nearest file of that name.
+ */
+export function resolveDocument(target: string, documents: Iterable<string>, from = ""): string | null {
+	const want = target.trim().toLowerCase();
+	if (!want) return null;
+	const all = [...documents];
+	if (want.includes("/")) return all.find((p) => p.toLowerCase() === want) ?? null;
+	const named = all.filter((p) => p.slice(p.lastIndexOf("/") + 1).toLowerCase() === want);
+	named.sort((a, b) => distance(from, a) - distance(from, b) || a.localeCompare(b));
+	return named[0] ?? null;
+}
+
+/** The page a link into a document names — `[[paper.pdf#page=3]]`, as Obsidian writes it — or null. */
+export function pageNamed(place: Place | null | undefined): number | null {
+	const m = /^page=(\d+)$/i.exec(place?.heading?.trim() ?? "");
+	return m ? Number(m[1]) : null;
+}
+
+/**
  * Where an ordinary markdown link — `[words](url)` — goes from the note at
  * `from`: a note in the vault, a web address, or nowhere this app can go.
  *

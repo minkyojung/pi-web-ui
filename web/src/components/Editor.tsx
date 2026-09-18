@@ -42,7 +42,7 @@ import { tagsIn, type Place } from "../../../links.ts";
 import type { Left } from "../nav";
 import type { Edit } from "../types";
 import type { Authored } from "../../../protocol.ts";
-import { authorsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
+import { authorsStore, documentsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
 import { inFrontStore, say as sayInFront } from "../inFront";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { flushSaves, registerSave } from "../saves";
@@ -346,6 +346,7 @@ export function Editor({
 			authors(() => at.current),
 			links({
 				notes: () => filesStore.get().map((f) => f.path),
+				documents: () => documentsStore.get(),
 				here: () => at.current,
 				open: (p, at) => onOpen?.(p, at),
 			}),
@@ -536,9 +537,10 @@ export function Editor({
 
 	// A note made or renamed elsewhere may be the one a link here names.
 	const notes = useSyncExternalStore(filesStore.subscribe, filesStore.get);
+	const documents = useSyncExternalStore(documentsStore.subscribe, documentsStore.get);
 	useEffect(() => {
 		view.current?.dispatch({ effects: notesChanged.of(null) });
-	}, [notes]);
+	}, [notes, documents]);
 
 	// The note whole: the answer to open_note, and the fallback for a change
 	// on a version this editor does not have.

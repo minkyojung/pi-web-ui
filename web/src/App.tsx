@@ -15,7 +15,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./componen
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { UpdateToast } from "./components/UpdateToast";
-import type { Place } from "../../links.ts";
+import { pageNamed, type Place } from "../../links.ts";
 import { hashForNote, noteFromHash } from "./noteSync";
 import { pageOf, WELCOME, whatsNewPath } from "./pages";
 import { pageAskedStore, updateStore } from "./update";
@@ -628,7 +628,7 @@ export function App() {
 					) : page?.kind === "document" ? (
 						<Boundary name="document" hint="The file itself is untouched.">
 							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
-								<Pdf key={page.path} path={page.path} />
+								<Pdf key={page.path} path={page.path} page={pageNamed(place)} />
 							</Suspense>
 						</Boundary>
 					) : page ? (

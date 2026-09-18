@@ -7,6 +7,7 @@
  * the note. A note that is not there says so. One level: an embed inside
  * an embedded note is a link.
  */
+import { isDocument } from "../../../documentKinds.ts";
 import { syntaxTree } from "@codemirror/language";
 import { type EditorState, type Extension, type Range, type SelectionRange, StateEffect } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
@@ -113,7 +114,8 @@ function cards(view: EditorView, ctx: Ctx): DecorationSet {
 				const link = node.node.getChild("WikiLink");
 				if (!link) return false;
 				const { target, heading, block } = readWikiLink(link, slice).link;
-				if (IMAGE.test(target) || onLines(state, state.selection.ranges, node.from, node.to)) return false;
+				// A document is not shown in place: its link stays a link, which opens it at its page.
+				if (IMAGE.test(target) || isDocument(target) || onLines(state, state.selection.ranges, node.from, node.to)) return false;
 				const path = resolve(target, notes, here);
 				if (path) fetchNote(path, view);
 				const have = path ? (fetched.get(path) ?? "loading") : "missing";
