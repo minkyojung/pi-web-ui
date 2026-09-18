@@ -258,11 +258,67 @@ async function endServer() {
  * Only in a packaged app: a dev run has no version to compare and nothing to
  * replace itself with.
  */
+/**
+ * Where the updater is, told to every window as it changes — see preload.cjs
+ * `update`. One object, in this process, since the updater is one thing
+ * however many windows there are; the page draws it and asks for the two
+ * things it cannot do itself, a check and a restart.
+ *
+ * `justUpdated` is set once, on starting as a version other than the one
+ * that last ran, and is what the page shows what is new on. Nothing here
+ * decides when that has been seen: the page says (update:seen), and the
+ * version it saw is kept beside the last version run.
+ */
+let update = { phase: "idle", version: null, progress: null, error: null, justUpdated: null };
+
+function sayUpdate(patch) {
+	update = { ...update, ...patch };
+	for (const window of BrowserWindow.getAllWindows()) window.webContents.send("update:state", update);
+}
+
+function noteVersionRun() {
+	const settings = readSettings();
+	const before = settings.lastRunVersion ?? null;
+	const now = app.getVersion();
+	if (before !== now) writeSettings({ ...settings, lastRunVersion: now });
+	// The first run ever has nothing to be new against; a run of the same
+	// version already seen has nothing new.
+	if (before && before !== now && settings.whatsNewSeen !== now) update.justUpdated = { from: before, to: now };
+}
+
+function serveUpdates() {
+	ipcMain.handle("update:state", () => update);
+	ipcMain.handle("update:check", () => (app.isPackaged ? autoUpdater.checkForUpdates().catch(() => {}) : null));
+	ipcMain.handle("update:restart", async () => {
+		if (child) await endServer();
+		autoUpdater.quitAndInstall();
+	});
+	ipcMain.handle("update:seen", () => {
+		writeSettings({ ...readSettings(), whatsNewSeen: app.getVersion() });
+		sayUpdate({ justUpdated: null });
+	});
+}
+
 function watchForUpdates() {
 	if (!app.isPackaged) return;
 	autoUpdater.autoDownload = true;
-	autoUpdater.on("error", (err) => console.error(`[updater] ${err.message}`));
+	// A person who dismissed the offer and then quit gets the new version on
+	// the way out, without being asked again — the updater's default, said.
+	autoUpdater.autoInstallOnAppQuit = true;
+	autoUpdater.on("checking-for-update", () => sayUpdate({ phase: "checking", error: null }));
+	autoUpdater.on("update-available", (info) => sayUpdate({ phase: "downloading", version: info.version, progress: 0 }));
+	autoUpdater.on("download-progress", (p) => sayUpdate({ progress: Math.round(p.percent) }));
+	autoUpdater.on("update-not-available", () => sayUpdate({ phase: "idle", version: null, progress: null }));
+	autoUpdater.on("error", (err) => {
+		console.error(`[updater] ${err.message}`);
+		// Back to nothing, with what went wrong on it for a page that asked; a
+		// check that runs on its own says nothing and tries again next time.
+		sayUpdate({ phase: "idle", progress: null, error: err.message });
+	});
+	// Still a dialog here, until the page draws the offer itself (update-flow.md,
+	// PR 3); the state above is already what that page will read.
 	autoUpdater.on("update-downloaded", async (info) => {
+		sayUpdate({ phase: "ready", version: info.version, progress: 100 });
 		const notes = typeof info.releaseNotes === "string" ? info.releaseNotes.replace(/<[^>]+>/g, "").trim() : "";
 		const { response } = await dialog.showMessageBox({
 			type: "info",
@@ -426,6 +482,8 @@ function markTrafficLights(window) {
 
 async function main() {
 	serveFolders();
+	serveUpdates();
+	noteVersionRun();
 	let url;
 	let workdirForTitle = process.cwd();
 	if (devUrl) {
@@ -463,6 +521,9 @@ async function main() {
 		webPreferences: { nodeIntegration: false, contextIsolation: true, preload: here("preload.cjs") },
 	});
 	window.webContents.on("did-finish-load", () => markTrafficLights(window));
+	// The page asks for the state as it loads (update.state); this covers a
+	// change while it was loading.
+	window.webContents.on("did-finish-load", () => window.webContents.send("update:state", update));
 	window.on("enter-full-screen", () => markTrafficLights(window));
 	window.on("leave-full-screen", () => markTrafficLights(window));
 

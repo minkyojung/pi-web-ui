@@ -113,6 +113,17 @@ it("확장 스위치가 꺼져 있으면 도구는 pi의 것과 우리 것뿐이
   assert.ok(!log.includes("did not answer"), "nothing warned about a missing hook");
 });
 
+it("a version's notes come from the changelog beside the server, cut as the release script cuts them", async () => {
+  const r = await fetch(`http://127.0.0.1:${port}/api/changelog?version=0.0.1`);
+  assert.equal(r.status, 200);
+  const { version, notes } = await r.json();
+  assert.equal(version, "0.0.1");
+  assert.match(notes, /^The first release\./, "the 0.0.1 section, from its first line");
+  assert.ok(!notes.includes("## ["), "the section alone, not the file");
+  assert.equal((await fetch(`http://127.0.0.1:${port}/api/changelog?version=9.9.9`)).status, 404, "a version the file has no section for");
+  assert.equal((await fetch(`http://127.0.0.1:${port}/api/changelog?version=abc`)).status, 400, "not a version");
+});
+
 it("접속하면 /가 부를 수 있는 것의 목록이 오고, pi-web-access의 커맨드가 그 안에 있다", async () => {
   const { commands } = await want("commands");
   const names = commands.filter((c) => c.source === "extension").map((c) => c.name);

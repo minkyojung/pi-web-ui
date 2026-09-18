@@ -20,4 +20,21 @@ contextBridge.exposeInMainWorld("pi", {
 	open: (path) => ipcRenderer.invoke("folder:open", path),
 	/** Show a file in the Finder. Takes the whole path; the page knows it. */
 	reveal: (path) => ipcRenderer.invoke("file:reveal", path),
+	/**
+	 * The updater, which lives in the shell: where it is, and the two things
+	 * the page cannot do — ask it to look, and restart into what it has. The
+	 * shell says the state as it changes; `onState` returns the way to stop
+	 * listening. The page decides when what is new has been seen.
+	 */
+	update: {
+		state: () => ipcRenderer.invoke("update:state"),
+		onState: (listen) => {
+			const handler = (_event, state) => listen(state);
+			ipcRenderer.on("update:state", handler);
+			return () => ipcRenderer.off("update:state", handler);
+		},
+		check: () => ipcRenderer.invoke("update:check"),
+		restart: () => ipcRenderer.invoke("update:restart"),
+		seen: () => ipcRenderer.invoke("update:seen"),
+	},
 });
