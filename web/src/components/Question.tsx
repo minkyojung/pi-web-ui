@@ -148,6 +148,9 @@ function Form({ prompt, onSubmit }: { prompt: PromptRequest; onSubmit: (answer: 
 
 	const batch = prompt.type === "batch";
 	const message = typeof prompt.metadata?.message === "string" ? prompt.metadata.message : undefined;
+	// A batch the model gave no title is given its first question's (askUser.ts),
+	// which is then about to be read a line further down: said once.
+	const heading = questions.some((q) => q.title === prompt.question) ? null : prompt.question;
 	// Given to the form as well as drawn: it is how it knows which number takes which choice.
 	const items = questions.map((q, i) => ({
 		name: nameOf(i),
@@ -171,7 +174,7 @@ function Form({ prompt, onSubmit }: { prompt: PromptRequest; onSubmit: (answer: 
 			{batch && (
 				<div className="flex flex-col gap-1 pr-12">
 					<div className="flex items-baseline gap-2">
-						<span className="min-w-0 truncate text-xs font-medium">{prompt.question}</span>
+						{heading && <span className="min-w-0 truncate text-xs font-medium">{heading}</span>}
 						<QuestionnaireProgress className="shrink-0" />
 					</div>
 					{message && <p className="text-xs whitespace-pre-wrap text-muted-foreground">{message}</p>}
