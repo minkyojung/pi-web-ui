@@ -1271,6 +1271,50 @@ check("a table is drawn as a table off the cursor and as pipes on it, and footno
 	await until("the pipes back", async () => (await shownText(app)).includes("| Name | Amount |") && (await table()) === null);
 });
 
+check("another note is shown in place — all of it, a section, a block — and a missing one says so", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "Source.md"), "# Source\n\nThe source's first words.\n\n## Part two\n\n- one **two**\n- three\n\n## Part three\n\nlast, with an id. ^p3\n");
+	writeFileSync(join(cwd, "embeds.md"), "# embeds\n\nWhole: ![[Source]]\n\nSection: ![[Source#Part two]]\n\nBlock: ![[Source#^p3]]\n\nGone: ![[Nowhere]]\n\nend\n");
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="embeds.md"]') && !!document.querySelector('#notes button[data-path="Source.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="embeds.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.press("End", { meta: true });
+	const cards = () => app.evaluate("[...document.querySelectorAll('#editor .cm-embed')].map((c) => [c.querySelector('.cm-embed-title').textContent, c.querySelector('.cm-embed-body').innerText.replace(/\\s+/g, ' ').trim()])");
+	await until("four cards, read", async () => {
+		const seen = await cards();
+		return seen.length === 4 && seen.every(([, body]) => body !== "…");
+	});
+	assert.deepEqual(await cards(), [
+		["Source", "Source The source's first words. Part two one two three Part three last, with an id."],
+		["Source › Part two", "Part two one two three"],
+		["Source › ^p3", "last, with an id."],
+		["Nowhere", "No note called Nowhere."],
+	]);
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-embed li strong')?.textContent"), "two", "the words inside keep their marks");
+	// The cursor in the markup: the card gone for that line, the markup back.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("![[Source#Part two]]") + 3; v.dispatch({ selection: { anchor: at } }); })()`);
+	await until("that line as written", async () => (await shownText(app)).includes("![[Source#Part two]]") && (await cards()).length === 3);
+	// The card's title opens the note.
+	await app.press("End", { meta: true });
+	// Read again, not only drawn: a card grows as its note arrives, and a title
+	// measured before that is somewhere else by the time the press lands.
+	await until("four cards again, read", async () => {
+		const seen = await cards();
+		return seen.length === 4 && seen.every(([, body]) => body !== "…");
+	});
+	// Pressed until it takes: the cards were just drawn again with their notes
+	// in them, and a title measured before the layout has landed is somewhere
+	// else by the time the press does. Pressing a title once the note is open
+	// opens it again, which is nothing.
+	// The cursor at the end has the page scrolled down and the first card off
+	// the top: brought into view, then pressed until the note is open.
+	await until("Source open", async () => {
+		await app.evaluate("document.querySelector('#editor .cm-embed-title')?.scrollIntoView({ block: 'center' })");
+		await app.click("#editor .cm-embed-title", 0);
+		return (await app.evaluate("location.hash")) === "#Source.md";
+	});
+	await pickNote(app, "embeds.md");
+});
+
 check("links are drawn, a missing one differently; ⌘+click follows one and makes the other", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "hub.md"), "go to [[My note]] or [[nowhere yet]]\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="hub.md"]')`));
@@ -2972,6 +3016,8 @@ async function main() {
 					failed++;
 					console.log(`  FAIL ${name}`);
 					console.log(said(error));
+					// The first go's reason too: the second may only have found what the first left behind.
+					console.log(`       (first try: ${(first.message ?? first).toString().split("\n")[0]})`);
 				}
 			}
 		}

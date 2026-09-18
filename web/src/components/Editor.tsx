@@ -20,6 +20,7 @@ import { livePreview, toggleLivePreview, toggleTask } from "../features/livePrev
 import { leaveTextUp } from "../features/pageMove";
 import { properties, propertiesField } from "../features/properties";
 import { fromServer, serverChange } from "../features/origin";
+import { embeds } from "../features/embeds";
 import { footnotesExtension } from "../features/footnotes";
 import { images } from "../features/images";
 import { tablesExtension } from "../features/tables";
@@ -346,6 +347,8 @@ export function Editor({
 			images(() => at.current),
 			tablesExtension,
 			footnotesExtension,
+			// Another note, in place: a card with its text, or a section of it.
+			embeds({ notes: () => filesStore.get().map((f) => f.path), here: () => at.current, open: (p) => onOpen?.(p) }),
 			linkCompletion(() => filesStore.get().map((f) => f.path)),
 			// Markup hidden where the cursor is not; Mod-e shows it all again.
 			livePreview,

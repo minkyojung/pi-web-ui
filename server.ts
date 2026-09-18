@@ -1338,6 +1338,12 @@ const server = createServer(async (req, res) => {
 		if (req.method !== "GET") return json(405, { error: "read only" });
 		if (pathname === "/api/settings") return json(200, readSettings());
 		if (pathname === "/api/models") return json(200, catalog());
+		// A note's text as it is on disk, for an embed of it in another note.
+		// Read only, and only a note in the folder (readNote → noteAt).
+		if (pathname === "/api/note") {
+			const found = readNote(CWD, url.searchParams.get("path") ?? "");
+			return found ? json(200, { path: found.path, text: found.text }) : json(404, { error: "no such note" });
+		}
 		// What changed in a version, in the words of CHANGELOG.md — the file
 		// ships beside dist-server (electron-builder.yml), and the section is
 		// cut the way the release script cuts it. The page shows this after an
