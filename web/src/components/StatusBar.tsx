@@ -35,19 +35,14 @@
  */
 import { useSyncExternalStore, useState } from "react";
 
-import { removeProperty, setProperty } from "../../../properties.ts";
 import { showAuthorsStore } from "../features/authors";
-import { applyProperties } from "../features/properties";
-import { editorOf, inFrontStore, type Saved } from "../inFront";
+import { inFrontStore, type Saved } from "../inFront";
 import type { Authored } from "../../../protocol.ts";
 import { AgentStatus } from "./AgentStatus";
 import { Button } from "./ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
-import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Switch } from "./ui/switch";
-import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
 /**
  * An item in the strip that can be pressed.
@@ -74,8 +69,12 @@ import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
  * hand that means "this is a link to somewhere else on the web" is not what a
  * word count is.
  */
-function Item(props: React.ComponentProps<typeof Button>) {
-	return <Button variant="ghost" size="sm" className="cursor-default px-1.5 text-xs font-normal" {...props} />;
+function Item({ onClick, title, children }: { onClick?: () => void; title?: string; children: React.ReactNode }) {
+	return (
+		<Button variant="ghost" size="sm" className="cursor-default px-1.5 text-xs font-normal" title={title} onClick={onClick}>
+			{children}
+		</Button>
+	);
 }
 
 /**
@@ -97,23 +96,6 @@ function Item(props: React.ComponentProps<typeof Button>) {
  */
 /** Where the choice of words or characters is kept, beside the recent list and the tabs. */
 const COUNTING = "status-counting";
-
-/**
- * Set or take away the note's limit on words or characters, through its editor:
- * a property like any other, which ⌘Z takes back and the save sends. Empty
- * takes it away; a whole number above nought sets it. False for anything else,
- * and for a note whose properties cannot be read, and nothing is written.
- */
-function setLimit(path: string, counting: "words" | "characters", typed: string): boolean {
-	const view = editorOf(path);
-	if (!view) return false;
-	const name = counting === "words" ? "max_words" : "max_characters";
-	const text = typed.trim();
-	if (text === "") return applyProperties(view, (doc) => removeProperty(doc, name));
-	const n = Number(text);
-	if (!Number.isInteger(n) || n <= 0) return false;
-	return applyProperties(view, (doc) => setProperty(doc, name, n));
-}
 
 const words: Record<Saved, string | null> = {
 	loading: null,
@@ -179,8 +161,6 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi }: { path: strin
 	// about a note you have just closed.
 	const note = front && front.path === path && front.saved !== "loading" ? front : null;
 	const hand = note?.authored ? share(note.authored) : null;
-	const limit = note ? note.max[counting] : null;
-	const over = note !== null && limit !== null && note[counting] > limit;
 	const showing = useSyncExternalStore(showAuthorsStore.subscribe, showAuthorsStore.get);
 
 	return (
@@ -197,50 +177,14 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi }: { path: strin
 				    the count it moves nothing, where before it the count would shift
 				    every time a note was opened. */}
 				{note && (
-					// Pressed, it asks how the note is to be counted and how much of it
-					// there may be — the two things a count is ever set by, as a word
-					// processor's count does. The limit is the note's own, written in
-					// its properties; which way to count is this window's.
-					<Popover>
-						<PopoverTrigger asChild>
-							<Item title="Count and limit">
-								<span id="count" data-counting={counting} data-over={over || undefined} className={over ? "text-destructive" : undefined}>
-									{note[counting].toLocaleString()}
-									{limit !== null && ` / ${limit.toLocaleString()}`}{" "}
-									{counting === "words" ? (note.words === 1 && limit === null ? "word" : "words") : note.characters === 1 && limit === null ? "character" : "characters"}
-								</span>
-							</Item>
-						</PopoverTrigger>
-						<PopoverContent side="top" align="start" className="flex w-56 flex-col gap-3 p-3">
-							<Tabs value={counting} onValueChange={(v) => count(v === "characters" ? "characters" : "words")}>
-								<TabsList className="w-full">
-									<TabsTrigger value="words">Words</TabsTrigger>
-									<TabsTrigger value="characters">Characters</TabsTrigger>
-								</TabsList>
-							</Tabs>
-							<div className="flex items-center gap-3">
-								<Label htmlFor="countLimit" className="shrink-0">
-									Limit
-								</Label>
-								<Input
-									// A fresh box for another note, the other count, or a limit
-									// changed from elsewhere: what it starts with is what the note says.
-									key={`${note.path}:${counting}:${limit ?? ""}`}
-									id="countLimit"
-									inputMode="numeric"
-									placeholder="None"
-									defaultValue={limit ?? ""}
-									className="h-8"
-									onKeyDown={(e) => {
-										if (e.key === "Enter") e.currentTarget.blur();
-									}}
-									onBlur={(e) => {
-										if (!setLimit(note.path, counting, e.currentTarget.value)) e.currentTarget.value = limit === null ? "" : String(limit);
-									}}
-								/>
-							</div>
-						</PopoverContent>
-					</Popover>
+					<Item
+						title={counting === "words" ? "Count characters instead" : "Count words instead"}
+						onClick={() => count(counting === "words" ? "characters" : "words")}
+					>
+						<span id="count" data-counting={counting}>
+							{note[counting].toLocaleString()} {counting === "words" ? (note.words === 1 ? "word" : "words") : note.characters === 1 ? "character" : "characters"}
+						</span>
+					</Item>
 				)}
 				{hand && (
 					// The switch for the marks is behind the share rather than on it.

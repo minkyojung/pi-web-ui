@@ -508,7 +508,7 @@ export interface NoteMsg {
 
 /**
  * How much of a note was written by somebody other than the person reading it,
- * in characters of its body on disk — the front matter is not counted.
+ * in characters of the text on disk.
  *
  * A summary, and only a summary. Who wrote which run is asked for (`who_wrote`)
  * because it is a question somebody puts and an answer that followed every

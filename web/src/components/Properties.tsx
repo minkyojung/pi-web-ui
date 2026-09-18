@@ -4,10 +4,10 @@ import { Command as CommandPrimitive } from "cmdk";
 import { AlignLeft, Calendar, CalendarClock, ChevronDown, ChevronUp, Hash, List, Plus, SquareCheck, Tags, TriangleAlert, X } from "lucide-react";
 import { type Document, isScalar, isSeq, type Pair } from "yaml";
 
-import { type Properties as Read, removeProperty, renameProperty, setProperty, suits } from "../../../properties.ts";
+import { bodyStart, type Properties as Read, removeProperty, renameProperty, setProperty, suits, withProperties } from "../../../properties.ts";
 import { fits, fromInput, isReserved, keyOf, PROPERTY_TYPES, type PropertyType, typeOf } from "../../../propertyTypes.ts";
 import { atBoxEdge, enter, stepAcross, stepInProperties } from "../features/pageMove";
-import { applyProperties } from "../features/properties";
+import { propertiesEdit } from "../features/properties";
 import { toggleLivePreview } from "../features/livePreview";
 import { propertyNamesStore, propertyTypesStore } from "../serverState";
 import { send } from "../ws";
@@ -56,7 +56,19 @@ export function Properties({ view, read }: { view: EditorView | null; read: Read
 	if (!view || !read) return null;
 
 	/** Put a change to the document's properties into the editor as one change over the block's lines. */
-	const apply = (edit: (doc: Document) => void): boolean => applyProperties(view, edit);
+	const apply = (edit: (doc: Document) => void): boolean => {
+		const text = view.state.doc.toString();
+		const next = withProperties(text, edit);
+		if (!next.ok) return false;
+		// The same text is not a change: a value committed twice — Enter, then the box losing focus — is one change, and one undo.
+		if (next.text === text) return true;
+		view.dispatch({
+			changes: { from: 0, to: bodyStart(text), insert: next.text.slice(0, bodyStart(next.text)) },
+			annotations: propertiesEdit.of(true),
+			userEvent: "input",
+		});
+		return true;
+	};
 
 	if (read.block && read.errors.length > 0) {
 		return (

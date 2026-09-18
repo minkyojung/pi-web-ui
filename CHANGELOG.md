@@ -6,7 +6,6 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 ### Added
-- Press the count at the foot of the window to choose words or characters and to give the note a limit — 700 characters, say. The note keeps it as a `max_characters` (or `max_words`) property, and the count reads `512 / 700`, turning red once the note is past it. Before, pressing the count switched between words and characters straight away.
 - Octave has an icon of its own in the Dock and in Finder, in place of Electron's.
 - The extensions installed for your pi terminal load here too — their tools and commands appear as they do there. A switch in Settings › Agent turns this off; it applies from the next session. An extension that brings its own ask_user or note tool does not replace Octave's, and says so in the conversation.
 - Settings › Agent has a "pi" section: switch automatic compaction off or on, whether the agent retries a failed call on its own, whether the model's thinking is shown in the conversation, and whether stepping between answers asks to summarize first. The card that asks has "No summary, don't ask again" too. And a switch to let the agent read this folder's own `.pi/` (its skills, prompts, settings), remembered where pi's terminal keeps its `/trust` answer.
@@ -23,7 +22,6 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 
 ### Changed
-- How much of a note the agent wrote is counted from the note's text alone: properties it filled in at the top no longer count towards it.
 - Who wrote what is turned on and off from a switch that comes up when you point at the agent's share in the strip at the foot of the window; it is no longer in the note's ⋯ menu.
 - Under the note, the strip at the foot of the window keeps two things: how much of the note the agent wrote, and how long it is. The note's tags and the count of notes that link to it are gone from there.
 - With the agent's column folded away, its half of the strip at the foot of the window folds into the context ring alone, and the ring says what the agent is doing: an arc travels round it while the agent works, an amber dot means it is waiting for your answer, a blue dot means a run finished while you were not looking and stays until you have actually seen how it ended — the column open and scrolled to the bottom, with the app in front, and a dashed ring means the window is offline. Point at the ring and it opens out into the full line; click it and the column comes back. With reduced motion on, the travelling arc stays put and fades in and out instead.

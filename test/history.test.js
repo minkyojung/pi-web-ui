@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { apply, appendHistory, changesBetween, decide, historyOf, historyPath, mapThrough, moveHistory, readHistory, reclaimLog, reconcile, record, replay, shareOf, trashLog, trashHistoryPath, wroteIn, fromEdits, carriedFrom } from "../history.ts";
+import { apply, appendHistory, changesBetween, decide, historyOf, historyPath, mapThrough, moveHistory, readHistory, reclaimLog, reconcile, record, replay, trashLog, trashHistoryPath, wroteIn, fromEdits, carriedFrom } from "../history.ts";
 
 const me = { author: "me", at: 1 };
 const pi = { author: "pi", at: 2, sessionId: "s1", entryId: "e1" };
@@ -678,19 +678,4 @@ test("before는 로그가 아무리 길어도 지금 글과 홀만으로 다시 
     assert.ok(h.from >= last && h.to >= h.from, "홀은 겹치지 않고 순서대로다");
     last = h.to;
   }
-});
-
-test("에이전트 비중은 본문만 센다: 속성에 쓴 글자는 비중에 들지 않는다", () => {
-  const front = "---\ntags: [a]\n---\n";
-  const text = front + "mine and pi's";
-  const start = front.length;
-  // 속성만 에이전트가 채웠다면 본문은 전부 내 것이다.
-  assert.deepEqual(shareOf([{ from: 0, to: start, author: "pi" }, { from: start, to: text.length, author: "me" }], text), { pi: 0, other: 0, total: text.length - start });
-  // 본문의 절반이 에이전트 것이면, 분모도 본문이다.
-  const half = start + "mine and ".length;
-  assert.deepEqual(shareOf([{ from: 0, to: half, author: "me" }, { from: half, to: text.length, author: "pi" }], text), { pi: 4, other: 0, total: 13 });
-  // 속성과 본문에 걸친 구간은 본문 쪽만 센다.
-  assert.deepEqual(shareOf([{ from: 4, to: start + 4, author: "outside" }, { from: start + 4, to: text.length, author: "me" }], text), { pi: 0, other: 4, total: 13 });
-  // 속성이 없는 노트는 전과 같다.
-  assert.deepEqual(shareOf([{ from: 0, to: 4, author: "pi" }, { from: 4, to: 10, author: "me" }], "0123456789"), { pi: 4, other: 0, total: 10 });
 });
