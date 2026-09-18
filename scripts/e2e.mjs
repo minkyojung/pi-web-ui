@@ -1385,6 +1385,40 @@ check("the little HTML a note holds is drawn from a list, a script is not, and s
 	await until("the tags back under the cursor", async () => (await shownText(app)).includes("<u>underlined</u>"));
 });
 
+check("in a table, a click lands in its cell, Tab walks the cells and makes a row, Enter adds one, and the pipes square up on leaving", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "edit-table.md"), "# edit\n\n| Name | Amount |\n|:--|--:|\n| Apples | 3 |\n|Pears|12|\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="edit-table.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="edit-table.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.press("End", { meta: true });
+	await until("the table drawn", () => app.evaluate("!!document.querySelector('#editor table.cm-table')"));
+	// A click on "Pears": the cursor in that cell, the pipes back.
+	assert.ok(await app.click("#editor table.cm-table tbody tr:nth-child(2) td:first-child"), "the Pears cell");
+	const sel = () => app.evaluate("(() => { const s = document.querySelector('#editor .cm-content').cmTile.root.view.state; const r = s.selection.main; return { from: r.from, to: r.to, at: s.doc.sliceString(Math.max(0, r.from - 6), r.to + 1) }; })()");
+	await until("the cursor in the Pears cell", async () => (await sel()).at.includes("Pears|") && (await shownText(app)).includes("|Pears|12|"));
+	// Tab: the next cell's words chosen; Shift-Tab: back.
+	await app.press("Tab");
+	await until("12 chosen", async () => {
+		const s = await sel();
+		if (s.to - s.from === 2 && s.at.endsWith("12|")) return true;
+		throw new Error(JSON.stringify(s));
+	});
+	await app.press("Tab", { shift: true });
+	await until("Pears chosen", async () => { const s = await sel(); return s.to - s.from === 5 && s.at.includes("Pears"); });
+	// Tab from the last cell: a new row, the cursor in its first cell.
+	await app.press("Tab");
+	await app.press("Tab");
+	await until("a new row", async () => (await editorText(app)).includes("|Pears|12|\n| | |"));
+	// Enter: a row under this one.
+	await app.press("Enter");
+	await until("another row", async () => (await editorText(app)).includes("|Pears|12|\n| | |\n| | |"));
+	// Off the table: squared.
+	await app.press("End", { meta: true });
+	await until("the pipes squared", async () => (await editorText(app)).includes("| Name   | Amount |\n| :----- | -----: |\n| Apples | 3      |\n| Pears  | 12     |\n|        |        |\n|        |        |"));
+	await until("the save to land", async () => (await editorStatus(app)) === "saved");
+	assert.ok(readFileSync(join(cwd, "edit-table.md"), "utf8").includes("| Pears  | 12     |"), "squared on disk");
+});
+
 check("links are drawn, a missing one differently; ⌘+click follows one and makes the other", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "hub.md"), "go to [[My note]] or [[nowhere yet]]\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="hub.md"]')`));

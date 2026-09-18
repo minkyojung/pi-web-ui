@@ -23,6 +23,7 @@ import { fromServer, serverChange } from "../features/origin";
 import { embeds } from "../features/embeds";
 import { footnotesExtension } from "../features/footnotes";
 import { images } from "../features/images";
+import { tableEdit } from "../features/tableEdit";
 import { tablesExtension } from "../features/tables";
 import { landOn, links, notesChanged } from "../features/links";
 import { html } from "../features/html";
@@ -351,6 +352,8 @@ export function Editor({
 			// tables; footnotes as numbers.
 			images(() => at.current),
 			tablesExtension,
+			// Tab between cells, Enter for a row, the pipes squared on leaving.
+			tableEdit,
 			footnotesExtension,
 			mathExtension,
 			// The little HTML a note holds, from an allowlist.
