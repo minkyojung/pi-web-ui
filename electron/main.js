@@ -120,9 +120,15 @@ function startServer(port, workdir) {
 	// ELECTRON_RUN_AS_NODE turns this same binary into plain node, so the app does
 	// not depend on whatever node the machine happens to have. The server is
 	// pre-bundled rather than compiled at startup: `npm run build` writes it.
+	// The search tools the agent runs — ripgrep and fd — travel with the app
+	// (electron-builder.yml extraResources; scripts/tools.mjs fetches them for
+	// a dev build) and go first on the server's PATH, which is where pi looks
+	// for them before it thinks of downloading its own.
+	const tools = app.isPackaged ? join(process.resourcesPath, "bin") : here("../build/bin");
 	child = spawn(process.execPath, [here("../dist-server/server.mjs")], {
 		env: {
 			...process.env,
+			PATH: `${tools}:${process.env.PATH ?? ""}`,
 			ELECTRON_RUN_AS_NODE: "1",
 			PORT: String(port),
 			HOST,

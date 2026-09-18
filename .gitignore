@@ -3,3 +3,5 @@ dist/
 dist-server/
 release/
 THIRD_PARTY_NOTICES.md
+# The search tools scripts/tools.mjs fetches for the build.
+build/bin/
