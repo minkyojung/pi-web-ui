@@ -2,6 +2,8 @@
 
 A folder of notes, with a coding agent at the table.
 
+Using it: [Getting started](GETTING_STARTED.md) · [What leaves your Mac](PRIVACY.md). What follows is the design.
+
 Three columns: the notes, the open one, and pi. The notes are markdown files in
 a folder you choose; pi reads and writes the same files with its own tools, and
 who wrote which words is kept beside them. pi is not an assistant off to the

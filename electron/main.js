@@ -275,6 +275,9 @@ async function endServer() {
  * decides when that has been seen: the page says (update:seen), and the
  * version it saw is kept beside the last version run.
  */
+// The guides are files in the repository, read on GitHub: one copy, current with the latest release.
+const DOCS = "https://github.com/minkyojung/pi-web-ui/blob/main";
+
 let update = { current: app.getVersion(), phase: "idle", version: null, progress: null, error: null, justUpdated: null, welcomed: true };
 
 function sayUpdate(patch) {
@@ -441,6 +444,8 @@ function buildMenu(workdir) {
 				submenu: [
 					{ label: "Welcome", click: () => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send("open-page", "welcome"); } },
 					{ label: "What's New", click: () => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send("open-page", "whats-new"); } },
+					{ label: "Getting Started", click: () => void shell.openExternal(`${DOCS}/GETTING_STARTED.md`) },
+					{ label: "What Leaves Your Mac", click: () => void shell.openExternal(`${DOCS}/PRIVACY.md`) },
 					{ type: "separator" },
 					{ label: "Report a Problem…", click: reportProblem },
 					{ label: "Show Log in Finder", click: showLog },

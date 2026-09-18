@@ -6,6 +6,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 ### Added
+- Help › Getting Started and Help › What Leaves Your Mac open two short guides: how to begin, what comes over from Obsidian, the keys; and what is sent where, where every file is kept, and how to remove it all.
 - The first run opens a Welcome page: your folder and what the agent may do in it, signing in, and a button that writes a welcome note into the folder with five minutes of things to try. Done closes it; Help › Welcome opens it again.
 - Type `[^` and the note's footnotes are offered, with what each says, and a new one numbered next whose note is started at the end for you to write. Point at a footnote's number and its note is shown.
 - Inside a table, Tab moves to the next cell and Shift-Tab to the one before, Tab from the last cell starts a new row, Enter puts a row under this one, and the pipes are lined up whenever the cursor leaves the table. A click on a drawn table puts the cursor in the cell you clicked.
