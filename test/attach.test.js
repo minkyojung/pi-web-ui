@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -52,6 +52,29 @@ test("쓸 수 없는 이름, 안 받는 종류, 빈 것과 너무 큰 것은 거
 		assert.deepEqual(saveAttachment(root, "a.pdf", bytes("")), { ok: false, reason: "size" });
 		assert.deepEqual(saveAttachment(root, "a.pdf", { byteLength: MAX_BYTES + 1 }), { ok: false, reason: "size" });
 		assert.deepEqual(readdirSync(root), [], "폴더조차 만들지 않는다");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("볼트가 첨부 폴더를 정해 두었으면 거기에, 노트 옆이라 했으면 그 노트 옆에, 밖이나 숨은 폴더는 따르지 않는다", () => {
+	const root = mkdtempSync(join(tmpdir(), "attach-told-"));
+	try {
+		mkdirSync(join(root, ".obsidian"));
+		const told = (value) => writeFileSync(join(root, ".obsidian", "app.json"), JSON.stringify({ attachmentFolderPath: value }));
+		told("assets/pics");
+		assert.deepEqual(saveAttachment(root, "a.png", bytes("x"), "book/ch1/notes.md"), { ok: true, path: "assets/pics/a.png" });
+		told("/");
+		assert.deepEqual(saveAttachment(root, "a.png", bytes("x"), "book/ch1/notes.md"), { ok: true, path: "a.png" });
+		told("./");
+		assert.deepEqual(saveAttachment(root, "a.png", bytes("x"), "book/ch1/notes.md"), { ok: true, path: "book/ch1/a.png" });
+		assert.deepEqual(saveAttachment(root, "a.png", bytes("x")), { ok: true, path: "a 2.png" }, "노트 없이(메시지 상자) 노트 옆은 맨 위");
+		told("./img");
+		assert.deepEqual(saveAttachment(root, "a.png", bytes("x"), "book/ch1/notes.md"), { ok: true, path: "book/ch1/img/a.png" });
+		told("../outside");
+		assert.deepEqual(saveAttachment(root, "b.png", bytes("x"), "notes.md"), { ok: true, path: "attachments/b.png" }, "폴더 밖은 따르지 않는다");
+		told(".hidden");
+		assert.deepEqual(saveAttachment(root, "c.png", bytes("x"), "notes.md"), { ok: true, path: "attachments/c.png" }, "숨은 폴더도");
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

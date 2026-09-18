@@ -8,7 +8,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 ### Added
 - A PDF in your folder can be talked about: name it in the message by its path, as you would a note, and the agent reads it page by page. A long one it reads in parts, as it does a long file.
 - Type `@` in the message box and the PDFs in your folder are offered after the notes, so one can be named without typing its path.
-- Drop a PDF on the message box, or paste one, and it is saved in your folder under `attachments/` and named in your message, ready to ask about. A file of the same name is never replaced; the new one gets a number.
+- Drop a PDF on the message box, or paste one, and it is saved in your folder — where your vault keeps attachments if it says, else under `attachments/` — and named in your message, ready to ask about. A file of the same name is never replaced; the new one gets a number.
 - The PDFs in your folder are in the sidebar where they are on disk, and in ⌘P. Click one and it opens in a tab, fitted to the column; its words can be selected and copied.
 - Select words in a PDF and they show above the message box with their page, as words chosen in a note do; ask, and the agent knows which words and where. With a PDF open and nothing selected, the agent still knows which PDF you mean.
 - When the agent asks you to choose, there is a line under the choices to answer in your own words instead.

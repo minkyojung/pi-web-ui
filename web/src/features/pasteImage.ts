@@ -9,20 +9,22 @@
 import { EditorView } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 
+import { attach, pastedName } from "../attachments";
+
 const IMAGE = /^image\//;
 
 async function keep(view: EditorView, files: File[], here: string): Promise<void> {
 	// One after another, each at the cursor as it stands then, so two pictures
 	// land in order.
 	for (const file of files) {
-		const name = file.name || `image.${(file.type.split("/")[1] ?? "png").replace("jpeg", "jpg")}`;
-		const res = await fetch(`/api/attachment?from=${encodeURIComponent(here)}&name=${encodeURIComponent(name)}`, {
-			method: "POST",
-			headers: { "content-type": file.type || "application/octet-stream" },
-			body: file,
-		});
-		if (!res.ok) continue;
-		const { name: saved } = (await res.json()) as { name: string };
+		let saved: string;
+		try {
+			const path = await attach(file, { name: pastedName(file.name, file.type), from: here });
+			saved = path.slice(path.lastIndexOf("/") + 1);
+		} catch {
+			// Not a kind the folder takes, or too large: the note is left as it was.
+			continue;
+		}
 		const at = view.state.selection.main.head;
 		view.dispatch({ changes: { from: at, insert: `![[${saved}]]` }, selection: { anchor: at + saved.length + 5 }, userEvent: "input.paste" });
 	}

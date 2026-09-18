@@ -48,8 +48,7 @@ test("only images, only inside the folder, never under a dot-folder", () => {
 	assert.equal(imageType("a.md"), null);
 });
 
-import { attachmentFolder, savePicture } from "../pictures.ts";
-import { existsSync, readFileSync as readBytes } from "node:fs";
+import { attachmentFolder } from "../pictures.ts";
 
 test("a pasted picture goes where Obsidian was told to keep them, else in attachments/", () => {
 	assert.equal(attachmentFolder(ROOT, "notes.md"), "attachments", "not told: attachments/");
@@ -64,18 +63,4 @@ test("a pasted picture goes where Obsidian was told to keep them, else in attach
 	told("./img");
 	assert.equal(attachmentFolder(ROOT, "book/ch1/notes.md"), "book/ch1/img", "under the note's folder");
 	rmSync(join(ROOT, ".obsidian", "app.json"));
-});
-
-test("a pasted picture is kept under its name, or a name from the moment, and never over another", () => {
-	const png = Buffer.from("89504e470d0a1a0a", "hex");
-	const at = new Date("2026-09-18T04:05:06Z");
-	const first = savePicture(ROOT, "notes.md", "image.png", png, at);
-	assert.deepEqual(first, { path: "attachments/Pasted image 20260918040506.png", name: "Pasted image 20260918040506.png" }, "a clipboard's nameless picture, named by the moment");
-	const second = savePicture(ROOT, "notes.md", "image.png", png, at);
-	assert.equal(second.name, "Pasted image 20260918040506 1.png", "the same moment twice: a number");
-	const named = savePicture(ROOT, "notes.md", "My Diagram.PNG", png, at);
-	assert.equal(named.name, "My Diagram.PNG", "a picture with a name keeps it");
-	assert.ok(existsSync(join(ROOT, "attachments", "My Diagram.PNG")));
-	assert.equal(readBytes(join(ROOT, first.path)).toString("hex"), png.toString("hex"));
-	assert.equal(savePicture(ROOT, "notes.md", "notes.txt", png, at), null, "only pictures");
 });

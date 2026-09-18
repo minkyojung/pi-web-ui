@@ -24,10 +24,12 @@ export function filesToAttach<F extends { type: string }>(files: Iterable<F>): F
 
 /**
  * Put a file in the folder by the server's one door (attach.ts there) and
- * say where it went. A refusal comes back as the server worded it.
+ * say where it went. A refusal comes back as the server worded it. `from` is
+ * the note it is for, where there is one: a vault may keep such files beside
+ * the note. `name` is for the file that came without one worth keeping.
  */
-export async function attach(file: File): Promise<string> {
-	const res = await fetch(`/api/attachment?name=${encodeURIComponent(file.name)}`, {
+export async function attach(file: File, { name = file.name, from = "" }: { name?: string; from?: string } = {}): Promise<string> {
+	const res = await fetch(`/api/attachment?name=${encodeURIComponent(name)}&from=${encodeURIComponent(from)}`, {
 		method: "POST",
 		headers: { "content-type": "application/octet-stream" },
 		body: file,
@@ -45,4 +47,18 @@ export function imagesOf(files: { url?: string; mediaType?: string }[]): PastedI
 		if (m) out.push({ mimeType: m[1]!, data: m[2]! });
 	}
 	return out;
+}
+
+/**
+ * The name a pasted picture is kept under. A clipboard's picture comes as
+ * "image.png" whatever it shows, so that one is named from the moment, as
+ * Obsidian names it; a file with a name of its own keeps it.
+ */
+export function pastedName(given: string, type: string, now = new Date()): string {
+	const dot = given.lastIndexOf(".");
+	const ext = dot > 0 ? given.slice(dot) : `.${(type.split("/")[1] ?? "png").replace("jpeg", "jpg")}`;
+	const stem = (dot > 0 ? given.slice(0, dot) : given).trim();
+	if (!/^(image|screenshot|pasted image)?$/i.test(stem)) return `${stem}${ext}`;
+	const p = (n: number) => String(n).padStart(2, "0");
+	return `Pasted image ${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}${ext}`;
 }

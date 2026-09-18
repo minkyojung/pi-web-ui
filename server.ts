@@ -1382,7 +1382,7 @@ const server = createServer(async (req, res) => {
 			}
 			let saved: Saved;
 			try {
-				saved = saveAttachment(CWD, url.searchParams.get("name") ?? "", body);
+				saved = saveAttachment(CWD, url.searchParams.get("name") ?? "", body, url.searchParams.get("from") ?? "");
 			} catch (err) {
 				console.error("could not save an attachment:", err instanceof Error ? err.message : err);
 				return json(500, { error: "could not save the file" });
