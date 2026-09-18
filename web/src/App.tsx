@@ -704,7 +704,9 @@ export function App() {
 						    a step down does not need saying twice. */}
 						<div className="surface-panel m-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-sm border">
 							<Boundary name="conversation">
-								<Pi note={note} raw={raw} />
+								{/* A PDF in front is what the message is beside, as a note is:
+								    the agent is told which, and what was chosen on its pages. */}
+								<Pi note={page?.kind === "document" ? page.path : note} raw={raw} />
 							</Boundary>
 						</div>
 					</ResizablePanel>

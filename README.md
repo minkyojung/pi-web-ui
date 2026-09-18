@@ -647,6 +647,20 @@ path and nothing else that is not a picture. Renaming and deleting are not
 offered on one: those are done through a note's title and its log, and a PDF
 has neither here.
 
+Words dragged across in a PDF are chosen as words in a note are: the same
+store (`chosen.ts`), the same chip above the box, the same ride beside the
+message. It is the browser's own selection that is read, since choosing in
+pdf.js's text layer is that, and two things differ from the editor's report.
+The page rides along — read off the pages the selection starts and ends in —
+because a PDF's pages are the only address its words have, and pi's `read`
+names each page, so the page is where pi goes to read around them. And an
+empty selection is news only when it was emptied by a click on the pages:
+clicking into the message box to ask empties the browser's selection too,
+which an editor that keeps its own never had to think about. What is in front
+is said to pi as what it is — "this document, open beside the conversation"
+and not "this note, in their editor" (`looking` in `guard.ts`) — so a PDF
+merely open is one pi can be asked about without naming it.
+
 The rest of what pi can do to a session is here as a button each, each a
 line of pi's API: `compact` (pi's `/compact`, from the context card, while
 nothing is being written); `delete_session` (the picker's bin, not for the open

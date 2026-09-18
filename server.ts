@@ -159,7 +159,7 @@ const availableModels = () => modelRuntime.getAvailableSnapshot();
  * words chosen in it, given to pi beside the prompt as a hidden message — see
  * guard.ts. One value, not one per tab: pi has one conversation.
  */
-let openNote: { path: string; chosen: string | null } | null = null;
+let openNote: { path: string; chosen: string | null; page?: string } | null = null;
 
 /**
  * The ask waiting for an answer, if there is one: what was chosen, where the
@@ -1526,7 +1526,12 @@ wss.on("connection", async (ws) => {
 					if (typeof msg.text !== "string") return;
 					openNote =
 						typeof msg.note === "string"
-							? { path: msg.note, chosen: typeof msg.chosen === "string" && msg.chosen ? msg.chosen : null }
+							? {
+									path: msg.note,
+									chosen: typeof msg.chosen === "string" && msg.chosen ? msg.chosen : null,
+									// Digits and a dash, since it is said to pi as it came.
+									...(typeof msg.page === "string" && /^\d{1,6}(-\d{1,6})?$/.test(msg.page) ? { page: msg.page } : {}),
+								}
 							: null;
 					// Anything else said to pi takes the waiting answer with it: after
 					// this, which reply was the answer cannot be told, and a guess

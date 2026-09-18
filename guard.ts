@@ -33,6 +33,7 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, relative, sep } from "node:path";
+import { isDocument } from "./documentKinds.ts";
 import { notePath } from "./vault.ts";
 
 /** What the app keeps beside the notes. Nothing of pi's may go there. */
@@ -82,18 +83,24 @@ export function mentionsAppDir(command: string): boolean {
 }
 
 /** The note open in the editor, and the words chosen in it, if any. */
-export type OpenNote = () => { path: string; chosen: string | null } | null;
+export type OpenNote = () => { path: string; chosen: string | null; page?: string } | null;
 
 /**
  * What the person was looking at, said beside their message. Kept in the
  * conversation with it, so it is said as of that message rather than as now.
  */
-export function looking(note: { path: string; chosen: string | null }): string {
-	const line = `When they sent this message, the person had this note open in their editor: ${note.path}`;
+export function looking(note: { path: string; chosen: string | null; page?: string }): string {
+	// A PDF in front is said as one: pi reads it with read, not as a note, and
+	// the page is where to read around the chosen words — read names each page.
+	const document = isDocument(note.path);
+	const line = document
+		? `When they sent this message, the person had this document open beside the conversation: ${note.path} (read it with read; it comes back page by page)`
+		: `When they sent this message, the person had this note open in their editor: ${note.path}`;
 	if (!note.chosen) return line;
+	const where = document && note.page ? ` on page ${note.page.replace("-", " to ")}` : "";
 	// Quoted, and said to be a part of the note rather than a thing to answer
 	// about on its own: the question is the message, this is what it points at.
-	return `${line}\nThey have chosen these words in it, which is what their message is about unless they say otherwise:\n${note.chosen
+	return `${line}\nThey have chosen these words in it${where}, which is what their message is about unless they say otherwise:\n${note.chosen
 		.split("\n")
 		.map((words) => `> ${words}`)
 		.join("\n")}`;

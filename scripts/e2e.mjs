@@ -2755,6 +2755,41 @@ check("a PDF in the folder is in the tree, and opens in a tab with its words on 
 });
 
 /**
+ * Words dragged across in a PDF are chosen the way words in a note are: they
+ * show above the box with their page, stay there when the box is clicked into
+ * — which empties the browser's selection, the one thing a note's editor does
+ * not do — and go beside the message, not in it.
+ */
+check("words dragged across in a PDF show above the box with their page, and go beside the message", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "chosen from.pdf"), readFileSync(join(root, "test/fixtures/three-pages.pdf")));
+	await pickNote(app, "chosen from.pdf");
+	await until("the second page's words", () => app.evaluate("[...document.querySelectorAll('#page .textLayer span')].some((s) => s.textContent.includes('Page two'))"), 30000);
+	await app.evaluate("[...document.querySelectorAll('#page .textLayer span')].find((s) => s.textContent.includes('Page two')).scrollIntoView({ block: 'center' })");
+	await app.evaluate("[...document.querySelectorAll('#page .textLayer span')].find((s) => s.textContent.includes('Page two')).setAttribute('data-e2e', 'two')");
+	assert.equal(await app.drag("#page .textLayer span[data-e2e=two]"), true);
+	const chip = () => app.evaluate("document.getElementById('chosen')?.textContent ?? ''");
+	// The whole of what was dragged across, under its page: the selection grows as the pointer moves, and the chip follows it.
+	await until("the chip with the page and the words", async () => (await chip()) === "p. 2Page two says hello.");
+	// Into the box to ask: the browser lets go of the selection, the words stay.
+	await app.click("textarea");
+	await new Promise((r) => setTimeout(r, 300));
+	assert.match(await chip(), /^p\. 2/, "clicking into the box does not take them away");
+	// What goes out: the words and the page beside the message, the PDF as what is in front.
+	await app.evaluate("(() => { window.__sent = []; const send = WebSocket.prototype.send; WebSocket.prototype.send = function (d) { window.__sent.push(d); return send.call(this, d); }; })()");
+	await app.keys("what does this mean");
+	await app.press("Enter");
+	const prompt = await until("the prompt to go", async () => (await app.evaluate("window.__sent.map((d) => JSON.parse(d)).find((m) => m.type === 'prompt') ?? null")));
+	assert.equal(prompt.text, "what does this mean", "the message is only what was typed");
+	assert.equal(prompt.note, "chosen from.pdf");
+	assert.equal(prompt.page, "2");
+	assert.match(prompt.chosen, /Page two says hello/);
+	// A click on the pages unchooses, as it does anywhere.
+	const blank = await app.evaluate("(() => { const r = document.querySelector('#page .textLayer span[data-e2e=two]').getBoundingClientRect(); return [r.left + 20, r.bottom + 80]; })()");
+	await app.clickAt(blank[0], blank[1]);
+	await until("the chip to go", async () => (await chip()) === "");
+});
+
+/**
  * A PDF dropped on the message box goes into the folder and is named in the
  * message. The drop is a real DragEvent carrying a real File, so what is
  * checked is the whole path: the box, the door, the disk, the list.

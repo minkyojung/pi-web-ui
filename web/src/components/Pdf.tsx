@@ -4,6 +4,7 @@ import { EventBus, PDFLinkService, PDFViewer } from "pdfjs-dist/web/pdf_viewer.m
 import "pdfjs-dist/web/pdf_viewer.css";
 import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
+import { choose, chosenStore } from "../chosen";
 import { vaultUrl } from "../pages";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
@@ -39,8 +40,11 @@ export default function Pdf({ path }: { path: string }) {
 		linkService.setViewer(viewer);
 		// The column's width is the page's: set once the pages have a size, and
 		// again whenever the column is dragged.
+		// Not once the column is off the page: the tab closing takes the scroller
+		// out before this effect is undone, the observer reports that as a change
+		// of size, and pdf.js, asked to fit to nothing, complains to the console.
 		const fit = () => {
-			if (viewer.pagesCount) viewer.currentScaleValue = "page-width";
+			if (viewer.pagesCount && container.offsetParent) viewer.currentScaleValue = "page-width";
 		};
 		eventBus.on("pagesinit", fit);
 		const resized = new ResizeObserver(fit);
@@ -63,7 +67,27 @@ export default function Pdf({ path }: { path: string }) {
 				if (err?.name !== "AbortException" && !task.destroyed) setFailed(err.message);
 			},
 		);
+		// What is chosen on the pages, for the box under pi's column to point
+		// with — the editor's own report (Editor.tsx), made from the browser's
+		// selection, which is what choosing in pdf.js's text layer is. Two things
+		// are not the editor's. The page rides along, read off the pages the
+		// selection starts and ends in. And an empty selection is only news when
+		// it was emptied here, by a click on the pages: clicking into the message
+		// box to ask empties it too, and that must not take the words away.
+		const pageAt = (node: Node | null) => Number((node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>(".page")?.dataset.pageNumber);
+		const chosen = () => {
+			const selection = document.getSelection();
+			if (!selection || !selection.anchorNode || !container.contains(selection.anchorNode)) return;
+			if (selection.isCollapsed) return choose(path, "");
+			const [from, to] = [pageAt(selection.anchorNode), pageAt(selection.focusNode)].sort((a, b) => a - b);
+			choose(path, selection.toString(), from ? (to && to !== from ? `${from}-${to}` : String(from)) : undefined);
+		};
+		document.addEventListener("selectionchange", chosen);
+
 		return () => {
+			document.removeEventListener("selectionchange", chosen);
+			// Nothing is chosen in a PDF that is not open.
+			if (chosenStore.get()?.path === path) chosenStore.set(null);
 			resized.disconnect();
 			viewer.setDocument(null as never);
 			void task.destroy();

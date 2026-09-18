@@ -72,7 +72,7 @@ function submit(
 		...(note ? { note } : {}),
 		// What was chosen in the note, for this turn: pi is told what the
 		// question is about, and the words stay out of the message itself.
-		...(chosen && chosen.path === note ? { chosen: chosen.text } : {}),
+		...(chosen && chosen.path === note ? { chosen: chosen.text, ...(chosen.page ? { page: chosen.page } : {}) } : {}),
 		...(command ? { command } : {}),
 		...(images.length ? { images } : {}),
 		behavior,
@@ -126,6 +126,8 @@ function Chosen({ chosen, onDrop }: { chosen: ChosenWords | null; onDrop: () => 
 		<PromptInputHeader id="chosen">
 			<Badge variant="secondary" className="max-w-full gap-1 font-normal" title={chosen.text}>
 				<TextQuoteIcon className="size-3 shrink-0" />
+				{/* Where in a PDF: its pages are the only address the words have. */}
+				{chosen.page && <span className="shrink-0 text-muted-foreground">p. {chosen.page}</span>}
 				<span className="min-w-0 truncate">{chosen.text}</span>
 				<Button
 					variant="ghost"
