@@ -263,6 +263,11 @@ export function renameProperty(doc: Document, from: string, to: string): void {
 	pair.key = doc.createNode(name);
 }
 
+/** What a property holds, by its name in whatever case the note wrote it; undefined when the note has none. */
+export function valueOf(doc: Document, name: string): unknown {
+	return toPlain(pairFor(doc, name)?.value);
+}
+
 /** Take a property away, by the note's own spelling of its name. */
 export function removeProperty(doc: Document, name: string): void {
 	const pair = pairFor(doc, name);

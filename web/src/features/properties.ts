@@ -15,8 +15,10 @@
  */
 import { syntaxTree } from "@codemirror/language";
 import { Annotation, EditorSelection, EditorState, type Extension, StateField, type Transaction } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
+import type { Document } from "yaml";
 
-import { type Block, type Properties, propertiesIn } from "../../../properties.ts";
+import { type Block, bodyStart, type Properties, propertiesIn, withProperties } from "../../../properties.ts";
 import { isLivePreview } from "./livePreview.ts";
 import { fromServer } from "./origin.ts";
 
@@ -76,6 +78,25 @@ const guard: Extension = [
 		return block ? [0, block.to + 1] : true;
 	}),
 ];
+
+/**
+ * Put a change to the document's properties into the editor as one change over
+ * the block's lines — which ⌘Z takes back and the save sends, as any typing is.
+ * False when the block does not parse, or the change would leave it not parsing.
+ */
+export function applyProperties(view: EditorView, edit: (doc: Document) => void): boolean {
+	const text = view.state.doc.toString();
+	const next = withProperties(text, edit);
+	if (!next.ok) return false;
+	// The same text is not a change: a value committed twice — Enter, then the box losing focus — is one change, and one undo.
+	if (next.text === text) return true;
+	view.dispatch({
+		changes: { from: 0, to: bodyStart(text), insert: next.text.slice(0, bodyStart(next.text)) },
+		annotations: propertiesEdit.of(true),
+		userEvent: "input",
+	});
+	return true;
+}
 
 /** The field and the guard, for the editor. */
 export const properties: Extension = [propertiesField, guard];

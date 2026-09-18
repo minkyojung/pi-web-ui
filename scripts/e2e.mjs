@@ -1456,10 +1456,15 @@ check("the strip counts the note's words, and says it in characters instead when
 	// Three words: the four lines of front matter are the file's and none of the note's.
 	await until("the count", async () => (await count()).includes("3 words"));
 
-	// Pressed, it says the same note the other way, and stays that way for the
-	// next note: it is how you like to be told, not a fact about one note.
-	assert.equal(await app.evaluate(`(() => { const b = document.getElementById('count')?.closest('button'); if (!b) return false; b.click(); return true; })()`), true);
+	// Pressed, it asks which way to count; chosen, it says the same note the
+	// other way, and stays that way for the next note: it is how you like to
+	// be told, not a fact about one note.
+	assert.equal(await app.click("#count"), true);
+	await until("the count's card", () => app.evaluate(`!!document.querySelector('[data-slot="popover-content"] [role="tab"]')`));
+	assert.equal(await app.click('[data-slot="popover-content"] [role="tab"]', 1), true);
 	await until("characters", async () => (await count()).includes("13 characters"));
+	await app.press("Escape");
+	await until("the card to go", () => app.evaluate(`!document.querySelector('[data-slot="popover-content"]')`));
 
 	// And it follows the typing rather than the saving. The cursor is put at the
 	// end first: pressing the count took the focus out of the editor, and words
@@ -1491,6 +1496,74 @@ check("the strip counts the note's words, and says it in characters instead when
 	await app.evaluate("location.reload()");
 	await until("the note after the reload", async () => (await editorStatus(app)) === "saved");
 	await until("characters still", async () => (await count()).includes("characters"));
+});
+
+/**
+ * How much of the note there may be: a limit set from the count, kept in the
+ * note's own properties — `max_characters`, `max_words` — as a change like any
+ * other, which ⌘Z takes back.
+ */
+check("a limit set from the count is the note's own, and the count says when it is past it", async ({ app, cwd }) => {
+	const count = () => app.evaluate("document.getElementById('count')?.textContent ?? ''");
+	const over = () => app.evaluate("document.getElementById('count')?.dataset.over === 'true'");
+	const onDisk = () => readFileSync(join(cwd, "limit-me.md"), "utf8");
+	const card = async () => {
+		assert.equal(await app.click("#count"), true);
+		await until("the count's card", () => app.evaluate("!!document.getElementById('countLimit')"));
+	};
+	/** Types into the limit box, whatever it held, and presses Enter. */
+	const limit = async (typed) => {
+		assert.equal(await app.evaluate("(() => { const box = document.getElementById('countLimit'); box.focus(); box.select(); return true; })()"), true);
+		await app.press("Backspace");
+		await app.keys(typed);
+		await app.press("Enter");
+	};
+
+	writeFileSync(join(cwd, "limit-me.md"), "one two three\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="limit-me.md"]')`));
+	await pickNote(app, "limit-me.md");
+	await until("the note", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("one two three"));
+
+	await until("the count", async () => /^(3 words|13 characters)$/.test(await count()));
+	await card();
+	assert.equal(await app.click('[data-slot="popover-content"] [role="tab"]', 1), true);
+	await until("characters", async () => (await count()) === "13 characters");
+	await limit("10");
+	await until("the limit in the count", async () => (await count()) === "13 / 10 characters");
+	assert.equal(await over(), true, "past the limit, the count says so");
+	await app.shot("count-limit");
+	await until("the limit on disk", async () => onDisk().startsWith("---\nmax_characters: 10\n---\n"));
+	assert.ok(onDisk().endsWith("one two three\n"), `the note's words are left as they were, and saw: ${onDisk()}`);
+
+	// Room enough, and the count is only a count again.
+	await limit("20");
+	await until("the new limit", async () => (await count()) === "13 / 20 characters");
+	assert.equal(await over(), false);
+
+	// Not a number above nought: nothing is written, and the box says what the note does.
+	await limit("abc");
+	assert.equal(await app.evaluate("document.getElementById('countLimit').value"), "20");
+	assert.equal(await count(), "13 / 20 characters");
+
+	// Words are limited apart from characters.
+	assert.equal(await app.click('[data-slot="popover-content"] [role="tab"]', 0), true);
+	await until("words", async () => (await count()) === "3 words");
+	assert.equal(await app.evaluate("document.getElementById('countLimit').value"), "");
+	await app.press("Escape");
+	await until("the card to go", () => app.evaluate(`!document.querySelector('[data-slot="popover-content"]')`));
+
+	// A change like any other: ⌘Z in the note takes the last one back.
+	assert.equal(await app.click("#editor .cm-content"), true);
+	await app.press("z", { meta: true });
+	await card();
+	assert.equal(await app.click('[data-slot="popover-content"] [role="tab"]', 1), true);
+	await until("the limit before", async () => (await count()) === "13 / 10 characters");
+
+	// Emptied, the limit goes, and with the last property the block goes too.
+	await limit("");
+	await until("no limit", async () => (await count()) === "13 characters");
+	await until("the block gone from disk", async () => onDisk() === "one two three\n");
+	await app.press("Escape");
 });
 
 /**

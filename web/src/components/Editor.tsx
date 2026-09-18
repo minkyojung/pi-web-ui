@@ -27,14 +27,14 @@ import { fitted, leaving, scrollBack } from "../features/viewPlace";
 import { wrapSelection } from "../features/wrapSelection";
 import { highlightTag } from "../../../highlight.ts";
 import { inlineCodeTag, noteSyntax } from "../../../syntax.ts";
-import { bodyStart, type Properties as PropertiesRead } from "../../../properties.ts";
+import { bodyStart, type Properties as PropertiesRead, valueOf } from "../../../properties.ts";
 import { tagTag } from "../../../tag.ts";
 import { tagsIn, type Place } from "../../../links.ts";
 import type { Left } from "../nav";
 import type { Edit } from "../types";
 import type { Authored } from "../../../protocol.ts";
 import { authorsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
-import { inFrontStore, say as sayInFront } from "../inFront";
+import { holdEditor, inFrontStore, type Limits, say as sayInFront } from "../inFront";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { flushSaves, registerSave } from "../saves";
 import { getConnection, subscribe } from "../store";
@@ -64,6 +64,21 @@ const AUTOSAVE_MS = 600;
 function counted(text: string): { words: number; characters: number } {
 	const body = text.slice(bodyStart(text)).trim();
 	return { words: body === "" ? 0 : body.split(/\s+/).length, characters: body.length };
+}
+
+/**
+ * The most words and characters the note allows, as its properties say:
+ * `max_words` and `max_characters`. A whole number above nought is a limit;
+ * anything else — `700자`, a list, nothing — is not, and the count goes on
+ * being only a count. The note is the truth, and a value is never corrected.
+ */
+function limitsOf(read: PropertiesRead): Limits {
+	const limit = (name: string) => {
+		if (!read.block || read.errors.length > 0) return null;
+		const value = valueOf(read.doc, name);
+		return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+	};
+	return { words: limit("max_words"), characters: limit("max_characters") };
 }
 
 /**
@@ -437,7 +452,7 @@ export function Editor({
 					// component's: the strip is the only thing that wants these,
 					// and a render of the editor for every keystroke would take
 					// the properties panel with it.
-					if (u.docChanged || u.startState.doc.length === 0) sayInFront(at.current, counted(u.state.doc.toString()));
+					if (u.docChanged || u.startState.doc.length === 0) sayInFront(at.current, { ...counted(u.state.doc.toString()), max: limitsOf(u.state.field(propertiesField)) });
 					// What is chosen, for the box under pi's column to point with.
 					if (u.selectionSet || u.docChanged) {
 						const { from, to } = u.state.selection.main;
@@ -464,12 +479,14 @@ export function Editor({
 		// The write barrier, in its three forms: before a prompt (whoever sends
 		// one calls flushSaves), before the page goes, and before this box does.
 		const unregister = registerSave(save);
+		const letGo = holdEditor(() => at.current, v);
 		const onHide = () => save();
 		addEventListener("pagehide", onHide);
 		return () => {
 			save();
 			removeEventListener("pagehide", onHide);
 			unregister();
+			letGo();
 			// Nothing is chosen in a note that is not open.
 			chosenStore.set(null);
 			forgetMoves();

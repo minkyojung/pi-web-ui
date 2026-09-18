@@ -14,6 +14,8 @@
  * show the note being left behind as the note in front: the strip draws
  * nothing unless the path it was told is the path that is open.
  */
+import type { EditorView } from "@codemirror/view";
+
 import { createStore } from "./serverState";
 import type { Authored } from "../../protocol.ts";
 
@@ -26,13 +28,17 @@ export type InFront = {
 	/** The body's words and characters — the front matter is the note's about, not the note. */
 	words: number;
 	characters: number;
+	/** The most of each the note allows, from its `max_words` and `max_characters` properties; null where it sets none. */
+	max: Limits;
 	/** The note's own tags, as the vault last read them. Written in the note or named in its `tags` property, alike (links.ts). */
 	tags: string[];
 	/** How much of it somebody other than you wrote, as the note was last written down. See Authored in protocol.ts. */
 	authored: Authored | null;
 };
 
-const nothing = { saved: "loading" as Saved, words: 0, characters: 0, tags: [] as string[], authored: null };
+export type Limits = { words: number | null; characters: number | null };
+
+const nothing = { saved: "loading" as Saved, words: 0, characters: 0, max: { words: null, characters: null }, tags: [] as string[], authored: null };
 
 export const inFrontStore = createStore<InFront | null>(null);
 
@@ -51,3 +57,24 @@ export function say(path: string, what: Partial<Omit<InFront, "path">>) {
 	const was = inFrontStore.get();
 	inFrontStore.set({ ...(was?.path === path ? was : nothing), ...what, path });
 }
+
+/**
+ * The editor of the note in front, for the strip to change the note's
+ * properties through — a limit set there is a change to the text like any
+ * other, and the editor is where the text is changed. Held the way a save is
+ * (registerSave): by the editor, for as long as it is on the page, and let go
+ * only by the one that holds it, since while one note is swapped for another
+ * the new editor comes before the old one goes.
+ */
+let held: { path: () => string; view: EditorView } | null = null;
+
+export function holdEditor(path: () => string, view: EditorView): () => void {
+	const mine = { path, view };
+	held = mine;
+	return () => {
+		if (held === mine) held = null;
+	};
+}
+
+/** The editor of `path`, if it is the one in front. */
+export const editorOf = (path: string): EditorView | null => (held && held.path() === path ? held.view : null);
