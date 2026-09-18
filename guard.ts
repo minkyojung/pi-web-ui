@@ -4,9 +4,12 @@
  * Three things a note app on the pi harness needs from pi's own extension
  * points, none of which the tool ladder gives:
  *
- * - A system prompt that says this is a folder of notes: what a note is, that
- *   `.pi/` is the app's and not to be touched, and how to point at a note.
- *   Without it pi runs its stock coding-agent prompt over someone's writing.
+ * - A system prompt of its own in place of pi's, which is a coding agent's —
+ *   who the agent is at this table and how it reads what the person wants —
+ *   and after it what a note is, that `.pi/` is the app's and not to be
+ *   touched, and how to point at a note. A SYSTEM.md the person gave pi still
+ *   takes the place of the first. Either way pi then leaves out its per-tool
+ *   guidelines, so a rule a tool needs is in that tool's description.
  * - A hard stop on `.pi/`. The history there is the record of who wrote
  *   what; a tool call that rewrites or removes it corrupts that silently, so
  *   `edit`, `write` and `bash` are blocked before they run, whatever the
@@ -17,12 +20,14 @@
  *   person has typed past, and records whose words the new ones are. `edit`
  *   and `write` can do neither, so on a note they are refused and told where
  *   to go instead. Every other file in the folder is pi's as it always was.
- * - The note open in the editor, and the words chosen in it, given as lines of
- *   the system prompt for the turn rather than as text in the person's
- *   message. As user text they were kept in the session, compacted with it,
- *   and replayed with a stale path when a question was asked again or a
- *   branch navigated — and what is chosen belongs to the moment even more
- *   than the path does.
+ * - The note open in the editor, and the words chosen in it, given as a hidden
+ *   message of their own beside the person's rather than as text in it. As
+ *   their text it was replayed with a stale path when a question was asked
+ *   again or a branch navigated; a message of its own is left behind with the
+ *   branch, and says it was as of that message. It was a line of the turn's
+ *   system prompt for a while, which kept it out of the session — but that
+ *   prompt comes before the whole conversation, so every note opened or
+ *   words chosen made the provider's cache of the conversation useless.
  *
  * Inline, like wall.ts and noteEdit.ts, and bound per session with them.
  */
@@ -32,6 +37,18 @@ import { notePath } from "./vault.ts";
 
 /** What the app keeps beside the notes. Nothing of pi's may go there. */
 export const APP_DIR_NAME = ".pi";
+
+/** Who the agent is here, in place of pi's coding-agent opening. */
+export const OCTAVE_PROMPT = `You are at the table with a person and their notes. You are not their programmer: you are someone they think with, and someone who gets things done for them.
+
+Before acting, work out what this message wants:
+- To think something through — think with them. Ask what they mean, say where you disagree, bring up what they have not considered. Do not settle it for them, and do not write it into a note unless they ask.
+- To have something done — do it, making the ordinary choices yourself, then say in a line or two what you did.
+- If you cannot tell which of these they want, or doing it would mean deciding something only they can, ask one short question with ask_user — not in your reply, where nothing waits for the answer.
+
+The notes are their writing. Read them freely; change only what was asked, in their voice. A change you think would help but was not asked for is a suggestion to make, not an edit.
+
+Talk as a person across the table would: plainly, and briefly unless they ask for more.`;
 
 export const VAULT_PROMPT = [
 	"You are working in a folder of a person's notes: markdown files (.md), one note per file, the file's name being the note's title.",
@@ -66,9 +83,12 @@ export function mentionsAppDir(command: string): boolean {
 /** The note open in the editor, and the words chosen in it, if any. */
 export type OpenNote = () => { path: string; chosen: string | null } | null;
 
-/** The line of the turn's system prompt that says what the person is looking at. */
+/**
+ * What the person was looking at, said beside their message. Kept in the
+ * conversation with it, so it is said as of that message rather than as now.
+ */
 export function looking(note: { path: string; chosen: string | null }): string {
-	const line = `The person has this note open in their editor right now: ${note.path}`;
+	const line = `When they sent this message, the person had this note open in their editor: ${note.path}`;
 	if (!note.chosen) return line;
 	// Quoted, and said to be a part of the note rather than a thing to answer
 	// about on its own: the question is the message, this is what it points at.
@@ -95,9 +115,12 @@ export const guard = (root: string, openNote: OpenNote) => (pi: ExtensionAPI) =>
 		return undefined;
 	});
 
-	pi.on("before_agent_start", async (event) => {
+	// A message beside the person's rather than a line of the system prompt:
+	// the system prompt comes before the whole conversation, so changing it
+	// with every note opened would throw away the provider's cache of all of it.
+	pi.on("before_agent_start", async () => {
 		const note = openNote();
 		if (!note) return undefined;
-		return { systemPrompt: `${event.systemPrompt}\n\n${looking(note)}` };
+		return { message: { customType: "open-note", content: looking(note), display: false } };
 	});
 };

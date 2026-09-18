@@ -108,6 +108,7 @@ it("확장 스위치가 꺼져 있으면 도구는 pi의 것과 우리 것뿐이
   // it was installed for; extensions.test.js is where it is on.
   const known = new Set(["read", "grep", "find", "ls", "edit", "write", "bash", "powershell", "note_edit", "note_write", "note_properties", "ask_user", "web_search", "fetch_content", "source_check", "get_search_content"]);
   assert.deepEqual(names.filter((n) => !known.has(n)), [], `only known tools among ${names.join(", ")}`);
+  if (process.platform !== "win32") assert.ok(!names.includes("powershell"), "no powershell where there is none to run");
   assert.ok(!log.includes("sendFlowsList"), "the dashboard bridge never started");
   assert.ok(!log.includes("did not answer"), "nothing warned about a missing hook");
 });

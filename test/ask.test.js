@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerOf, asked, under } from "../ask.ts";
+import { answerOf, answering, asked, under } from "../ask.ts";
 
 const said = (text, stopReason) => ({ role: "assistant", content: [{ type: "text", text }], ...(stopReason ? { stopReason } : {}) });
 
@@ -41,4 +41,16 @@ test("답은 고른 글이 끝나는 줄 아래에 제 문단으로 들어간다
 test("마지막 줄에 물으면 답은 노트 끝에 붙는다 — 줄바꿈이 있든 없든", () => {
   assert.equal(under("한 줄뿐", 3, "답"), "한 줄뿐\n\n답");
   assert.equal(under("한 줄뿐\n", 3, "답"), "한 줄뿐\n\n답\n");
+});
+
+test("묻는 턴의 지시는 시스템 프롬프트가 아니라 화면에 안 보이는 메시지로 가고, 묻지 않는 턴에는 없다", async () => {
+  let handler;
+  let asking = true;
+  answering(() => asking, () => {})({ on: (event, fn) => { if (event === "before_agent_start") handler = fn; } });
+  const result = await handler({ type: "before_agent_start", prompt: "왜", systemPrompt: "BASE" });
+  assert.equal(result.systemPrompt, undefined);
+  assert.equal(result.message.display, false);
+  assert.match(result.message.content, /put into the note/);
+  asking = false;
+  assert.equal(await handler({ type: "before_agent_start", prompt: "왜", systemPrompt: "BASE" }), undefined);
 });
