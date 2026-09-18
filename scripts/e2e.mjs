@@ -249,7 +249,7 @@ async function openPage(devtoolsPort, url) {
 		await call("Input.dispatchMouseEvent", { type: "mouseReleased", x: b[0], y: b[1], button: "left", buttons: 0, clickCount: 1 });
 		return true;
 	};
-	const CODES = { Enter: 13, Backspace: 8, Delete: 46, Escape: 27, End: 35, Tab: 9, "[": 219, "]": 221, b: 66, e: 69, f: 70, i: 73, k: 75, n: 78, p: 80, t: 84, z: 90 };
+	const CODES = { 1: 49, Enter: 13, Backspace: 8, Delete: 46, Escape: 27, End: 35, Tab: 9, "[": 219, "]": 221, b: 66, d: 68, e: 69, f: 70, i: 73, k: 75, n: 78, p: 80, t: 84, z: 90 };
 	const NAMES = { "[": "BracketLeft", "]": "BracketRight" };
 	const press = async (key, { meta = false, shift = false, alt = false } = {}) => {
 		const modifiers = (meta ? 4 : 0) | (shift ? 8 : 0) | (alt ? 1 : 0);
@@ -369,15 +369,24 @@ const press = (page, title) =>
 	page.evaluate(
 		`(() => { const b = [...document.querySelectorAll('#chat button[aria-label=${JSON.stringify(title)}]')].find((x) => !x.disabled); if (!b) return false; b.click(); return true; })()`,
 	);
+/** The choice of the open question that reads `choice`, as an expression for the page. */
+const choiceOf = (choice) =>
+	`[...document.querySelectorAll('#question [data-slot=questionnaire-choice]')].find((c) => c.querySelector('[data-slot=questionnaire-choice-label]').textContent.trim() === ${JSON.stringify(choice)})`;
+/** Answer the question that is where the message box was: take the choice, send, and see it go. */
+const answer = async (page, choice) => {
+	await until("the question", () => page.evaluate(`!!${choiceOf(choice)}`));
+	await page.evaluate(`${choiceOf(choice)}.querySelector('input').click()`);
+	await page.evaluate("document.querySelector('#question [data-slot=questionnaire-submit]').click()");
+	await until("the question answered", () => page.evaluate("!document.getElementById('question')"));
+};
 /**
- * Step to another answer with an arrow, and answer the card that comes first:
- * before the arrows leave a branch, the server asks — as pi's /tree does —
- * whether to summarise it, and "No summary" is the move without one.
+ * Step to another answer with an arrow, and answer the question that comes
+ * first: before the arrows leave a branch, the server asks — as pi's /tree
+ * does — whether to summarise it, and "No summary" is the move without one.
  */
 const step = async (page, title) => {
 	if (!(await press(page, title))) return false;
-	await until("the summary card", () => page.evaluate("[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'No summary')"));
-	await page.evaluate("[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'No summary').click()");
+	await answer(page, "No summary");
 	return true;
 };
 const allDisabled = (page, title) =>
@@ -430,6 +439,57 @@ check("the first branch offers no previous", async ({ app }) => {
 check("and forward again", async ({ app }) => {
 	assert.equal(await step(app, "Next answer"), true);
 	await until("the second branch", async () => (await marks(app)).includes("ANSWER-BETA"));
+});
+
+check("a question takes the message box's place, is answered from the keys, and gives the box back with what was in it", async ({ app }) => {
+	const boxShown = () => app.evaluate("document.querySelector('textarea[placeholder=\"Message the agent\"]').offsetParent !== null");
+	const asked = () => app.evaluate("!!document.getElementById('question')");
+	const before = await marks(app);
+	await app.click('textarea[placeholder="Message the agent"]');
+	await app.keys("DRAFT");
+
+	// The server's own question, which no model has to be called for.
+	assert.equal(await press(app, "Previous answer"), true);
+	await until("the question", asked);
+	assert.equal(await boxShown(), false, "the box is out of sight while there is a question");
+	assert.equal(await app.evaluate("!!document.querySelector('#chat #question')"), false, "and the question is not in the conversation");
+	assert.equal(await app.evaluate("!!document.querySelector('#question [data-slot=questionnaire-input]')"), false, "a question that is not ask_user's has no line to write in");
+	assert.equal(await app.evaluate("!!document.querySelector('#question [aria-label=Stop]')"), false, "and nothing to stop when no run is going");
+	await until("the keys on the question", () => app.evaluate("document.getElementById('question').contains(document.activeElement)"));
+
+	// The raw view has no conversation, and used to have no question either.
+	await app.press("d", { meta: true, shift: true });
+	await until("the raw view", () => app.evaluate("!!document.getElementById('raw')"));
+	assert.equal(await asked(), true, "the question is under the raw view too");
+	await app.press("d", { meta: true, shift: true });
+	await until("the conversation again", () => app.evaluate("!!document.getElementById('chat')"));
+
+	// Closed without an answer: nothing moves, and the box is back as it was left.
+	await app.evaluate("document.querySelector('#question input').focus()");
+	await app.press("Escape");
+	await until("the question closed", async () => !(await asked()));
+	assert.equal(await boxShown(), true);
+	assert.equal(await app.evaluate("document.querySelector('textarea[placeholder=\"Message the agent\"]').value"), "DRAFT");
+	await until("the keys back on the box", () => app.evaluate("document.activeElement?.placeholder === 'Message the agent'"));
+	assert.equal(await marks(app), before);
+
+	// Answered from the keys: a number takes a choice, and nothing is sent until Enter.
+	assert.equal(await press(app, "Previous answer"), true);
+	await until("the question again", asked);
+	await until("the keys on the question", () => app.evaluate("document.getElementById('question').contains(document.activeElement)"));
+	await app.press("1");
+	await until("the first choice taken", () => app.evaluate("document.querySelector('#question input:checked')?.value === '0'"));
+	assert.equal(await asked(), true, "taking a choice does not send it");
+	await app.press("Enter");
+	await until("the move", async () => (await marks(app)).includes("ANSWER-ALPHA"));
+	assert.equal(await asked(), false);
+
+	// Back where the checks after this one expect to be, with an empty box.
+	assert.equal(await step(app, "Next answer"), true);
+	await until("the second branch", async () => (await marks(app)) === before);
+	await app.click('textarea[placeholder="Message the agent"]');
+	for (const _ of "DRAFT") await app.press("Backspace");
+	assert.equal(await app.evaluate("document.querySelector('textarea[placeholder=\"Message the agent\"]').value"), "");
 });
 
 check("asking a question again fills the box without moving anything", async ({ app }) => {
@@ -2995,6 +3055,22 @@ check("the bench renders every scenario it knows", async ({ bench }) => {
 	}
 	// Away again, so the check after this one does not read a page with a menu over it.
 	await bench.press("Escape");
+});
+
+check("the bench draws a question where the app does, and says what it was answered with", async ({ bench }) => {
+	await bench.click("#asking");
+	const questions = await until("the questions", () =>
+		bench.evaluate("[...document.querySelectorAll('[role=option]')].map((o) => o.dataset.question).join(',')"),
+	);
+	for (const id of ["confirm", "select", "multiselect", "input", "editor", "batch"]) {
+		assert.ok(questions.split(",").includes(id), `the bench is missing the ${id} question`);
+	}
+	await bench.click('[data-question="confirm"]');
+	// Not `answer`: the bench keeps the question up, having nothing to dismiss it.
+	await until("the question", () => bench.evaluate(`!!${choiceOf("Yes")}`));
+	await bench.evaluate(`${choiceOf("Yes")}.querySelector('input').click()`);
+	await bench.evaluate("document.querySelector('#question [data-slot=questionnaire-submit]').click()");
+	await until("what it was answered with", async () => (await bench.evaluate("document.getElementById('answered')?.textContent")) === "true");
 });
 
 check("nothing was written to the console", async ({ app, bench }) => {

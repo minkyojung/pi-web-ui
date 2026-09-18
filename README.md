@@ -590,7 +590,7 @@ space for its arguments, and a second Enter sends. Only a first word that names
 a command on that list is sent as one (`command` on the prompt, which turns
 pi's expansion back on for that message); any other `/` is a character,
 however it was typed. That is what makes it safe to have bound an extension
-its `ctx.ui` — its questions come up as ask_user's card, its `notify` goes
+its `ctx.ui` — its questions come up where ask_user's do, its `notify` goes
 into the conversation, and the terminal it would draw on is taken and put
 nowhere, as pi's own RPC host does (`extensionUI.ts`).
 
@@ -670,7 +670,7 @@ before it, the message handed back as text); `clone_session` (pi's `/clone`,
 a fork at the leaf rather than before it, as pi's own RPC host does it); `export_session` (pi's `/export`,
 into the vault's `.pi/exports` rather than among the notes). And before a
 branch is left by the arrows, the same question pi's `/tree` asks — summarise
-it into the one being joined? — as the card any question is, unless pi's
+it into the one being joined? — asked where any question is, unless pi's
 `branchSummary.skipPrompt` says not to ask.
 
 Settings › Agent has a "pi" section, and everything in it is pi's own: each
@@ -755,11 +755,36 @@ package the shadcn components already use.
 
 `ask_user` is Octave's own tool (`askUser.ts`): the same name and the same five
 kinds of question pi already knows how to ask, so nothing about pi changes.
-Each question goes out to every tab as `prompt_request`, is drawn as a card
-under the waiting tool, and the first `prompt_response` from any tab settles
-it; every tab then gets `prompt_dismiss` (`prompts.ts`). Nothing waits it out —
-the card stays until it is answered or closed, and Stop, New and switching
-sessions cancel open questions first, which is what lets the abort through.
+Each question goes out to every tab as `prompt_request`, and the first
+`prompt_response` from any tab settles it; every tab then gets `prompt_dismiss`
+(`prompts.ts`). Nothing waits it out — the question stays until it is answered
+or closed, and Stop, New and switching sessions cancel open questions first,
+which is what lets the abort through.
+
+It is drawn where the message box is, in the box's place (`Foot` in `Pi.tsx`,
+`Question.tsx`). It used to be a card under the waiting tool, over a box that
+was still there to write in; but while a question is open there is one thing
+to say to the agent, and the agents that ask at all — Claude Code, Cursor —
+put the asking where the answering is done. The box is hidden and not taken
+down, since it holds what is not text: a pasted image, a file still on its way
+into the folder. The form is shadcn's Questionnaire (`ui/questionnaire.tsx`
+over `@shadcn/react`, pinned while that is short of 1.0): a choice is taken —
+a number key, a click — and then sent with Enter, so it can be changed before
+it goes, where the card sent on the click; a batch goes one question at a
+time with a way back; several that may be none say None. The keys are the
+question's unless something else is being written in: one that comes up over
+a note being typed leaves the keys there, and the strip says the agent waits.
+
+A select or multiselect of ask_user's has a line under the choices to answer in
+one's own words, and the tool's description tells the model so, so that it does
+not offer an "Other" of its own. ask_user's alone: `questionOf` marks them
+(`metadata.other`), and the other two askers on the same form — an extension's
+`ctx.ui.select`, whose contract in pi is one of the options or nothing, and the
+server's own question before a branch is left — are not marked and get no line.
+What the form holds is read by place and not by text (`answerOf` in
+`promptAnswer.ts`), since a model may offer the same words twice, and the line
+is read apart from the choices, so a "2" written is the text. An extension's
+`editor` is a page of text and keeps a textarea: Enter there is a new line.
 
 It began as the dashboard extension's tool, reached over that extension's bus,
 and the bus cost a second on every new session and threw on the second load.

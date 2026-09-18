@@ -11,6 +11,14 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - Drop a PDF on the message box, or paste one, and it is saved in your folder under `attachments/` and named in your message, ready to ask about. A file of the same name is never replaced; the new one gets a number.
 - The PDFs in your folder are in the sidebar where they are on disk, and in ⌘P. Click one and it opens in a tab, fitted to the column; its words can be selected and copied.
 - Select words in a PDF and they show above the message box with their page, as words chosen in a note do; ask, and the agent knows which words and where. With a PDF open and nothing selected, the agent still knows which PDF you mean.
+- When the agent asks you to choose, there is a line under the choices to answer in your own words instead.
+
+### Changed
+- A question from the agent comes up where the message box is, and the box comes back — with whatever you had typed or pasted in it — once you answer or close the question. Take a choice with a number key or a click and send it with Enter, so you can change your mind before it goes; Esc closes the question without answering. A question in several parts asks one at a time, with a way back, and while the agent is running the question has the button to stop it.
+
+### Fixed
+- A question from the agent could not be seen or answered while the raw view was open.
+- A question arriving while you were typing in a note could take the keyboard away from the note. It now leaves the keys where you are writing, and the strip at the foot of the window says the agent is waiting.
 
 ## [0.0.5] - 2026-09-18
 ### Added
