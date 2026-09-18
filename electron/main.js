@@ -18,7 +18,7 @@ import updater from "electron-updater";
 
 import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
-import { createServers } from "./servers.js";
+import { createServers, idle } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
 import { branchOf, git, makeWorkspace, repositoryOf } from "./git.js";
 import { clone, login, repositories, repositoryName } from "./github.js";
@@ -31,12 +31,15 @@ const { autoUpdater } = updater;
 const HOST = "127.0.0.1";
 const here = (path) => fileURLToPath(new URL(path, import.meta.url));
 
-/** Ask the OS for a port nobody is using, then hand it to the server. */
-function freePort() {
+/**
+ * Ask the OS for a port nobody is using, then hand it to the server — the
+ * one asked for if it is free, else any.
+ */
+function freePort(preferred = 0) {
 	return new Promise((resolve, reject) => {
 		const probe = createServer();
-		probe.on("error", reject);
-		probe.listen(0, HOST, () => {
+		probe.on("error", (err) => (preferred ? freePort().then(resolve, reject) : reject(err)));
+		probe.listen(preferred, HOST, () => {
 			const { port } = probe.address();
 			probe.close(() => resolve(port));
 		});
@@ -99,7 +102,11 @@ async function askForRepository() {
  * exit code the shell would otherwise have to report.
  */
 async function startServer(workdir) {
-	const port = await freePort();
+	// The port a folder had before, if it is free: a page keeps its tabs by its
+	// address, so a server started again after going idle is found where it was.
+	const port = await freePort(ports.get(workdir));
+	ports.set(workdir, port);
+	busy.set(workdir, false);
 	const errors = [];
 	const said = (lines) => errors.splice(0, Math.max(0, errors.push(...lines) - 10));
 	// ELECTRON_RUN_AS_NODE turns this same binary into plain node, so the app does
@@ -137,7 +144,34 @@ async function startServer(workdir) {
 	// A failed spawn emits 'error', not 'exit', and without this the shell would
 	// sit forever waiting for a server that was never going to start.
 	child.on("error", (err) => said([`Could not start the pi server: ${err.message}`]));
+	// Whether it is in the middle of a run, so it is not stopped for being idle.
+	child.on("message", (message) => {
+		if (typeof message?.busy !== "boolean") return;
+		busy.set(workdir, message.busy);
+		if (!message.busy) since.set(workdir, Date.now());
+	});
 	return { child, url: `http://${HOST}:${port}/`, errors };
+}
+
+/** Each folder's port for as long as the app runs. */
+const ports = new Map();
+/** Whether each folder's server is in the middle of a run. */
+const busy = new Map();
+/** When each folder was last in front or last finished a run. */
+const since = new Map();
+
+/**
+ * A server nobody is using is stopped after this long, and started again when
+ * its workspace is next opened — a few seconds, against a process's memory
+ * for as long as the app is open. Conductor keeps agent processes only for
+ * the workspaces in use the same way.
+ */
+const IDLE_MS = 10 * 60_000;
+
+function stopIdle() {
+	for (const workdir of idle(servers.folders(), { keep: [front, wanted].filter(Boolean), busy, since, now: Date.now(), idleMs: IDLE_MS })) {
+		void servers.stop(workdir);
+	}
 }
 
 /**
@@ -333,6 +367,8 @@ let front = null;
 const closing = new AbortController();
 /** How many switches have been asked for: a switch that is no longer the latest gives way. */
 let asked = 0;
+/** The workspace a switch is on its way to, kept running while it gets there. */
+let wanted = null;
 
 /**
  * Put a folder in front: its server, started if it is not running, and the
@@ -350,22 +386,27 @@ let asked = 0;
 async function show(workdir) {
 	if (workdir === front) return;
 	const mine = ++asked;
+	wanted = workdir;
 	let url;
 	try {
 		({ url } = await servers.get(workdir));
 	} catch (err) {
+		if (mine === asked) wanted = null;
 		if (quitting) return;
 		dialog.showErrorBox("The server did not start", err.message);
 		if (!front) app.quit();
 		return;
 	}
 	if (!(await waitForServer(url, closing.signal))) {
+		if (mine === asked) wanted = null;
 		if (!closing.signal.aborted) dialog.showErrorBox("The server did not answer", `${url} did not come up within 30 seconds.`);
 		if (!front) app.quit();
 		return;
 	}
 	if (mine !== asked) return;
+	if (front) since.set(front, Date.now());
 	front = workdir;
+	wanted = null;
 	// The workspace to open on the next start — see firstWorkspace.
 	writeSettings({ ...readSettings(), workdir });
 	// The agent acts on this folder, so it should never be a guess.
@@ -447,6 +488,8 @@ function openWorkspace(path) {
 /** The screen that adds a repository, when there is no workspace to put in front. */
 async function showStart() {
 	++asked;
+	wanted = null;
+	if (front) since.set(front, Date.now());
 	front = null;
 	window.setTitle("Octave");
 	await window.loadURL(pageUrl("start.html")).catch((err) => console.error(`[window] ${err.message}`));
@@ -694,6 +737,7 @@ async function main() {
 	}
 	window.show();
 	watchForUpdates();
+	setInterval(stopIdle, 60_000).unref();
 }
 
 // Before the app is ready, as Electron requires: a scheme of the app's own

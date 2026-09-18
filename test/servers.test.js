@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 
-import { createServers } from "../electron/servers.js";
+import { createServers, idle } from "../electron/servers.js";
 
 /** A child process as far as the servers look at one: it exits when killed, unless told to hang on SIGTERM. */
 function fakeChild({ hangs = false } = {}) {
@@ -127,4 +127,26 @@ test("a server that never spawned has nothing to stop, and stopping does not wai
 	await servers.get("/a");
 	await servers.stopAll();
 	assert.deepEqual(child.signals, []);
+});
+
+test("one server stopped on purpose is not a crash, and the next ask starts it again", async () => {
+	const { servers, started, crashes } = pool();
+	await Promise.all([servers.get("/a"), servers.get("/b")]);
+	await servers.stop("/a");
+	assert.deepEqual(started[0].child.signals, ["SIGTERM"]);
+	assert.deepEqual(started[1].child.signals, []);
+	assert.deepEqual(servers.folders(), ["/b"]);
+	await tick();
+	assert.deepEqual(crashes, []);
+	await servers.get("/a");
+	assert.equal(started.length, 3);
+	await servers.stop("/nowhere");
+});
+
+test("what is stopped for being idle: not the one in front or the one being opened, not one mid-run, and not one used lately", () => {
+	const minute = 60_000;
+	const folders = ["/front", "/opening", "/running", "/recent", "/old", "/never"];
+	const since = new Map([["/front", 0], ["/opening", 0], ["/running", 0], ["/recent", 55 * minute], ["/old", 40 * minute]]);
+	const busy = new Map([["/running", true], ["/old", false]]);
+	assert.deepEqual(idle(folders, { keep: ["/front", "/opening"], busy, since, now: 60 * minute, idleMs: 10 * minute }), ["/old", "/never"]);
 });

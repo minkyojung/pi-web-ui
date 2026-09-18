@@ -20,6 +20,8 @@
 export function createServers({ start, onCrash, graceMs = 3000 }) {
 	/** Folder → the server for it, or the promise of one still starting. */
 	const running = new Map();
+	/** Servers stopped on purpose, one at a time, whose exit is not a crash. */
+	const retired = new WeakSet();
 	let stopping = false;
 
 	function get(workdir) {
@@ -31,7 +33,7 @@ export function createServers({ start, onCrash, graceMs = 3000 }) {
 			.then((server) => {
 				server.child.once("exit", (code) => {
 					if (running.get(workdir) === starting) running.delete(workdir);
-					if (!stopping) onCrash(workdir, code, server);
+					if (!stopping && !retired.has(server)) onCrash(workdir, code, server);
 				});
 				return server;
 			});
@@ -41,6 +43,17 @@ export function createServers({ start, onCrash, graceMs = 3000 }) {
 			if (running.get(workdir) === starting) running.delete(workdir);
 		});
 		return starting;
+	}
+
+	/** Stop one folder's server, if it has one; the next ask starts it afresh. */
+	async function stop(workdir) {
+		const entry = running.get(workdir);
+		if (!entry) return;
+		running.delete(workdir);
+		const server = await entry.catch(() => null);
+		if (!server) return;
+		retired.add(server);
+		await end(server.child);
 	}
 
 	async function stopAll() {
@@ -62,10 +75,24 @@ export function createServers({ start, onCrash, graceMs = 3000 }) {
 
 	return {
 		get,
+		stop,
 		stopAll,
+		/** The folders with a server running or starting. */
+		folders: () => [...running.keys()],
 		/** How many are running or starting. */
 		get size() {
 			return running.size;
 		},
 	};
+}
+
+/**
+ * The folders whose servers can be stopped now: running, not the one in
+ * front or the one being switched to, not in the middle of a run, and left
+ * alone for `idleMs` — since they were last in front or last finished a run,
+ * whichever was later. A server is cheap to start again and a run is not, so
+ * the rule stops only what nobody is using and nothing is doing.
+ */
+export function idle(folders, { keep, busy, since, now, idleMs }) {
+	return folders.filter((workdir) => !keep.includes(workdir) && !busy.get(workdir) && now - (since.get(workdir) ?? 0) >= idleMs);
 }
