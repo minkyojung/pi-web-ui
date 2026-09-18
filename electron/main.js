@@ -16,6 +16,7 @@ import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
 import updater from "electron-updater";
 
 import { reportUrl } from "./report.js";
+import { createServers } from "./servers.js";
 import { opened, projectsOf } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
@@ -110,17 +111,16 @@ async function resolveWorkdir() {
 	return known;
 }
 
-let child = null;
-let exiting = false;
 /**
- * The server's last words. It exits deliberately for reasons a person can act
- * on — a working directory that has been deleted — and
- * those reasons are worth more than the exit code the shell would otherwise
- * have to report.
+ * A folder's server, started on a port of its own. Its `errors` are its last
+ * words: it exits deliberately for reasons a person can act on — a working
+ * directory that has been deleted — and those reasons are worth more than the
+ * exit code the shell would otherwise have to report.
  */
-let serverErrors = [];
-
-function startServer(port, workdir) {
+async function startServer(workdir) {
+	const port = await freePort();
+	const errors = [];
+	const said = (lines) => errors.splice(0, Math.max(0, errors.push(...lines) - 10));
 	// ELECTRON_RUN_AS_NODE turns this same binary into plain node, so the app does
 	// not depend on whatever node the machine happens to have. The server is
 	// pre-bundled rather than compiled at startup: `npm run build` writes it.
@@ -129,7 +129,7 @@ function startServer(port, workdir) {
 	// a dev build) and go first on the server's PATH, which is where pi looks
 	// for them before it thinks of downloading its own.
 	const tools = app.isPackaged ? join(process.resourcesPath, "bin") : here("../build/bin");
-	child = spawn(process.execPath, [here("../dist-server/server.mjs")], {
+	const child = spawn(process.execPath, [here("../dist-server/server.mjs")], {
 		env: {
 			...process.env,
 			PATH: `${tools}:${process.env.PATH ?? ""}`,
@@ -151,23 +151,22 @@ function startServer(port, workdir) {
 	child.stdout.on("data", (d) => process.stdout.write(`[server] ${d}`));
 	child.stderr.on("data", (d) => {
 		process.stderr.write(`[server] ${d}`);
-		serverErrors = [...serverErrors, ...String(d).split("\n").filter(Boolean)].slice(-10);
+		said(String(d).split("\n").filter(Boolean));
 	});
 	// A failed spawn emits 'error', not 'exit', and without this the shell would
 	// sit forever waiting for a server that was never going to start.
-	child.on("error", (err) => {
-		serverErrors = [...serverErrors, `Could not start the pi server: ${err.message}`].slice(-10);
-	});
-	child.on("exit", (code) => {
-		child = null;
-		if (exiting) return;
-		dialog.showErrorBox(
-			"The server stopped",
-			serverErrors.length ? serverErrors.join("\n") : `Exit code ${code}. Check the terminal output.`,
-		);
-		app.quit();
-	});
+	child.on("error", (err) => said([`Could not start the pi server: ${err.message}`]));
+	return { child, url: `http://${HOST}:${port}/`, errors };
 }
+
+/** Every folder's server — see servers.js. One that stops unasked takes the app with it, having said why. */
+const servers = createServers({
+	start: startServer,
+	onCrash: (_workdir, code, server) => {
+		dialog.showErrorBox("The server stopped", server.errors.length ? server.errors.join("\n") : `Exit code ${code}. Check the terminal output.`);
+		app.quit();
+	},
+});
 
 /**
  * The one thing the server cannot do for itself: put a file in the trash the
@@ -222,39 +221,22 @@ function openUrlAsks(server) {
 	});
 }
 
-let stopping = false;
+let quitting = false;
 
 /**
- * Quitting waits for the server to stop itself.
+ * Quitting waits for the servers to stop themselves.
  *
- * kill() sends SIGTERM, which the server answers by retiring its extensions,
- * cancelling the questions it has open and disposing the session — work that
- * takes a moment and that nothing else does. The shell used to be gone before
- * any of it ran, so the clean path was the one only a terminal ever took.
- *
- * The first quit is held back until the child has gone. Three seconds later
- * it is taken out with SIGKILL: a quit that hangs on a server that will not
- * stop is worse than a hard stop, and by then the cleanup has either happened
- * or is not going to.
+ * The shell used to be gone before a server had cleaned up, so the clean path
+ * was the one only a terminal ever took. The first quit is held back until
+ * every server has gone — asked, then made to, see servers.js — and the one
+ * asked for afterwards finds none and goes through.
  */
-async function stopServer(event) {
-	if (stopping || !child) return;
+async function stopServers(event) {
+	if (quitting || servers.size === 0) return;
+	quitting = true;
 	event?.preventDefault();
-	await endServer();
+	await servers.stopAll();
 	app.quit();
-}
-
-/** The server told to stop, and waited for. The quit that follows is the caller's. */
-async function endServer() {
-	stopping = true;
-	exiting = true;
-	const server = child;
-	const gone = new Promise((resolve) => server.once("exit", resolve));
-	server.kill();
-	const hard = setTimeout(() => server.kill("SIGKILL"), 3000);
-	await gone;
-	clearTimeout(hard);
-	child = null;
 }
 
 /**
@@ -262,7 +244,7 @@ async function endServer() {
  * (publish in electron-builder.yml, which becomes app-update.yml beside the
  * app). Looked for once the window is up and every few hours after, and
  * downloaded quietly; only when it is ready is anything shown — the notes
- * from CHANGELOG.md, and a choice. Restarting goes through endServer first,
+ * from CHANGELOG.md, and a choice. Restarting stops the servers first,
  * since the installer's own quit would be held back by before-quit.
  *
  * Only in a packaged app: a dev run has no version to compare and nothing to
@@ -303,7 +285,7 @@ function serveUpdates() {
 	ipcMain.handle("update:state", () => update);
 	ipcMain.handle("update:check", () => (app.isPackaged ? autoUpdater.checkForUpdates().catch(() => {}) : null));
 	ipcMain.handle("update:restart", async () => {
-		if (child) await endServer();
+		await servers.stopAll();
 		autoUpdater.quitAndInstall();
 	});
 	// The first run's page: shown until the person says Done, then not again.
@@ -501,9 +483,7 @@ async function main() {
 		}
 		workdirForTitle = workdir;
 		buildMenu(workdir);
-		const port = await freePort();
-		startServer(port, workdir);
-		url = `http://${HOST}:${port}/`;
+		({ url } = await servers.get(workdir));
 	}
 	const window = new BrowserWindow({
 		width: 1200,
@@ -549,6 +529,6 @@ async function main() {
 
 app.whenReady().then(main);
 app.on("window-all-closed", () => app.quit());
-// Once, on the way out: stopServer holds this quit back, and the one it asks
-// for afterwards finds no child and goes through.
-app.on("before-quit", stopServer);
+// Once, on the way out: stopServers holds this quit back, and the one it asks
+// for afterwards goes through.
+app.on("before-quit", stopServers);
