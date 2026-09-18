@@ -9,6 +9,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
+import { homedir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,7 +19,9 @@ import updater from "electron-updater";
 import { reportUrl } from "./report.js";
 import { createServers } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
-import { opened, projectsOf } from "./workspaces.js";
+import { branchOf, makeWorkspace, repositoryOf } from "./git.js";
+import { login } from "./github.js";
+import { projectsOf, withWorkspace } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
@@ -93,16 +96,13 @@ async function askForWorkdir(current) {
  * so the page can offer them the way Obsidian offers its vaults. Ones that
  * have since been deleted or moved are dropped as they are read: a list that
  * offers a folder which is not there is worse than a short list.
- *
- * The folder is also one of the projects, the list the sidebar is to draw —
- * see workspaces.js. Kept beside the recent list until the sidebar draws it.
  */
 const RECENT = 8;
 function remember(settings, workdir) {
 	const recent = [workdir, ...(settings.recent ?? []).filter((path) => path !== workdir)]
 		.filter((path) => existsSync(path))
 		.slice(0, RECENT);
-	return { ...settings, workdir, recent, projects: opened(projectsOf(settings, existsSync), workdir) };
+	return { ...settings, workdir, recent };
 }
 
 async function resolveWorkdir() {
@@ -387,10 +387,98 @@ async function show(workdir) {
 	if (mine !== asked) return;
 	front = workdir;
 	writeSettings(remember(readSettings(), workdir));
+	void adopt(workdir);
 	// The agent acts on this folder, so it should never be a guess.
 	window.setTitle(`Octave — ${basename(workdir)}`);
 	// A load cut short by the next switch is that switch's to finish.
 	await window.loadURL(url).catch((err) => console.error(`[window] ${err.message}`));
+}
+
+/**
+ * Where clones and workspaces are kept: a folder the person can see and open
+ * in the Finder, a terminal or an editor, as Conductor keeps ~/conductor.
+ * Workspaces go under `workspaces/{repository}/{city}`.
+ */
+const home = () => join(homedir(), "octave");
+
+/**
+ * Whether a folder is still a checkout to list: a clone and a worktree both
+ * have a `.git`, and a folder that has lost it — or a folder of notes from
+ * before there were repositories — is not one.
+ */
+const isCheckout = (path) => existsSync(join(path, ".git"));
+
+/** Tell the page the list has changed, so it asks again. */
+function workspacesChanged() {
+	if (window && !window.isDestroyed()) window.webContents.send("workspaces:changed");
+}
+
+/**
+ * A folder put in front joins the list if it is a repository's — as a
+ * workspace if it is a worktree, else as the repository itself, which is how
+ * a clone opened directly comes to have a + to make workspaces from.
+ */
+async function adopt(workdir) {
+	const root = await repositoryOf(workdir);
+	if (!root) return;
+	const worktree = root === workdir ? null : { path: workdir, branch: (await branchOf(workdir)) ?? basename(workdir), name: basename(workdir) };
+	const settings = readSettings();
+	const projects = projectsOf(settings, isCheckout);
+	const next = withWorkspace(projects, root, worktree);
+	if (next === projects) return;
+	writeSettings({ ...readSettings(), projects: next });
+	workspacesChanged();
+}
+
+/**
+ * The list for the sidebar: every repository and its workspaces, each named
+ * by the branch it is on now — read from git each time, since the branch is
+ * what gets renamed once the work has a subject, by the agent or by hand.
+ */
+async function workspaces() {
+	const projects = projectsOf(readSettings(), isCheckout);
+	return {
+		current: front,
+		projects: await Promise.all(
+			projects.map(async (project) => ({
+				path: project.path,
+				name: basename(project.path),
+				worktrees: await Promise.all(
+					project.worktrees.map(async (worktree) => ({ path: worktree.path, name: worktree.name, branch: (await branchOf(worktree.path)) ?? worktree.branch })),
+				),
+			})),
+		),
+	};
+}
+
+/** One workspace made at a time, so two asked for at once cannot both pick the same city. */
+let making = Promise.resolve();
+
+/** A new workspace of a repository in the list, and the window put on it. */
+function newWorkspace(root) {
+	const made = making.then(async () => {
+		if (!projectsOf(readSettings(), isCheckout).some((project) => project.path === root)) return null;
+		try {
+			const worktree = await makeWorkspace(root, { into: join(home(), "workspaces", basename(root)), owner: await login() });
+			writeSettings({ ...readSettings(), projects: withWorkspace(projectsOf(readSettings(), isCheckout), root, worktree) });
+			workspacesChanged();
+			return worktree;
+		} catch (err) {
+			dialog.showErrorBox("The workspace could not be made", err.message);
+			return null;
+		}
+	});
+	making = made.then(() => {});
+	return made.then((worktree) => {
+		if (worktree) void show(worktree.path);
+		return worktree?.path ?? null;
+	});
+}
+
+/** A workspace from the list put in front. Only one on the list: the page does not name folders of its own. */
+function openWorkspace(path) {
+	const known = projectsOf(readSettings(), isCheckout).some((project) => project.worktrees.some((worktree) => worktree.path === path));
+	if (known) void show(path);
 }
 
 function openWorkdir(picked) {
@@ -413,6 +501,11 @@ function serveFolders() {
 		return { current: front, recent: (readSettings().recent ?? []).filter((path) => existsSync(path)) };
 	});
 	ipcMain.handle("folder:choose", changeWorkdir);
+	// The list, and the two things done to it. In a dev run the dev server owns
+	// the folder, so there is no list to switch in.
+	ipcMain.handle("workspaces", () => (devUrl ? null : workspaces()));
+	ipcMain.handle("workspace:new", (_event, root) => (devUrl ? null : newWorkspace(root)));
+	ipcMain.handle("workspace:open", (_event, path) => (devUrl ? null : openWorkspace(path)));
 	ipcMain.handle("folder:open", (_event, path) => openWorkdir(path));
 	// A note in the Finder. The page is told the folder in full by the server
 	// (ConfigMsg.folder) and joins the note's path onto it, which is a better

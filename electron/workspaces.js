@@ -1,14 +1,15 @@
 /**
- * The folders the app has been pointed at, and the workspaces made from them.
+ * The repositories the app works in, and the workspaces made from them.
  *
- * A project is a folder someone opened. Its workspaces are the folder itself
- * and the git worktrees the app made from it — Conductor's repository and its
- * workspaces, and what the sidebar lists. Which one is in front stays
- * `workdir` in the settings, the key and the meaning it had when there was
- * only ever one folder.
+ * A project is a repository, named by the folder its clone is in. Its
+ * workspaces are worktrees of it, each on a branch of its own — Conductor's
+ * repository and its workspaces, and what the sidebar lists. The clone itself
+ * is not one of them: work happens in a workspace, and the clone is what they
+ * are made from. Which folder is in front stays `workdir` in the settings.
  *
  * Pure: settings go in and projects come out, and whether a folder is still
- * there is asked of the caller, so every rule here is tested without a disk.
+ * a checkout is asked of the caller, so every rule here is tested without a
+ * disk.
  */
 
 /**
@@ -25,19 +26,13 @@ function worktreeFrom(value) {
 }
 
 /**
- * The projects the settings hold, with the ones whose folder is gone left
- * out — a project whose folder was deleted, and a worktree removed outside the
+ * The projects the settings hold, with the ones whose folder is no longer a
+ * checkout left out — a clone that was deleted, a worktree removed outside the
  * app. A list that offers a folder which is not there is worse than a short
- * list, which is what the recent list decided before this.
- *
- * Settings from before there were projects have a folder in front and a
- * recent list; those become the projects, in that order, each with no
- * worktrees of its own.
+ * list.
  */
 export function projectsOf(settings, exists) {
-	const stored = Array.isArray(settings.projects)
-		? settings.projects
-		: [settings.workdir, ...(Array.isArray(settings.recent) ? settings.recent : [])].map((path) => ({ path, worktrees: [] }));
+	const stored = Array.isArray(settings.projects) ? settings.projects : [];
 	const seen = new Set();
 	const projects = [];
 	for (const entry of stored) {
@@ -53,12 +48,16 @@ export function projectsOf(settings, exists) {
 }
 
 /**
- * The projects after `path` has been opened: as they were if it is one of
- * them or a workspace of one, else with it added at the end. At the end
- * rather than the top, since the list is the person's and keeps the order
- * they made it in.
+ * The projects with the repository at `root` in them, and `worktree` among
+ * its workspaces when there is one — each added at the end if it is new, and
+ * a worktree already there keeping its place. At the end rather than the top,
+ * since the list is the person's and keeps the order they made it in.
  */
-export function opened(projects, path) {
-	const known = projects.some((project) => project.path === path || project.worktrees.some((worktree) => worktree.path === path));
-	return known ? projects : [...projects, { path, worktrees: [] }];
+export function withWorkspace(projects, root, worktree = null) {
+	const had = projects.find((project) => project.path === root);
+	const project = had ?? { path: root, worktrees: [] };
+	const known = !worktree || project.worktrees.some((w) => w.path === worktree.path);
+	const next = known ? project : { ...project, worktrees: [...project.worktrees, worktree] };
+	if (had) return next === had ? projects : projects.map((p) => (p === had ? next : p));
+	return [...projects, next];
 }

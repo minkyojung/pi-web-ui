@@ -21,6 +21,22 @@ contextBridge.exposeInMainWorld("pi", {
 	/** Show a file in the Finder. Takes the whole path; the page knows it. */
 	reveal: (path) => ipcRenderer.invoke("file:reveal", path),
 	/**
+	 * The repositories and their workspaces, which the shell keeps: the list,
+	 * a new workspace of a repository, and one put in front. `onChange` says
+	 * the list is to be asked for again, and returns the way to stop listening.
+	 * The list is null in a dev run, where the dev server owns the folder.
+	 */
+	workspaces: {
+		list: () => ipcRenderer.invoke("workspaces"),
+		create: (root) => ipcRenderer.invoke("workspace:new", root),
+		open: (path) => ipcRenderer.invoke("workspace:open", path),
+		onChange: (listen) => {
+			const handler = () => listen();
+			ipcRenderer.on("workspaces:changed", handler);
+			return () => ipcRenderer.off("workspaces:changed", handler);
+		},
+	},
+	/**
 	 * The updater, which lives in the shell: where it is, and the two things
 	 * the page cannot do — ask it to look, and restart into what it has. The
 	 * shell says the state as it changes; `onState` returns the way to stop
