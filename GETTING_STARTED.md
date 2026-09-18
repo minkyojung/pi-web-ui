@@ -33,6 +33,9 @@ page again; accounts are also in Settings (`⌘,`).
 - Write as you would anywhere. Typing saves on its own.
 - The agent is the column on the right (`⌘\` hides it). Ask about the note you are in; select words first to
   ask about those; type `@` to point at another note and `/` for commands.
+- **PDFs are part of the folder.** They are in the sidebar and in `⌘P`, and open in a tab. Drop one on the
+  message box, or type `@` and pick it, and ask: the agent reads it page by page. Select words in a PDF first
+  and the question is about those words, on that page.
 - **What the agent writes in a note is a suggestion until you decide.** Each change is shown against what it
   replaced. `⌘↵` keeps the one under the cursor, `⌘⌫` puts back what was there. Leave it for days if you like.
   Under a finished run there is one button that puts back everything that run changed.
@@ -64,6 +67,7 @@ Open your vault as it is; Obsidian can stay open on the same folder. What is dra
 | Pictures | `![[photo.png]]`, `![[photo.png\|300]]`, `![alt](path.png)`. Paste or drop a picture and it is saved where your vault's attachment setting says — `attachments/` if it says nothing |
 | Embedded notes | `![[Note]]`, `![[Note#Heading]]`, `![[Note#^block]]`, kept current as the other note changes |
 | Tables | Drawn as tables. Inside one, `Tab` and `⇧Tab` move between cells, `↵` adds a row, and the columns are squared up when you leave |
+| PDFs | `[[paper.pdf]]` opens it, `[[paper.pdf#page=3]]` at that page |
 | Footnotes | `[^1]` and its note; type `[^` to pick one or start a new one, point at a number to read it |
 | Math | `$x^2$` and `$$` blocks |
 | The rest | Callouts, highlights, comments, task lists, `H~2~O`, `x^2^`, and a short list of HTML (`<u>`, `<kbd>`, `<details>` …) |
