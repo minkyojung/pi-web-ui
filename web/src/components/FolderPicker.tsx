@@ -13,14 +13,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  *
  * Two halves, because two things know: the server says where it is working,
  * which is true in a browser tab as much as in the app, and the shell says
- * what else there is and does the changing — a native dialog and a relaunch,
- * neither of which a page can do (preload.cjs). Without the shell the name is
- * still worth drawing, so it is drawn, and only the menu goes.
+ * what else there is and does the changing — a native dialog, and a server
+ * for the other folder, neither of which a page can do (preload.cjs). Without
+ * the shell the name is still worth drawing, so it is drawn, and only the menu
+ * goes.
  *
- * Changing the folder restarts the app. Swapping it underneath a live session
- * would mean tearing down the socket, the window and the session together,
- * which is what a relaunch already does correctly — so there is no route here
- * the shell does not already take for its own menu.
+ * Changing the folder points the window at that folder's server, and the one
+ * left behind keeps running — see show() in main.js — so there is no route
+ * here the shell does not already take for its own menu.
  */
 interface Folders {
 	/** Null while the shell has no folder to give: a dev run, where the dev server owns it. */

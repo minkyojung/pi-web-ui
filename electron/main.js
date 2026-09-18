@@ -159,11 +159,20 @@ async function startServer(workdir) {
 	return { child, url: `http://${HOST}:${port}/`, errors };
 }
 
-/** Every folder's server — see servers.js. One that stops unasked takes the app with it, having said why. */
+/**
+ * Every folder's server — see servers.js. One that stops unasked says why;
+ * the one in front takes the app with it, since the window has nothing left
+ * to show, and one behind is started again when its folder is next opened.
+ */
 const servers = createServers({
 	start: startServer,
-	onCrash: (_workdir, code, server) => {
-		dialog.showErrorBox("The server stopped", server.errors.length ? server.errors.join("\n") : `Exit code ${code}. Check the terminal output.`);
+	onCrash: (workdir, code, server) => {
+		const why = server.errors.length ? server.errors.join("\n") : `Exit code ${code}. Check the terminal output.`;
+		if (workdir !== front) {
+			dialog.showErrorBox(`The server for ${basename(workdir)} stopped`, why);
+			return;
+		}
+		dialog.showErrorBox("The server stopped", why);
 		app.quit();
 	},
 });
@@ -285,6 +294,7 @@ function serveUpdates() {
 	ipcMain.handle("update:state", () => update);
 	ipcMain.handle("update:check", () => (app.isPackaged ? autoUpdater.checkForUpdates().catch(() => {}) : null));
 	ipcMain.handle("update:restart", async () => {
+		quitting = true;
 		await servers.stopAll();
 		autoUpdater.quitAndInstall();
 	});
@@ -335,33 +345,71 @@ function checkForUpdatesNow() {
 	if (app.isPackaged) autoUpdater.checkForUpdates().catch(() => {});
 }
 
+/** The window, and the folder whose page it shows. */
+let window = null;
+let front = null;
+/** Called off when the window goes, so nothing waits on a server for a page nobody will see. */
+const closing = new AbortController();
+/** How many switches have been asked for: a switch that is no longer the latest gives way. */
+let asked = 0;
+
 /**
- * Changing the folder restarts the app rather than the server. Swapping it
- * underneath a live session would mean tearing down the socket, the window and
- * the session together, which is what a relaunch already does correctly.
+ * Put a folder in front: its server, started if it is not running, and the
+ * window pointed at it.
+ *
+ * The page is loaded again rather than kept — one page, pointed at whichever
+ * server is in front — while the servers behind it keep running, a turn and
+ * all. What a page keeps in the browser (its tabs, where it was) is kept by
+ * its server's address, which holds for as long as the app runs, so going
+ * back finds them. Keeping every folder's page alive side by side would make
+ * the switch instant, at the price of the menu's reload, developer tools and
+ * zoom — which act on the window's own page — and of the drag region the page
+ * draws; this can become that when the reload is felt.
  */
+async function show(workdir) {
+	if (workdir === front) return;
+	const mine = ++asked;
+	let url;
+	try {
+		({ url } = await servers.get(workdir));
+	} catch (err) {
+		if (quitting) return;
+		dialog.showErrorBox("The server did not start", err.message);
+		if (!front) app.quit();
+		return;
+	}
+	if (!(await waitForServer(url, closing.signal))) {
+		if (!closing.signal.aborted) dialog.showErrorBox("The server did not answer", `${url} did not come up within 30 seconds.`);
+		if (!front) app.quit();
+		return;
+	}
+	if (mine !== asked) return;
+	front = workdir;
+	writeSettings(remember(readSettings(), workdir));
+	// The agent acts on this folder, so it should never be a guess.
+	window.setTitle(`Octave — ${basename(workdir)}`);
+	// A load cut short by the next switch is that switch's to finish.
+	await window.loadURL(url).catch((err) => console.error(`[window] ${err.message}`));
+}
+
 function openWorkdir(picked) {
-	const settings = readSettings();
-	if (!picked || picked === settings.workdir || !existsSync(picked)) return;
-	writeSettings(remember(settings, picked));
-	app.relaunch();
-	app.quit();
+	if (!picked || !existsSync(picked)) return;
+	void show(picked);
 }
 
 async function changeWorkdir() {
-	openWorkdir(await askForWorkdir(readSettings().workdir));
+	openWorkdir(await askForWorkdir(front ?? readSettings().workdir));
 }
 
 /**
  * The folder, for the page's own picker. In a dev run the dev server owns the
- * folder and a relaunch would not change it, so there is nothing to offer and
+ * folder and the shell cannot change it, so there is nothing to offer and
  * the page says so by drawing a name rather than a menu.
  */
 function serveFolders() {
 	ipcMain.handle("folders", () => {
 		if (devUrl) return { current: null, recent: [] };
-		const settings = readSettings();
-		return { current: settings.workdir ?? null, recent: (settings.recent ?? []).filter((path) => existsSync(path)) };
+		return { current: front, recent: (readSettings().recent ?? []).filter((path) => existsSync(path)) };
 	});
 	ipcMain.handle("folder:choose", changeWorkdir);
 	ipcMain.handle("folder:open", (_event, path) => openWorkdir(path));
@@ -414,7 +462,7 @@ function buildMenu(workdir) {
 				label: "Folder",
 				submenu: [
 					{ label: "Change working folder…", accelerator: "CmdOrCtrl+O", click: changeWorkdir },
-					{ label: "Reveal in Finder", click: () => shell.openPath(workdir) },
+					{ label: "Reveal in Finder", click: () => shell.openPath(front ?? workdir) },
 				],
 			},
 			{ role: "editMenu" },
@@ -470,27 +518,17 @@ async function main() {
 	serveFolders();
 	serveUpdates();
 	noteVersionRun();
-	let url;
-	let workdirForTitle = process.cwd();
-	if (devUrl) {
-		buildMenu(process.cwd());
-		url = devUrl;
-	} else {
-		const workdir = await resolveWorkdir();
-		if (!workdir) {
-			app.quit();
-			return;
-		}
-		workdirForTitle = workdir;
-		buildMenu(workdir);
-		({ url } = await servers.get(workdir));
+	const workdir = devUrl ? process.cwd() : await resolveWorkdir();
+	if (!workdir) {
+		app.quit();
+		return;
 	}
-	const window = new BrowserWindow({
+	buildMenu(workdir);
+	window = new BrowserWindow({
 		width: 1200,
 		height: 820,
 		show: false,
-		// The agent acts on this folder, so it should never be a guess.
-		title: devUrl ? "Octave — dev" : `Octave — ${basename(workdirForTitle)}`,
+		title: "Octave — dev",
 		// The columns are the app. A title bar above them would be a fourth band
 		// of chrome saying what the folder menu already says, so it is dropped and
 		// the traffic lights are dropped onto the list's own header instead —
@@ -511,18 +549,22 @@ async function main() {
 	window.on("enter-full-screen", () => markTrafficLights(window));
 	window.on("leave-full-screen", () => markTrafficLights(window));
 
-	const cancel = new AbortController();
-	window.on("closed", () => cancel.abort());
-	if (!(await waitForServer(url, cancel.signal))) {
-		if (!cancel.signal.aborted) {
-			dialog.showErrorBox("The server did not answer", `${url} did not come up within 30 seconds.`);
-			app.quit();
-		}
-		return;
-	}
+	window.on("closed", () => closing.abort());
 	// The page sets its own title, which would replace the folder name.
 	window.on("page-title-updated", (e) => e.preventDefault());
-	await window.loadURL(url);
+	if (devUrl) {
+		if (!(await waitForServer(devUrl, closing.signal))) {
+			if (!closing.signal.aborted) {
+				dialog.showErrorBox("The server did not answer", `${devUrl} did not come up within 30 seconds.`);
+				app.quit();
+			}
+			return;
+		}
+		await window.loadURL(devUrl);
+	} else {
+		await show(workdir);
+		if (!front) return; // Its server did not answer, and the app is on its way out.
+	}
 	window.show();
 	watchForUpdates();
 }

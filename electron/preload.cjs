@@ -3,8 +3,8 @@
  *
  * Everything else it needs it asks the server for over the websocket, and the
  * server answers for the folder it was started in. Choosing a different one is
- * a native dialog and a relaunch — both the shell's, neither reachable from a
- * page — so that much, and only that much, is handed across.
+ * a native dialog and another folder's server — both the shell's, neither
+ * reachable from a page — so that much, and only that much, is handed across.
  *
  * CommonJS, since a sandboxed preload cannot import modules; the sandbox is
  * worth more than the syntax.

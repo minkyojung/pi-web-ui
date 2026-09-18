@@ -5,6 +5,8 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+### Changed
+- Opening another folder no longer restarts Octave. The folder you left keeps running — a reply the agent was writing there carries on — and going back to it finds your tabs where they were.
 
 ## [0.0.6] - 2026-09-18
 ### Added
