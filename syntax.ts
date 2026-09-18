@@ -14,7 +14,9 @@ import { Emoji, GFM, type MarkdownExtension, parser as commonmark, Subscript, Su
 
 import { comment } from "./comment.ts";
 import { frontMatter } from "./frontmatter.ts";
+import { footnote } from "./footnote.ts";
 import { highlight } from "./highlight.ts";
+import { math } from "./math.ts";
 import { tag } from "./tag.ts";
 import { wikiLink } from "./wikilink.ts";
 
@@ -27,8 +29,13 @@ import { wikiLink } from "./wikilink.ts";
 export const inlineCodeTag = Tag.define(tags.monospace);
 const inlineCode = { props: [styleTags({ "InlineCode/...": inlineCodeTag })] };
 
+/** `H~2~O` and `x^2^`, parsed by lezer already; tags of their own so the editor can set them below and above the line. */
+export const subscriptTag = Tag.define();
+export const superscriptTag = Tag.define();
+const scripts = { props: [styleTags({ "Subscript/...": subscriptTag, "Superscript/...": superscriptTag })] };
+
 /** The note syntax, for the editor to add to its markdown language. */
-export const noteSyntax: MarkdownExtension = [wikiLink, frontMatter, highlight, tag, comment, inlineCode];
+export const noteSyntax: MarkdownExtension = [wikiLink, frontMatter, highlight, tag, comment, footnote, math, inlineCode, scripts];
 
 /** The whole language, for the server: what the editor parses with, without the editor. */
 export const parser = commonmark.configure([GFM, Subscript, Superscript, Emoji, noteSyntax]);

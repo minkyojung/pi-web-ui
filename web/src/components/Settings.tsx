@@ -28,8 +28,9 @@ import { getConnection, subscribe } from "../store";
 import type { Settings, SettingsMsg } from "../types";
 import { send } from "../ws";
 import { settingsOpenStore } from "../settingsOpen";
+import { bridge, updateStore } from "../update";
 
-const SECTIONS = ["Accounts", "Appearance", "Agent", "Loadout", "Keys"] as const;
+const SECTIONS = ["Accounts", "Appearance", "Agent", "Loadout", "Keys", "About"] as const;
 type Section = (typeof SECTIONS)[number];
 const isSection = (name: string): name is Section => (SECTIONS as readonly string[]).includes(name);
 
@@ -62,6 +63,8 @@ export function Settings() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  const updateReady = useSyncExternalStore(updateStore.subscribe, updateStore.get)?.phase === "ready";
 
   // Asked for from elsewhere — the picker's last item — on a section by name.
   const wanted = useSyncExternalStore(settingsOpenStore.subscribe, settingsOpenStore.get);
@@ -97,9 +100,12 @@ export function Settings() {
               variant="ghost"
               size="icon-sm"
               aria-label="Settings"
-              className="shrink-0 text-muted-foreground"
+              className="relative shrink-0 text-muted-foreground"
             >
               <SettingsIcon className="size-3.5" />
+              {/* A new version is ready and the offer was waved away: what is
+                  left of it, until the restart. */}
+              {updateReady && <span aria-label="An update is ready" className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary" />}
             </Button>
           </DialogTrigger>
         </TooltipTrigger>
@@ -185,6 +191,8 @@ function Panel({ section }: { section: Section }) {
       {section === "Keys" && <Keys />}
 
       {section === "Accounts" && <Accounts />}
+
+      {section === "About" && <About />}
 
       {/* The settings come on the socket, as the server says them on connecting;
           until they have, the sections made of them say why they are empty
@@ -428,6 +436,54 @@ function Keys() {
           </div>
         ))}
       </dl>
+    </>
+  );
+}
+
+/**
+ * The version this is, and where the updater is — the one place the answer
+ * to a check is given, since a check that finds nothing is not worth a
+ * toast. Only a check asked for from here or the menu gets its "latest" or
+ * "could not"; one that ran on its own says nothing and tries again later.
+ */
+function About() {
+  const update = useSyncExternalStore(updateStore.subscribe, updateStore.get);
+  const [asked, setAsked] = useState(false);
+  const pi = bridge();
+  const check = () => {
+    setAsked(true);
+    void pi?.check();
+  };
+  let status: React.ReactNode = null;
+  if (update) {
+    if (update.phase === "checking") status = "Checking…";
+    else if (update.phase === "downloading") status = `Downloading ${update.version ?? ""}${update.progress !== null ? ` — ${update.progress}%` : ""}`;
+    else if (update.phase === "ready") status = (
+      <>
+        {update.version} is ready.{" "}
+        <button type="button" className="underline underline-offset-2" onClick={() => void pi?.restart()}>
+          Restart
+        </button>
+      </>
+    );
+    else if (asked && update.error) status = "Could not check right now.";
+    else if (asked) status = `${update.current} is the latest.`;
+  }
+  return (
+    <>
+      <Heading title="About">{update ? `Octave ${update.current}` : "Octave, from the dev server — nothing here updates."}</Heading>
+      {update && (
+        <div className="flex flex-col gap-2 text-xs">
+          <div>
+            <Button variant="outline" size="sm" onClick={check} disabled={update.phase === "checking"}>
+              Check for Updates
+            </Button>
+          </div>
+          <p role="status" className="text-muted-foreground">
+            {status ?? "Octave looks for a new version when it starts and every four hours, and downloads it quietly."}
+          </p>
+        </div>
+      )}
     </>
   );
 }

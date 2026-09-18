@@ -23,39 +23,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
-export const REPO = "https://github.com/minkyojung/pi-web-ui";
-
-/** What is under [Unreleased]: the text between its heading and the next `## `, or the link block. */
-export function unreleased(changelog) {
-	const m = changelog.match(/^## \[Unreleased\]\n([\s\S]*?)(?=^## |^\[Unreleased\]:|(?![\s\S]))/m);
-	return m ? m[1].trim() : "";
-}
-
-/**
- * The changelog with [Unreleased] closed as `version` on `date`: the section
- * becomes the version's, a fresh empty [Unreleased] goes above it, and the
- * reference links at the bottom are redone — Unreleased compares from the
- * new tag, the version compares from the previous tag or, for the first,
- * links to its own tag.
- */
-export function cut(changelog, version, date, previousTag) {
-	const tag = `v${version}`;
-	const body = changelog.replace(/^## \[Unreleased\]\n/m, `## [Unreleased]\n\n## [${version}] - ${date}\n`);
-	const versionLink = previousTag
-		? `[${version}]: ${REPO}/compare/${previousTag}...${tag}`
-		: `[${version}]: ${REPO}/releases/tag/${tag}`;
-	const withoutLinks = body.replace(/^\[Unreleased\]: .*\n?/m, "");
-	const links = `[Unreleased]: ${REPO}/compare/${tag}...HEAD\n${versionLink}\n`;
-	// The links sit under the last section: after the first old version link, or at the end.
-	const at = withoutLinks.search(/^\[\d+\.\d+\.\d+\]: /m);
-	return at === -1 ? `${withoutLinks.trimEnd()}\n\n${links}` : `${withoutLinks.slice(0, at)}${links}${withoutLinks.slice(at)}`;
-}
-
-/** The section for a version, if the changelog has one. */
-export function sectionFor(changelog, version) {
-	const m = changelog.match(new RegExp(`^## \\[${version.replace(/\./g, "\\.")}\\] - \\d{4}-\\d{2}-\\d{2}\\n([\\s\\S]*?)(?=^## |^\\[Unreleased\\]:|(?![\\s\\S]))`, "m"));
-	return m ? m[1].trim() : null;
-}
+export { REPO, cut, sectionFor, unreleased } from "../changelog.mjs";
+import { cut, sectionFor, unreleased } from "../changelog.mjs";
 
 /** The question put to claude, and its answer read as a list — or null when it could not be asked. */
 export function askForOmissions(commits, notes) {
@@ -113,9 +82,14 @@ async function main() {
 		}
 	}
 
-	const date = new Date().toISOString().slice(0, 10);
+	// The day here, not the day in Greenwich: 0.0.2 was cut on a Friday morning
+	// in Seoul and the changelog said Thursday.
+	const now = new Date();
+	const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 	writeFileSync("CHANGELOG.md", cut(changelog, version, date, previous));
-	execFileSync("npm", ["version", version, "--no-git-tag-version"], { stdio: "ignore" });
+	// The first release is the version package.json was given when the app was
+	// named, and npm refuses a version that is not a change unless told.
+	execFileSync("npm", ["version", version, "--no-git-tag-version", "--allow-same-version"], { stdio: "ignore" });
 	git("add", "CHANGELOG.md", "package.json", "package-lock.json");
 	git("commit", "-q", "-m", `Octave ${version}`);
 	git("tag", "-a", `v${version}`, "-m", `Octave ${version}\n\n${notes}`);

@@ -127,14 +127,23 @@ function asOnDisk(full: string): string {
  * the string would catch.
  */
 export function noteAt(root: string, given: string): { path: string; full: string } | null {
+	const file = fileAt(root, given);
+	// On the disk's spelling, so `a.MD` is this note where the file system says
+	// it is, and a name that is only ever going to be `.MD` is not a note.
+	return file && file.path.endsWith(".md") ? file : null;
+}
+
+/**
+ * Any file a path names inside the folder, as the vault names it — the
+ * check noteAt makes before asking whether it is a note. Nothing under a
+ * dot-folder: .pi/ is the app's and .obsidian/ is Obsidian's.
+ */
+export function fileAt(root: string, given: string): { path: string; full: string } | null {
 	if (!given) return null;
 	const full = asOnDisk(isAbsolute(given) ? given : join(root, given));
 	const rel = relative(asOnDisk(root), full);
 	if (!rel || rel.startsWith("..") || isAbsolute(rel)) return null;
 	if (rel.split(sep).some((part) => part.startsWith("."))) return null;
-	// On the disk's spelling, so `a.MD` is this note where the file system says
-	// it is, and a name that is only ever going to be `.MD` is not a note.
-	if (!rel.endsWith(".md")) return null;
 	return { path: rel.split(sep).join("/"), full };
 }
 

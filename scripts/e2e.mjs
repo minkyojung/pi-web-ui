@@ -275,7 +275,18 @@ async function openPage(devtoolsPort, url) {
 	};
 	/** A syllable half typed and left so: the composition is open, nothing committed. */
 	const compose = (text) => call("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length });
-	return { evaluate, shot, errors, click, clickAt, moveTo, drag, dragTo, press, keys, ime, compose, close: () => socket.close() };
+	/**
+	 * A script run in every document this page loads from now on, before the
+	 * page's own — what a preload would have given it. Returns the way to stop.
+	 * For standing in for the shell: a browser has no window.pi.
+	 */
+	const onNewDocument = async (source) => {
+		// The Page domain has to be on for the script to be run.
+		await call("Page.enable");
+		const { identifier } = await call("Page.addScriptToEvaluateOnNewDocument", { source });
+		return () => call("Page.removeScriptToEvaluateOnNewDocument", { identifier });
+	};
+	return { evaluate, shot, errors, click, clickAt, moveTo, drag, dragTo, press, keys, ime, compose, onNewDocument, close: () => socket.close() };
 }
 
 /**
@@ -1193,6 +1204,163 @@ check("⌘F finds in the note, and Escape puts the panel away", async ({ app }) 
 	await app.press("Escape");
 	await until("the panel gone", () => app.evaluate("!document.querySelector('#editor .cm-panel.cm-search')"));
 	assert.equal(await app.evaluate("document.activeElement?.classList.contains('cm-content')"), true, "focus goes back to the note");
+});
+
+check("pictures are drawn where the note says there are pictures, and as written on the cursor's line", async ({ app, cwd }) => {
+	// A 2×2 PNG, so what the browser draws has a size of its own to be measured.
+	const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR42mNk+M9QDwADhQGA6UhwXAAAAABJRU5ErkJggg==", "base64");
+	mkdirSync(join(cwd, "images"), { recursive: true });
+	writeFileSync(join(cwd, "images", "shot.png"), png);
+	writeFileSync(join(cwd, "pictures.md"), "# pictures\n\nObsidian: ![[shot.png]]\n\nSized: ![[shot.png|40]]\n\nMarkdown: ![a shot](images/shot.png)\n\nWeb: ![w](https://example.com/w.png)\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="pictures.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="pictures.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	// The cursor at the end: off every picture's line.
+	await app.press("End", { meta: true });
+	const drawn = () => app.evaluate("[...document.querySelectorAll('#editor img.cm-image')].map((i) => [i.getAttribute('src'), i.getAttribute('width'), i.alt])");
+	await until("four pictures", async () => (await drawn()).length === 4);
+	assert.deepEqual(await drawn(), [
+		["/vault/shot.png?from=pictures.md", null, ""],
+		["/vault/shot.png?from=pictures.md", "40", ""],
+		["/vault/images/shot.png?from=pictures.md", null, "a shot"],
+		["https://example.com/w.png", null, "w"],
+	]);
+	// The ones in the folder were found and fetched: a real picture has a size.
+	await until("the first picture loaded", () => app.evaluate("document.querySelector('#editor img.cm-image').naturalWidth === 2"));
+	assert.ok(!(await shownText(app)).includes("![["), "the markup is gone from the text");
+	// The cursor in the markup: the picture gone for that line and the markup
+	// back, marks and all, until the cursor leaves.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("![[shot.png|40]]") + 3; v.dispatch({ selection: { anchor: at } }); })()`);
+	await until("that line as written", async () => (await shownText(app)).includes("![[shot.png|40]]") && (await drawn()).length === 3);
+	await app.press("End", { meta: true });
+	await until("drawn again", async () => (await drawn()).length === 4);
+});
+
+check("a table is drawn as a table off the cursor and as pipes on it, and footnotes are numbers that go to each other", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "table.md"), "# table\n\n| Name | Amount |\n| :-- | --: |\n| **Apples** | 3 |\n| Pears [[first]] | 12 |\n\nA claim.[^note] Another.[^2] And the first again.[^note]\n\n[^note]: What the note says.\n[^2]: The second.\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="table.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="table.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.press("End", { meta: true });
+	const table = () => app.evaluate(`(() => { const t = document.querySelector('#editor table.cm-table'); if (!t) return null; return { header: [...t.tHead.rows[0].cells].map((c) => c.textContent), rows: [...t.tBodies[0].rows].map((r) => [...r.cells].map((c) => c.innerHTML)), align: [...t.tBodies[0].rows[0].cells].map((c) => c.style.textAlign) }; })()`);
+	await until("the table drawn", async () => (await table()) !== null);
+	assert.deepEqual(await table(), {
+		header: ["Name", "Amount"],
+		rows: [["<strong>Apples</strong>", "3"], ['Pears <span class="cm-wikilink">first</span>', "12"]],
+		align: ["left", "right"],
+	});
+	assert.ok(!(await shownText(app)).includes("| Name"), "the pipes are gone from the text");
+
+	// The footnotes: numbers in the order first referred to, the notes labelled the same.
+	const sups = () => app.evaluate("[...document.querySelectorAll('#editor sup.cm-footnote')].map((s) => s.className.replace('cm-footnote cm-footnote-', '') + ':' + s.textContent)");
+	await until("the numbers", async () => (await sups()).length === 5);
+	assert.deepEqual(await sups(), ["ref:1", "ref:2", "ref:1", "def:1", "def:2"]);
+	// A click on the first number goes to its note; on the note's number, back to the text.
+	await app.click("#editor sup.cm-footnote-ref", 0);
+	await until("at the note", async () => (await shownText(app)).includes("[^note]: What the note says."));
+	// Off the note's line again, so its number is drawn to be clicked.
+	await app.press("End", { meta: true });
+	await until("the note's number back", async () => (await sups()).filter((s) => s === "def:1").length === 1);
+	await app.click("#editor sup.cm-footnote-def", 0);
+	await until("back at the text", async () => (await shownText(app)).includes("A claim.[^note]"));
+
+	// A click on the drawn table brings the pipes back under the cursor.
+	await app.press("End", { meta: true });
+	await until("the table drawn again", async () => (await table()) !== null);
+	assert.ok(await app.click("#editor table.cm-table td"), "a cell to click");
+	await until("the pipes back", async () => (await shownText(app)).includes("| Name | Amount |") && (await table()) === null);
+});
+
+check("another note is shown in place — all of it, a section, a block — and a missing one says so", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "Source.md"), "# Source\n\nThe source's first words.\n\n## Part two\n\n- one **two**\n- three\n\n## Part three\n\nlast, with an id. ^p3\n");
+	writeFileSync(join(cwd, "embeds.md"), "# embeds\n\nWhole: ![[Source]]\n\nSection: ![[Source#Part two]]\n\nBlock: ![[Source#^p3]]\n\nGone: ![[Nowhere]]\n\nend\n");
+	await until("the notes to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="embeds.md"]') && !!document.querySelector('#notes button[data-path="Source.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="embeds.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.press("End", { meta: true });
+	const cards = () => app.evaluate("[...document.querySelectorAll('#editor .cm-embed')].map((c) => [c.querySelector('.cm-embed-title').textContent, c.querySelector('.cm-embed-body').innerText.replace(/\\s+/g, ' ').trim()])");
+	await until("four cards, read", async () => {
+		const seen = await cards();
+		return seen.length === 4 && seen.every(([, body]) => body !== "…");
+	});
+	assert.deepEqual(await cards(), [
+		["Source", "Source The source's first words. Part two one two three Part three last, with an id."],
+		["Source › Part two", "Part two one two three"],
+		["Source › ^p3", "last, with an id."],
+		["Nowhere", "No note called Nowhere."],
+	]);
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-embed li strong')?.textContent"), "two", "the words inside keep their marks");
+	// The cursor in the markup: the card gone for that line, the markup back.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("![[Source#Part two]]") + 3; v.dispatch({ selection: { anchor: at } }); })()`);
+	await until("that line as written", async () => (await shownText(app)).includes("![[Source#Part two]]") && (await cards()).length === 3);
+	// The card's title opens the note.
+	await app.press("End", { meta: true });
+	// Read again, not only drawn: a card grows as its note arrives, and a title
+	// measured before that is somewhere else by the time the press lands.
+	await until("four cards again, read", async () => {
+		const seen = await cards();
+		return seen.length === 4 && seen.every(([, body]) => body !== "…");
+	});
+	// Pressed until it takes: the cards were just drawn again with their notes
+	// in them, and a title measured before the layout has landed is somewhere
+	// else by the time the press does. Pressing a title once the note is open
+	// opens it again, which is nothing.
+	// The cursor at the end has the page scrolled down and the first card off
+	// the top: brought into view, then pressed until the note is open.
+	await until("Source open", async () => {
+		await app.evaluate("document.querySelector('#editor .cm-embed-title')?.scrollIntoView({ block: 'center' })");
+		await app.click("#editor .cm-embed-title", 0);
+		return (await app.evaluate("location.hash")) === "#Source.md";
+	});
+	await pickNote(app, "embeds.md");
+});
+
+check("math is set as math off the cursor, in a line and as a block, and is the source under it", async ({ app, cwd }) => {
+	// The block straight under a line of prose, as Obsidian users write it.
+	writeFileSync(join(cwd, "math.md"), "# math\n\nInline $E = mc^2$ here, and $5 is money.\n$$\n\\int_0^1 x^2\\,dx\n$$\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="math.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="math.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.press("End", { meta: true });
+	const set = () => app.evaluate("[...document.querySelectorAll('#editor .cm-math')].map((m) => [m.classList.contains('cm-math-block'), m.querySelector('.katex') !== null, m.textContent.replace(/\\s+/g, '').slice(0, 12)])");
+	await until("both set", async () => (await set()).length === 2);
+	const drawn = await set();
+	assert.deepEqual(drawn.map(([block, katex]) => [block, katex]), [[false, true], [true, true]], "an inline and a block, both by KaTeX");
+	assert.ok(drawn[0][2].includes("E=mc"), `the inline one says E=mc², not ${drawn[0][2]}`);
+	const text = await shownText(app);
+	assert.ok(!text.includes("$E") && text.includes("$5 is money"), "the math's source is gone from the text; the money is not math");
+	// The cursor in the inline math: its source back, the block still set.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("mc^2"); v.dispatch({ selection: { anchor: at } }); })()`);
+	await until("the source under the cursor", async () => (await shownText(app)).includes("$E = mc^2$") && (await set()).length === 1);
+});
+
+check("the little HTML a note holds is drawn from a list, a script is not, and sub- and superscript sit off the line", async ({ app, cwd }) => {
+	const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR42mNk+M9QDwADhQGA6UhwXAAAAABJRU5ErkJggg==", "base64");
+	writeFileSync(join(cwd, "shot2.png"), png);
+	writeFileSync(join(cwd, "html.md"), "# html\n\nSome <u>underlined</u> and <kbd>⌘K</kbd> words, a break<br>here, <img src=\"shot2.png\" width=\"30\"> and <script>alert(1)</script> stays.\n\nH~2~O and x^2^ are set.\n\n<details open>\n<summary>More</summary>\n<p>Hidden <b>words</b> <a href=\"javascript:alert(1)\">bad</a> <a href=\"https://octave.run\">good</a></p>\n</details>\n\nend\n");
+	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="html.md"]')`));
+	await app.evaluate(`document.querySelector('#notes button[data-path="html.md"]').click()`);
+	await until("the note, with focus", async () => (await editorStatus(app)) === "saved" && (await app.evaluate("document.activeElement?.classList.contains('cm-content')")));
+	await app.press("End", { meta: true });
+	await until("the underline", () => app.evaluate("document.querySelector('#editor .cm-html-u')?.textContent === 'underlined'"));
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-html-kbd')?.textContent"), "⌘K");
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor br.cm-html-br').length"), 1, "a break drawn");
+	assert.equal(await app.evaluate("document.querySelector('#editor img.cm-image')?.getAttribute('width')"), "30", "the picture, at its width");
+	await until("the picture loaded", () => app.evaluate("document.querySelector('#editor img.cm-image')?.naturalWidth === 2"));
+	const text = await shownText(app);
+	assert.ok(!text.includes("<u>") && !text.includes("<kbd>") && !text.includes("<br>"), "the tags on the list are hidden");
+	assert.ok(text.includes("<script>alert(1)</script>"), "a script is left as written, and does not run");
+	// The block: its DOM, sanitized.
+	const block = () => app.evaluate("(() => { const d = document.querySelector('#editor .cm-html-block details'); return d && { open: d.open, summary: d.querySelector('summary')?.textContent, bold: d.querySelector('b')?.textContent, links: [...d.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')]) }; })()");
+	await until("the details block", async () => (await block()) !== null);
+	assert.deepEqual(await block(), { open: true, summary: "More", bold: "words", links: [["bad", null], ["good", "https://octave.run"]] });
+	// Sub- and superscript: set off the line, marks hidden.
+	assert.ok(!text.includes("~2~") && !text.includes("^2^"), "their marks are hidden");
+	const styled = await app.evaluate("[...document.querySelectorAll('#editor .cm-line span')].filter((s) => /sub|super/.test(getComputedStyle(s).verticalAlign)).map((s) => [s.textContent, getComputedStyle(s).verticalAlign])");
+	assert.deepEqual(styled, [["2", "sub"], ["2", "super"]]);
+	// The cursor inside a pair: the tags back.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("underlined") + 2; v.dispatch({ selection: { anchor: at } }); })()`);
+	await until("the tags back under the cursor", async () => (await shownText(app)).includes("<u>underlined</u>"));
 });
 
 check("links are drawn, a missing one differently; ⌘+click follows one and makes the other", async ({ app, cwd }) => {
@@ -2607,8 +2775,22 @@ check("the loadout screen keeps a model pi does not offer, and shows a change an
 		const section = await until("the Loadout section", () =>
 			app.evaluate("(() => { const i = [...document.querySelectorAll('[role=dialog] nav button')].findIndex((x) => x.textContent === 'Loadout'); return i < 0 ? null : String(i); })()"),
 		);
-		await app.click("[role=dialog] nav button", Number(section));
-		await until("the missing model in its place", async () => /^1nobody\/not-offeredNot available/.test(await places()));
+		// Pressed until it takes. The dialog grows into place as it opens, and on a
+		// slow machine a button measured partway there is somewhere else by the
+		// time the press lands: twice today GitHub's runner left this on Accounts,
+		// the section the dialog opens on, and the check waited for a list that
+		// was never on screen. Pressing the section it is already on does nothing.
+		await until("the Loadout section in front", async () => {
+			await app.click("[role=dialog] nav button", Number(section));
+			return app.evaluate("/Reading the models|could not read the models/.test(document.querySelector('[role=dialog]')?.innerText ?? '') || !!document.querySelector('[role=dialog] ol')");
+		});
+		// Says what the list held when it gives up: this one has failed on GitHub's
+		// runner, one run in three, and "timed out" is all it had to say for itself.
+		await until("the missing model in its place", async () => {
+			const seen = await places();
+			if (/^1nobody\/not-offeredNot available/.test(seen)) return true;
+			throw new Error(`the places read ${JSON.stringify(seen)}, the file ${JSON.stringify(await stored())}, the dialog ${JSON.stringify(await app.evaluate("(document.querySelector('[role=dialog]')?.innerText ?? 'no dialog').slice(0, 300)"))}`);
+		});
 		await app.shot("loadout-missing");
 
 		// An edit that has nothing to do with it leaves it where it was.
@@ -2622,6 +2804,123 @@ check("the loadout screen keeps a model pi does not offer, and shows a change an
 	} finally {
 		await app.press("Escape");
 		await post({ loadout: [] });
+	}
+});
+
+check("a version ready to install is offered in the corner, × leaves a dot, About answers a check, and a new version opens What's new", async ({ app }) => {
+	// The shell's bridge, stood in for: the page is served to a browser here,
+	// where there is no window.pi. What the stub is told is what the page is
+	// told, and what the page asks of it is written down.
+	let bodyDone = false;
+	// Installed only while sessionStorage says so: the checks after this one
+	// are of a browser, and a script on new documents outlives its removal
+	// through a reload.
+	const stopStanding = await app.onNewDocument(`
+		if (sessionStorage.getItem("stand-in-for-the-shell") === "1") {
+		window.__update = { listeners: [], calls: [], opens: [], pages: [], state: { current: "0.0.3", phase: "idle", version: null, progress: null, error: null, justUpdated: null },
+			say(patch) { this.state = { ...this.state, ...patch }; for (const l of this.listeners) l(this.state); } };
+		// The rest of the bridge too, as the shell has it: the page reads the folder off it when it is there.
+		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {}, update: {
+			state: async () => window.__update.state,
+			onState: (l) => { window.__update.listeners.push(l); return () => {}; },
+			check: async () => window.__update.calls.push("check"),
+			restart: async () => window.__update.calls.push("restart"),
+			seen: async () => window.__update.calls.push("seen"),
+		}, onOpenSettings: (l) => { window.__update.opens.push(l); return () => {}; }, onOpenPage: (l) => { window.__update.pages.push(l); return () => {}; } };
+		}`);
+	try {
+		await app.evaluate(`sessionStorage.setItem("stand-in-for-the-shell", "1"); location.reload()`);
+		// window.pi is an element of that id once the page has drawn (the agent's
+		// column), so it is the stub itself that is looked for.
+		await until("the page back, with the stub", async () => {
+			const seen = await app.evaluate("JSON.stringify({ stub: !!window.__update, sidebar: !!document.querySelector('#notes button[data-path=\"first.md\"]'), body: document.body.innerText.slice(0, 80) })");
+			if (seen.startsWith('{"stub":true,"sidebar":true')) return true;
+			throw new Error(`${seen} errors=${JSON.stringify(app.errors.slice(-1))}`);
+		});
+		assert.equal(await app.evaluate("document.querySelectorAll('[data-sonner-toast]').length"), 0, "nothing offered while nothing is ready");
+
+		await app.evaluate(`window.__update.say({ phase: "ready", version: "9.9.9", progress: 100 })`);
+		const toast = () => app.evaluate("document.querySelector('[data-sonner-toast]')?.innerText ?? ''");
+		await until("the offer", async () => (await toast()).includes("Octave 9.9.9 is ready"));
+		assert.match(await toast(), /Restart/, "with a Restart");
+		const laid = await app.evaluate(`(() => { const r = document.querySelector('[data-sonner-toast]').getBoundingClientRect(); return { right: innerWidth - r.right, bottom: innerHeight - r.bottom }; })()`);
+		assert.ok(laid.right < 60 && laid.bottom < 60, `in the bottom-right corner, not ${JSON.stringify(laid)}`);
+
+		// Restart asks the shell, and the offer stays where it is meanwhile. The
+		// toast slides in; a press before it has come to rest lands where it was.
+		await until("the toast at rest", () => app.evaluate("document.querySelector('[data-sonner-toast]')?.getAttribute('data-mounted') === 'true'"));
+		await new Promise((r) => setTimeout(r, 500));
+		await app.shot("update-offer");
+		assert.ok(await app.click("[data-sonner-toast] button[data-button]"), "the Restart button is there");
+		await until("the restart asked of the shell", async () => {
+			if (await app.evaluate("window.__update.calls.includes('restart')")) return true;
+			throw new Error(await app.evaluate("JSON.stringify({ calls: window.__update.calls, buttons: [...document.querySelectorAll('[data-sonner-toast] button')].map((b) => b.outerHTML.slice(0, 160)) })"));
+		});
+
+		// Waved away: gone from the corner, a dot on the settings button, and not back for this version.
+		assert.ok(await app.click("[data-sonner-toast] [data-close-button]"), "the × is there");
+		await until("the corner empty", async () => (await toast()) === "");
+		await until("the dot", () => app.evaluate("!!document.querySelector('button[aria-label=\"Settings\"] [aria-label=\"An update is ready\"]')"));
+		await app.evaluate(`window.__update.say({ phase: "ready", version: "9.9.9", progress: 100 })`);
+		await new Promise((r) => setTimeout(r, 300));
+		assert.equal(await toast(), "", "the same version, said again, is not offered again");
+		// A newer one is.
+		await app.evaluate(`window.__update.say({ phase: "ready", version: "9.9.10", progress: 100 })`);
+		await until("the newer offer", async () => (await toast()).includes("9.9.10"));
+		await app.click("[data-sonner-toast] [data-close-button]");
+
+		// Settings › About: the version this is, and the one place a check's
+		// answer is given. The menu's Check for Updates… opens it.
+		await app.evaluate(`window.__update.say({ phase: "idle", version: null, progress: null })`);
+		await app.evaluate("window.__update.opens.forEach((l) => l('About'))");
+		const about = () => app.evaluate("document.querySelector('[role=dialog]')?.innerText ?? ''");
+		await until("About open, saying the version", async () => (await about()).includes("Octave 0.0.3"));
+		await until("no answer before a check was asked for", async () => /looks for a new version/.test(await about()));
+		assert.ok(await app.click("[role=dialog] button:not([data-close-button])", await app.evaluate("[...document.querySelectorAll('[role=dialog] button')].findIndex((b) => b.textContent === 'Check for Updates')")), "the Check button");
+		await until("the check asked of the shell", () => app.evaluate("window.__update.calls.filter((c) => c === 'check').length === 1"));
+		await app.evaluate(`window.__update.say({ phase: "checking" })`);
+		await until("checking", async () => (await about()).includes("Checking…"));
+		await app.evaluate(`window.__update.say({ phase: "idle" })`);
+		await until("the latest", async () => (await about()).includes("0.0.3 is the latest"));
+		await app.evaluate(`window.__update.say({ phase: "downloading", version: "9.9.11", progress: 40 })`);
+		await until("the download's progress", async () => (await about()).includes("Downloading 9.9.11 — 40%"));
+		await app.evaluate(`window.__update.say({ phase: "ready", version: "9.9.11", progress: 100 })`);
+		await until("ready, with a Restart of its own", async () => /9\.9\.11 is ready\.\s*Restart/.test(await about()));
+		await app.evaluate(`window.__update.say({ phase: "idle", version: null, progress: null, error: "boom" })`);
+		await until("could not check", async () => (await about()).includes("Could not check right now"));
+		await app.press("Escape");
+		await until("Settings away", async () => (await about()) === "");
+
+		// The first run of a new version: a tab with what is new, from the
+		// changelog beside the server, and the shell told it has been seen.
+		await app.evaluate(`window.__update.say({ justUpdated: { from: "0.0.2", to: "0.0.3" } })`);
+		const tabs = () => app.evaluate("[...document.querySelectorAll('[role=tab]')].map((t) => t.textContent).join('|')");
+		await until("the What's new tab, in front", async () => (await tabs()).includes("What's new in 0.0.3") && (await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.textContent ?? ''")).includes("What's new"));
+		const page = () => app.evaluate("document.getElementById('page')?.innerText ?? ''");
+		await until("the notes, from the changelog", async () => /What's new in 0\.0\.3[\s\S]*CHANGED[\s\S]*PowerShell/.test(await page()));
+		await until("the shell told it was seen", () => app.evaluate("window.__update.calls.includes('seen')"));
+		assert.equal(await app.evaluate("!!document.querySelector('#editor .cm-content')"), false, "no editor under a page");
+		await app.shot("whats-new");
+
+		// Closed like any tab; asked for from Help, back again.
+		await app.press("w", { meta: true });
+		await until("the tab closed", async () => !(await tabs()).includes("What's new"));
+		await app.evaluate("window.__update.pages.forEach((l) => l('whats-new'))");
+		await until("the tab back, from Help", async () => (await tabs()).includes("What's new in 0.0.3"));
+		await app.press("w", { meta: true });
+		await until("the tab closed again", async () => !(await tabs()).includes("What's new"));
+		bodyDone = true;
+	} finally {
+		await stopStanding();
+		await app.evaluate(`sessionStorage.removeItem("stand-in-for-the-shell"); location.reload()`);
+		await until("the page back as a browser", async () => {
+			const seen = await app.evaluate("JSON.stringify({ stub: !!window.__update, bridge: !!window.pi?.update, sidebar: !!document.querySelector('#notes button[data-path=\"first.md\"]'), body: document.body.innerText.slice(0, 80) })");
+			if (seen.startsWith('{"stub":false,"bridge":false,"sidebar":true')) return true;
+			throw new Error(`${seen} bodyDone=${bodyDone} errors=${JSON.stringify(app.errors.slice(-1))}`);
+		});
+		// A reload comes back with no note open; the checks after this one expect one.
+		await app.evaluate(`document.querySelector('#notes button[data-path="first.md"]').click()`);
+		await until("a note open again", () => app.evaluate("!!document.querySelector('#editor .cm-content')"));
 	}
 });
 
@@ -2778,18 +3077,41 @@ async function main() {
 		let failed = 0;
 		const running = chosen();
 		if (only) console.log(`  (only the ${running.length} of ${checks.length} checks whose names hold ${JSON.stringify(only)})`);
+		// A check that fails is run once more before it counts. The suite drives a
+		// real browser with real presses, and on a shared runner a press now and
+		// then lands a frame early — today a different check each run, one or two
+		// in ninety, none of them twice. A second go is what Playwright's
+		// `retries` is for and says the same thing here: red twice is the app or
+		// the check; red then green is the weather, and is said so by name rather
+		// than passed over, so a check that is always on its second try shows.
+		const again = [];
+		const said = (error) => `       ${(error.message ?? error).toString().split("\n").join("\n       ")}`;
 		for (const { name, run } of running) {
 			try {
 				await run({ app: page, bench, cwd, api, devtools });
 				console.log(`  ok  ${name}`);
-			} catch (error) {
-				failed++;
-				console.log(`  FAIL ${name}`);
-				console.log(`       ${(error.message ?? error).toString().split("\n").join("\n       ")}`);
+			} catch (first) {
+				try {
+					await run({ app: page, bench, cwd, api, devtools });
+					again.push(name);
+					console.log(`  ok  ${name}  (on a second try)`);
+					console.log(said(first));
+				} catch (error) {
+					failed++;
+					console.log(`  FAIL ${name}`);
+					console.log(said(error));
+					// The first go's reason too: the second may only have found what the first left behind.
+					console.log(`       (first try: ${(first.message ?? first).toString().split("\n")[0]})`);
+				}
 			}
 		}
 
 		console.log(`\n${running.length - failed}/${running.length} passed`);
+		if (again.length) {
+			console.log(`${again.length} of them on a second try:\n${again.map((name) => `  - ${name}`).join("\n")}`);
+			// Seen on the run's summary page, not only by whoever opens the log.
+			if (process.env.GITHUB_ACTIONS) for (const name of again) console.log(`::warning title=e2e passed on a second try::${name}`);
+		}
 		if (failed) {
 			dump();
 			process.exitCode = 1;

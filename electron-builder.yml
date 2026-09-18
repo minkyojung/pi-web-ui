@@ -25,6 +25,10 @@ files:
   # latter written by scripts/notices.mjs at the start of `npm run build`.
   - LICENSE
   - THIRD_PARTY_NOTICES.md
+  # What changed, version by version, in the person's words: the server reads
+  # a version's section out of it (/api/changelog) for the page to show after
+  # an update.
+  - CHANGELOG.md
 
 # The server runs as a child process, and a child process cannot load an ES
 # module out of an asar archive. Unpacking just the server does not help either:
@@ -70,11 +74,13 @@ dmg:
     - { x: 410, y: 220, type: link, path: /Applications }
 
 # Where the release job puts the artifacts and where the app looks for the
-# next version: the GitHub Releases of this repository. A release, not a
-# draft, so the updater sees it the moment the job ends; the notes for it are
-# the version's section of CHANGELOG.md, which the job attaches afterwards.
+# next version: the GitHub Releases of this repository. The release itself is
+# made by the job beforehand, as a draft, with the version's section of
+# CHANGELOG.md as its notes; what is built here is uploaded to that draft, and
+# the job publishes it once everything is on it — so an installed app never
+# sees a release with the files still on their way.
 publish:
   provider: github
   owner: minkyojung
   repo: pi-web-ui
-  releaseType: release
+  releaseType: draft

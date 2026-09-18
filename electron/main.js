@@ -15,6 +15,8 @@ import { fileURLToPath } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
 import updater from "electron-updater";
 
+import { reportUrl } from "./report.js";
+
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
 const { autoUpdater } = updater;
@@ -256,44 +258,80 @@ async function endServer() {
  * Only in a packaged app: a dev run has no version to compare and nothing to
  * replace itself with.
  */
-function watchForUpdates() {
-	if (!app.isPackaged) return;
-	autoUpdater.autoDownload = true;
-	autoUpdater.on("error", (err) => console.error(`[updater] ${err.message}`));
-	autoUpdater.on("update-downloaded", async (info) => {
-		const notes = typeof info.releaseNotes === "string" ? info.releaseNotes.replace(/<[^>]+>/g, "").trim() : "";
-		const { response } = await dialog.showMessageBox({
-			type: "info",
-			title: `Octave ${info.version}`,
-			message: `Octave ${info.version} is ready to install.`,
-			detail: notes || undefined,
-			buttons: ["Restart now", "Later"],
-			defaultId: 0,
-			cancelId: 1,
-		});
-		if (response !== 0) return;
+/**
+ * Where the updater is, told to every window as it changes — see preload.cjs
+ * `update`. One object, in this process, since the updater is one thing
+ * however many windows there are; the page draws it and asks for the two
+ * things it cannot do itself, a check and a restart.
+ *
+ * `justUpdated` is set once, on starting as a version other than the one
+ * that last ran, and is what the page shows what is new on. Nothing here
+ * decides when that has been seen: the page says (update:seen), and the
+ * version it saw is kept beside the last version run.
+ */
+let update = { current: app.getVersion(), phase: "idle", version: null, progress: null, error: null, justUpdated: null };
+
+function sayUpdate(patch) {
+	update = { ...update, ...patch };
+	for (const window of BrowserWindow.getAllWindows()) window.webContents.send("update:state", update);
+}
+
+function noteVersionRun() {
+	const settings = readSettings();
+	const before = settings.lastRunVersion ?? null;
+	const now = app.getVersion();
+	if (before !== now) writeSettings({ ...settings, lastRunVersion: now });
+	// The first run ever has nothing to be new against; a run of the same
+	// version already seen has nothing new.
+	if (before && before !== now && settings.whatsNewSeen !== now) update.justUpdated = { from: before, to: now };
+}
+
+function serveUpdates() {
+	ipcMain.handle("update:state", () => update);
+	ipcMain.handle("update:check", () => (app.isPackaged ? autoUpdater.checkForUpdates().catch(() => {}) : null));
+	ipcMain.handle("update:restart", async () => {
 		if (child) await endServer();
 		autoUpdater.quitAndInstall();
 	});
+	ipcMain.handle("update:seen", () => {
+		writeSettings({ ...readSettings(), whatsNewSeen: app.getVersion() });
+		sayUpdate({ justUpdated: null });
+	});
+}
+
+function watchForUpdates() {
+	if (!app.isPackaged) return;
+	autoUpdater.autoDownload = true;
+	// A person who dismissed the offer and then quit gets the new version on
+	// the way out, without being asked again — the updater's default, said.
+	autoUpdater.autoInstallOnAppQuit = true;
+	autoUpdater.on("checking-for-update", () => sayUpdate({ phase: "checking", error: null }));
+	autoUpdater.on("update-available", (info) => sayUpdate({ phase: "downloading", version: info.version, progress: 0 }));
+	autoUpdater.on("download-progress", (p) => sayUpdate({ progress: Math.round(p.percent) }));
+	autoUpdater.on("update-not-available", () => sayUpdate({ phase: "idle", version: null, progress: null }));
+	autoUpdater.on("error", (err) => {
+		console.error(`[updater] ${err.message}`);
+		// Back to nothing, with what went wrong on it for a page that asked; a
+		// check that runs on its own says nothing and tries again next time.
+		sayUpdate({ phase: "idle", progress: null, error: err.message });
+	});
+	// The offer is the page's (UpdateToast.tsx), drawn from this state: a
+	// toast in the corner rather than a dialog over the work, and one that
+	// waits for the agent to finish when asked to.
+	autoUpdater.on("update-downloaded", (info) => sayUpdate({ phase: "ready", version: info.version, progress: 100 }));
 	const check = () => autoUpdater.checkForUpdates().catch(() => {});
 	check();
 	setInterval(check, 4 * 60 * 60 * 1000).unref();
 }
 
-/** The same check, asked for from the menu, which answers either way. */
-async function checkForUpdatesNow() {
-	if (!app.isPackaged) {
-		dialog.showMessageBox({ type: "info", message: "A dev run does not update." });
-		return;
-	}
-	try {
-		const result = await autoUpdater.checkForUpdates();
-		if (!result?.isUpdateAvailable) {
-			dialog.showMessageBox({ type: "info", message: `Octave ${app.getVersion()} is the latest.` });
-		}
-	} catch (err) {
-		dialog.showMessageBox({ type: "warning", message: "Could not check for updates.", detail: err.message });
-	}
+/**
+ * The same check, asked for from the menu. The answer — the latest already,
+ * a download under way, a version ready, could not check — is the page's to
+ * say, in Settings › About, which is opened for it.
+ */
+function checkForUpdatesNow() {
+	for (const window of BrowserWindow.getAllWindows()) window.webContents.send("open-settings", "About");
+	if (app.isPackaged) autoUpdater.checkForUpdates().catch(() => {});
 }
 
 /**
@@ -334,6 +372,22 @@ function serveFolders() {
 	ipcMain.handle("file:reveal", (_event, path) => shell.showItemInFolder(path));
 }
 
+/** Where the server writes its log — log.ts says the same, from the same two places. */
+const logPath = () => join(process.env.APP_DIR ?? join(app.getPath("home"), ".octave"), "logs", "server.log");
+
+/** The log chosen in the Finder, or its folder — made if need be — when there is no log yet. */
+function showLog() {
+	const log = logPath();
+	if (existsSync(log)) return shell.showItemInFolder(log);
+	mkdirSync(join(log, ".."), { recursive: true });
+	shell.openPath(join(log, ".."));
+}
+
+function reportProblem() {
+	showLog();
+	shell.openExternal(reportUrl({ version: app.getVersion(), macos: process.getSystemVersion(), arch: process.arch }));
+}
+
 function buildMenu(workdir) {
 	// A custom menu replaces the default one entirely, so the standard roles have
 	// to be listed or the window loses copy, paste and the developer tools.
@@ -367,6 +421,18 @@ function buildMenu(workdir) {
 			// The standard window menu less Close: ⌘W is the page's, for the tab in
 			// front, and a menu accelerator would take it before the page heard it.
 			{ role: "window", submenu: [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { role: "front" }] },
+			// Two things at once, since a report wants both: the folder the log is
+			// in, to drag from, and the form to drag it into. The app sends nothing
+			// itself — see report.js.
+			{
+				role: "help",
+				submenu: [
+					{ label: "What's New", click: () => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send("open-page", "whats-new"); } },
+					{ type: "separator" },
+					{ label: "Report a Problem…", click: reportProblem },
+					{ label: "Show Log in Finder", click: showLog },
+				],
+			},
 		]),
 	);
 }
@@ -398,6 +464,8 @@ function markTrafficLights(window) {
 
 async function main() {
 	serveFolders();
+	serveUpdates();
+	noteVersionRun();
 	let url;
 	let workdirForTitle = process.cwd();
 	if (devUrl) {
@@ -435,6 +503,9 @@ async function main() {
 		webPreferences: { nodeIntegration: false, contextIsolation: true, preload: here("preload.cjs") },
 	});
 	window.webContents.on("did-finish-load", () => markTrafficLights(window));
+	// The page asks for the state as it loads (update.state); this covers a
+	// change while it was loading.
+	window.webContents.on("did-finish-load", () => window.webContents.send("update:state", update));
 	window.on("enter-full-screen", () => markTrafficLights(window));
 	window.on("leave-full-screen", () => markTrafficLights(window));
 

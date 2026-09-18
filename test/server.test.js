@@ -13,7 +13,7 @@ import test from "node:test";
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -111,6 +111,56 @@ it("확장 스위치가 꺼져 있으면 도구는 pi의 것과 우리 것뿐이
   if (process.platform !== "win32") assert.ok(!names.includes("powershell"), "no powershell where there is none to run");
   assert.ok(!log.includes("sendFlowsList"), "the dashboard bridge never started");
   assert.ok(!log.includes("did not answer"), "nothing warned about a missing hook");
+});
+
+it("a picture in the folder is served for the note that shows it; anything else is not", async () => {
+  mkdirSync(join(cwd, "images"), { recursive: true });
+  mkdirSync(join(cwd, ".pi"), { recursive: true });
+  const png = Buffer.from("89504e470d0a1a0a", "hex");
+  writeFileSync(join(cwd, "images", "shot.png"), png);
+  writeFileSync(join(cwd, ".pi", "secret.png"), png);
+  writeFileSync(join(cwd, "not-a-picture.txt"), "x");
+  const get = (path) => fetch(`http://127.0.0.1:${port}/vault/${path}`);
+  let r = await get("images/shot.png");
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get("content-type"), "image/png");
+  assert.equal(Buffer.from(await r.arrayBuffer()).toString("hex"), png.toString("hex"));
+  r = await get("shot.png?from=a.md");
+  assert.equal(r.status, 200, "by name alone, wherever it is");
+  assert.equal((await get("../" + basename(cwd) + "/images/shot.png")).status, 404, "not outside by ..");
+  assert.equal((await get(".pi/secret.png")).status, 404, "not under the app's folder");
+  assert.equal((await get("secret.png")).status, 404, "nor by name");
+  assert.equal((await get("not-a-picture.txt")).status, 404, "only pictures");
+  assert.equal((await get("a.md")).status, 404, "a note is not a picture");
+});
+
+it("a note's text is read for an embed of it; anything that is not a note in the folder is not", async () => {
+  writeFileSync(join(cwd, "embedded.md"), "# embedded\n\nwords\n");
+  const get = (path) => fetch(`http://127.0.0.1:${port}/api/note?path=${encodeURIComponent(path)}`);
+  const r = await get("embedded.md");
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { path: "embedded.md", text: "# embedded\n\nwords\n" });
+  assert.equal((await get("nowhere.md")).status, 404);
+  // A real note one folder up: reachable by .. as a path, refused as a note.
+  const outside = join(cwd, "..", `octave-outside-${basename(cwd)}.md`);
+  writeFileSync(outside, "# outside\n");
+  try {
+    assert.equal((await get(`../${basename(outside)}`)).status, 404, "not outside by ..");
+  } finally {
+    rmSync(outside, { force: true });
+  }
+  assert.equal((await get("not-a-picture.txt")).status, 404, "a note is a .md file");
+});
+
+it("a version's notes come from the changelog beside the server, cut as the release script cuts them", async () => {
+  const r = await fetch(`http://127.0.0.1:${port}/api/changelog?version=0.0.1`);
+  assert.equal(r.status, 200);
+  const { version, notes } = await r.json();
+  assert.equal(version, "0.0.1");
+  assert.match(notes, /^The first release\./, "the 0.0.1 section, from its first line");
+  assert.ok(!notes.includes("## ["), "the section alone, not the file");
+  assert.equal((await fetch(`http://127.0.0.1:${port}/api/changelog?version=9.9.9`)).status, 404, "a version the file has no section for");
+  assert.equal((await fetch(`http://127.0.0.1:${port}/api/changelog?version=abc`)).status, 400, "not a version");
 });
 
 it("접속하면 /가 부를 수 있는 것의 목록이 오고, pi-web-access의 커맨드가 그 안에 있다", async () => {

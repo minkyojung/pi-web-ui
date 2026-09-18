@@ -1,0 +1,42 @@
+# What "Report a Problem…" in Octave's Help menu opens, with the first three
+# boxes filled in by the app (electron/report.js names them by their ids).
+name: Report a problem
+description: Something in Octave went wrong, or did not do what it said.
+labels: [problem]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. This page is public — leave out anything from your notes you would not want read.
+  - type: input
+    id: version
+    attributes:
+      label: Octave version
+      description: Octave → About Octave.
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: Mac
+      description: Apple Silicon or Intel.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: The log
+      description: |
+        Octave keeps a log in `~/.octave/logs/server.log` — "Report a Problem…" opens that folder. Drag the file in here, or paste its last lines. It holds what the app said as it ran — errors, and the paths of your folder and notes, not what is written in them. Read it over before sharing if the names matter.
+      render: text

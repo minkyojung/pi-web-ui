@@ -607,3 +607,76 @@
   interpolate-size: allow-keywords;
   transition: width 220ms cubic-bezier(0.2, 0, 0, 1);
 }
+
+/* A picture in a note: as wide as its markup allows or the column, never wider. */
+.cm-image {
+	display: inline-block;
+	max-width: 100%;
+	height: auto;
+	border-radius: 6px;
+	vertical-align: text-bottom;
+}
+
+/* A table drawn as one, off the cursor. */
+.cm-table {
+	border-collapse: collapse;
+	margin: 0.25rem 0;
+	font-size: 0.95em;
+}
+.cm-table th,
+.cm-table td {
+	border: 1px solid var(--border);
+	padding: 0.3rem 0.7rem;
+	vertical-align: top;
+}
+.cm-table th {
+	font-weight: 600;
+	background: color-mix(in oklab, var(--muted) 60%, transparent);
+}
+
+/* A footnote's number, in the text and at its note. */
+.cm-footnote {
+	font-size: 0.7em;
+	line-height: 1;
+	color: var(--primary);
+	cursor: pointer;
+	padding: 0 0.1em;
+}
+.cm-footnote-def::after {
+	content: ".";
+}
+
+/* Another note, in place: a card. The words inside are read, not edited. */
+.cm-embed {
+	display: block;
+	margin: 0.25rem 0;
+	border: 1px solid var(--border);
+	border-left: 3px solid var(--border);
+	border-radius: 6px;
+	background: color-mix(in oklab, var(--foreground) 3%, transparent);
+	white-space: normal;
+}
+.cm-embed-title {
+	padding: 0.35rem 0.75rem;
+	font-size: 0.8em;
+	color: var(--muted-foreground);
+	cursor: pointer;
+	border-bottom: 1px solid var(--border);
+}
+.cm-embed-title:hover {
+	color: var(--foreground);
+}
+.cm-embed-body {
+	padding: 0.5rem 0.75rem;
+	font-size: 0.95em;
+}
+.cm-embed-body > :first-child { margin-top: 0; }
+.cm-embed-body > :last-child { margin-bottom: 0; }
+.cm-embed-body p { margin: 0.4em 0; }
+.cm-embed-body h1, .cm-embed-body h2, .cm-embed-body h3 { margin: 0.6em 0 0.3em; font-weight: 600; }
+.cm-embed-body h1 { font-size: 1.25em; }
+.cm-embed-body h2 { font-size: 1.1em; }
+.cm-embed-body ul, .cm-embed-body ol { padding-left: 1.4em; margin: 0.4em 0; }
+.cm-embed-body pre { font-family: ui-monospace, monospace; font-size: 0.9em; background: color-mix(in oklab, var(--foreground) 5%, transparent); border-radius: 6px; padding: 0.5em 0.75em; overflow-x: auto; }
+.cm-embed-body blockquote { border-left: 2px solid var(--border); padding-left: 0.75rem; margin: 0.4em 0; }
+.cm-embed-missing .cm-embed-body { color: var(--muted-foreground); }
