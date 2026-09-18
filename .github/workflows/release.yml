@@ -93,11 +93,17 @@ jobs:
       # one, so 0.0.1 came out as two releases with the zip alone in the second,
       # where no updater would have looked, and the step that attached the notes
       # afterwards was refused (422) because the tag named two releases.
-      - name: The release, made once
+      #
+      # A draft, until the last step: an installed app asks GitHub for the
+      # latest release and reads latest-mac.yml off it, and for the minutes
+      # between this step and the uploads 0.0.2 was the latest release with
+      # nothing on it — "Cannot find latest-mac.yml", to a person who had just
+      # pressed Check for Updates. A draft is not the latest release to anyone.
+      - name: The release, made once, as a draft
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --title "Octave ${GITHUB_REF_NAME#v}" --notes-file release-notes.md
+        run: gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Octave ${GITHUB_REF_NAME#v}" --notes-file release-notes.md
 
       # A tag publishes; a run by hand builds, signs and notarizes the same way
       # and publishes nothing.
@@ -113,8 +119,10 @@ jobs:
         run: scripts/verify-signed.sh release/mac-arm64/Octave.app
 
       # What a person downloads, what the updater downloads, and the file that
-      # tells the updater which: all three on the one release, or this is red.
-      - name: The release has everything on it
+      # tells the updater which: all three on the one release, or this is red
+      # and the draft stays a draft. Then, and only then, it is published —
+      # which is the moment an installed app can first see it.
+      - name: The release has everything on it, and is published
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -125,6 +133,7 @@ jobs:
             echo "$HAVE" | grep -qxF "$f" || { echo "::error::$f is not on the release" >&2; exit 1; }
           done
           [ "$(gh api "repos/$GITHUB_REPOSITORY/releases" -q "[.[] | select(.tag_name == \"$GITHUB_REF_NAME\")] | length")" = "1" ] || { echo "::error::more than one release for $GITHUB_REF_NAME" >&2; exit 1; }
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
 
       - name: The keychain goes with the run
         if: always()
