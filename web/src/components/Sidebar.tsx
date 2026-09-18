@@ -2,18 +2,20 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { cn } from "cn";
 import { ChevronLeftIcon, ChevronRightIcon, FileIcon, FileTextIcon, FolderIcon, GitBranchIcon, PlusIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import { titleOf } from "../noteSync";
 import { isDocument } from "../../../documentKinds.ts";
 import { documentsStore, filesStore, filesTruncatedStore } from "../serverState";
 import { type Node, openFoldersStore, reveal, setOpenFolders, toggle, treeOf } from "../tree";
-import { FolderPicker } from "./FolderPicker";
 import { noteActions } from "../noteActions";
 import { getConnection, subscribe } from "../store";
+import { CloneRepository } from "./CloneRepository";
 import { Settings } from "./Settings";
 import { Button } from "./ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Spinner } from "./ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -40,10 +42,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  * would need a line under it to say where the header ended, and that line is
  * the thing being got rid of.
  *
- * The foot of the column is what is true of the whole window: which folder
- * this is, and the settings — away from the notes and the moving about, since
- * neither is about anything in the list. Obsidian keeps its vault there and
- * Linear, Slack and VS Code all keep their settings there.
+ * The foot of the column is what is true of the whole window: the settings —
+ * away from the list, since they are about nothing in it. Linear, Slack and
+ * VS Code all keep their settings there.
  *
  * It paints in the sidebar tokens, not the page's. Every theme sets the column
  * a step off the page it sits beside — that is what the tokens are for — and a
@@ -108,8 +109,7 @@ export function Sidebar({
 			    row is what is left over. Two rows along one edge that did not agree
 			    read as one row that is crooked, and heights matched by eye drift the
 			    moment either end is touched. */}
-			<div id="foot" className="flex h-11 shrink-0 items-center gap-1 px-2">
-				<FolderPicker />
+			<div id="foot" className="flex h-11 shrink-0 items-center justify-end gap-1 px-2">
 				<Settings />
 			</div>
 		</nav>
@@ -186,6 +186,9 @@ const workspaceShell = (
 	}
 ).pi?.workspaces;
 
+/** The shell's way to add a repository from the Finder — see preload.cjs `repositories`. */
+const openLocal = (window as { pi?: { repositories?: { openLocal(): Promise<{ error?: string } | null> } } }).pi?.repositories?.openLocal;
+
 /**
  * What a workspace's row says: its branch, less the owner every branch here
  * starts with — `minkyojung/email-auth` is `email-auth` in a list of the
@@ -233,7 +236,16 @@ function useWorkspaceList(): WorkspaceList | null | undefined {
 function Workspaces({ list }: { list: WorkspaceList }) {
 	const [making, setMaking] = useState<string | null>(null);
 	const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
+	const [cloning, setCloning] = useState(false);
 	const shell = workspaceShell!;
+
+	// Adding one moves the window into it; what is left to say here is why not.
+	const addLocal = () => {
+		openLocal?.().then(
+			(result) => result?.error && toast.error(result.error),
+			(err: Error) => toast.error(err.message),
+		);
+	};
 
 	const make = (root: string) => {
 		setMaking(root);
@@ -247,69 +259,96 @@ function Workspaces({ list }: { list: WorkspaceList }) {
 		});
 
 	return (
-		<ul id="workspaces" className="no-scrollbar flex-1 overflow-y-auto overscroll-contain px-2 py-1">
-			{list.projects.map((project) => (
-				<li key={project.path}>
-					<Collapsible open={!folded.has(project.path)} onOpenChange={() => fold(project.path)} className="group/repo">
-						<div className="flex items-center gap-0.5">
-							<CollapsibleTrigger asChild>
-								<Button variant="ghost" size="sm" data-repo={project.path} className={cn(row, "min-w-0 flex-1 font-medium text-sidebar-foreground")}>
-									<ChevronRightIcon className="transition-transform group-data-[state=open]/repo:rotate-90" />
-									<span className="truncate">{project.name}</span>
+		<div className="flex min-h-0 flex-1 flex-col">
+			{/* shadcn's sidebar group: a label, and the group's one action beside it —
+			    centred over each repository's own +, which is a size larger. */}
+			<div className="flex h-8 shrink-0 items-center justify-between pr-3 pl-4">
+				<span className="text-xs font-medium text-muted-foreground">Repositories</span>
+				<DropdownMenu>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<DropdownMenuTrigger asChild>
+								<Button id="add-repository" variant="ghost" size="icon-xs" aria-label="Add a repository" className="text-muted-foreground">
+									<PlusIcon />
 								</Button>
-							</CollapsibleTrigger>
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<Button
-										variant="ghost"
-										size="icon-sm"
-										data-new-workspace={project.path}
-										aria-label={`New workspace in ${project.name}`}
-										disabled={making !== null}
-										onClick={() => make(project.path)}
-										className="shrink-0 text-muted-foreground"
-									>
-										{making === project.path ? <Spinner /> : <PlusIcon />}
+							</DropdownMenuTrigger>
+						</TooltipTrigger>
+						<TooltipContent side="right">Add a repository</TooltipContent>
+					</Tooltip>
+					<DropdownMenuContent align="start" side="right">
+						<DropdownMenuItem onSelect={addLocal}>Open local repository…</DropdownMenuItem>
+						{/* The menu is let go of first, so the dialog is not opened behind it. */}
+						<DropdownMenuItem id="clone-github" onSelect={() => queueMicrotask(() => setCloning(true))}>
+							Clone from GitHub…
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</div>
+			<CloneRepository open={cloning} onOpenChange={setCloning} />
+			<ul id="workspaces" className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-1">
+				{list.projects.map((project) => (
+					<li key={project.path}>
+						<Collapsible open={!folded.has(project.path)} onOpenChange={() => fold(project.path)} className="group/repo">
+							<div className="flex items-center gap-0.5">
+								<CollapsibleTrigger asChild>
+									<Button variant="ghost" size="sm" data-repo={project.path} className={cn(row, "min-w-0 flex-1 font-medium text-sidebar-foreground")}>
+										<ChevronRightIcon className="transition-transform group-data-[state=open]/repo:rotate-90" />
+										<span className="truncate">{project.name}</span>
 									</Button>
-								</TooltipTrigger>
-								<TooltipContent side="right">New workspace</TooltipContent>
-							</Tooltip>
-						</div>
-						<CollapsibleContent asChild>
-							<ul className="flex flex-col pl-3">
-								{project.worktrees.map((worktree) => {
-									const active = worktree.path === list.current;
-									return (
-										<li key={worktree.path}>
-											<Tooltip>
-												<TooltipTrigger asChild>
-													<Button
-														variant="ghost"
-														size="sm"
-														data-workspace={worktree.path}
-														data-active={active}
-														aria-current={active ? "page" : undefined}
-														onClick={() => !active && shell.open(worktree.path)}
-														className={cn(
-															row,
-															"data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground",
-														)}
-													>
-														<GitBranchIcon />
-														<span className="truncate">{branchName(worktree.branch)}</span>
-													</Button>
-												</TooltipTrigger>
-												<TooltipContent side="right">{worktree.branch}</TooltipContent>
-											</Tooltip>
-										</li>
-									);
-								})}
-							</ul>
-						</CollapsibleContent>
-					</Collapsible>
-				</li>
-			))}
-		</ul>
+								</CollapsibleTrigger>
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<Button
+											variant="ghost"
+											size="icon-sm"
+											data-new-workspace={project.path}
+											aria-label={`New workspace in ${project.name}`}
+											disabled={making !== null}
+											onClick={() => make(project.path)}
+											className="shrink-0 text-muted-foreground"
+										>
+											{making === project.path ? <Spinner /> : <PlusIcon />}
+										</Button>
+									</TooltipTrigger>
+									<TooltipContent side="right">New workspace</TooltipContent>
+								</Tooltip>
+							</div>
+							<CollapsibleContent asChild>
+								<ul className="flex flex-col pl-3">
+									{project.worktrees.map((worktree) => {
+										const active = worktree.path === list.current;
+										return (
+											<li key={worktree.path}>
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<Button
+															variant="ghost"
+															size="sm"
+															data-workspace={worktree.path}
+															data-active={active}
+															aria-current={active ? "page" : undefined}
+															onClick={() => !active && shell.open(worktree.path)}
+															className={cn(
+																row,
+																"data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground",
+															)}
+														>
+															<GitBranchIcon />
+															<span className="truncate">{branchName(worktree.branch)}</span>
+														</Button>
+													</TooltipTrigger>
+													<TooltipContent side="right">{worktree.branch}</TooltipContent>
+												</Tooltip>
+											</li>
+										);
+									})}
+								</ul>
+							</CollapsibleContent>
+						</Collapsible>
+					</li>
+				))}
+			</ul>
+		</div>
 	);
 }
 

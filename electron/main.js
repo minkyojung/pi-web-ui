@@ -93,20 +93,6 @@ async function askForRepository() {
 }
 
 /**
- * The folders worked in before, newest first and the current one at its head,
- * so the page can offer them the way Obsidian offers its vaults. Ones that
- * have since been deleted or moved are dropped as they are read: a list that
- * offers a folder which is not there is worse than a short list.
- */
-const RECENT = 8;
-function remember(settings, workdir) {
-	const recent = [workdir, ...(settings.recent ?? []).filter((path) => path !== workdir)]
-		.filter((path) => existsSync(path))
-		.slice(0, RECENT);
-	return { ...settings, workdir, recent };
-}
-
-/**
  * A folder's server, started on a port of its own. Its `errors` are its last
  * words: it exits deliberately for reasons a person can act on — a working
  * directory that has been deleted — and those reasons are worth more than the
@@ -380,8 +366,8 @@ async function show(workdir) {
 	}
 	if (mine !== asked) return;
 	front = workdir;
-	writeSettings(remember(readSettings(), workdir));
-	void adopt(workdir);
+	// The workspace to open on the next start — see firstWorkspace.
+	writeSettings({ ...readSettings(), workdir });
 	// The agent acts on this folder, so it should never be a guess.
 	window.setTitle(`Octave — ${basename(workdir)}`);
 	// A load cut short by the next switch is that switch's to finish.
@@ -405,23 +391,6 @@ const isCheckout = (path) => existsSync(join(path, ".git"));
 /** Tell the page the list has changed, so it asks again. */
 function workspacesChanged() {
 	if (window && !window.isDestroyed()) window.webContents.send("workspaces:changed");
-}
-
-/**
- * A folder put in front joins the list if it is a repository's — as a
- * workspace if it is a worktree, else as the repository itself, which is how
- * a clone opened directly comes to have a + to make workspaces from.
- */
-async function adopt(workdir) {
-	const root = await repositoryOf(workdir);
-	if (!root) return;
-	const worktree = root === workdir ? null : { path: workdir, branch: (await branchOf(workdir)) ?? basename(workdir), name: basename(workdir) };
-	const settings = readSettings();
-	const projects = projectsOf(settings, isCheckout);
-	const next = withWorkspace(projects, root, worktree);
-	if (next === projects) return;
-	writeSettings({ ...readSettings(), projects: next });
-	workspacesChanged();
 }
 
 /**
@@ -543,22 +512,12 @@ async function openRepositoryFromMenu() {
 	if (result?.error) dialog.showErrorBox("That folder cannot be opened", result.error);
 }
 
-function openWorkdir(picked) {
-	if (!picked || !existsSync(picked)) return;
-	void show(picked);
-}
-
 /**
- * The folder, for the page's own picker. In a dev run the dev server owns the
- * folder and the shell cannot change it, so there is nothing to offer and
- * the page says so by drawing a name rather than a menu.
+ * What the page asks of the shell: the repositories and their workspaces,
+ * and a file shown in the Finder. In a dev run the dev server owns the
+ * folder, so there is no list to switch in and nothing to add to it.
  */
 function serveFolders() {
-	ipcMain.handle("folders", () => {
-		if (devUrl) return { current: null, recent: [] };
-		return { current: front, recent: (readSettings().recent ?? []).filter((path) => existsSync(path)) };
-	});
-	ipcMain.handle("folder:choose", openRepositoryFromMenu);
 	ipcMain.handle("repository:open", () => (devUrl ? null : openLocalRepository()));
 	ipcMain.handle("repository:clone", (_event, source) => (devUrl ? null : cloneRepository(source)));
 	// What the clone dialog offers, or null when gh cannot say.
@@ -568,7 +527,6 @@ function serveFolders() {
 	ipcMain.handle("workspaces", () => (devUrl ? null : workspaces()));
 	ipcMain.handle("workspace:new", (_event, root) => (devUrl ? null : newWorkspace(root)));
 	ipcMain.handle("workspace:open", (_event, path) => (devUrl ? null : openWorkspace(path)));
-	ipcMain.handle("folder:open", (_event, path) => openWorkdir(path));
 	// A note in the Finder. The page is told the folder in full by the server
 	// (ConfigMsg.folder) and joins the note's path onto it, which is a better
 	// source than this process has: in a dev run the settings hold no workdir
