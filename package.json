@@ -1,7 +1,7 @@
 {
   "name": "octave",
   "productName": "Octave",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "A folder of notes, with the pi coding agent at the table",
   "main": "electron/main.js",
   "scripts": {

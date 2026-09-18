@@ -5,6 +5,8 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+
+## [0.0.3] - 2026-09-18
 ### Changed
 - On a Mac the agent is no longer offered PowerShell, which is not there to run: a call to it could only fail. It is gone from the tool menu too.
 - Opening another note or choosing other words before you ask no longer makes the provider read the whole conversation afresh: what was said before stays cached, so a reply in a long conversation starts sooner and costs less.
@@ -32,6 +34,7 @@ The first release. Octave is a notes app for the Mac with an agent that works in
 - A signed, notarized disk image for Apple Silicon Macs. Octave updates itself: a new version is downloaded in the background and offered, with its notes, when it is ready.
 - Octave is free software under the AGPL-3.0; the licences of everything it is built on ship inside it.
 
-[Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.3...HEAD
+[0.0.3]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/minkyojung/pi-web-ui/releases/tag/v0.0.1
