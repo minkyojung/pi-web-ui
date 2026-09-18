@@ -40,7 +40,7 @@ const until = async (what, get, ms = 15000) => {
   }
 };
 
-let cwd, appDir, server, port, log = "", skip = false;
+let cwd, appDir, clientDir, server, port, log = "", skip = false;
 let ws, inbox;
 
 test.before(async () => {
@@ -55,9 +55,14 @@ test.before(async () => {
   // they add differs from machine to machine, and one of them is slow to
   // start. The switch that says so is Octave's own setting.
   writeFileSync(join(appDir, "settings.json"), JSON.stringify({ loadExtensions: false }));
+  // A built page of its own, so what the server says of a built file can be asked: see the .mjs check.
+  clientDir = mkdtempSync(join(tmpdir(), "server-test-client-"));
+  mkdirSync(join(clientDir, "assets"));
+  writeFileSync(join(clientDir, "index.html"), "<!doctype html><title>test</title>");
+  writeFileSync(join(clientDir, "assets", "worker.mjs"), "export {};\n");
   server = spawn(join(root, "node_modules/.bin/tsx"), ["server.ts"], {
     cwd: root,
-    env: { ...process.env, WORKDIR: cwd, PORT: String(port), APP_DIR: appDir },
+    env: { ...process.env, WORKDIR: cwd, PORT: String(port), APP_DIR: appDir, CLIENT_DIR: clientDir },
     stdio: ["ignore", "pipe", "pipe"],
   });
   server.stdout.on("data", (d) => (log += d));
@@ -83,6 +88,7 @@ test.after(async () => {
   }
   if (cwd) rmSync(cwd, { recursive: true, force: true });
   if (appDir) rmSync(appDir, { recursive: true, force: true });
+  if (clientDir) rmSync(clientDir, { recursive: true, force: true });
 });
 
 const send = (m) => ws.send(JSON.stringify(m));
@@ -164,6 +170,12 @@ it("a picture pasted into a note is kept in the folder, under a name the note ca
   r = await fetch(`http://127.0.0.1:${port}/vault/${encodeURIComponent(name)}?from=a.md`);
   assert.equal(r.status, 200, "and the note can show it by name alone");
   assert.equal((await post("notes.txt", Buffer.from("x"))).status, 415, "not a kind the folder takes");
+});
+
+it("a built module is served as JavaScript: a browser will not run pdf.js's worker as anything else", async () => {
+  const r = await fetch(`http://127.0.0.1:${port}/assets/worker.mjs`);
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get("content-type"), /^text\/javascript/);
 });
 
 it("a version's notes come from the changelog beside the server, cut as the release script cuts them", async () => {

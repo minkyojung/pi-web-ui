@@ -1282,6 +1282,11 @@ const CLIENT_DIR = process.env.CLIENT_DIR
 const CONTENT_TYPES: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
 	".js": "text/javascript; charset=utf-8",
+	// pdf.js's worker is built as a module under this name, and a browser runs
+	// a module only when it is served as JavaScript: as bytes the PDF tab says
+	// the file could not be shown — in the built app alone, since vite serves
+	// its own while developing.
+	".mjs": "text/javascript; charset=utf-8",
 	".css": "text/css; charset=utf-8",
 	".svg": "image/svg+xml",
 	".map": "application/json; charset=utf-8",
