@@ -1,3 +1,4 @@
+import { isDocument } from "../../documentKinds.ts";
 import { hashForNote, wholePath } from "./noteSync";
 import { configStore } from "./serverState";
 import { send } from "./ws";
@@ -22,6 +23,13 @@ const shell = (window as { pi?: { reveal(path: string): Promise<void> } }).pi;
 
 export function noteActions(path: string): (NoteAction | "separator")[] {
 	const whole = () => wholePath(configStore.get()?.folder, path);
+	const where: NoteAction[] = [
+		{ label: "Copy path", run: () => void navigator.clipboard?.writeText(whole()) },
+		...(shell ? [{ label: "Reveal in Finder", run: () => void shell.reveal(whole()) }] : []),
+	];
+	// A document can be pointed at and found; renaming and deleting are the
+	// note's, done through its title and its log, and a PDF has neither here.
+	if (isDocument(path)) return where;
 	return [
 		{
 			label: "Rename",
@@ -39,8 +47,7 @@ export function noteActions(path: string): (NoteAction | "separator")[] {
 				});
 			},
 		},
-		{ label: "Copy path", run: () => void navigator.clipboard?.writeText(whole()) },
-		...(shell ? [{ label: "Reveal in Finder", run: () => void shell.reveal(whole()) }] : []),
+		...where,
 		"separator",
 		// To the trash, not gone: the column offers Restore afterwards, so there
 		// is nothing to confirm here.

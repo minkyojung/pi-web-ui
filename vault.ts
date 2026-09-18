@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameS
 import { writeAtomic } from "./atomic.ts";
 import { propertiesOf, setProperty, withProperties } from "./properties.ts";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import { isDocument } from "./documents.ts";
+import { isDocument } from "./documentKinds.ts";
 
 export type NoteFile = {
 	/** Relative to the folder, with forward slashes, so it reads as a name. */
@@ -158,18 +158,13 @@ export function resolveNote(root: string, path: string): string | null {
 }
 
 /**
- * The document a path from the folder names — inside it, out of the
- * dotfolders, of a kind documents.ts reads — as the vault names it, or null.
- * The same placing as a note's, with the .md rule swapped for that one.
+ * The document a path from the folder names, as the vault names it, or null:
+ * fileAt's placing, and of a kind documentKinds.ts lists.
  */
 export function documentAt(root: string, given: string): string | null {
-	if (!given || isAbsolute(given)) return null;
-	const full = asOnDisk(join(root, given));
-	const rel = relative(asOnDisk(root), full);
-	if (!rel || rel.startsWith("..") || isAbsolute(rel)) return null;
-	if (rel.split(sep).some((part) => part.startsWith("."))) return null;
-	if (!isDocument(rel)) return null;
-	return rel.split(sep).join("/");
+	if (isAbsolute(given)) return null;
+	const file = fileAt(root, given);
+	return file && isDocument(file.path) ? file.path : null;
 }
 
 /**

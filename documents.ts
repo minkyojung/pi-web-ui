@@ -19,7 +19,8 @@
  * the bytes as it always did; pi is told as much in its prompt.
  *
  * One table, keyed by extension. The row is a function from bytes to pages,
- * and a second kind of file is a second row.
+ * and a second kind of file is a second row — here, and in documentKinds.ts,
+ * which says what a document is to everything that does not read one.
  *
  * Inline, like guard.ts and wall.ts, and bound per session with them.
  */
@@ -27,6 +28,7 @@ import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { extname, isAbsolute, resolve } from "node:path";
 import { DEFAULT_MAX_BYTES, type ExtensionAPI, formatSize, truncateHead } from "@earendil-works/pi-coding-agent";
+import { isDocument } from "./documentKinds.ts";
 
 /** A file's text, one string per page. A page with no text layer is an empty string. */
 export type Pages = (bytes: Buffer) => Promise<string[]>;
@@ -40,8 +42,8 @@ export const readers: Record<string, Pages> = {
 	},
 };
 
-/** Whether `read` on this path is one of ours. */
-export const isDocument = (path: string): boolean => extname(path).toLowerCase() in readers;
+/** Whether `read` on this path is one of ours — see documentKinds.ts, which the browser asks too. */
+export { isDocument };
 
 /** The path as pi's `read` takes it: a leading `@` dropped, `~` the home folder, the rest against the folder. */
 export function resolvePath(given: string, cwd: string): string {

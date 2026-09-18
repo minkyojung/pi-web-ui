@@ -629,6 +629,24 @@ Which kinds the folder takes is the server's to say, since it holds the one
 list of what pi can read; a refusal is said in the conversation. The
 conversation keeps the path and not the pages, which is what keeps it light.
 
+A PDF is a row of the tree where it is on disk, and opens in a tab. The tab
+row holds addresses and a PDF's address is its path, as a note's is, so
+nothing about tabs, the way back or the address bar learned a new kind of
+thing: `pageOf` (`pages.ts`) is asked what an address is before anything reads
+it as a note, and answers "a document" by the one list of what a document is
+(`documentKinds.ts`, at the root, which the server and pi's reader share).
+What draws it is pdf.js's own viewer (`Pdf.tsx`) — the part that lays real
+text over each page, so words are chosen with the mouse as anywhere else, and
+draws only the pages in view; it is what Firefox and Obsidian show one with.
+It is fetched when the first PDF is opened, being larger than the rest of the
+window together, and the character maps and fonts it reads beside itself are
+copied next to the build (`vite.config.ts`), without which a PDF in Hangul
+that left its fonts out opens as boxes. The bytes come from `/vault/`, the
+route the pictures in a note come by, which gives a document out by its exact
+path and nothing else that is not a picture. Renaming and deleting are not
+offered on one: those are done through a note's title and its log, and a PDF
+has neither here.
+
 The rest of what pi can do to a session is here as a button each, each a
 line of pi's API: `compact` (pi's `/compact`, from the context card, while
 nothing is being written); `delete_session` (the picker's bin, not for the open

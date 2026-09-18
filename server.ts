@@ -50,6 +50,7 @@ import { claimAppDir } from "./appDir.ts";
 import { wall } from "./wall.ts";
 import { documents } from "./documents.ts";
 import { MAX_BYTES, saveAttachment, type Saved } from "./attach.ts";
+import { documentType } from "./documentKinds.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { watchNotes } from "./watcher.ts";
@@ -1286,6 +1287,7 @@ const CONTENT_TYPES: Record<string, string> = {
 	".map": "application/json; charset=utf-8",
 	".ico": "image/x-icon",
 	".woff2": "font/woff2",
+	".wasm": "application/wasm",
 };
 
 
@@ -1432,7 +1434,11 @@ const server = createServer(async (req, res) => {
 			res.writeHead(400).end("Bad path");
 			return;
 		}
-		const found = attachmentAt(CWD, given, url.searchParams.get("from") ?? "");
+		// A picture a note refers to, or a document by its own path: what the tab
+		// that shows a PDF reads (Pdf.tsx). A document is named exactly, never
+		// looked for by name, since nothing embeds one yet.
+		const document = documentAt(CWD, given);
+		const found = attachmentAt(CWD, given, url.searchParams.get("from") ?? "") ?? (document ? { full: join(CWD, document), type: documentType(document)! } : null);
 		if (!found) {
 			res.writeHead(404).end("Not found");
 			return;

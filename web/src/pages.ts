@@ -7,19 +7,31 @@
  * tabs and the hash need no second kind of thing; what looks at the address
  * as a file asks pageOf first. VS Code's untitled: is the same move.
  */
+import { isDocument } from "../../documentKinds.ts";
+
 const WHATS_NEW = "octave://whats-new/";
 
-export type Page = { kind: "whats-new"; version: string; title: string };
+/**
+ * A page of the app's own, or a document in the folder — a PDF — whose
+ * address is its path like a note's, and which is no more a note than the
+ * first: the middle column is its viewer's, and nothing reads it as text.
+ */
+export type Page = { kind: "whats-new"; version: string; title: string } | { kind: "document"; path: string; title: string };
 
 export const whatsNewPath = (version: string): string => `${WHATS_NEW}${version}`;
 
 export function pageOf(path: string | null): Page | null {
+	// Its name whole, extension and all: that is how the tab says what it is.
+	if (path && isDocument(path)) return { kind: "document", path, title: path.slice(path.lastIndexOf("/") + 1) };
 	if (!path?.startsWith(WHATS_NEW)) return null;
 	const version = path.slice(WHATS_NEW.length);
 	return /^\d+\.\d+\.\d+$/.test(version) ? { kind: "whats-new", version, title: `What's new in ${version}` } : null;
 }
 
 export const isPage = (path: string | null): boolean => pageOf(path) !== null;
+
+/** Where the server gives a file in the folder out, by its path (the /vault route). */
+export const vaultUrl = (path: string): string => `/vault/${path.split("/").map(encodeURIComponent).join("/")}`;
 
 /**
  * A changelog section as blocks to draw: the only marks it uses are a

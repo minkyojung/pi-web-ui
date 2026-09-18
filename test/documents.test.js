@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { DEFAULT_MAX_BYTES } from "@earendil-works/pi-coding-agent";
 import { createDocuments, documents, isDocument, pagesText, portion, readers, resolvePath } from "../documents.ts";
+import { DOCUMENT_TYPES, documentType } from "../documentKinds.ts";
 
 const FIXTURE = new URL("fixtures/three-pages.pdf", import.meta.url).pathname;
 
@@ -14,6 +15,13 @@ test("어떤 파일이 우리 것인지는 확장자로, 대소문자 없이", (
 	assert.equal(isDocument("A.PDF"), true);
 	assert.equal(isDocument("a.md"), false);
 	assert.equal(isDocument("a.pdf.txt"), false);
+});
+
+test("문서라고 부르는 것과 읽을 줄 아는 것은 같은 목록이다", () => {
+	assert.deepEqual(Object.keys(DOCUMENT_TYPES).sort(), Object.keys(readers).sort(), "documentKinds.ts에 줄을 더하면 documents.ts에 읽는 법도");
+	assert.equal(documentType("papers/a.PDF"), "application/pdf");
+	assert.equal(documentType("a.md"), null);
+	assert.equal(documentType("folder.pdf/note"), null, "폴더 이름의 점은 확장자가 아니다");
 });
 
 test("경로는 pi의 read가 받는 대로 — @를 떼고, ~는 집, 나머지는 폴더 기준", () => {

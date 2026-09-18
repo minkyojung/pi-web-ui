@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type PanelImperativeHandle, useDefaultLayout } from "react-resizable-panels";
 
 import { Editor } from "./components/Editor";
@@ -20,6 +20,10 @@ import { hashForNote, noteFromHash } from "./noteSync";
 import { pageOf, whatsNewPath } from "./pages";
 import { pageAskedStore, updateStore } from "./update";
 import { WhatsNew } from "./components/WhatsNew";
+
+// pdf.js is larger than the rest of the window put together, and most days no
+// PDF is opened: it is fetched when the first one is.
+const Pdf = lazy(() => import("./components/Pdf"));
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
 import { bump, forget, readRecent, writeRecent } from "./recent";
@@ -539,7 +543,8 @@ export function App() {
 					    rather than in it, and the list begins below it. */}
 					<div className="h-11 shrink-0" />
 					<Boundary name="list of notes">
-						<Sidebar open={note} onOpen={setOpen} />
+						{/* A document in front is a row of the list like a note is, so it is lit there too. */}
+						<Sidebar open={page?.kind === "document" ? page.path : note} onOpen={setOpen} />
 					</Boundary>
 				</ResizablePanel>
 				<ResizableHandle />
@@ -609,7 +614,13 @@ export function App() {
 					    be had, and the room was the one to go: a note short enough for
 					    this to matter is a note that does not scroll, and room to scroll
 					    into is nothing to a page that has nowhere to go. */}
-					{page ? (
+					{page?.kind === "document" ? (
+						<Boundary name="document" hint="The file itself is untouched.">
+							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
+								<Pdf key={page.path} path={page.path} />
+							</Suspense>
+						</Boundary>
+					) : page ? (
 						<WhatsNew key={page.version} version={page.version} />
 					) : open && deleted?.path !== open ? (
 						<div id="note" className="no-scrollbar edge-top flex min-h-0 flex-1 flex-col overflow-y-auto">

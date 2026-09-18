@@ -945,6 +945,23 @@ it("갈래를 만들면 그 질문까지를 가진 새 세션이 열리고 질�
   assert.equal(existsSync(older.path), false, "the file is gone (to the bin, or unlinked)");
 });
 
+test("폴더의 PDF는 /vault/로 제 경로에서만, PDF로 나간다", async () => {
+  mkdirSync(join(cwd, "papers"), { recursive: true });
+  const bytes = readFileSync(join(root, "test/fixtures/three-pages.pdf"));
+  writeFileSync(join(cwd, "papers/served paper.pdf"), bytes);
+  const get = (path) => fetch(`http://127.0.0.1:${port}/vault/${path}`);
+  const found = await get("papers/served%20paper.pdf");
+  assert.equal(found.status, 200);
+  assert.equal(found.headers.get("content-type"), "application/pdf");
+  assert.equal(Buffer.from(await found.arrayBuffer()).equals(bytes), true, "바이트 그대로");
+  assert.equal((await get("served%20paper.pdf")).status, 404, "그림과 달리 이름만으로 찾아 주지는 않는다");
+  assert.equal((await get("a.md")).status, 404, "노트는 이 길로 나가지 않는다");
+  assert.equal((await get("..%2Fpapers%2Fserved%20paper.pdf")).status, 404);
+  mkdirSync(join(cwd, ".pi/x"), { recursive: true });
+  writeFileSync(join(cwd, ".pi/x/hidden.pdf"), bytes);
+  assert.equal((await get(".pi/x/hidden.pdf")).status, 404, "앱의 폴더 안은 아니다");
+});
+
 // A file dropped on the app arrives as a name and its bytes — see attach.ts.
 test("떨어뜨린 파일은 attachments/에 놓이고, PDF면 목록이 바로 듣는다 — 남의 페이지가 보낸 것은 아니다", async () => {
   const url = (name) => `http://127.0.0.1:${port}/api/attachment?name=${encodeURIComponent(name)}`;

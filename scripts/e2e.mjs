@@ -2732,6 +2732,29 @@ check("typing @ in the message box offers the notes, and Enter writes the chosen
 });
 
 /**
+ * A PDF in the folder is a row of the tree, where it is on disk, and opens in
+ * a tab of its own drawn by pdf.js — with a layer of real text over the page,
+ * which is what makes its words choosable. The fixture's words are the check.
+ */
+check("a PDF in the folder is in the tree, and opens in a tab with its words on the page", async ({ app, cwd }) => {
+	mkdirSync(join(cwd, "papers"), { recursive: true });
+	writeFileSync(join(cwd, "papers/three pages.pdf"), readFileSync(join(root, "test/fixtures/three-pages.pdf")));
+	await pickNote(app, "papers/three pages.pdf");
+	await until("the first page's words in the text layer", () => app.evaluate("[...document.querySelectorAll('#page .textLayer')].some((l) => l.textContent.includes('The first page.'))"), 30000);
+	assert.equal(await app.evaluate("document.querySelectorAll('#page .pdfViewer .page').length"), 3, "every page has its place");
+	assert.equal(await app.evaluate("document.querySelector('#note')"), null, "no editor under it");
+	assert.equal(await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.textContent.trim()"), "three pages.pdf", "the tab says its name, extension and all");
+	assert.equal(await app.evaluate("document.querySelector('#notes button[data-path=\"papers/three pages.pdf\"]').dataset.active"), "true", "its row is lit");
+	assert.equal(await app.evaluate("decodeURIComponent(location.hash)"), "#papers/three pages.pdf", "the address is its path, as a note's is");
+	// The page is fitted to the column rather than drawn at its own size.
+	const widths = await app.evaluate("(() => { const p = document.querySelector('#page .pdfViewer .page').getBoundingClientRect().width; const c = document.querySelector('#page').getBoundingClientRect().width; return [p, c]; })()");
+	assert.ok(widths[0] > widths[1] * 0.8 && widths[0] <= widths[1], `the page fits the column: ${widths}`);
+	// Reloaded at that address, it comes back as it was.
+	await app.evaluate("location.reload()");
+	await until("the words again after a reload", () => app.evaluate("[...document.querySelectorAll('#page .textLayer')].some((l) => l.textContent.includes('The first page.'))"), 30000);
+});
+
+/**
  * A PDF dropped on the message box goes into the folder and is named in the
  * message. The drop is a real DragEvent carrying a real File, so what is
  * checked is the whole path: the box, the door, the disk, the list.
