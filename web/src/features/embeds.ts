@@ -12,6 +12,7 @@ import { type EditorState, type Extension, type Range, type SelectionRange, Stat
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 
 import { readWikiLink, resolve } from "../../../links.ts";
+import { noteChangedStore } from "../serverState";
 import { blocksDom } from "./blocksDom.ts";
 import { sectionOf } from "./embed.ts";
 import { notesChanged } from "./links";
@@ -128,8 +129,22 @@ export function embeds(ctx: Ctx): Extension {
 	return ViewPlugin.fromClass(
 		class {
 			decorations: DecorationSet;
+			stop: () => void;
 			constructor(view: EditorView) {
 				this.decorations = cards(view, ctx);
+				// A note that changed on disk — written here in another tab, by the
+				// agent, or from outside — is read again if a card shows it: the
+				// server says so to every tab (note_changed), and the card is only
+				// as current as what it was drawn from.
+				this.stop = noteChangedStore.subscribe(() => {
+					const path = noteChangedStore.get()?.path;
+					if (!path || !fetched.has(path)) return;
+					fetched.delete(path);
+					fetchNote(path, view);
+				});
+			}
+			destroy() {
+				this.stop();
 			}
 			update(u: ViewUpdate) {
 				const poked = u.transactions.some((tr) => tr.effects.some((e) => e.is(notesChanged) || e.is(loaded)));

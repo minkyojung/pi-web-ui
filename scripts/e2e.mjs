@@ -1315,6 +1315,15 @@ check("another note is shown in place — all of it, a section, a block — and 
 	// The cursor in the markup: the card gone for that line, the markup back.
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("![[Source#Part two]]") + 3; v.dispatch({ selection: { anchor: at } }); })()`);
 	await until("that line as written", async () => (await shownText(app)).includes("![[Source#Part two]]") && (await cards()).length === 3);
+	// The other note changes on disk: the card that shows it is read again.
+	await app.press("End", { meta: true });
+	await until("four cards again", async () => (await cards()).length === 4);
+	writeFileSync(join(cwd, "Source.md"), "# Source\n\nThe source's NEW first words.\n\n## Part two\n\n- one **two**\n- three\n\n## Part three\n\nlast, with an id. ^p3\n");
+	await until("the card read again", async () => (await cards())[0][1].includes("NEW first words"));
+	// A click on a card's body: the cursor on its line, the markup back.
+	await app.evaluate("document.querySelector('#editor .cm-embed-body').scrollIntoView({ block: 'center' })");
+	assert.ok(await app.click("#editor .cm-embed-body", 0), "a body to click");
+	await until("that line as written, from a click", async () => (await shownText(app)).includes("![[Source]]"));
 	// The card's title opens the note.
 	await app.press("End", { meta: true });
 	// Read again, not only drawn: a card grows as its note arrives, and a title
