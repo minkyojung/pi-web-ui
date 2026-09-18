@@ -43,6 +43,19 @@ export function matchNotes(paths: string[], query: string): string[] {
 	return ranked.sort((a, b) => a.r - b.r).map((x) => x.p);
 }
 
+/**
+ * The text with a mention of `path` put in at the cursor — for a file that
+ * was dropped rather than typed for — as a word of its own: a space before it
+ * unless it starts the text or follows one, a space after unless one is
+ * there already, the cursor after that.
+ */
+export function insertMention(text: string, cursor: number, path: string): { text: string; cursor: number } {
+	const before = text.slice(0, cursor);
+	const after = text.slice(cursor);
+	const written = `${before === "" || /\s$/.test(before) ? "" : " "}@${path}${/^\s/.test(after) ? "" : " "}`;
+	return { text: before + written + after, cursor: before.length + written.length };
+}
+
 /** The text with the `@word` at `from`…`cursor` replaced by the note's path and a space, and where the cursor lands. */
 export function acceptMention(text: string, from: number, cursor: number, path: string): { text: string; cursor: number } {
 	const written = `@${path} `;

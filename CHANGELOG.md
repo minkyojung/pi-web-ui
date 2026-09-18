@@ -20,6 +20,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - Type `@` anywhere in the message box and your notes are listed; pick one and its path goes in, so the agent knows which note you mean.
 - A PDF in your folder can be talked about: name it in the message by its path, as you would a note, and the agent reads it page by page. A long one it reads in parts, as it does a long file.
 - Type `@` in the message box and the PDFs in your folder are offered after the notes, so one can be named without typing its path.
+- Drop a PDF on the message box, or paste one, and it is saved in your folder under `attachments/` and named in your message, ready to ask about. A file of the same name is never replaced; the new one gets a number.
 - Type `/` in the message box and the commands the agent can run are listed — the web search extension's, your prompt templates, your skills. Up and down choose, Enter fills it in, Enter again sends. A command an extension runs can ask you something, and it comes up as the same card the agent's questions do.
 
 

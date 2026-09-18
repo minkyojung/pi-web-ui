@@ -621,6 +621,14 @@ the way to take it back out. Pasting is the one way in: the dropzone and the
 button the component brings are not used. A message is words, so an image with
 no words beside it is not sent.
 
+Any other file dropped or pasted there does not ride with the message: it goes
+into the folder by the door above, and its path goes into the message where
+the cursor is, as a mention — so a PDF from the desktop ends up exactly where
+one already in the folder would be, a file the message names and pi reads.
+Which kinds the folder takes is the server's to say, since it holds the one
+list of what pi can read; a refusal is said in the conversation. The
+conversation keeps the path and not the pages, which is what keeps it light.
+
 The rest of what pi can do to a session is here as a button each, each a
 line of pi's API: `compact` (pi's `/compact`, from the context card, while
 nothing is being written); `delete_session` (the picker's bin, not for the open

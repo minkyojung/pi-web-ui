@@ -2563,6 +2563,34 @@ check("typing @ in the message box offers the notes, and Enter writes the chosen
 	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
 });
 
+/**
+ * A PDF dropped on the message box goes into the folder and is named in the
+ * message. The drop is a real DragEvent carrying a real File, so what is
+ * checked is the whole path: the box, the door, the disk, the list.
+ */
+check("a PDF dropped on the message box is put in attachments/ and named in the message", async ({ app, cwd }) => {
+	const box = () => app.evaluate("document.querySelector('textarea').value");
+	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.focus(); t.value = 'about'; t.setSelectionRange(5, 5); t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+	await app.evaluate(`(() => {
+		const data = new DataTransfer();
+		data.items.add(new File([new TextEncoder().encode("%PDF-1.4 dropped")], "dropped here.pdf", { type: "application/pdf" }));
+		document.querySelector('textarea').dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
+	})()`);
+	await until("the path written in", async () => (await box()) === "about @attachments/dropped here.pdf ");
+	assert.equal(readFileSync(join(cwd, "attachments/dropped here.pdf"), "utf8"), "%PDF-1.4 dropped", "the bytes are in the folder");
+	assert.equal(await app.evaluate("document.querySelector('#adding') === null"), true, "the line saying so is gone once it is there");
+	assert.equal(await app.evaluate("document.querySelector('#attached') === null"), true, "it is not an image riding with the message");
+	// A kind the folder does not take is refused, in the conversation, and nothing is written in.
+	await app.evaluate(`(() => {
+		const data = new DataTransfer();
+		data.items.add(new File(["x"], "script.sh", { type: "text/x-sh" }));
+		document.querySelector('textarea').dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
+	})()`);
+	await until("the refusal said", () => app.evaluate("document.body.innerText.includes('Could not add script.sh')"));
+	assert.equal(await box(), "about @attachments/dropped here.pdf ");
+	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+});
+
 check("the loadout screen keeps a model pi does not offer, and shows a change another window made", async ({ app, api }) => {
 	const url = `http://localhost:${api}/api/settings`;
 	const post = (patch) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) });
