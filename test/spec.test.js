@@ -4,8 +4,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 
-import spec, { specPrompt, takenSpecs, unnamed } from "../spec.ts";
-import { approve } from "../specApproval.ts";
+import spec, { nextPrompt, specPrompt, takenSpecs, unnamed } from "../spec.ts";
+import { approve, specState } from "../specApproval.ts";
 
 test("아직 도시 이름인 브랜치만 이름을 바꿀 자리다 — main이나 이미 이름이 있는 브랜치는 그대로", () => {
   assert.equal(unnamed("minkyojung/tokyo"), "minkyojung/", "소유자는 남기고 도시만 바꾼다");
@@ -34,6 +34,7 @@ test("지시문은 한 줄을 인용하고, Kiro의 requirements 형식과 우�
   assert.match(said, /SHALL stay as they are, where the form puts them/, "키워드는 영어로, 양식의 자리에 — SHALL이 한국어 어순을 따라 문장 끝으로 가지 않게");
   assert.match(said, /edge cases/);
   assert.match(said, /Do not go on to a design/, "쓰고 나면 멈춘다");
+  assert.match(said, /Do not ask them to approve it/, "묻지 않는다 — 사람이 준비됐을 때 승인한다");
 });
 
 test("이미 있는 스펙 이름은 지시문이 피하라고 말하고, 이름이 있는 브랜치는 그대로 두라고 한다", () => {
@@ -59,6 +60,9 @@ test("이미 있는 스펙은 .octave/specs/ 아래의 폴더들이다", (t) => 
 
 // --- the command, as pi would run it ---
 
+/** What the code says once a turn leaves the requirements waiting. */
+const WAITING = { text: ".octave/specs/email-auth/requirements.md is waiting for you: read it, and when it is right, approve it with /spec-approve.", type: "info" };
+
 /**
  * A pi that records what the command does, in a folder of its own, on a
  * branch of our choosing — `undefined` for a folder that is not a repository.
@@ -71,10 +75,10 @@ function fakePi(branch, branches = []) {
   const handlers = {};
   const heads = new Set(branches);
   const cwd = mkdtempSync(join(tmpdir(), "spec-fake-"));
-  let command;
+  const commands = {};
   const answer = (code, stdout = "") => ({ code, stdout, stderr: "", killed: false });
   const pi = {
-    registerCommand: (name, options) => (command = { name, ...options }),
+    registerCommand: (name, options) => (commands[name] = { name, ...options }),
     on: (event, fn) => (handlers[event] = fn),
     exec: async (_git, args) => {
       if (branch === undefined) return answer(128);
@@ -92,17 +96,19 @@ function fakePi(branch, branches = []) {
   };
   spec(pi);
   const ctx = (idle) => ({ cwd, isIdle: () => idle, ui: { notify: (text, type) => notes.push({ text, type }) } });
-  const run = (args, { idle = true } = {}) => command.handler(args, ctx(idle));
+  const run = (args, { idle = true } = {}) => commands.spec.handler(args, ctx(idle));
+  const approveCommand = (args = "", { idle = true } = {}) => commands["spec-approve"].handler(args, ctx(idle));
   /** The agent writing a spec's first document, as the model would. */
   const write = (name) => {
     mkdirSync(join(cwd, ".octave/specs", name), { recursive: true });
     writeFileSync(join(cwd, ".octave/specs", name, "requirements.md"), "# Requirements Document\n");
   };
+  const start = () => handlers.agent_start?.({ type: "agent_start" }, ctx(false));
   const settle = () => handlers.agent_settled?.({ type: "agent_settled" }, ctx(true));
   /** A tool called with a path, as pi would put it to the extension before running it. */
   const call = (toolName, path) => handlers.tool_call?.({ type: "tool_call", toolCallId: "call-1", toolName, input: { path, content: "x" } }, ctx(true));
   const cleanup = () => rmSync(cwd, { recursive: true, force: true });
-  return { command: () => command, done, notes, renamed, run, write, settle, call, cleanup, cwd };
+  return { command: () => commands.spec, commands, done, notes, renamed, run, approve: approveCommand, write, start, settle, call, cleanup, cwd };
 }
 
 test("/spec 한 줄은 그 줄만 대화에 남기고, 지시문은 같은 턴에 모델에게만 간다 — 기다림 없이", async (t) => {
@@ -145,7 +151,7 @@ test("git이 아닌 곳에서도 스펙은 쓰고, 브랜치는 말하지도 바
   pi.write("email-auth");
   await pi.settle();
   assert.deepEqual(pi.renamed, []);
-  assert.deepEqual(pi.notes, []);
+  assert.deepEqual(pi.notes, [WAITING], "브랜치 말은 없고, 기다리는 문서만");
 });
 
 // --- the branch, named by the code once the spec is written ---
@@ -157,7 +163,7 @@ test("스펙이 쓰인 턴이 끝나면 코드가 도시 브랜치를 그 이름
   pi.write("email-auth");
   await pi.settle();
   assert.deepEqual(pi.renamed, ["minkyojung/email-auth"]);
-  assert.deepEqual(pi.notes, [{ text: "The branch is minkyojung/email-auth now.", type: "info" }]);
+  assert.deepEqual(pi.notes, [{ text: "The branch is minkyojung/email-auth now.", type: "info" }, WAITING], "브랜치, 그리고 기다리는 문서");
   // The next turn, a spec or not, is not this one's.
   pi.write("second");
   await pi.settle();
@@ -298,6 +304,199 @@ test("스펙 문서가 아닌 것과 쓰지 않는 도구에는 상관하지 않
   }
   assert.equal(await pi.call("read", ".octave/specs/email-auth/design.md"), undefined, "읽기는 언제나");
   assert.equal(await pi.call("write", undefined), undefined, "경로가 없는 호출은 pi가 거절한다");
+});
+
+// --- approving, one document at a time ---
+
+/** The spec's folder in the fake, and a document put in it as the agent or the person would. */
+const docs = (pi, name = "email-auth") => ({
+  put: (doc, text = `# ${doc}\n`) => {
+    mkdirSync(join(pi.cwd, ".octave/specs", name), { recursive: true });
+    writeFileSync(join(pi.cwd, ".octave/specs", name, doc), text);
+  },
+  state: () => specState(pi.cwd, name),
+});
+
+test("/spec-approve는 기다리는 문서를 승인하고, 같은 턴에 다음 문서를 쓰게 한다 — 보이는 것은 친 명령뿐", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  const spec = docs(pi);
+  assert.ok(pi.commands["spec-approve"].description);
+
+  spec.put("requirements.md");
+  await pi.approve("");
+  assert.deepEqual(spec.state(), { approved: 1, waiting: null }, "승인은 코드가 적는다");
+  assert.deepEqual(pi.notes, []);
+  const [hidden, shown] = pi.done;
+  assert.equal(hidden.sendMessage.customType, "spec");
+  assert.equal(hidden.sendMessage.display, false);
+  assert.equal(hidden.options.deliverAs, "nextTurn");
+  assert.equal(hidden.sendMessage.content, nextPrompt({ name: "email-auth", next: "design.md", redo: false }));
+  assert.equal(shown.sendUserMessage, "/spec-approve");
+  assert.equal(shown.options, undefined);
+
+  spec.put("design.md");
+  pi.done.length = 0;
+  await pi.approve("");
+  assert.deepEqual(spec.state(), { approved: 2, waiting: null });
+  assert.equal(pi.done[0].sendMessage.content, nextPrompt({ name: "email-auth", next: "tasks.md", redo: false }));
+
+  spec.put("tasks.md");
+  pi.done.length = 0;
+  await pi.approve("");
+  assert.deepEqual(spec.state(), { approved: 3, waiting: null });
+  assert.deepEqual(pi.done, [], "마지막 문서 뒤에는 쓸 것이 없다 — 턴을 시작하지 않는다");
+  assert.deepEqual(pi.notes, [{ text: "The spec email-auth is ready: its requirements, design and tasks are approved.", type: "info" }]);
+});
+
+test("설계와 작업 목록의 지시문은 Kiro의 형식이고, 묻지 않고 멈추라고 한다", () => {
+  const design = nextPrompt({ name: "email-auth", next: "design.md", redo: false });
+  assert.ok(design.includes(".octave/specs/email-auth/requirements.md"), "무엇이 승인됐는지");
+  assert.ok(design.includes(".octave/specs/email-auth/design.md"));
+  for (const section of ["# Design Document", "## Overview", "## Architecture", "## Components and Interfaces", "## Data Models", "## Error Handling", "## Testing Strategy"]) {
+    assert.ok(design.includes(section), section);
+  }
+  assert.match(design, /read the code/i, "설계 단계에서 조사한다");
+  assert.match(design, /Mermaid/);
+  assert.match(design, /offer to go back/, "빈 곳을 찾으면 고치지 말고 되돌아가자고");
+  assert.match(design, /Do not ask them to approve it/);
+  assert.match(design, /with write, not note_write|with write — it is not a note/, "노트가 아니다");
+
+  const tasks = nextPrompt({ name: "email-auth", next: "tasks.md", redo: false });
+  assert.ok(tasks.includes(".octave/specs/email-auth/tasks.md"));
+  assert.ok(
+    tasks.includes("Convert the feature design into a series of prompts for a code-generation LLM that will implement each step in a test-driven manner."),
+    "Kiro의 지시 그대로",
+  );
+  for (const form of ["# Implementation Plan", "- [ ] 2.1 Create core data model interfaces and types", "_Requirements: 2.1, 3.3, 1.2_"]) {
+    assert.ok(tasks.includes(form), form);
+  }
+  assert.match(tasks, /at most two levels/);
+  assert.match(tasks, /deployment/, "코딩이 아닌 작업은 넣지 않는다");
+  assert.match(tasks, /Every requirement/);
+  assert.match(tasks, /Do not ask them to approve it/);
+  assert.match(tasks, /Do not start on the tasks/);
+});
+
+test("되돌아가 고친 뒤 다시 승인하면, 이미 있는 다음 문서를 새 내용에 맞추게 한다 — 바꿀 것이 없으면 그대로", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  const spec = docs(pi);
+  for (const doc of ["requirements.md", "design.md", "tasks.md"]) {
+    spec.put(doc);
+    approve(pi.cwd, "email-auth");
+  }
+  spec.put("requirements.md", "# requirements.md\n\nSign in with Google as well.\n");
+  await pi.approve("");
+  assert.deepEqual(spec.state(), { approved: 1, waiting: "design.md" }, "설계는 옛 요구사항 위에 있다");
+  const design = pi.done[0].sendMessage.content;
+  assert.equal(design, nextPrompt({ name: "email-auth", next: "design.md", redo: true }));
+  assert.match(design, /as they were before/);
+  assert.match(design, /only there/);
+  assert.match(design, /If nothing needs to change, change nothing/);
+  assert.equal(design.includes("## Testing Strategy"), false, "새로 쓰는 것이 아니다");
+
+  pi.done.length = 0;
+  await pi.approve("");
+  const tasks = pi.done[0].sendMessage.content;
+  assert.equal(tasks, nextPrompt({ name: "email-auth", next: "tasks.md", redo: true }));
+  assert.match(tasks, /checked as done stays as it is/, "이미 한 작업은 지우지 않는다");
+});
+
+test("쓰던 턴이 끊겨 다음 문서가 없으면, /spec-approve가 다시 쓰게 한다 — 새로 승인하는 것은 없다", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  const spec = docs(pi);
+  spec.put("requirements.md");
+  approve(pi.cwd, "email-auth");
+  await pi.approve("");
+  assert.deepEqual(spec.state(), { approved: 1, waiting: null });
+  assert.equal(pi.done[0].sendMessage.content, nextPrompt({ name: "email-auth", next: "design.md", redo: false }));
+});
+
+test("승인할 것이 없거나, 여럿이거나, 에이전트가 일하는 중이면 알리기만 한다", async (t) => {
+  const pi = fakePi("main");
+  t.after(pi.cleanup);
+  await pi.approve("");
+  assert.match(pi.notes.at(-1).text, /Nothing is waiting for your approval/);
+
+  const a = docs(pi, "email-auth");
+  const b = docs(pi, "billing");
+  a.put("requirements.md");
+  b.put("requirements.md");
+  await pi.approve("");
+  assert.match(pi.notes.at(-1).text, /More than one spec is waiting: billing, email-auth\. Say which: \/spec-approve billing/);
+  assert.deepEqual([a.state().approved, b.state().approved], [0, 0], "아무것도 승인하지 않았다");
+
+  await pi.approve("email-auth", { idle: false });
+  assert.equal(pi.notes.at(-1).type, "warning");
+  assert.equal(a.state().approved, 0, "일하는 중에는 승인하지 않는다 — 쓰던 문서일 수 있다");
+
+  await pi.approve("  email-auth  ");
+  assert.equal(a.state().approved, 1, "이름을 대면 그것만");
+  assert.equal(b.state().approved, 0);
+  assert.equal(pi.done.at(-1).sendUserMessage, "/spec-approve email-auth");
+
+  const before = pi.done.length;
+  await pi.approve("sign-in");
+  assert.match(pi.notes.at(-1).text, /There is no spec called sign-in/);
+  await pi.approve("../email-auth");
+  assert.match(pi.notes.at(-1).text, /There is no spec called \.\.\/email-auth/);
+
+  for (const doc of ["design.md", "tasks.md"]) {
+    a.put(doc);
+    approve(pi.cwd, "email-auth");
+  }
+  await pi.approve("email-auth");
+  assert.match(pi.notes.at(-1).text, /The spec email-auth is ready/);
+  assert.equal(pi.done.length, before, "턴은 하나도 더 시작되지 않았다");
+});
+
+test("턴이 끝나면 새로 기다리게 된 문서를 한 번 알린다 — 고쳐 쓰는 턴마다 알리지는 않는다", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  const spec = docs(pi);
+  const waiting = (doc, how = "/spec-approve") => ({ text: `.octave/specs/email-auth/${doc} is waiting for you: read it, and when it is right, approve it with ${how}.`, type: "info" });
+
+  pi.start();
+  spec.put("requirements.md");
+  await pi.settle();
+  assert.deepEqual(pi.notes, [waiting("requirements.md")], "처음 쓰였다");
+
+  pi.start();
+  spec.put("requirements.md", "# requirements.md\n\nRevised.\n");
+  await pi.settle();
+  assert.equal(pi.notes.length, 1, "고쳐 달라는 말에 고친 턴: 여전히 같은 문서가 기다린다");
+
+  pi.start();
+  await pi.settle();
+  assert.equal(pi.notes.length, 1, "스펙과 상관없는 턴");
+
+  await pi.approve("");
+  pi.start();
+  spec.put("design.md");
+  await pi.settle();
+  assert.deepEqual(pi.notes.at(-1), waiting("design.md"), "다음 문서");
+
+  // Back to the requirements and approved again: the design waits again, and
+  // that is news though it was waiting before — the turn was the command's.
+  approve(pi.cwd, "email-auth");
+  pi.start();
+  spec.put("requirements.md", "# requirements.md\n\nRevised again.\n");
+  await pi.settle();
+  assert.deepEqual(pi.notes.at(-1), waiting("requirements.md"), "승인이 풀린 것도 새 소식이다");
+  const told = pi.notes.length;
+  await pi.approve("");
+  pi.start();
+  await pi.settle();
+  assert.equal(pi.notes.length, told + 1);
+  assert.deepEqual(pi.notes.at(-1), waiting("design.md"), "명령이 시작한 턴은 끝에 늘 말한다");
+
+  // A second spec waiting as well: the command has to be told which.
+  pi.start();
+  docs(pi, "billing").put("requirements.md");
+  await pi.settle();
+  assert.deepEqual(pi.notes.at(-1), { text: ".octave/specs/billing/requirements.md is waiting for you: read it, and when it is right, approve it with /spec-approve billing.", type: "info" });
 });
 
 // --- the command in a real pi session, on a model that is not one ---
