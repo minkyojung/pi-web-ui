@@ -2,14 +2,19 @@
  * `/spec <a line>`: the start of a spec — docs/spec-mode.
  *
  * The line is what the person wants built. The agent names the work, makes
- * its folder under `.octave/specs/`, gives the workspace's branch that name,
- * writes the requirements, and stops for the person to read them — Kiro's
- * first phase, in Kiro's form, on Octave's unit of a spec being a branch.
+ * its folder under `.octave/specs/`, writes the requirements, and stops for
+ * the person to read them — Kiro's first phase, in Kiro's form — and then the
+ * workspace's branch is given the spec's name, on Octave's unit of a spec
+ * being a branch.
  *
- * What the command knows it says, and what it cannot know it asks for. The
- * branch and the specs already there are facts, read here and written into
- * the instructions; the name is a judgement about the person's words, and the
- * model makes it. The branch is renamed only while it still has a workspace's
+ * The model judges and the code acts. The name is a judgement about the
+ * person's words, so the model makes it; the specs already there are facts,
+ * read here and written into the instructions. The branch is git's, and git
+ * renames it, here, once the turn that wrote the spec is over: asked to run
+ * `git branch -m` with no shell — Octave's Coding mode has none — a model
+ * wrote `.git/HEAD` and a ref by hand, which leaves the old branch standing
+ * and nothing in git's log. GitHub's Spec Kit has its script make the branch
+ * for the same reason. It is renamed only while it still has a workspace's
  * placeholder name — a city, as electron/cities.js gives them — so `main`, or
  * a branch already named for its work, is never renamed by a second spec.
  *
@@ -21,7 +26,7 @@
  * A file of its own with nothing of Octave's in it but the name of the folder,
  * so the same command runs in pi's terminal: `pi -e spec.ts`.
  */
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -92,11 +97,6 @@ export function specPrompt({ line, prefix, branch, taken }: { line: string; pref
 	const steps = [
 		`Name it: a short kebab-case name for the feature, from their words (e.g. "user-authentication")${taken.length ? `, and not one of these, which are taken: ${taken.join(", ")}` : ""}.`,
 		`Make the folder ${SPECS_DIR}{name}/.`,
-		...(prefix === null
-			? []
-			: [
-					`Rename this workspace's branch, which has had a placeholder name until now, to the spec's: \`git branch -m ${prefix}{name}\`. If git says that branch exists, add -2 (then -3, and on) to the name, the folder's too, and try again.`,
-				]),
 		[
 			`Write ${SPECS_DIR}{name}/requirements.md with write — it is not a note, so not note_write. Write it now, from their words, without asking questions first, in the language they wrote in (WHEN, IF, THEN and SHALL stay as they are), in this form:`,
 			"",
@@ -111,10 +111,33 @@ export function specPrompt({ line, prefix, branch, taken }: { line: string; pref
 		"",
 		"Write the first document of a spec for it, its requirements, and stop. In order:",
 		...steps.map((step, i) => `${i + 1}. ${step}`),
-		...(branch && prefix === null ? ["", `Leave the branch as it is (${branch}): it already has a name, and a spec is written on the branch it is on.`] : []),
+		...(prefix !== null
+			? ["", "Do not rename the branch or write anything under .git: once you have written the requirements, the branch is named after the spec for you."]
+			: branch
+				? ["", `Leave the branch as it is (${branch}): it already has a name, and a spec is written on the branch it is on. Do not write anything under .git.`]
+				: []),
 		"",
 		"Do not narrate these steps; do them.",
 	].join("\n");
+}
+
+/**
+ * Give the checked-out branch the spec's name, as git would: `-2`, `-3` and on
+ * when a branch of that name is already there. The name it has now, or null
+ * when git would not give it one.
+ */
+async function rename(pi: ExtensionAPI, cwd: string, prefix: string, name: string): Promise<string | null> {
+	const git = (args: string[]) => pi.exec("git", args, { cwd, timeout: 5000 });
+	try {
+		for (let n = 1; n <= 20; n++) {
+			const target = `${prefix}${n === 1 ? name : `${name}-${n}`}`;
+			if ((await git(["show-ref", "--verify", "--quiet", `refs/heads/${target}`])).code === 0) continue;
+			return (await git(["branch", "-m", target])).code === 0 ? target : null;
+		}
+	} catch {
+		// git could not be run at all: the same answer, said the same way.
+	}
+	return null;
 }
 
 /** The branch the folder has checked out, or null: detached, or not a repository. */
@@ -128,6 +151,9 @@ async function branchIn(pi: ExtensionAPI, cwd: string): Promise<string | null> {
 }
 
 export default function spec(pi: ExtensionAPI): void {
+	/** The specs there were when /spec ran, until its run is over: one made since is the one it wrote. */
+	let before: Set<string> | null = null;
+
 	pi.registerCommand("spec", {
 		description: "Start a spec from a line: the agent names it and writes its requirements for you to read",
 		handler: async (args, ctx) => {
@@ -143,12 +169,30 @@ export default function spec(pi: ExtensionAPI): void {
 				return;
 			}
 			const branch = await branchIn(pi, ctx.cwd);
+			const taken = takenSpecs(ctx.cwd);
+			before = new Set(taken);
 			// Queued first: "nextTurn" goes with the next message sent, which is the line below.
-			pi.sendMessage(
-				{ customType: "spec", content: specPrompt({ line, prefix: unnamed(branch), branch, taken: takenSpecs(ctx.cwd) }), display: false },
-				{ deliverAs: "nextTurn" },
-			);
+			pi.sendMessage({ customType: "spec", content: specPrompt({ line, prefix: unnamed(branch), branch, taken }), display: false }, { deliverAs: "nextTurn" });
 			pi.sendUserMessage(`/spec ${line}`);
 		},
+	});
+
+	// Once the run is over — retries and all; pi tells anyone else only after
+	// this — the spec it wrote names the branch, if the branch is still a
+	// placeholder. Written with write or from the shell alike: what is looked
+	// at is the folder.
+	pi.on("agent_settled", async (_event, ctx) => {
+		if (!before) return;
+		const had = before;
+		before = null;
+		const made = takenSpecs(ctx.cwd).filter((name) => !had.has(name) && existsSync(join(ctx.cwd, SPECS_DIR, name, "requirements.md")));
+		// None written, or more than one to choose between: nothing to go on.
+		if (made.length !== 1) return;
+		const branch = await branchIn(pi, ctx.cwd);
+		const prefix = unnamed(branch);
+		if (prefix === null) return;
+		const now = await rename(pi, ctx.cwd, prefix, made[0]!);
+		if (now) ctx.ui.notify(`The branch is ${now} now.`, "info");
+		else ctx.ui.notify(`The branch could not be named after ${made[0]}; it is still ${branch}.`, "warning");
 	});
 }
