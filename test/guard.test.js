@@ -131,6 +131,22 @@ test("스펙 폴더(.octave) 아래의 .md는 노트가 아니라, edit·write·
   assert.equal(await ask("bash", { command: "mkdir -p .octave/specs/email-auth && cat > .octave/specs/email-auth/requirements.md" }), undefined);
 });
 
+test("git의 파일은 edit·write로 쓰지 못하고 git으로 바꾸라고 듣는다 — 워크트리의 .git 파일과 원본 저장소의 것까지", async () => {
+  const ask = refusing("/v");
+  for (const tool of ["edit", "write"]) {
+    for (const path of [".git/HEAD", ".git/refs/heads/minkyojung/email-auth", "/v/.git/config", ".git", "/repos/tiny-notes/.git/refs/heads/a", "vendor/lib/.git/index"]) {
+      const answer = await ask(tool, { path });
+      assert.equal(answer?.block, true, `${tool} ${path}`);
+      assert.match(answer.reason, /git command/, `${tool} ${path}`);
+    }
+  }
+  for (const path of [".gitignore", "src/.gitattributes", ".github/workflows/ci.yml", "notes/git.md.txt"]) {
+    assert.equal(await ask("write", { path }), undefined, `${path}는 git의 것이 아니다`);
+  }
+  assert.equal(await ask("read", { path: ".git/HEAD" }), undefined, "읽기는 막지 않는다");
+  assert.equal(await ask("bash", { command: "git branch -m minkyojung/email-auth" }), undefined, "git 명령은 그대로");
+});
+
 test("앱의 폴더는 여전히 먼저 막히고, 그 이유로 막힌다", async () => {
   const answer = await refusing("/v")("write", { path: ".pi/history/a.md.jsonl" });
   assert.equal(answer?.block, true);

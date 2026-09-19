@@ -20,6 +20,12 @@
  *   person has typed past, and records whose words the new ones are. `edit`
  *   and `write` can do neither, so on a note they are refused and told where
  *   to go instead. Every other file in the folder is pi's as it always was.
+ * - A hard stop on writing git's own files by hand. A branch renamed by
+ *   writing `.git/HEAD` and a ref leaves the old branch standing and no
+ *   record in git's logs, and the model reaches for that when it has no
+ *   shell; a git command is the only way in. Codex keeps `.git` read-only
+ *   inside a folder it may write for the same reason. Only edit and write:
+ *   the shell's `git` is how git is meant to be changed.
  * - The note open in the editor, and the words chosen in it, given as a hidden
  *   message of their own beside the person's rather than as text in it. As
  *   their text it was replayed with a stale path when a question was asked
@@ -74,6 +80,13 @@ export function underAppDir(root: string, given: string): boolean {
 }
 
 /**
+ * Whether a path, as a tool would take it, is git's own: `.git` itself — a
+ * worktree's is a file naming the repository — or anything under one, here,
+ * in the repository a worktree belongs to, or in a repository nested inside.
+ */
+export const inGit = (given: string): boolean => given.split(/[\\/]/).includes(".git");
+
+/**
  * Whether a shell command reaches into the app's folder. A pattern, not a
  * parse: `.pi/` or a bare `.pi` as a word is not something a note needs, so
  * any mention is refused rather than only the ones a parser would catch.
@@ -119,6 +132,9 @@ export const guard = (root: string, openNote: OpenNote) => (pi: ExtensionAPI) =>
 			}
 			if (notePath(root, input.path)) {
 				return { block: true, reason: NOT_BY_HAND(input.path) };
+			}
+			if (inGit(input.path)) {
+				return { block: true, reason: `${input.path} is git's own file. Change the repository with a git command, not by writing its files.` };
 			}
 		}
 		if (event.toolName === "bash" && typeof input.command === "string" && mentionsAppDir(input.command)) {
