@@ -32,6 +32,12 @@ requirements to `.octave/specs/<name>/requirements.md` in the workspace's folder
 change them; the workspace's branch then takes the spec's name. One spec to a workspace: for the next one, make
 another with +.
 
+When the requirements are right, `/spec-approve` approves them and the agent writes the design; approve that and
+it writes the tasks. Nobody asks you to approve: ask for changes, or make them yourself, as many times as you like
+first. The agent cannot write a document before you approve the one before it, and if you go back and change one
+you approved, the documents after it wait for you again, and the next `/spec-approve` has the agent bring them into
+line. What you approved is kept beside the documents, in `approvals.json`.
+
 ## 3. Sign in
 
 The first run opens a **Welcome** page with three steps: your folder, signing in, and a button that writes a
