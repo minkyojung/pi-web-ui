@@ -30,6 +30,7 @@ test("지시문은 한 줄을 인용하고, Kiro의 requirements 형식과 우�
     assert.ok(said.includes(form), `Kiro의 형식: ${form}`);
   }
   assert.match(said, /without asking questions first/i, "초안을 먼저, 묻는 것은 나중에");
+  assert.match(said, /SHALL stay as they are, where the form puts them/, "키워드는 영어로, 양식의 자리에 — SHALL이 한국어 어순을 따라 문장 끝으로 가지 않게");
   assert.match(said, /edge cases/);
   assert.match(said, /Do not go on to a design/, "쓰고 나면 멈춘다");
 });
