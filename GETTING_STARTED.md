@@ -15,11 +15,17 @@ Octave updates itself. When a new version has been downloaded, a small notice in
 to restart; if the agent is in the middle of something, *Restart when done* waits for it. Closing the notice is
 fine — the update goes in the next time you quit. **Help › What's New** says what changed.
 
-## 2. Choose a folder
+## 2. Add a repository
 
-On first launch Octave asks which folder to open. Pick a folder of notes — an Obsidian vault is fine, and
-nothing in it is converted or moved — or an empty folder to start fresh. **Choose a folder of notes, not your
-whole home folder:** the agent works inside the folder you give it. `⌘O` opens a different one.
+With no repository yet, Octave opens on a screen that adds one. **Open local repository** takes a repository
+you have on this Mac. **Clone from GitHub** lists yours to pick from — signed in with `gh`, private ones too —
+or takes any by owner/name or its address, and clones it into `~/octave/repos/`. Either way Octave makes the
+repository's first workspace and opens it.
+
+A workspace is a folder and a branch of its own, made from the latest on the remote, under
+`~/octave/workspaces/`; the agent works there, and your own clone is never touched. The sidebar lists your
+repositories and their workspaces: + on a repository makes another workspace, + beside **Repositories** adds
+another repository, and `⌘O` opens a local one.
 
 ## 3. Sign in
 
@@ -81,7 +87,7 @@ the one you are in, plugins, and canvas.
 |---|---|
 | `⌘N` | New note |
 | `⌘P` | Open a note by name, or make one |
-| `⌘O` | Open a different folder |
+| `⌘O` | Open a repository |
 | `⌘⇧F` | Search the text of every note |
 | `⌘F` | Find and replace in the note |
 | `⌘↵` | Keep the agent's words under the cursor |
