@@ -289,6 +289,30 @@ function waitingIn(cwd: string): Map<string, SpecDoc | null> {
 	return new Map(takenSpecs(cwd).map((name) => [name, specState(cwd, name).waiting]));
 }
 
+/** The documents waiting for the person, with their specs' names. */
+function waitingNow(cwd: string): [string, SpecDoc][] {
+	return [...waitingIn(cwd)].filter((entry): entry is [string, SpecDoc] => entry[1] !== null);
+}
+
+/** How the person approves a spec's document: with its name when there is more than one to choose between. */
+const approveWith = (name: string, waiting: unknown[]) => (waiting.length > 1 ? `/spec-approve ${name}` : "/spec-approve");
+
+/**
+ * What the model is told beside the person's message while a document waits
+ * for them, or null when none does. Said as of that message, since it stays
+ * in the conversation with it.
+ */
+export function waitingNote(cwd: string): string | null {
+	const waiting = waitingNow(cwd);
+	if (waiting.length === 0) return null;
+	return waiting
+		.map(([name, doc]) => {
+			const how = approveWith(name, waiting);
+			return `When they sent this message, ${SPECS_DIR}${name}/${doc} was waiting for the person to approve it, which they do themselves with ${how}. Until they do, the documents after it cannot be written: if they ask for one, say that ${doc} is to be approved first, with ${how}, and do not try to write it. Changing ${doc}, or a document before it, when they ask is fine.`;
+		})
+		.join("\n");
+}
+
 /**
  * Give the checked-out branch the spec's name, as git would: `-2`, `-3` and on
  * when a branch of that name is already there. The name it has now, or null
@@ -410,6 +434,17 @@ export default function spec(pi: ExtensionAPI): void {
 		return reason ? { block: true, reason } : undefined;
 	});
 
+	// While a document waits, the model is told so beside the person's message,
+	// as guard.ts tells it which note is open: a message of its own rather than
+	// a line of the system prompt, which comes before the whole conversation and
+	// would throw away the provider's cache of it whenever this changed. Told,
+	// the model answers "go on" with how to approve, rather than writing the
+	// next document whole and only then being refused.
+	pi.on("before_agent_start", async (_event, ctx) => {
+		const note = waitingNote(ctx.cwd);
+		return note ? { message: { customType: "spec-waiting", content: note, display: false } } : undefined;
+	});
+
 	// Kept from the run's first start to its end: a retry starts it again, and
 	// what it wrote before that is still this run's.
 	pi.on("agent_start", async (_event, ctx) => {
@@ -425,14 +460,13 @@ export default function spec(pi: ExtensionAPI): void {
 		const asked = approving;
 		waitedAtStart = null;
 		approving = null;
-		const waiting = [...waitingIn(ctx.cwd)].filter((entry): entry is [string, SpecDoc] => entry[1] !== null);
+		const waiting = waitingNow(ctx.cwd);
 		for (const [name, doc] of waiting) {
 			// Revised at the person's word, it is the same document waiting: said
 			// once is enough. After /spec-approve it is said whatever waited before —
 			// the design brought into line waits as it did, and that is the news.
 			if (name !== asked && had.get(name) === doc) continue;
-			const how = waiting.length > 1 ? `/spec-approve ${name}` : "/spec-approve";
-			ctx.ui.notify(`${SPECS_DIR}${name}/${doc} is waiting for you: read it, and when it is right, approve it with ${how}.`, "info");
+			ctx.ui.notify(`${SPECS_DIR}${name}/${doc} is waiting for you: read it, and when it is right, approve it with ${approveWith(name, waiting)}.`, "info");
 		}
 	});
 

@@ -104,11 +104,13 @@ function fakePi(branch, branches = []) {
     writeFileSync(join(cwd, ".octave/specs", name, "requirements.md"), "# Requirements Document\n");
   };
   const start = () => handlers.agent_start?.({ type: "agent_start" }, ctx(false));
+  /** What the extension puts beside a message the person sends, before the model sees it. */
+  const beside = () => handlers.before_agent_start?.({ type: "before_agent_start", prompt: "x", systemPrompt: "" }, ctx(false));
   const settle = () => handlers.agent_settled?.({ type: "agent_settled" }, ctx(true));
   /** A tool called with a path, as pi would put it to the extension before running it. */
   const call = (toolName, path) => handlers.tool_call?.({ type: "tool_call", toolCallId: "call-1", toolName, input: { path, content: "x" } }, ctx(true));
   const cleanup = () => rmSync(cwd, { recursive: true, force: true });
-  return { command: () => commands.spec, commands, done, notes, renamed, run, approve: approveCommand, write, start, settle, call, cleanup, cwd };
+  return { command: () => commands.spec, commands, done, notes, renamed, run, approve: approveCommand, write, start, beside, settle, call, cleanup, cwd };
 }
 
 test("/spec 한 줄은 그 줄만 대화에 남기고, 지시문은 같은 턴에 모델에게만 간다 — 기다림 없이", async (t) => {
@@ -499,6 +501,34 @@ test("턴이 끝나면 새로 기다리게 된 문서를 한 번 알린다 — �
   assert.deepEqual(pi.notes.at(-1), { text: ".octave/specs/billing/requirements.md is waiting for you: read it, and when it is right, approve it with /spec-approve billing.", type: "info" });
 });
 
+test("기다리는 문서가 있으면, 사람의 메시지 옆에 모델에게만 그렇다고 말한다 — 말로 넘어가자고 하면 쓰지 말고 승인을 안내하라고", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  const spec = docs(pi);
+  assert.equal(await pi.beside(), undefined, "스펙이 없을 때는 아무것도");
+
+  spec.put("requirements.md");
+  const said = await pi.beside();
+  assert.equal(said.message.customType, "spec-waiting");
+  assert.equal(said.message.display, false, "화면에는 안 보인다");
+  const note = said.message.content;
+  assert.match(note, /^When they sent this message, /, "대화에 남으므로 그때의 사실로");
+  assert.ok(note.includes(".octave/specs/email-auth/requirements.md was waiting for the person to approve it"));
+  assert.match(note, /\/spec-approve/);
+  assert.match(note, /do not try to write it/, "쓰려다 거절당하지 말고");
+  assert.match(note, /Changing .*requirements\.md.*is fine/, "고치는 것은 된다");
+
+  approve(pi.cwd, "email-auth");
+  assert.equal(await pi.beside(), undefined, "승인되어 설계를 쓸 차례 — 기다리는 것이 없다");
+
+  spec.put("design.md");
+  docs(pi, "billing").put("requirements.md");
+  const both = (await pi.beside()).message.content;
+  assert.ok(both.includes(".octave/specs/billing/requirements.md was waiting"), both);
+  assert.ok(both.includes(".octave/specs/email-auth/design.md was waiting"), both);
+  assert.match(both, /\/spec-approve billing/, "여럿이면 이름을 붙여");
+});
+
 // --- the command in a real pi session, on a model that is not one ---
 
 test("실제 pi 세션에서: 한 줄은 사람의 메시지로, 지시문은 그 턴에 모델에게만 가고, 스펙이 쓰이면 git이 브랜치를 바꾼다", async (t) => {
@@ -645,30 +675,45 @@ test("실제 pi 세션에서 사슬 한 바퀴: 세 문서가 차례로, 승인 
   /** A message sent, and its run over — the code's own settling with it. */
   const send = async (words) => {
     settled = false;
+    lastWords = words;
     await session.prompt(words);
     const deadline = Date.now() + 20_000;
     while (!settled && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
     assert.ok(settled, `${words}: the run settled`);
   };
   const toolErrors = () => session.messages.filter((m) => m.role === "toolResult" && m.isError).map(text);
+  /**
+   * What the model was sent with the latest message, from it on — not the
+   * conversation before it — as one text. Found by its words: what the code
+   * puts beside it reaches the model as the person's too.
+   */
+  let lastWords = null;
+  const toldLast = () => {
+    const messages = sent.at(-2);
+    const at = messages.findLastIndex((m) => text(m) === lastWords);
+    assert.ok(at >= 0, `${lastWords} among what the model was sent`);
+    return messages.slice(at).map(text).join("\n");
+  };
 
   await send("/spec 이메일 인증 추가");
   assert.deepEqual(state(), { approved: 0, waiting: "requirements.md" });
   assert.match(notes.at(-1), /requirements\.md is waiting for you: .* \/spec-approve\./);
 
   await send("설계도 써 줘");
+  assert.ok(toldLast().includes(`${dir}/requirements.md was waiting for the person to approve it`), "모델은 기다리는 중인 것을 들었다");
   assert.equal(has("design.md"), false, "승인 전에는 설계를 쓸 수 없다");
   assert.match(toolErrors().at(-1), /design\.md comes after requirements\.md, which the person has not approved/);
   const told = notes.length;
 
   await send("/spec-approve");
-  assert.ok(text(sent.at(-2).at(-1)).includes("# Design Document"), "설계 지시문은 그 턴에 모델에게");
+  assert.ok(toldLast().includes("# Design Document"), "설계 지시문은 그 턴에 모델에게");
+  assert.equal(toldLast().includes("was waiting for the person"), false, "승인된 뒤에는 기다리는 것이 없다");
   assert.deepEqual(state(), { approved: 1, waiting: "design.md" });
   assert.equal(notes.length, told + 1);
   assert.match(notes.at(-1), /design\.md is waiting for you/);
 
   await send("/spec-approve");
-  assert.ok(text(sent.at(-2).at(-1)).includes("# Implementation Plan"));
+  assert.ok(toldLast().includes("# Implementation Plan"));
   assert.deepEqual(state(), { approved: 2, waiting: "tasks.md" });
 
   const calls = sent.length;
@@ -683,7 +728,7 @@ test("실제 pi 세션에서 사슬 한 바퀴: 세 문서가 차례로, 승인 
   assert.deepEqual(state(), { approved: 0, waiting: "requirements.md" }, "요구사항을 고치니 뒤 승인이 모두 풀렸다");
 
   await send("/spec-approve");
-  assert.match(text(sent.at(-2).at(-1)), /as they were before/, "새로 쓰지 말고 맞추라고");
+  assert.match(toldLast(), /as they were before/, "새로 쓰지 말고 맞추라고");
   assert.equal(read("design.md"), "# Design Document\n\n## Overview\n\nGoogle as well.\n");
   assert.deepEqual(state(), { approved: 1, waiting: "design.md" });
   assert.match(notes.at(-1), /design\.md is waiting for you/);
