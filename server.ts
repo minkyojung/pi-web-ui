@@ -34,12 +34,13 @@ import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice as m
 import { readSettings, updateSettings, type Settings } from "./settings.ts";
 import { askForName } from "./sessionName.ts";
 import { askUser } from "./askUser.ts";
+import specCommand from "./spec.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { extensionUI } from "./extensionUI.ts";
 import { deleteSessionFile } from "./sessionDelete.ts";
 import { Cancelled } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { documentAt, listNotes, newNoteName, type Note, readNote, renameNote, restoreNote, withCreated, writeNote, type WriteResult } from "./vault.ts";
+import { documentAt, listNotes, newNoteName, type Note, readNote, readSpec, renameNote, restoreNote, specAt, withCreated, writeNote, writeSpec, type WriteResult } from "./vault.ts";
 import { attachmentAt } from "./pictures.ts";
 import { FileIndex } from "./fileIndex.ts";
 import { startLogging } from "./log.ts";
@@ -82,6 +83,7 @@ import type {
 	SessionsMsg,
 	SettingsMsg,
 	SnapshotMsg,
+	SpecMsg,
 	UsageMsg,
 } from "./protocol.ts";
 
@@ -231,6 +233,9 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 				// The bridge is reached when a question is asked, not now: it is
 				// made further down, after this first session is.
 				{ name: "ask", factory: askUser(() => prompts.ask) },
+				// `/spec` and a line: the requirements of a spec, written for the
+				// person to read — see spec.ts, which runs in pi's terminal too.
+				{ name: "spec", factory: specCommand },
 			],
 			// The extensions installed for the person's own pi — ~/.pi/agent/
 			// extensions, the packages in its settings — load here as they load
@@ -611,6 +616,19 @@ function note(path: string): NoteMsg | null {
 }
 
 /**
+ * One spec, whole: what note() answers less everything the log and the links
+ * add, since a spec keeps neither (SpecMsg). Remembered at the version sent,
+ * as a note is, so that the watcher's report of a write the tabs already
+ * have is not taken for a new one.
+ */
+function spec(path: string): SpecMsg | null {
+	const found = readSpec(CWD, path);
+	if (!found) return null;
+	known.set(path, found.modified);
+	return { type: "note", kind: "spec", path, text: found.text, modified: found.modified };
+}
+
+/**
  * A note being made now, as it starts out: with when it was made written in
  * it, unless that has been turned off. Only at the making — a note restored
  * from the trash or noticed on disk was made some other time, and one that
@@ -675,6 +693,16 @@ function noticed(path: string): void {
 	// A document has no log and no tab: the only news is that it is there or not.
 	if (documentAt(CWD, path)) {
 		if (notes.sawDocument(path, existsSync(join(CWD, path)))) broadcast(files());
+		return;
+	}
+	// A spec has a tab and no log, and is in no list: the tabs hear it whole —
+	// the agent writes one with its own tools, so this is how its words arrive.
+	if (specAt(CWD, path)) {
+		const had = known.get(path);
+		const found = spec(path);
+		if (!found) {
+			if (known.delete(path)) broadcast({ type: "note_gone", path });
+		} else if (found.modified !== had) broadcast(found);
 		return;
 	}
 	const found = readNote(CWD, path);
@@ -1952,7 +1980,8 @@ wss.on("connection", async (ws) => {
 
 				case "open_note": {
 					if (typeof msg.path !== "string") return;
-					const found = note(msg.path);
+					// A spec is opened by the same message into the same editor; only the answer differs.
+					const found = specAt(CWD, msg.path) ? spec(msg.path) : note(msg.path);
 					if (!found) {
 						reply({ type: "note_gone", path: msg.path });
 						return;
@@ -1967,13 +1996,22 @@ wss.on("connection", async (ws) => {
 				case "save_note": {
 					if (typeof msg.path !== "string" || typeof msg.text !== "string") return;
 					const base = typeof msg.base === "number" ? msg.base : null;
-					const had = readNote(CWD, msg.path);
-					const written = writeNote(CWD, msg.path, msg.text, base);
+					// A spec is held to the same version as a note — refused over one
+					// the agent has written since — and that is all: no record of
+					// whose the words are, and no list that has it to tell.
+					const isSpec = specAt(CWD, msg.path) !== null;
+					const had = isSpec ? null : readNote(CWD, msg.path);
+					const written = isSpec ? writeSpec(CWD, msg.path, msg.text, base) : writeNote(CWD, msg.path, msg.text, base);
 					if (!written.ok) {
 						if (written.reason === "conflict") reply({ type: "note_conflict", path: msg.path, modified: written.modified });
 						else if (written.reason === "missing") reply({ type: "note_gone", path: msg.path });
 						else reply({ type: "error", message: `cannot save ${msg.path}` });
 						return;
+					}
+					if (isSpec) {
+						const saved = spec(msg.path);
+						if (saved) broadcast(saved);
+						break;
 					}
 					const edits = Array.isArray(msg.edits) ? msg.edits : undefined;
 					const changes = record(CWD, msg.path, had?.text ?? "", msg.text, { author: "me", at: Date.now() }, edits);

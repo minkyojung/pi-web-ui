@@ -10,10 +10,12 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - With no repository yet, Octave opens on a screen that adds one: Open local repository, choose its folder, and its first workspace is made and opened. Folder › Open Repository… (⌘O) does the same from anywhere.
 - Clone from GitHub: your repositories are listed to search — signed in with `gh`, private ones too — or give any by owner/name or its address. It is cloned into `~/octave/repos`, and its first workspace is made and opened.
 - The + beside Repositories in the sidebar adds another: open a local one, or clone one from GitHub.
+- `/spec` and a line of what you want built starts a spec: the agent names the work, writes its requirements to `.octave/specs/<name>/requirements.md`, and stops for you to read them — and a new workspace's branch takes the spec's name.
 
 ### Changed
 - Octave opens where you left off — the workspace you were last in — and works only in repositories now: a folder of notes is no longer opened, and the first run no longer asks for a folder.
 - Opening another folder no longer restarts Octave. The folder you left keeps running — a reply the agent was writing there carries on — and going back to it finds your tabs where they were.
+- The agent can no longer write git's own files in `.git` with its file tools, which goes around git and can leave a repository broken; it changes the repository with git commands, as before.
 
 ### Removed
 - The sidebar no longer lists the folder's notes; it lists your repositories and their workspaces instead. ⌘P still finds a note.

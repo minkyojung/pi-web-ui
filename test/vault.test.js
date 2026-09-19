@@ -4,7 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { documentAt, listFiles, listNotes, newNoteName, notePath, readNote, renameNote, resolveNote, restoreNote, trashNote, withCreated, writeNote } from "../vault.ts";
+import { documentAt, listFiles, listNotes, newNoteName, notePath, readNote, readSpec, renameNote, resolveNote, restoreNote, specAt, trashNote, withCreated, writeNote, writeSpec } from "../vault.ts";
+import { isSpec } from "../documentKinds.ts";
 
 const DIR = mkdtempSync(join(tmpdir(), "notes-"));
 /** What the disk calls DIR: on a Mac the temp folder is reached through a symlink. */
@@ -261,4 +262,90 @@ test("이미 만들어진 시각을 말하는 노트는 그대로 둔다", () =>
 test("깨진 블록은 건드리지 않는다", () => {
   const note = "---\ntags: [a\n---\nbody\n";
   assert.equal(withCreated(note, AT), note);
+});
+
+// --- the agent's specs: markdown under .octave/specs/, beside the notes and not among them ---
+
+test("이름만 보고도 스펙인지 안다 — .octave/specs/ 아래의 마크다운", () => {
+  assert.equal(isSpec(".octave/specs/email-auth/requirements.md"), true);
+  assert.equal(isSpec(".octave/specs/a.md"), true);
+  assert.equal(isSpec("a.md"), false, "노트는 스펙이 아니다");
+  assert.equal(isSpec(".octave/a.md"), false, "specs/ 밖");
+  assert.equal(isSpec(".octave/specs/x/requirements.txt"), false);
+  assert.equal(isSpec(".octave/specs/x/requirements.MD"), false, "노트처럼, 디스크 철자가 .md여야");
+  assert.equal(isSpec(".octave/specs/x/.draft.md"), false, "그 아래의 숨김 파일");
+  assert.equal(isSpec("docs/.octave/specs/x.md"), false, "폴더의 맨 위에서만");
+});
+
+test("스펙은 폴더 안의 .octave/specs/ 아래 마크다운이고, 노트가 아니다", () => {
+  put(".octave/specs/email-auth/requirements.md", 100);
+  put(".octave/notes.md", 100);
+  const spec = specAt(DIR, ".octave/specs/email-auth/requirements.md");
+  assert.deepEqual(spec, { path: ".octave/specs/email-auth/requirements.md", full: join(REAL, ".octave/specs/email-auth/requirements.md") });
+  assert.equal(notePath(DIR, ".octave/specs/email-auth/requirements.md"), null, "노트의 문은 여전히 점 폴더를 못 본다");
+  assert.ok(!listNotes(DIR).some((f) => f.path.startsWith(".octave")), "노트 목록에 들지 않는다");
+  assert.equal(specAt(DIR, ".octave/notes.md"), null, "specs/ 밖");
+  assert.equal(specAt(DIR, "a.md"), null, "노트는 스펙이 아니다");
+  assert.equal(specAt(DIR, "../.octave/specs/x.md"), null, "폴더 밖");
+  assert.equal(specAt(DIR, ".octave/specs/../../a.md"), null, "..로 나가면 그곳이다");
+  assert.equal(specAt(DIR, join(DIR, ".octave/specs/email-auth/requirements.md")), null, "노트처럼 폴더 기준 이름으로만");
+  assert.equal(specAt(DIR, ""), null);
+});
+
+test("스펙 자리로 가는 심볼릭 링크는 디스크가 가리키는 곳으로 판정한다 — 노트면 노트, 밖이면 아무것도 아니다", (t) => {
+  put("linked.md", 100);
+  mkdirSync(join(DIR, ".octave/specs"), { recursive: true });
+  const toNote = join(DIR, ".octave/specs/note.md");
+  const outside = mkdtempSync(join(tmpdir(), "vault-spec-outside-"));
+  writeFileSync(join(outside, "x.md"), "not yours\n");
+  try {
+    symlinkSync(join(DIR, "linked.md"), toNote);
+    symlinkSync(outside, join(DIR, ".octave/specs/away"));
+  } catch {
+    return t.skip("심볼릭 링크를 만들 수 없는 곳");
+  }
+  t.after(() => {
+    rmSync(toNote, { force: true });
+    rmSync(join(DIR, ".octave/specs/away"), { force: true });
+    rmSync(outside, { recursive: true, force: true });
+  });
+  assert.equal(specAt(DIR, ".octave/specs/note.md"), null, "노트를 가리키면 스펙이 아니고");
+  assert.equal(notePath(DIR, ".octave/specs/note.md"), "linked.md", "그 노트다 — 한 파일이 둘일 수는 없다");
+  assert.equal(specAt(DIR, ".octave/specs/away/x.md"), null, "폴더 밖을 가리키면 아무것도 아니다");
+});
+
+test("디스크가 같은 이름으로 여는 철자는 디스크 철자의 스펙으로 돌아온다", (t) => {
+  if (!opens("probe.md", "PROBE.md")) return t.skip("대소문자를 구분하는 파일시스템");
+  put(".octave/specs/case/requirements.md", 100);
+  assert.equal(specAt(DIR, ".Octave/Specs/case/requirements.md")?.path, ".octave/specs/case/requirements.md");
+});
+
+test("스펙은 읽은 시각 위에 쓰이고, 그 사이 바뀌었거나 사라졌으면 거절된다 — 노트와 같은 약속", () => {
+  put(".octave/specs/rw/requirements.md", 100);
+  const first = readSpec(DIR, ".octave/specs/rw/requirements.md");
+  assert.deepEqual(first, { path: ".octave/specs/rw/requirements.md", text: "# note\n", modified: 100_000 });
+  const ok = writeSpec(DIR, ".octave/specs/rw/requirements.md", "mine\n", first.modified);
+  assert.equal(ok.ok, true);
+  assert.equal(readFileSync(join(DIR, ".octave/specs/rw/requirements.md"), "utf8"), "mine\n");
+  // The agent writes in between.
+  writeFileSync(join(DIR, ".octave/specs/rw/requirements.md"), "theirs\n");
+  utimesSync(join(DIR, ".octave/specs/rw/requirements.md"), 900, 900);
+  assert.deepEqual(writeSpec(DIR, ".octave/specs/rw/requirements.md", "mine again\n", ok.modified), { ok: false, reason: "conflict", modified: 900_000 });
+  assert.equal(readFileSync(join(DIR, ".octave/specs/rw/requirements.md"), "utf8"), "theirs\n", "거절은 아무것도 쓰지 않는다");
+  rmSync(join(DIR, ".octave/specs/rw/requirements.md"));
+  assert.deepEqual(writeSpec(DIR, ".octave/specs/rw/requirements.md", "x", 900_000), { ok: false, reason: "missing" });
+  assert.equal(readSpec(DIR, ".octave/specs/rw/requirements.md"), null);
+  assert.equal(writeSpec(DIR, ".octave/specs/new/requirements.md", "back\n", null).ok, true, "없던 것은 base가 null일 때만, 폴더도 같이");
+  assert.equal(readFileSync(join(DIR, ".octave/specs/new/requirements.md"), "utf8"), "back\n");
+});
+
+test("스펙의 문과 노트의 문은 서로를 열지 않는다", () => {
+  put(".octave/specs/doors/requirements.md", 100);
+  put("doors.md", 100);
+  assert.deepEqual(writeSpec(DIR, "doors.md", "x", 100_000), { ok: false, reason: "invalid" });
+  assert.deepEqual(writeNote(DIR, ".octave/specs/doors/requirements.md", "x", 100_000), { ok: false, reason: "invalid" });
+  assert.equal(readSpec(DIR, "doors.md"), null);
+  assert.equal(readNote(DIR, ".octave/specs/doors/requirements.md"), null);
+  assert.equal(readFileSync(join(DIR, "doors.md"), "utf8"), "# note\n");
+  assert.equal(readFileSync(join(DIR, ".octave/specs/doors/requirements.md"), "utf8"), "# note\n");
 });

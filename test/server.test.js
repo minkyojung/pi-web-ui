@@ -1056,3 +1056,117 @@ test("설정은 접속할 때 오고, 바꾼 칸만 디스크에 겹쳐 쓰이�
     other.close();
   }
 });
+
+// --- the agent's specs: opened and saved like a note, with none of a note's record ---
+
+/** A spec in the folder, written as the agent would write it: straight to the disk. */
+const putSpec = (path, text) => {
+  mkdirSync(join(cwd, path, ".."), { recursive: true });
+  writeFileSync(join(cwd, path), text);
+};
+const specHistory = (path) => join(cwd, `.pi/history/${path}.jsonl`);
+
+it("스펙은 노트처럼 열리지만, 저자 기록·백링크·태그 없이 제 종류로 온다", async () => {
+  const path = ".octave/specs/open/requirements.md";
+  putSpec(path, "# Requirements\n\n#tag [[a]]\n");
+  clear();
+  send({ type: "open_note", path });
+  const spec = await want("note", (m) => m.path === path);
+  assert.equal(spec.kind, "spec");
+  assert.equal(spec.text, "# Requirements\n\n#tag [[a]]\n");
+  assert.equal(typeof spec.modified, "number");
+  assert.deepEqual(Object.keys(spec).sort(), ["kind", "modified", "path", "text", "type"], "로그와 링크가 줄 것은 하나도 없다");
+  assert.equal(existsSync(specHistory(path)), false, "여는 것으로 기록이 생기지 않는다");
+});
+
+it("읽은 버전 위의 스펙 저장은 디스크에 닿고 모든 탭이 통째로 듣는다 — 기록도, 목록 소식도 없이", async () => {
+  const path = ".octave/specs/save/requirements.md";
+  putSpec(path, "first\n");
+  clear();
+  send({ type: "open_note", path });
+  const { modified } = await want("note", (m) => m.path === path);
+  clear();
+  send({ type: "save_note", path, text: "first, then mine\n", base: modified, edits: [{ from: 5, to: 5, insert: ", then mine" }] });
+  const saved = await want("note", (m) => m.path === path && m.text === "first, then mine\n");
+  assert.equal(saved.kind, "spec");
+  assert.ok(saved.modified > modified);
+  assert.equal(readFileSync(join(cwd, path), "utf8"), "first, then mine\n");
+  assert.equal(existsSync(specHistory(path)), false, "누가 썼는지 적지 않는다");
+  // Long enough for the watcher's report of that write to have come and gone: it is the tabs' own version, so nothing more is said.
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(inbox.filter((m) => m.type === "note" && m.path === path).length, 1, "제 쓰기의 메아리는 소식이 아니다");
+  assert.equal(inbox.find((m) => m.type === "note_changed" || m.type === "files"), undefined);
+});
+
+it("낡은 버전 위의 스펙 저장은 거절되고 아무것도 쓰지 않는다 — 에이전트의 글을 덮지 않는다", async () => {
+  const path = ".octave/specs/stale/requirements.md";
+  putSpec(path, "the agent's\n");
+  clear();
+  send({ type: "open_note", path });
+  const { modified } = await want("note", (m) => m.path === path);
+  clear();
+  send({ type: "save_note", path, text: "mine\n", base: modified - 1 });
+  const refused = await want("note_conflict", (m) => m.path === path);
+  assert.equal(refused.modified, modified);
+  assert.equal(readFileSync(join(cwd, path), "utf8"), "the agent's\n");
+});
+
+it("앱 밖에서 쓴 스펙은 모든 탭이 통째로 듣고, 지워지면 연 탭이 듣는다", async () => {
+  const path = ".octave/specs/outside/requirements.md";
+  putSpec(path, "before\n");
+  clear();
+  send({ type: "open_note", path });
+  const { modified } = await want("note", (m) => m.path === path);
+  clear();
+  writeFileSync(join(cwd, path), "before, and the agent's\n");
+  const changed = await want("note", (m) => m.path === path && m.text === "before, and the agent's\n");
+  assert.equal(changed.kind, "spec");
+  assert.ok(changed.modified >= modified);
+  assert.equal(existsSync(specHistory(path)), false);
+  clear();
+  rmSync(join(cwd, path));
+  await want("note_gone", (m) => m.path === path);
+  clear();
+  send({ type: "save_note", path, text: "put back\n", base: null });
+  await want("note", (m) => m.path === path && m.text === "put back\n");
+  assert.equal(readFileSync(join(cwd, path), "utf8"), "put back\n", "사라진 뒤 되돌려 놓을 수 있다");
+});
+
+it("스펙은 노트 목록에도 검색에도 들지 않고, 노트의 이름 바꾸기와 지우기는 스펙에 닿지 않는다", async () => {
+  const path = ".octave/specs/apart/requirements.md";
+  putSpec(path, "SPECONLYWORD\n");
+  const other = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  const heard = [];
+  other.onmessage = (e) => heard.push(JSON.parse(e.data));
+  try {
+    const files = await until("files", () => heard.find((m) => m.type === "files"));
+    assert.equal(files.files.some((f) => f.path.startsWith(".octave")), false);
+  } finally {
+    other.close();
+  }
+  clear();
+  send({ type: "search_notes", query: "SPECONLYWORD", id: 9 });
+  assert.deepEqual((await want("search_results", (m) => m.id === 9)).hits, []);
+  clear();
+  send({ type: "rename_note", path, to: ".octave/specs/apart/renamed.md" });
+  assert.equal((await want("note_rename_failed", (m) => m.path === path)).reason, "invalid");
+  send({ type: "delete_note", path });
+  send({ type: "open_note", path });
+  await want("note", (m) => m.path === path);
+  assert.equal(readFileSync(join(cwd, path), "utf8"), "SPECONLYWORD\n", "그대로 있다");
+});
+
+it("붙는 탭은 명령 목록에서 /spec을 듣는다 — 메뉴가 그것을 보여 준다", async () => {
+  const other = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  const heard = [];
+  other.onmessage = (e) => heard.push(JSON.parse(e.data));
+  try {
+    const { commands } = await until("commands", () => heard.find((m) => m.type === "commands"));
+    const found = commands.find((c) => c.name === "spec");
+    assert.ok(found, `spec among ${commands.map((c) => c.name).join(", ")}`);
+    assert.equal(found.source, "extension");
+    assert.ok(found.description);
+  } finally {
+    other.close();
+  }
+});

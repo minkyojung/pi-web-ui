@@ -27,6 +27,11 @@ A workspace is a folder and a branch of its own, made from the latest on the rem
 repositories and their workspaces: + on a repository makes another workspace, + beside **Repositories** adds
 another repository, and `⌘O` opens a local one.
 
+In a workspace, `/spec` and a line of what you want built starts a spec. The agent names the work, writes its
+requirements to `.octave/specs/<name>/requirements.md` in the workspace's folder, and stops for you to read and
+change them; the workspace's branch then takes the spec's name. One spec to a workspace: for the next one, make
+another with +.
+
 ## 3. Sign in
 
 The first run opens a **Welcome** page with three steps: your folder, signing in, and a button that writes a

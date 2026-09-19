@@ -36,6 +36,7 @@ import type {
 	ServerMsg,
 	SessionInfo,
 	SettingsMsg,
+	SpecMsg,
 	Tagged,
 	UsageMsg,
 	WhyMsg,
@@ -165,10 +166,11 @@ export function setTagged(path: string, notes: Tagged[]): void {
 }
 
 /**
- * The last note the server sent, whichever tab or writer caused it. The editor
- * reads it and decides what to do: its own, or one it is not showing.
+ * The last note the server sent, whichever tab or writer caused it — or spec,
+ * which the same editor shows. The editor reads it and decides what to do:
+ * its own, or one it is not showing.
  */
-export const noteStore = createStore<NoteMsg | null>(null);
+export const noteStore = createStore<NoteMsg | SpecMsg | null>(null);
 
 /** The last change to a note the server sent, from whichever writer. */
 export const noteChangedStore = createStore<NoteChangedMsg | null>(null);

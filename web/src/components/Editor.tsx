@@ -260,6 +260,8 @@ export function Editor({
 	const sent = useRef<string | null>(null);
 	/** A refusal is expected for a save already overtaken here; it is not a conflict. */
 	const stale = useRef(false);
+	/** Whether the server says this is a spec (documentKinds.ts): no log, so nobody to ask who wrote it. */
+	const spec = useRef(false);
 	const dirty = useRef(false);
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [status, setStatus] = useState<"loading" | "saved" | "unsaved" | "conflict" | "gone">("loading");
@@ -322,7 +324,7 @@ export function Editor({
 	};
 
 	/** The doc is the server's text `text` at version `modified`: nothing typed, nothing owed. */
-	const settle = (text: string, modified: number, atLines: number) => {
+	const settle = (text: string, modified: number, atLines: number | null) => {
 		saved.current = text;
 		base.current = modified;
 		lines.current = atLines;
@@ -549,6 +551,9 @@ export function Editor({
 		if (!view.current || !note || note.path !== path) return;
 		whenNotComposing(() => {
 		const v = view.current!;
+		// A spec keeps no log: nothing of pi's to decide about, no share, no place in a record.
+		spec.current = note.kind === "spec";
+		const log = note.kind === "spec" ? null : note;
 		const doc = v.state.doc.toString();
 		const decision = base.current === null && sent.current === null
 			? { kind: "replace" as const } // The first answer to open_note.
@@ -556,26 +561,26 @@ export function Editor({
 		switch (decision.kind) {
 			case "saved":
 				if (!decision.dirty) {
-					settle(note.text, note.modified, note.lines);
-					v.dispatch({ effects: diffFor(note.original ?? null) });
-					onDisk(note.text, note.authored);
+					settle(note.text, note.modified, log?.lines ?? null);
+					v.dispatch({ effects: diffFor(log?.original ?? null) });
+					onDisk(note.text, log?.authored);
 				} else {
 					// The echo of the save; what was typed since is still owed.
 					saved.current = note.text;
 					base.current = note.modified;
-					lines.current = note.lines;
+					lines.current = log?.lines ?? null;
 					local.current = sinceSent.current;
 					sent.current = null;
 					dirty.current = !local.current.empty;
 					setStatus(dirty.current ? "unsaved" : "saved");
-					v.dispatch({ effects: diffFor(note.original ?? null) });
-					onDisk(note.text, note.authored);
+					v.dispatch({ effects: diffFor(log?.original ?? null) });
+					onDisk(note.text, log?.authored);
 				}
 				return;
 			case "same":
-				settle(note.text, note.modified, note.lines);
-				v.dispatch({ effects: diffFor(note.original ?? null) });
-				onDisk(note.text, note.authored);
+				settle(note.text, note.modified, log?.lines ?? null);
+				v.dispatch({ effects: diffFor(log?.original ?? null) });
+				onDisk(note.text, log?.authored);
 				return;
 			case "replace": {
 				// The first text of a note opened again: back where it was left,
@@ -588,12 +593,12 @@ export function Editor({
 					changes: { from: 0, to: v.state.doc.length, insert: note.text },
 					annotations: serverChange,
 					selection: back ?? { anchor: first ? bodyStart(note.text) : Math.min(v.state.selection.main.head, note.text.length) },
-					effects: diffFor(note.original ?? null),
+					effects: diffFor(log?.original ?? null),
 				});
 				if (back) scrollBack(was.current!, v, page.current);
 				forgetMoves();
-				settle(note.text, note.modified, note.lines);
-				onDisk(note.text, note.authored);
+				settle(note.text, note.modified, log?.lines ?? null);
+				onDisk(note.text, log?.authored);
 				if (landing.current) {
 					landOn(v, landing.current);
 					landing.current = null;
@@ -619,8 +624,10 @@ export function Editor({
 		v.dispatch({ effects: clearAuthors.of(null) });
 		if (!showAuthors) return;
 		// A note not yet here asks for itself when it arrives (askAgain, on the
-		// first whole text); this is for the toggle turned on over a note.
-		if (base.current === null) return;
+		// first whole text); this is for the toggle turned on over a note. A
+		// spec has no one to ask about, and a question about it as a note
+		// would be answered as a note gone.
+		if (base.current === null || spec.current) return;
 		flushSaves();
 		send({ type: "who_wrote", path });
 	}, [showAuthors, path]);
@@ -639,7 +646,7 @@ export function Editor({
 	 * the note's own effect, where a prop would be the one it was made with.
 	 */
 	const askAgain = useCallback(() => {
-		if (dirty.current || !showAuthorsStore.get()) return;
+		if (spec.current || dirty.current || !showAuthorsStore.get()) return;
 		send({ type: "who_wrote", path });
 	}, [path]);
 

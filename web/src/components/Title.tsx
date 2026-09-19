@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { isSpec } from "../../../documentKinds.ts";
 import { step } from "../features/pageMove";
 import { renameTarget, titleOf } from "../noteSync";
 import { flushSaves } from "../saves";
@@ -28,6 +29,9 @@ const REASONS = {
  * It sits at the top of the note's own column of text, not in the title bar:
  * that row is the tabs', and a title is the first line of its note, as in
  * Obsidian.
+ *
+ * A spec's is only shown: `requirements.md` is a place in the spec, which the
+ * agent reads by that name, not a title anyone gave it.
  */
 export function Title({ path }: { path: string }) {
 	const box = useRef<HTMLInputElement>(null);
@@ -76,6 +80,7 @@ export function Title({ path }: { path: string }) {
 				type="text"
 				defaultValue={titleOf(path)}
 				aria-label="Title"
+				readOnly={isSpec(path)}
 				aria-invalid={error ? true : undefined}
 				spellCheck={false}
 				className="min-w-0 flex-1 bg-transparent text-xl font-semibold outline-none placeholder:text-muted-foreground"

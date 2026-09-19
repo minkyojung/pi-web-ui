@@ -89,7 +89,7 @@ export type ClientMsg =
 	| { type: "clone_session" }
 	/** The session as a file in the vault's .pi/exports, in the shape asked for. pi's /export. */
 	| { type: "export_session"; format: "html" | "jsonl" }
-	/** A note to look at. Answered with `note`, or `note_gone` if there is no such note. */
+	/** A note, or a spec, to look at. Answered with `note` (a SpecMsg for a spec), or `note_gone` if there is no such note. */
 	| { type: "open_note"; path: string }
 	/**
 	 * A note's whole text, on top of the version it was read at — `base` is
@@ -98,7 +98,8 @@ export type ClientMsg =
 	 * coordinates, side by side; the record takes them as they are when they
 	 * add up to `text`, and reads the change off the two texts when they do
 	 * not (fromEdits in history.ts). Answered with `note` to every tab, or
-	 * `note_conflict` to this one.
+	 * `note_conflict` to this one. A spec is saved the same way, less the
+	 * record: `edits` is not read, and the answer is its SpecMsg.
 	 */
 	| { type: "save_note"; path: string; text: string; base: number | null; edits?: Edit[] }
 	/**
@@ -508,6 +509,22 @@ export interface NoteMsg {
 	tagged: Tagged[];
 	/** How much of it somebody other than you wrote. See Authored. */
 	authored: Authored;
+	/** Absent on a note; see SpecMsg. */
+	kind?: undefined;
+}
+
+/**
+ * A spec (documentKinds.ts) as it is on disk, whole: the answer to open_note
+ * for one, and what every tab is sent after any write to it, since a spec
+ * keeps no log to say a change against. Everything else a note's message
+ * carries is its log's or its links', and a spec has neither.
+ */
+export interface SpecMsg {
+	type: "note";
+	kind: "spec";
+	path: string;
+	text: string;
+	modified: number;
 }
 
 /**
@@ -800,6 +817,7 @@ export type StateMsg =
 	| SnapshotMsg
 	| FilesMsg
 	| NoteMsg
+	| SpecMsg
 	| BacklinksMsg
 	| TaggedMsg
 	| PropertyTypesMsg

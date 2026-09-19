@@ -3194,6 +3194,70 @@ check("a version ready to install is offered in the corner, × leaves a dot, Abo
 	}
 });
 
+check("a spec opens in the editor by its address, keeps no record of who wrote it, follows the agent's writes and does not write over them", async ({ app, cwd }) => {
+	// Who wrote what, turned on over a note first: it stays on across notes, and
+	// a spec has no one to ask about — asked as a note, the answer is "gone".
+	writeFileSync(join(cwd, "beside-spec.md"), "mine and pi's\n");
+	mkdirSync(join(cwd, ".pi/history"), { recursive: true });
+	writeFileSync(
+		join(cwd, ".pi/history/beside-spec.md.jsonl"),
+		[
+			{ author: "me", at: Date.now() - 60_000, from: 0, to: 0, inserted: "mine and ", removed: "" },
+			{ author: "pi", at: Date.now() - 30_000, sessionId: "s", entryId: "e", from: 9, to: 9, inserted: "pi's\n", removed: "" },
+		]
+			.map((c) => JSON.stringify(c))
+			.join("\n") + "\n",
+	);
+	await app.evaluate(`location.hash = "#beside-spec.md"`);
+	await until("the share", () => app.evaluate("!!document.getElementById('authored')"));
+	const at = await app.evaluate("(() => { const b = document.getElementById('authored').getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()");
+	await app.moveTo(at.x, at.y);
+	await until("the card with the switch", () => app.evaluate("!!document.getElementById('whoWrote')"));
+	if ((await app.evaluate("document.getElementById('whoWrote').getAttribute('aria-checked')")) !== "true") assert.equal(await app.click("#whoWrote"), true);
+	await until("the marks", () => app.evaluate("document.querySelectorAll('#editor .cm-by-pi').length > 0"));
+	await app.moveTo(1, 1);
+	await until("the card gone", async () => !(await app.evaluate("!!document.getElementById('whoWrote')")));
+
+	const path = ".octave/specs/e2e/requirements.md";
+	mkdirSync(join(cwd, ".octave/specs/e2e"), { recursive: true });
+	writeFileSync(join(cwd, path), "# Requirements\n\nfirst\n");
+	await app.evaluate(`location.hash = ${JSON.stringify(`#${path}`)}`);
+	await until("the spec's text", async () => (await editorText(app)).includes("first"));
+	await new Promise((r) => setTimeout(r, 300));
+	assert.equal(await editorStatus(app), "saved", "not taken for a note that is gone");
+	assert.equal(await app.evaluate("!!document.getElementById('authored')"), false, "no share: nothing in a spec is counted as anyone's");
+
+	// Its name is a place in the spec, not a title: shown, not changed — and
+	// its menu has what points at it, and not the note's Rename or Delete.
+	assert.equal(await app.evaluate("document.getElementById('title').value"), "requirements");
+	assert.equal(await app.evaluate("document.getElementById('title').readOnly"), true);
+	await app.click("#noteMenu");
+	await until("the menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitem]')"));
+	const items = await app.evaluate("[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((i) => i.textContent.trim())");
+	assert.ok(items.includes("Copy path") && !items.includes("Rename") && !items.includes("Delete"), `the spec's items, got ${items.join()}`);
+	await app.press("Escape");
+	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+
+	// Typed: down to the disk, and no log beside it.
+	assert.equal(await type(app, "TYPED "), true);
+	await until("the save to land", async () => (await editorStatus(app)) === "saved" && readFileSync(join(cwd, path), "utf8").includes("TYPED"));
+	assert.equal(existsSync(join(cwd, ".pi/history", `${path}.jsonl`)), false, "who wrote it is not recorded");
+
+	// The agent writes it: the tab follows, with nothing to decide.
+	writeFileSync(join(cwd, path), "# Requirements\n\nthe agent's\n");
+	await until("the agent's words", async () => (await editorText(app)).includes("the agent's") && (await editorStatus(app)) === "saved");
+	assert.equal(await app.evaluate("!!document.querySelector('#editor [role=alert]')"), false, "nothing was typed, so nothing to put to anyone");
+
+	// The agent writes under typing: put to the person, and nothing written over.
+	writeFileSync(join(cwd, path), "# Requirements\n\nthe agent's again\n");
+	assert.equal(await type(app, "MORE "), true);
+	await until("the refusal", async () => (await editorStatus(app)) === "conflict");
+	assert.ok((await app.evaluate("document.querySelector('#editor [role=alert]')?.textContent ?? ''")).includes("changed on disk"));
+	assert.equal(readFileSync(join(cwd, path), "utf8"), "# Requirements\n\nthe agent's again\n", "the agent's words are still there");
+	await app.evaluate(`[...document.querySelectorAll('#editor [role=alert] button')].find((b) => b.textContent === "Reload").click()`);
+	await until("the disk's text", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("the agent's again"));
+});
+
 check("the bench renders every scenario it knows", async ({ bench }) => {
 	// The list is drawn only while the picker is open, and each entry carries
 	// its id: what is read is the scenario's name, and the name is not the id.

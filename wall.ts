@@ -9,8 +9,9 @@
  * "outside", which was right almost always and wrong in a way nothing could
  * catch. What cannot be told apart is better made impossible. So the shell is
  * run inside a macOS sandbox profile that denies writing to `*.md` under the
- * folder and to `.pi/`, and everything else — reading the notes, building,
- * testing, writing any other file — is as it was. pi is told in its prompt
+ * folder (bar the agent's specs, in `.octave/`) and to `.pi/`, and everything
+ * else — reading the notes, building, testing, writing any other file — is
+ * as it was. pi is told in its prompt
  * that this is so and where to go instead (note_edit); the wall is for when
  * the prompt is not enough, as guard.ts is for edit and write.
  *
@@ -29,6 +30,7 @@ import { existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+import { OCTAVE_DIR } from "./documentKinds.ts";
 import { APP_DIR_NAME } from "./guard.ts";
 import { APP_DIR } from "./settings.ts";
 
@@ -52,6 +54,11 @@ export function profileFor(vault: string): string {
 		"(version 1)",
 		"(allow default)",
 		`(deny file-write* (regex #"^${inRegex(vault)}/.*\\.[mM][dD]$"))`,
+		// Where the agent's specs are (documentKinds.ts): markdown that is not a
+		// note, and the agent's to write from the shell as from write. The rule
+		// that matches last wins, so this opens `.octave/` in the one above, and
+		// the `.pi/` below it stays shut whatever path leads there.
+		`(allow file-write* (subpath "${inString(join(vault, OCTAVE_DIR))}"))`,
 		`(deny file-write* (subpath "${inString(join(vault, APP_DIR_NAME))}"))`,
 		"",
 	].join("\n");
