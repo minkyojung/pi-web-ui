@@ -111,6 +111,16 @@ test("노트가 아닌 파일은 pi가 그대로 고친다", async () => {
   assert.equal(await ask("read", { path: "a.md" }), undefined, "읽기는 막지 않는다");
 });
 
+test("스펙 폴더(.octave) 아래의 .md는 노트가 아니라, edit·write·bash가 그대로 쓴다", async () => {
+  const ask = refusing("/v");
+  for (const tool of ["edit", "write"]) {
+    for (const path of [".octave/specs/email-auth/requirements.md", "/v/.octave/specs/email-auth/design.md"]) {
+      assert.equal(await ask(tool, { path }), undefined, `${tool} ${path}`);
+    }
+  }
+  assert.equal(await ask("bash", { command: "mkdir -p .octave/specs/email-auth && cat > .octave/specs/email-auth/requirements.md" }), undefined);
+});
+
 test("앱의 폴더는 여전히 먼저 막히고, 그 이유로 막힌다", async () => {
   const answer = await refusing("/v")("write", { path: ".pi/history/a.md.jsonl" });
   assert.equal(answer?.block, true);

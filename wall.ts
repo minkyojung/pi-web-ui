@@ -9,8 +9,9 @@
  * "outside", which was right almost always and wrong in a way nothing could
  * catch. What cannot be told apart is better made impossible. So the shell is
  * run inside a macOS sandbox profile that denies writing to `*.md` under the
- * folder and to `.pi/`, and everything else — reading the notes, building,
- * testing, writing any other file — is as it was. pi is told in its prompt
+ * folder (bar the agent's specs, in `.octave/`) and to `.pi/`, and everything
+ * else — reading the notes, building, testing, writing any other file — is
+ * as it was. pi is told in its prompt
  * that this is so and where to go instead (note_edit); the wall is for when
  * the prompt is not enough, as guard.ts is for edit and write.
  *
@@ -52,10 +53,20 @@ export function profileFor(vault: string): string {
 		"(version 1)",
 		"(allow default)",
 		`(deny file-write* (regex #"^${inRegex(vault)}/.*\\.[mM][dD]$"))`,
+		// The rule that matches last wins, so this opens `.octave/` in the one
+		// above, and the `.pi/` below it stays shut whatever path leads there.
+		`(allow file-write* (subpath "${inString(join(vault, OCTAVE_DIR_NAME))}"))`,
 		`(deny file-write* (subpath "${inString(join(vault, APP_DIR_NAME))}"))`,
 		"",
 	].join("\n");
 }
+
+/**
+ * The folder the agent's spec documents are written in — `.octave/specs/…`,
+ * markdown that is not a note (see docs/spec-mode). Its `.md` is the agent's
+ * to write, from the shell as from write, so the wall opens there.
+ */
+const OCTAVE_DIR_NAME = ".octave";
 
 /** Where the profile for a folder lives: in the app's own directory, named by the folder, not in the folder. */
 export const profilePath = (vault: string): string => join(APP_DIR, "walls", `${createHash("sha256").update(vault).digest("hex").slice(0, 16)}.sb`);
