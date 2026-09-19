@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameS
 import { writeAtomic } from "./atomic.ts";
 import { propertiesOf, setProperty, withProperties } from "./properties.ts";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import { isDocument } from "./documentKinds.ts";
+import { isDocument, isSpec } from "./documentKinds.ts";
 
 export type NoteFile = {
 	/** Relative to the folder, with forward slashes, so it reads as a name. */
@@ -134,17 +134,40 @@ export function noteAt(root: string, given: string): { path: string; full: strin
 }
 
 /**
+ * Where a path lands inside the folder, as the vault names it — from the
+ * root, forward slashes, on the disk's spelling — or null when it lands
+ * outside. What every door below checks first.
+ */
+function inFolder(root: string, given: string): { path: string; full: string } | null {
+	if (!given) return null;
+	const full = asOnDisk(isAbsolute(given) ? given : join(root, given));
+	const rel = relative(asOnDisk(root), full);
+	if (!rel || rel.startsWith("..") || isAbsolute(rel)) return null;
+	return { path: rel.split(sep).join("/"), full };
+}
+
+/**
  * Any file a path names inside the folder, as the vault names it — the
  * check noteAt makes before asking whether it is a note. Nothing under a
  * dot-folder: .pi/ is the app's and .obsidian/ is Obsidian's.
  */
 export function fileAt(root: string, given: string): { path: string; full: string } | null {
-	if (!given) return null;
-	const full = asOnDisk(isAbsolute(given) ? given : join(root, given));
-	const rel = relative(asOnDisk(root), full);
-	if (!rel || rel.startsWith("..") || isAbsolute(rel)) return null;
-	if (rel.split(sep).some((part) => part.startsWith("."))) return null;
-	return { path: rel.split(sep).join("/"), full };
+	const file = inFolder(root, given);
+	return file && !file.path.split("/").some((part) => part.startsWith(".")) ? file : null;
+}
+
+/**
+ * The spec a path from the folder names (documentKinds.ts), as the vault
+ * names it, or null. Placed as a note is — inside the folder once resolved,
+ * on the disk's spelling — and then under `.octave/specs/`, the one
+ * dot-folder anything here reads. A door of its own rather than an exception
+ * in fileAt: everything that asks for a note still cannot see a spec, and a
+ * file is never both, since both ask of where the disk says it is.
+ */
+export function specAt(root: string, given: string): { path: string; full: string } | null {
+	if (isAbsolute(given)) return null;
+	const file = inFolder(root, given);
+	return file && isSpec(file.path) ? file : null;
 }
 
 /**
@@ -188,7 +211,16 @@ export type Note = { path: string; text: string; modified: number };
  */
 export function readNote(root: string, path: string): Note | null {
 	const found = noteAt(root, path);
-	if (!found) return null;
+	return found ? readAt(found) : null;
+}
+
+/** A spec's text and the time it was written, or null if there is no such spec — readNote's answer, through specAt. */
+export function readSpec(root: string, path: string): Note | null {
+	const found = specAt(root, path);
+	return found ? readAt(found) : null;
+}
+
+function readAt(found: { path: string; full: string }): Note | null {
 	try {
 		return { path: found.path, text: readFileSync(found.full, "utf8"), modified: statSync(found.full).mtimeMs };
 	} catch {
@@ -214,7 +246,21 @@ export type WriteResult =
  */
 export function writeNote(root: string, path: string, text: string, base: number | null): WriteResult {
 	const full = resolveNote(root, path);
-	if (!full) return { ok: false, reason: "invalid" };
+	return full ? writeOver(full, text, base) : { ok: false, reason: "invalid" };
+}
+
+/**
+ * Write a spec on top of the version the writer had: writeNote's promise,
+ * through specAt. The agent writes a spec with its own tools, not through
+ * here, so this is the person's save — refused if the agent has written
+ * since the text was read, as VS Code refuses a save over a newer file.
+ */
+export function writeSpec(root: string, path: string, text: string, base: number | null): WriteResult {
+	const full = specAt(root, path)?.full;
+	return full ? writeOver(full, text, base) : { ok: false, reason: "invalid" };
+}
+
+function writeOver(full: string, text: string, base: number | null): WriteResult {
 	let current: number | null = null;
 	try {
 		current = statSync(full).mtimeMs;

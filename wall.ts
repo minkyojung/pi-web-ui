@@ -30,6 +30,7 @@ import { existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+import { OCTAVE_DIR } from "./documentKinds.ts";
 import { APP_DIR_NAME } from "./guard.ts";
 import { APP_DIR } from "./settings.ts";
 
@@ -53,20 +54,15 @@ export function profileFor(vault: string): string {
 		"(version 1)",
 		"(allow default)",
 		`(deny file-write* (regex #"^${inRegex(vault)}/.*\\.[mM][dD]$"))`,
-		// The rule that matches last wins, so this opens `.octave/` in the one
-		// above, and the `.pi/` below it stays shut whatever path leads there.
-		`(allow file-write* (subpath "${inString(join(vault, OCTAVE_DIR_NAME))}"))`,
+		// Where the agent's specs are (documentKinds.ts): markdown that is not a
+		// note, and the agent's to write from the shell as from write. The rule
+		// that matches last wins, so this opens `.octave/` in the one above, and
+		// the `.pi/` below it stays shut whatever path leads there.
+		`(allow file-write* (subpath "${inString(join(vault, OCTAVE_DIR))}"))`,
 		`(deny file-write* (subpath "${inString(join(vault, APP_DIR_NAME))}"))`,
 		"",
 	].join("\n");
 }
-
-/**
- * The folder the agent's spec documents are written in — `.octave/specs/…`,
- * markdown that is not a note (see docs/spec-mode). Its `.md` is the agent's
- * to write, from the shell as from write, so the wall opens there.
- */
-const OCTAVE_DIR_NAME = ".octave";
 
 /** Where the profile for a folder lives: in the app's own directory, named by the folder, not in the folder. */
 export const profilePath = (vault: string): string => join(APP_DIR, "walls", `${createHash("sha256").update(vault).digest("hex").slice(0, 16)}.sb`);

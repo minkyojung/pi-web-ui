@@ -59,6 +59,16 @@ test("문서가 생기면 노트처럼 보고되고, 숨김 폴더의 것은 아
   assert.deepEqual(seen, ["deep/paper.pdf"]);
 });
 
+test("스펙이 쓰이면 보고되고, .octave의 다른 것은 아니다", async () => {
+  mkdirSync(join(DIR, ".octave", "specs", "email-auth"), { recursive: true });
+  const seen = await report(() => {
+    writeFileSync(join(DIR, ".octave", "specs", "email-auth", "requirements.md"), "x\n");
+    writeFileSync(join(DIR, ".octave", "specs", "email-auth", "notes.txt"), "x\n");
+    writeFileSync(join(DIR, ".octave", "other.md"), "x\n");
+  });
+  assert.deepEqual(seen, [".octave/specs/email-auth/requirements.md"]);
+});
+
 test("멈춘 뒤에는 아무것도 보고되지 않는다", async () => {
   const seen = [];
   const stop = watchNotes(DIR, (path) => seen.push(path), 40);

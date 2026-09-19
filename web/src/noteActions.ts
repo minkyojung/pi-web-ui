@@ -1,4 +1,4 @@
-import { isDocument } from "../../documentKinds.ts";
+import { isDocument, isSpec } from "../../documentKinds.ts";
 import { hashForNote, wholePath } from "./noteSync";
 import { configStore } from "./serverState";
 import { send } from "./ws";
@@ -29,7 +29,8 @@ export function noteActions(path: string): (NoteAction | "separator")[] {
 	];
 	// A document can be pointed at and found; renaming and deleting are the
 	// note's, done through its title and its log, and a PDF has neither here.
-	if (isDocument(path)) return where;
+	// Nor has a spec: its name is its place in the spec, which the agent keeps.
+	if (isDocument(path) || isSpec(path)) return where;
 	return [
 		{
 			label: "Rename",

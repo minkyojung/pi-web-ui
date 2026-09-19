@@ -82,6 +82,16 @@ test("PDF를 열어 두었으면 문서라고 말하고, 고른 글에는 쪽이
   assert.doesNotMatch(looking({ path: "a.md", chosen: "x", page: "3" }), /on page/, "노트에는 쪽이 없다");
 });
 
+test("스펙을 열어 두었으면 노트가 아니라 스펙이라고, 무엇으로 고치는지와 함께 말한다", () => {
+  assert.equal(
+    looking({ path: ".octave/specs/email-auth/requirements.md", chosen: null }),
+    "When they sent this message, the person had this spec open in their editor: .octave/specs/email-auth/requirements.md (a spec is not a note: change it with edit or write, not note_edit)",
+  );
+  const said = looking({ path: ".octave/specs/email-auth/requirements.md", chosen: "첫 줄" });
+  assert.match(said, /They have chosen these words in it, which is what their message is about/);
+  assert.ok(said.endsWith("> 첫 줄"));
+});
+
 // --- what the guard refuses, as pi's runner would ask it ---
 
 /** The handler pi would call, from a guard bound to `root`. */

@@ -158,8 +158,11 @@ function receive(msg: ServerMsg): void {
 			filesTruncatedStore.set(msg.truncated);
 			return;
 		case "note":
-			setBacklinks(msg.path, msg.backlinks);
-			setTagged(msg.path, msg.tagged);
+			// A spec is in none of the notes' lists, so it has neither.
+			if (msg.kind !== "spec") {
+				setBacklinks(msg.path, msg.backlinks);
+				setTagged(msg.path, msg.tagged);
+			}
 			noteStore.set(msg);
 			return;
 		case "backlinks":

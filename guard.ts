@@ -33,7 +33,7 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, relative, sep } from "node:path";
-import { isDocument } from "./documentKinds.ts";
+import { isDocument, isSpec } from "./documentKinds.ts";
 import { notePath } from "./vault.ts";
 
 /** What the app keeps beside the notes. Nothing of pi's may go there. */
@@ -93,9 +93,13 @@ export function looking(note: { path: string; chosen: string | null; page?: stri
 	// A PDF in front is said as one: pi reads it with read, not as a note, and
 	// the page is where to read around the chosen words — read names each page.
 	const document = isDocument(note.path);
+	// A spec is markdown in the editor like a note, and said as what it is: told
+	// it was a note, pi reaches for note_edit, which refuses it.
 	const line = document
 		? `When they sent this message, the person had this document open beside the conversation: ${note.path} (read it with read; it comes back page by page)`
-		: `When they sent this message, the person had this note open in their editor: ${note.path}`;
+		: isSpec(note.path)
+			? `When they sent this message, the person had this spec open in their editor: ${note.path} (a spec is not a note: change it with edit or write, not note_edit)`
+			: `When they sent this message, the person had this note open in their editor: ${note.path}`;
 	if (!note.chosen) return line;
 	const where = document && note.page ? ` on page ${note.page.replace("-", " to ")}` : "";
 	// Quoted, and said to be a part of the note rather than a thing to answer
