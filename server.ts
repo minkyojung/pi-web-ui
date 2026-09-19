@@ -1005,6 +1005,9 @@ function onEvent(event: AgentSessionEvent): void {
 	) {
 		broadcast(config());
 	}
+	// The desktop shell stops a server nobody has looked at for a while, and must
+	// not stop one in the middle of a run (electron/servers.js). Only it listens.
+	if ((event.type === "agent_start" || event.type === "agent_settled") && process.connected) process.send?.({ busy: event.type === "agent_start" });
 	// Cost only moves when a message completes.
 	if (event.type === "message_end" || event.type === "agent_settled") broadcast(usage());
 	if (event.type === "agent_settled" && rereadWhenSettled) {

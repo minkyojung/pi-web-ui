@@ -1,0 +1,77 @@
+/**
+ * GitHub, by way of the person's own `gh`.
+ *
+ * Conductor reaches GitHub the same way: the sign-in is the one the person
+ * already made in their terminal, so the app holds no token and registers no
+ * app of its own. Everything else works without it — opening a repository,
+ * making a workspace, fetching are git's. When a sign-in of the app's own is
+ * wanted (OAuth, as Cursor has it), it goes in here and nowhere else.
+ */
+import { execFile } from "node:child_process";
+
+/** gh's answer, trimmed, or null when there is no gh, no sign-in, or no answer. */
+function gh(args, { timeoutMs = 15_000 } = {}) {
+	return new Promise((resolve) => {
+		execFile("gh", args, { env: { ...process.env, GH_PROMPT_DISABLED: "1" }, timeout: timeoutMs }, (err, stdout) => {
+			resolve(err ? null : String(stdout).trim() || null);
+		});
+	});
+}
+
+/** The signed-in person's GitHub name, which starts their branch names — or null. */
+export function login() {
+	return gh(["api", "user", "--jq", ".login"]);
+}
+
+/**
+ * The signed-in person's repositories, most recently pushed first, or null
+ * when gh cannot say — not installed, or not signed in.
+ */
+export async function repositories() {
+	const out = await gh(["repo", "list", "--limit", "200", "--json", "nameWithOwner,description,isPrivate,pushedAt"], { timeoutMs: 30_000 });
+	if (out === null) return null;
+	try {
+		const list = JSON.parse(out);
+		if (!Array.isArray(list)) return null;
+		return list
+			.filter((repo) => repo && typeof repo.nameWithOwner === "string")
+			.sort((a, b) => String(b.pushedAt ?? "").localeCompare(String(a.pushedAt ?? "")))
+			.map((repo) => ({ name: repo.nameWithOwner, description: typeof repo.description === "string" ? repo.description : "", private: repo.isPrivate === true }));
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * What a clone is asked for with — `owner/name`, or a GitHub address as the
+ * page gives it or as git writes it — as the name its folder takes, or null
+ * for anything else. Only GitHub: gh is what reaches it, and a git address of
+ * any other host is a URL git would have to be trusted with blind.
+ */
+export function repositoryName(source) {
+	const text = String(source ?? "").trim();
+	const match =
+		/^([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?$/.exec(text) ??
+		/^https:\/\/github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/.exec(text) ??
+		/^git@github\.com:([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?$/.exec(text);
+	if (!match || match[2] === "." || match[2] === "..") return null;
+	return { owner: match[1], name: match[2] };
+}
+
+/**
+ * Clone `owner/name` into `into`: with gh when someone is signed in to it,
+ * which clones a private repository as them without asking; else with git
+ * over https, which clones a public one. Git's or gh's own words when it
+ * fails.
+ */
+export async function clone({ owner, name }, into) {
+	const [command, args] = (await login())
+		? ["gh", ["repo", "clone", `${owner}/${name}`, into]]
+		: ["git", ["clone", `https://github.com/${owner}/${name}.git`, into]];
+	await new Promise((resolve, reject) => {
+		execFile(command, args, { env: { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" }, timeout: 10 * 60_000 }, (err, _stdout, stderr) => {
+			if (err) reject(new Error(String(stderr).trim() || err.message));
+			else resolve();
+		});
+	});
+}

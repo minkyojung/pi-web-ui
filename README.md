@@ -56,9 +56,15 @@ edits arrive through vite's HMR and server edits through tsx's watch, after
 which the window reconnects on its own.
 
 The app is a window over the same server, started as a child process on a port
-it picks. It asks which folder to open on first run and remembers it — a
-packaged app is launched with a working directory of `/`, which is not somewhere
-to point a coding agent. `⌘O` changes it, which relaunches.
+it picks — one server for each workspace, kept by the shell (`electron/`), so
+moving to another workspace points the window at that one's server and nothing
+restarts. One nobody has used for ten minutes is stopped, and started again on
+the same port when it is opened, since a page keeps its tabs by its address.
+With no workspace yet, the window opens on a start page the shell serves itself
+(`octave://app/start.html`), since there is no folder for a server to work in.
+A packaged app is launched with a working directory of `/` and launchd's bare
+`PATH`, so the login shell's environment is read once at start, as VS Code
+does, and the agent finds the tools a terminal would.
 
 `npm run pack` builds the disk image; `scripts/pack-signed.sh` does the same
 signed and notarized, with the credentials read out of 1Password for the one

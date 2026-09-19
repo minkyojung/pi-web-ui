@@ -13,6 +13,8 @@ use it. There is no telemetry and no crash reporting.
 | A note shows a picture from the web | The site the picture is on | A request for that picture |
 | Octave starts, and every four hours after | GitHub Releases (`github.com/minkyojung/pi-web-ui`) | A request for the latest version number; then the update itself, if there is one |
 | The model list is refreshed | The provider you signed in to | A request for the models it offers |
+| You add a repository from GitHub | GitHub — through `gh` if you are signed in to it, else git | A request for the list of your repositories, and the clone of the one you choose |
+| A workspace is made | The repository's own remote (`origin`), and GitHub through `gh` | A fetch of its latest commits, and a request for your GitHub user name, which begins the workspace's branch name |
 | You choose Help › Report a Problem… | GitHub, in your browser | Only what you type and attach yourself. The app sends nothing |
 
 The agent's file-search tools (`rg` and `fd`) are inside the app; nothing is downloaded to run them.
@@ -25,6 +27,8 @@ connected.
 
 | Where | What | Made by |
 |---|---|---|
+| `~/octave/repos/` | The repositories you cloned from GitHub | Octave, with git |
+| `~/octave/workspaces/<repository>/<city>/` | Each workspace: a git worktree of its repository, on a branch of its own. What the agent writes goes here, never into your own clone | Octave, with git |
 | Your folder | Your notes, as markdown files, and the pictures and PDFs you paste or drop (where your vault keeps attachments, else `attachments/`). The app is a window onto them | you, and the agent |
 | `<folder>/.pi/history/` | Who wrote which words, one log per note. **The one thing that cannot be rebuilt** — it travels with the notes | Octave |
 | `<folder>/.pi/properties.json` | The property types you chose | Octave |
@@ -33,11 +37,13 @@ connected.
 | `<folder>/.pi/exports/` | Conversations you exported | Octave |
 | `~/.pi/agent/` | pi's own: your sign-in (`auth.json`), sessions, settings. Shared with `pi` in a terminal if you use it | pi |
 | `~/.octave/` | Octave's settings, and its log (`logs/server.log`) | Octave |
-| `~/Library/Application Support/Octave/` | Which folder to open, the recent ones, and that you have seen the Welcome page | Octave |
+| `~/Library/Application Support/Octave/` | Your repositories and their workspaces, the one you were in last, and that you have seen the Welcome page | Octave |
 
 ## Removing it
 
 Dragging Octave to the Trash removes the app and nothing else. To remove the rest: `~/.octave/` and
 `~/Library/Application Support/Octave/` are Octave's alone. `~/.pi/agent/` is pi's — leave it if you use `pi` in
 a terminal. `.pi/` inside your notes folder holds who-wrote-what; delete it and the notes are untouched, but
-that record is gone for good.
+that record is gone for good. `~/octave/` holds your clones and workspaces, which are git's: a workspace's
+branch may hold work that was never pushed, so look before deleting one, and after deleting its folder run
+`git worktree prune` in its repository.

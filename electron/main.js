@@ -9,13 +9,20 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { basename, join, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain, net, protocol, shell } from "electron";
 import updater from "electron-updater";
 
+import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
+import { createServers, idle } from "./servers.js";
+import { shellEnv } from "./shellEnv.js";
+import { branchOf, git, makeWorkspace, repositoryOf } from "./git.js";
+import { clone, login, repositories, repositoryName } from "./github.js";
+import { firstWorkspace, projectsOf, withWorkspace } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
@@ -24,12 +31,15 @@ const { autoUpdater } = updater;
 const HOST = "127.0.0.1";
 const here = (path) => fileURLToPath(new URL(path, import.meta.url));
 
-/** Ask the OS for a port nobody is using, then hand it to the server. */
-function freePort() {
+/**
+ * Ask the OS for a port nobody is using, then hand it to the server — the
+ * one asked for if it is free, else any.
+ */
+function freePort(preferred = 0) {
 	return new Promise((resolve, reject) => {
 		const probe = createServer();
-		probe.on("error", reject);
-		probe.listen(0, HOST, () => {
+		probe.on("error", (err) => (preferred ? freePort().then(resolve, reject) : reject(err)));
+		probe.listen(preferred, HOST, () => {
 			const { port } = probe.address();
 			probe.close(() => resolve(port));
 		});
@@ -74,49 +84,31 @@ function writeSettings(next) {
 	writeFileSync(settingsFile(), JSON.stringify(next, null, 2));
 }
 
-async function askForWorkdir(current) {
+async function askForRepository() {
 	const { canceled, filePaths } = await dialog.showOpenDialog({
-		title: "Choose a working folder",
-		message: "The folder the agent will read and write files in.",
-		buttonLabel: "Use this folder",
-		defaultPath: current ?? app.getPath("home"),
-		properties: ["openDirectory", "createDirectory"],
+		title: "Open a repository",
+		message: "A folder with a git repository in it. Its workspaces are made from it.",
+		buttonLabel: "Open",
+		defaultPath: app.getPath("home"),
+		properties: ["openDirectory"],
 	});
 	return canceled ? null : filePaths[0];
 }
 
 /**
- * The folders worked in before, newest first and the current one at its head,
- * so the page can offer them the way Obsidian offers its vaults. Ones that
- * have since been deleted or moved are dropped as they are read: a list that
- * offers a folder which is not there is worse than a short list.
+ * A folder's server, started on a port of its own. Its `errors` are its last
+ * words: it exits deliberately for reasons a person can act on — a working
+ * directory that has been deleted — and those reasons are worth more than the
+ * exit code the shell would otherwise have to report.
  */
-const RECENT = 8;
-function remember(settings, workdir) {
-	const recent = [workdir, ...(settings.recent ?? []).filter((path) => path !== workdir)]
-		.filter((path) => existsSync(path))
-		.slice(0, RECENT);
-	return { ...settings, workdir, recent };
-}
-
-async function resolveWorkdir() {
-	const settings = readSettings();
-	const known = settings.workdir && existsSync(settings.workdir) ? settings.workdir : await askForWorkdir(settings.workdir);
-	if (known) writeSettings(remember(settings, known));
-	return known;
-}
-
-let child = null;
-let exiting = false;
-/**
- * The server's last words. It exits deliberately for reasons a person can act
- * on — a working directory that has been deleted — and
- * those reasons are worth more than the exit code the shell would otherwise
- * have to report.
- */
-let serverErrors = [];
-
-function startServer(port, workdir) {
+async function startServer(workdir) {
+	// The port a folder had before, if it is free: a page keeps its tabs by its
+	// address, so a server started again after going idle is found where it was.
+	const port = await freePort(ports.get(workdir));
+	ports.set(workdir, port);
+	busy.set(workdir, false);
+	const errors = [];
+	const said = (lines) => errors.splice(0, Math.max(0, errors.push(...lines) - 10));
 	// ELECTRON_RUN_AS_NODE turns this same binary into plain node, so the app does
 	// not depend on whatever node the machine happens to have. The server is
 	// pre-bundled rather than compiled at startup: `npm run build` writes it.
@@ -125,7 +117,7 @@ function startServer(port, workdir) {
 	// a dev build) and go first on the server's PATH, which is where pi looks
 	// for them before it thinks of downloading its own.
 	const tools = app.isPackaged ? join(process.resourcesPath, "bin") : here("../build/bin");
-	child = spawn(process.execPath, [here("../dist-server/server.mjs")], {
+	const child = spawn(process.execPath, [here("../dist-server/server.mjs")], {
 		env: {
 			...process.env,
 			PATH: `${tools}:${process.env.PATH ?? ""}`,
@@ -147,23 +139,58 @@ function startServer(port, workdir) {
 	child.stdout.on("data", (d) => process.stdout.write(`[server] ${d}`));
 	child.stderr.on("data", (d) => {
 		process.stderr.write(`[server] ${d}`);
-		serverErrors = [...serverErrors, ...String(d).split("\n").filter(Boolean)].slice(-10);
+		said(String(d).split("\n").filter(Boolean));
 	});
 	// A failed spawn emits 'error', not 'exit', and without this the shell would
 	// sit forever waiting for a server that was never going to start.
-	child.on("error", (err) => {
-		serverErrors = [...serverErrors, `Could not start the pi server: ${err.message}`].slice(-10);
+	child.on("error", (err) => said([`Could not start the pi server: ${err.message}`]));
+	// Whether it is in the middle of a run, so it is not stopped for being idle.
+	child.on("message", (message) => {
+		if (typeof message?.busy !== "boolean") return;
+		busy.set(workdir, message.busy);
+		if (!message.busy) since.set(workdir, Date.now());
 	});
-	child.on("exit", (code) => {
-		child = null;
-		if (exiting) return;
-		dialog.showErrorBox(
-			"The server stopped",
-			serverErrors.length ? serverErrors.join("\n") : `Exit code ${code}. Check the terminal output.`,
-		);
-		app.quit();
-	});
+	return { child, url: `http://${HOST}:${port}/`, errors };
 }
+
+/** Each folder's port for as long as the app runs. */
+const ports = new Map();
+/** Whether each folder's server is in the middle of a run. */
+const busy = new Map();
+/** When each folder was last in front or last finished a run. */
+const since = new Map();
+
+/**
+ * A server nobody is using is stopped after this long, and started again when
+ * its workspace is next opened — a few seconds, against a process's memory
+ * for as long as the app is open. Conductor keeps agent processes only for
+ * the workspaces in use the same way.
+ */
+const IDLE_MS = 10 * 60_000;
+
+function stopIdle() {
+	for (const workdir of idle(servers.folders(), { keep: [front, wanted].filter(Boolean), busy, since, now: Date.now(), idleMs: IDLE_MS })) {
+		void servers.stop(workdir);
+	}
+}
+
+/**
+ * Every folder's server — see servers.js. One that stops unasked says why;
+ * the one in front takes the app with it, since the window has nothing left
+ * to show, and one behind is started again when its folder is next opened.
+ */
+const servers = createServers({
+	start: startServer,
+	onCrash: (workdir, code, server) => {
+		const why = server.errors.length ? server.errors.join("\n") : `Exit code ${code}. Check the terminal output.`;
+		if (workdir !== front) {
+			dialog.showErrorBox(`The server for ${basename(workdir)} stopped`, why);
+			return;
+		}
+		dialog.showErrorBox("The server stopped", why);
+		app.quit();
+	},
+});
 
 /**
  * The one thing the server cannot do for itself: put a file in the trash the
@@ -218,39 +245,22 @@ function openUrlAsks(server) {
 	});
 }
 
-let stopping = false;
+let quitting = false;
 
 /**
- * Quitting waits for the server to stop itself.
+ * Quitting waits for the servers to stop themselves.
  *
- * kill() sends SIGTERM, which the server answers by retiring its extensions,
- * cancelling the questions it has open and disposing the session — work that
- * takes a moment and that nothing else does. The shell used to be gone before
- * any of it ran, so the clean path was the one only a terminal ever took.
- *
- * The first quit is held back until the child has gone. Three seconds later
- * it is taken out with SIGKILL: a quit that hangs on a server that will not
- * stop is worse than a hard stop, and by then the cleanup has either happened
- * or is not going to.
+ * The shell used to be gone before a server had cleaned up, so the clean path
+ * was the one only a terminal ever took. The first quit is held back until
+ * every server has gone — asked, then made to, see servers.js — and the one
+ * asked for afterwards finds none and goes through.
  */
-async function stopServer(event) {
-	if (stopping || !child) return;
+async function stopServers(event) {
+	if (quitting || servers.size === 0) return;
+	quitting = true;
 	event?.preventDefault();
-	await endServer();
+	await servers.stopAll();
 	app.quit();
-}
-
-/** The server told to stop, and waited for. The quit that follows is the caller's. */
-async function endServer() {
-	stopping = true;
-	exiting = true;
-	const server = child;
-	const gone = new Promise((resolve) => server.once("exit", resolve));
-	server.kill();
-	const hard = setTimeout(() => server.kill("SIGKILL"), 3000);
-	await gone;
-	clearTimeout(hard);
-	child = null;
 }
 
 /**
@@ -258,7 +268,7 @@ async function endServer() {
  * (publish in electron-builder.yml, which becomes app-update.yml beside the
  * app). Looked for once the window is up and every few hours after, and
  * downloaded quietly; only when it is ready is anything shown — the notes
- * from CHANGELOG.md, and a choice. Restarting goes through endServer first,
+ * from CHANGELOG.md, and a choice. Restarting stops the servers first,
  * since the installer's own quit would be held back by before-quit.
  *
  * Only in a packaged app: a dev run has no version to compare and nothing to
@@ -299,7 +309,8 @@ function serveUpdates() {
 	ipcMain.handle("update:state", () => update);
 	ipcMain.handle("update:check", () => (app.isPackaged ? autoUpdater.checkForUpdates().catch(() => {}) : null));
 	ipcMain.handle("update:restart", async () => {
-		if (child) await endServer();
+		quitting = true;
+		await servers.stopAll();
 		autoUpdater.quitAndInstall();
 	});
 	// The first run's page: shown until the person says Done, then not again.
@@ -349,36 +360,216 @@ function checkForUpdatesNow() {
 	if (app.isPackaged) autoUpdater.checkForUpdates().catch(() => {});
 }
 
+/** The window, and the folder whose page it shows. */
+let window = null;
+let front = null;
+/** Called off when the window goes, so nothing waits on a server for a page nobody will see. */
+const closing = new AbortController();
+/** How many switches have been asked for: a switch that is no longer the latest gives way. */
+let asked = 0;
+/** The workspace a switch is on its way to, kept running while it gets there. */
+let wanted = null;
+
 /**
- * Changing the folder restarts the app rather than the server. Swapping it
- * underneath a live session would mean tearing down the socket, the window and
- * the session together, which is what a relaunch already does correctly.
+ * Put a folder in front: its server, started if it is not running, and the
+ * window pointed at it.
+ *
+ * The page is loaded again rather than kept — one page, pointed at whichever
+ * server is in front — while the servers behind it keep running, a turn and
+ * all. What a page keeps in the browser (its tabs, where it was) is kept by
+ * its server's address, which holds for as long as the app runs, so going
+ * back finds them. Keeping every folder's page alive side by side would make
+ * the switch instant, at the price of the menu's reload, developer tools and
+ * zoom — which act on the window's own page — and of the drag region the page
+ * draws; this can become that when the reload is felt.
  */
-function openWorkdir(picked) {
-	const settings = readSettings();
-	if (!picked || picked === settings.workdir || !existsSync(picked)) return;
-	writeSettings(remember(settings, picked));
-	app.relaunch();
-	app.quit();
-}
-
-async function changeWorkdir() {
-	openWorkdir(await askForWorkdir(readSettings().workdir));
+async function show(workdir) {
+	if (workdir === front) return;
+	const mine = ++asked;
+	wanted = workdir;
+	let url;
+	try {
+		({ url } = await servers.get(workdir));
+	} catch (err) {
+		if (mine === asked) wanted = null;
+		if (quitting) return;
+		dialog.showErrorBox("The server did not start", err.message);
+		if (!front) app.quit();
+		return;
+	}
+	if (!(await waitForServer(url, closing.signal))) {
+		if (mine === asked) wanted = null;
+		if (!closing.signal.aborted) dialog.showErrorBox("The server did not answer", `${url} did not come up within 30 seconds.`);
+		if (!front) app.quit();
+		return;
+	}
+	if (mine !== asked) return;
+	if (front) since.set(front, Date.now());
+	front = workdir;
+	wanted = null;
+	// The workspace to open on the next start — see firstWorkspace.
+	writeSettings({ ...readSettings(), workdir });
+	// The agent acts on this folder, so it should never be a guess.
+	window.setTitle(`Octave — ${basename(workdir)}`);
+	// A load cut short by the next switch is that switch's to finish.
+	await window.loadURL(url).catch((err) => console.error(`[window] ${err.message}`));
 }
 
 /**
- * The folder, for the page's own picker. In a dev run the dev server owns the
- * folder and a relaunch would not change it, so there is nothing to offer and
- * the page says so by drawing a name rather than a menu.
+ * Where clones and workspaces are kept: a folder the person can see and open
+ * in the Finder, a terminal or an editor, as Conductor keeps ~/conductor.
+ * Workspaces go under `workspaces/{repository}/{city}`.
+ */
+const home = () => join(homedir(), "octave");
+
+/**
+ * Whether a folder is still a checkout to list: a clone and a worktree both
+ * have a `.git`, and a folder that has lost it — or a folder of notes from
+ * before there were repositories — is not one.
+ */
+const isCheckout = (path) => existsSync(join(path, ".git"));
+
+/** Tell the page the list has changed, so it asks again. */
+function workspacesChanged() {
+	if (window && !window.isDestroyed()) window.webContents.send("workspaces:changed");
+}
+
+/**
+ * The list for the sidebar: every repository and its workspaces, each named
+ * by the branch it is on now — read from git each time, since the branch is
+ * what gets renamed once the work has a subject, by the agent or by hand.
+ */
+async function workspaces() {
+	const projects = projectsOf(readSettings(), isCheckout);
+	return {
+		current: front,
+		projects: await Promise.all(
+			projects.map(async (project) => ({
+				path: project.path,
+				name: basename(project.path),
+				worktrees: await Promise.all(
+					project.worktrees.map(async (worktree) => ({ path: worktree.path, name: worktree.name, branch: (await branchOf(worktree.path)) ?? worktree.branch })),
+				),
+			})),
+		),
+	};
+}
+
+/** One workspace made at a time, so two asked for at once cannot both pick the same city. */
+let making = Promise.resolve();
+
+/** A new workspace of a repository in the list, and the window put on it. */
+function newWorkspace(root) {
+	const made = making.then(async () => {
+		if (!projectsOf(readSettings(), isCheckout).some((project) => project.path === root)) return null;
+		try {
+			const worktree = await makeWorkspace(root, { into: join(home(), "workspaces", basename(root)), owner: await login() });
+			writeSettings({ ...readSettings(), projects: withWorkspace(projectsOf(readSettings(), isCheckout), root, worktree) });
+			workspacesChanged();
+			return worktree;
+		} catch (err) {
+			dialog.showErrorBox("The workspace could not be made", err.message);
+			return null;
+		}
+	});
+	making = made.then(() => {});
+	return made.then((worktree) => {
+		if (worktree) void show(worktree.path);
+		return worktree?.path ?? null;
+	});
+}
+
+/** A workspace from the list put in front. Only one on the list: the page does not name folders of its own. */
+function openWorkspace(path) {
+	const known = projectsOf(readSettings(), isCheckout).some((project) => project.worktrees.some((worktree) => worktree.path === path));
+	if (known) void show(path);
+}
+
+/** The screen that adds a repository, when there is no workspace to put in front. */
+async function showStart() {
+	++asked;
+	wanted = null;
+	if (front) since.set(front, Date.now());
+	front = null;
+	window.setTitle("Octave");
+	await window.loadURL(pageUrl("start.html")).catch((err) => console.error(`[window] ${err.message}`));
+}
+
+/**
+ * A repository chosen in the Finder, added to the list, and a workspace of it
+ * put in front — its first, or one made now if it has none, as Conductor
+ * makes one on adding a repository. A folder anywhere inside a repository
+ * adds that repository. Says why not when the folder is in none; a choice
+ * cancelled says nothing.
+ */
+async function openLocalRepository() {
+	const picked = await askForRepository();
+	if (!picked) return null;
+	const root = await repositoryOf(picked);
+	if (!root) return { error: `${basename(picked)} is not in a git repository.` };
+	await addRepository(root);
+	return {};
+}
+
+/** A repository's clone added to the list, and its first workspace put in front — made now if it has none. */
+async function addRepository(root) {
+	const projects = withWorkspace(projectsOf(readSettings(), isCheckout), root);
+	writeSettings({ ...readSettings(), projects });
+	workspacesChanged();
+	const first = projects.find((project) => project.path === root)?.worktrees[0];
+	if (first) void show(first.path);
+	else await newWorkspace(root);
+}
+
+/**
+ * A GitHub repository cloned into `~/octave/repos/{name}` and added, as a
+ * folder chosen in the Finder is. A clone of the same repository already
+ * there is used rather than cloned again; any other folder there is not
+ * touched. Says why not in gh's or git's words.
+ */
+async function cloneRepository(source) {
+	const repo = repositoryName(source);
+	if (!repo) return { error: "Give a repository as owner/name, or its GitHub address." };
+	const into = join(home(), "repos", repo.name);
+	if (existsSync(into)) {
+		const origin = (await repositoryOf(into)) === into ? await git(into, ["remote", "get-url", "origin"]).catch(() => null) : null;
+		const same = repositoryName(origin);
+		if (!same || same.owner.toLowerCase() !== repo.owner.toLowerCase() || same.name.toLowerCase() !== repo.name.toLowerCase()) {
+			return { error: `There is already a folder at ${into}, and it is not ${repo.owner}/${repo.name}.` };
+		}
+	} else {
+		mkdirSync(dirname(into), { recursive: true });
+		try {
+			await clone(repo, into);
+		} catch (err) {
+			return { error: err.message };
+		}
+	}
+	await addRepository(into);
+	return {};
+}
+
+/** The same, from the menu, where there is no page to say why not. */
+async function openRepositoryFromMenu() {
+	const result = await openLocalRepository();
+	if (result?.error) dialog.showErrorBox("That folder cannot be opened", result.error);
+}
+
+/**
+ * What the page asks of the shell: the repositories and their workspaces,
+ * and a file shown in the Finder. In a dev run the dev server owns the
+ * folder, so there is no list to switch in and nothing to add to it.
  */
 function serveFolders() {
-	ipcMain.handle("folders", () => {
-		if (devUrl) return { current: null, recent: [] };
-		const settings = readSettings();
-		return { current: settings.workdir ?? null, recent: (settings.recent ?? []).filter((path) => existsSync(path)) };
-	});
-	ipcMain.handle("folder:choose", changeWorkdir);
-	ipcMain.handle("folder:open", (_event, path) => openWorkdir(path));
+	ipcMain.handle("repository:open", () => (devUrl ? null : openLocalRepository()));
+	ipcMain.handle("repository:clone", (_event, source) => (devUrl ? null : cloneRepository(source)));
+	// What the clone dialog offers, or null when gh cannot say.
+	ipcMain.handle("github:repositories", () => (devUrl ? null : repositories()));
+	// The list, and the two things done to it. In a dev run the dev server owns
+	// the folder, so there is no list to switch in.
+	ipcMain.handle("workspaces", () => (devUrl ? null : workspaces()));
+	ipcMain.handle("workspace:new", (_event, root) => (devUrl ? null : newWorkspace(root)));
+	ipcMain.handle("workspace:open", (_event, path) => (devUrl ? null : openWorkspace(path)));
 	// A note in the Finder. The page is told the folder in full by the server
 	// (ConfigMsg.folder) and joins the note's path onto it, which is a better
 	// source than this process has: in a dev run the settings hold no workdir
@@ -427,8 +618,9 @@ function buildMenu(workdir) {
 			{
 				label: "Folder",
 				submenu: [
-					{ label: "Change working folder…", accelerator: "CmdOrCtrl+O", click: changeWorkdir },
-					{ label: "Reveal in Finder", click: () => shell.openPath(workdir) },
+					{ label: "Open Repository…", accelerator: "CmdOrCtrl+O", click: openRepositoryFromMenu },
+					// Nothing is in front on the start screen, and nothing is revealed.
+					{ label: "Reveal in Finder", click: () => (front ?? workdir) && shell.openPath(front ?? workdir) },
 				],
 			},
 			{ role: "editMenu" },
@@ -484,29 +676,27 @@ async function main() {
 	serveFolders();
 	serveUpdates();
 	noteVersionRun();
-	let url;
-	let workdirForTitle = process.cwd();
-	if (devUrl) {
-		buildMenu(process.cwd());
-		url = devUrl;
-	} else {
-		const workdir = await resolveWorkdir();
-		if (!workdir) {
-			app.quit();
-			return;
-		}
-		workdirForTitle = workdir;
-		buildMenu(workdir);
-		const port = await freePort();
-		startServer(port, workdir);
-		url = `http://${HOST}:${port}/`;
+	// Before anything is started, so the servers and every command they run
+	// find what a terminal would — see shellEnv.js. A dev run was started from
+	// a terminal and has it already.
+	if (app.isPackaged) {
+		const env = await shellEnv({ shell: process.env.SHELL || "/bin/zsh", node: process.execPath });
+		if (env) Object.assign(process.env, env);
+		else console.error("[shell] the login shell's environment could not be read; going on with the app's own");
 	}
-	const window = new BrowserWindow({
+	// The app's own pages — see appScheme.js.
+	protocol.handle(SCHEME, (request) => {
+		const file = fileFor(here("../dist"), request.url);
+		return file ? net.fetch(pathToFileURL(file).toString()) : new Response("Not found", { status: 404 });
+	});
+	const settings = readSettings();
+	const first = devUrl ? null : firstWorkspace(projectsOf(settings, isCheckout), settings.workdir);
+	buildMenu(devUrl ? process.cwd() : null);
+	window = new BrowserWindow({
 		width: 1200,
 		height: 820,
 		show: false,
-		// The agent acts on this folder, so it should never be a guess.
-		title: devUrl ? "Octave — dev" : `Octave — ${basename(workdirForTitle)}`,
+		title: "Octave — dev",
 		// The columns are the app. A title bar above them would be a fourth band
 		// of chrome saying what the folder menu already says, so it is dropped and
 		// the traffic lights are dropped onto the list's own header instead —
@@ -527,24 +717,35 @@ async function main() {
 	window.on("enter-full-screen", () => markTrafficLights(window));
 	window.on("leave-full-screen", () => markTrafficLights(window));
 
-	const cancel = new AbortController();
-	window.on("closed", () => cancel.abort());
-	if (!(await waitForServer(url, cancel.signal))) {
-		if (!cancel.signal.aborted) {
-			dialog.showErrorBox("The server did not answer", `${url} did not come up within 30 seconds.`);
-			app.quit();
-		}
-		return;
-	}
+	window.on("closed", () => closing.abort());
 	// The page sets its own title, which would replace the folder name.
 	window.on("page-title-updated", (e) => e.preventDefault());
-	await window.loadURL(url);
+	if (devUrl) {
+		if (!(await waitForServer(devUrl, closing.signal))) {
+			if (!closing.signal.aborted) {
+				dialog.showErrorBox("The server did not answer", `${devUrl} did not come up within 30 seconds.`);
+				app.quit();
+			}
+			return;
+		}
+		await window.loadURL(devUrl);
+	} else if (first) {
+		await show(first);
+		if (!front) return; // Its server did not answer, and the app is on its way out.
+	} else {
+		await showStart();
+	}
 	window.show();
 	watchForUpdates();
+	setInterval(stopIdle, 60_000).unref();
 }
+
+// Before the app is ready, as Electron requires: a scheme of the app's own
+// that behaves as a web page's would, so the start page's modules load.
+protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
 app.whenReady().then(main);
 app.on("window-all-closed", () => app.quit());
-// Once, on the way out: stopServer holds this quit back, and the one it asks
-// for afterwards finds no child and goes through.
-app.on("before-quit", stopServer);
+// Once, on the way out: stopServers holds this quit back, and the one it asks
+// for afterwards goes through.
+app.on("before-quit", stopServers);
