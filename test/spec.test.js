@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 
 import spec, { specPrompt, takenSpecs, unnamed } from "../spec.ts";
+import { approve } from "../specApproval.ts";
 
 test("아직 도시 이름인 브랜치만 이름을 바꿀 자리다 — main이나 이미 이름이 있는 브랜치는 그대로", () => {
   assert.equal(unnamed("minkyojung/tokyo"), "minkyojung/", "소유자는 남기고 도시만 바꾼다");
@@ -98,8 +99,10 @@ function fakePi(branch, branches = []) {
     writeFileSync(join(cwd, ".octave/specs", name, "requirements.md"), "# Requirements Document\n");
   };
   const settle = () => handlers.agent_settled?.({ type: "agent_settled" }, ctx(true));
+  /** A tool called with a path, as pi would put it to the extension before running it. */
+  const call = (toolName, path) => handlers.tool_call?.({ type: "tool_call", toolCallId: "call-1", toolName, input: { path, content: "x" } }, ctx(true));
   const cleanup = () => rmSync(cwd, { recursive: true, force: true });
-  return { command: () => command, done, notes, renamed, run, write, settle, cleanup, cwd };
+  return { command: () => command, done, notes, renamed, run, write, settle, call, cleanup, cwd };
 }
 
 test("/spec 한 줄은 그 줄만 대화에 남기고, 지시문은 같은 턴에 모델에게만 간다 — 기다림 없이", async (t) => {
@@ -196,6 +199,105 @@ test("쓴 스펙이 없거나, 이름이 있는 브랜치거나, /spec의 턴이
   await before.run("이메일 인증 추가");
   await before.settle();
   assert.deepEqual(before.renamed, [], "이미 있던 스펙은 이 턴이 쓴 것이 아니다");
+});
+
+// --- the order, kept by the code ---
+
+/** A spec's document written into the fake's folder, as the agent or the person would. */
+const put = (pi, doc, text = `# ${doc}\n`) => {
+  mkdirSync(join(pi.cwd, ".octave/specs/email-auth"), { recursive: true });
+  writeFileSync(join(pi.cwd, ".octave/specs/email-auth", doc), text);
+};
+
+test("승인 전에는 다음 문서를 쓸 수 없다 — 코드가 거절하고, 모델이 알아들을 이유를 준다", async (t) => {
+  const pi = fakePi("minkyojung/tokyo");
+  t.after(pi.cleanup);
+  const design = ".octave/specs/email-auth/design.md";
+  const tasks = ".octave/specs/email-auth/tasks.md";
+
+  assert.equal(await pi.call("write", ".octave/specs/email-auth/requirements.md"), undefined, "첫 문서는 언제나");
+  const early = await pi.call("write", design);
+  assert.equal(early?.block, true, "요구사항도 없이 설계");
+  assert.match(early.reason, /requirements\.md is not written yet/);
+
+  put(pi, "requirements.md");
+  for (const tool of ["write", "edit"]) {
+    const refused = await pi.call(tool, design);
+    assert.equal(refused?.block, true, tool);
+    assert.match(refused.reason, /design\.md comes after requirements\.md, which the person has not approved/);
+    assert.match(refused.reason, /\/spec-approve/, "무엇을 기다리는지");
+    assert.match(refused.reason, /Do not ask them to approve it/, "묻지 않는다");
+  }
+
+  approve(pi.cwd, "email-auth");
+  assert.equal(await pi.call("write", design), undefined, "승인하면 설계");
+  assert.equal((await pi.call("write", tasks))?.block, true, "작업 목록은 아직 — 설계가 없다");
+  put(pi, "design.md");
+  assert.match((await pi.call("write", tasks)).reason, /tasks\.md comes after design\.md/);
+  approve(pi.cwd, "email-auth");
+  assert.equal(await pi.call("write", tasks), undefined);
+});
+
+test("모델이 적을 수 있는 경로의 모양은 전부 같은 파일이다", async (t) => {
+  const pi = fakePi("minkyojung/tokyo");
+  t.after(pi.cleanup);
+  put(pi, "requirements.md");
+  const shapes = [
+    join(pi.cwd, ".octave/specs/email-auth/design.md"),
+    "./.octave/specs/email-auth/design.md",
+    "@.octave/specs/email-auth/design.md",
+    ".octave/specs/other/../email-auth/design.md",
+    ".octave/specs/email-auth/Design.md",
+    ".Octave/Specs/email-auth/DESIGN.md",
+  ];
+  for (const path of shapes) assert.equal((await pi.call("write", path))?.block, true, path);
+  // pi writes ~ as the home folder: only a folder under it can be named that way.
+  if (pi.cwd.startsWith(`${homedir()}/`)) {
+    assert.equal((await pi.call("write", `~${pi.cwd.slice(homedir().length)}/.octave/specs/email-auth/design.md`))?.block, true, "~");
+  }
+});
+
+test("승인한 문서를 고치면 뒤 문서도 다시 막힌다 — 앞 문서를 고치는 것은 언제나 된다", async (t) => {
+  const pi = fakePi("minkyojung/tokyo");
+  t.after(pi.cleanup);
+  for (const doc of ["requirements.md", "design.md", "tasks.md"]) {
+    put(pi, doc);
+    approve(pi.cwd, "email-auth");
+  }
+  assert.equal(await pi.call("edit", ".octave/specs/email-auth/tasks.md"), undefined, "다 승인됐을 때");
+
+  put(pi, "requirements.md", "# requirements.md\n\nSign in with Google as well.\n");
+  assert.equal(await pi.call("edit", ".octave/specs/email-auth/requirements.md"), undefined, "되돌아가 고치는 것");
+  const refused = await pi.call("edit", ".octave/specs/email-auth/design.md");
+  assert.equal(refused?.block, true, "설계는 새 요구사항이 승인될 때까지");
+  assert.match(refused.reason, /design\.md comes after requirements\.md/);
+  assert.equal((await pi.call("edit", ".octave/specs/email-auth/tasks.md"))?.block, true);
+
+  approve(pi.cwd, "email-auth");
+  assert.equal(await pi.call("edit", ".octave/specs/email-auth/design.md"), undefined, "다시 승인하면 설계를 맞춘다");
+  assert.equal((await pi.call("edit", ".octave/specs/email-auth/tasks.md"))?.block, true, "작업 목록은 설계가 다시 승인될 때까지");
+});
+
+test("승인 기록은 모델이 쓸 수 없다 — 스스로 승인하지 못하게", async (t) => {
+  const pi = fakePi("minkyojung/tokyo");
+  t.after(pi.cleanup);
+  for (const path of [".octave/specs/email-auth/approvals.json", ".octave/specs/email-auth/Approvals.JSON", "@.octave/specs/new/approvals.json"]) {
+    for (const tool of ["write", "edit"]) {
+      const refused = await pi.call(tool, path);
+      assert.equal(refused?.block, true, `${tool} ${path}`);
+      assert.match(refused.reason, /only \/spec-approve writes it/);
+    }
+  }
+});
+
+test("스펙 문서가 아닌 것과 쓰지 않는 도구에는 상관하지 않는다", async (t) => {
+  const pi = fakePi("minkyojung/tokyo");
+  t.after(pi.cleanup);
+  for (const path of ["design.md", "src/design.md", ".octave/specs/design.md", ".octave/specs/email-auth/notes.md", ".octave/specs/email-auth/drafts/design.md", ".octave/design.md", "../elsewhere/.octave/specs/email-auth/design.md", "/tmp/.octave/specs/email-auth/design.md"]) {
+    assert.equal(await pi.call("write", path), undefined, path);
+  }
+  assert.equal(await pi.call("read", ".octave/specs/email-auth/design.md"), undefined, "읽기는 언제나");
+  assert.equal(await pi.call("write", undefined), undefined, "경로가 없는 호출은 pi가 거절한다");
 });
 
 // --- the command in a real pi session, on a model that is not one ---

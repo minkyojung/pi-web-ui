@@ -23,15 +23,25 @@
  * pi delivers with the next turn, which is this line's. Nothing waits: the
  * turn starts as the command runs.
  *
+ * The documents come in turn, each once the person has approved the one
+ * before it (specApproval.ts), and the order is kept here rather than only
+ * asked for: edit and write are refused a document whose turn has not come,
+ * and the record of what was approved, which is the person's to write. The
+ * instructions say so too; this is what holds when they are forgotten, as
+ * the instruction to leave `.git` alone was. The shell is not looked at —
+ * docs/spec-mode/approval-gates.md.
+ *
  * A file of its own with nothing of Octave's in it but the name of the folder,
  * so the same command runs in pi's terminal: `pi -e spec.ts`.
  */
 import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { join, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { SPECS_DIR } from "./documentKinds.ts";
 import { CITIES } from "./electron/cities.js";
+import { APPROVALS, SPEC_DOCS, type SpecDoc, specState } from "./specApproval.ts";
 
 /** A workspace's placeholder name: a city, or a city of a later round (`lisbon-v2`). */
 const PLACEHOLDER = new RegExp(`^(?:${CITIES.join("|")})(?:-v\\d+)?$`);
@@ -58,6 +68,37 @@ export function takenSpecs(cwd: string): string[] {
 	} catch {
 		return [];
 	}
+}
+
+/**
+ * The spec and the file in its folder that a tool's path names, or null for
+ * any other path. Read as pi's own tools read one — an `@` before it dropped,
+ * `~` the home folder, relative to the folder — and without regard to case,
+ * since a Mac's disk has none: `Design.md` there is design.md.
+ */
+export function specFileAt(cwd: string, given: string): { name: string; file: string } | null {
+	const bare = given.startsWith("@") ? given.slice(1) : given;
+	const path = bare === "~" || bare.startsWith("~/") ? join(homedir(), bare.slice(1)) : bare;
+	const parts = relative(cwd, resolve(cwd, path)).split(sep);
+	if (parts.length !== 4 || `${parts[0]}/${parts[1]}/`.toLowerCase() !== SPECS_DIR) return null;
+	return { name: parts[2]!, file: parts[3]!.toLowerCase() };
+}
+
+/**
+ * Why edit or write may not change the file a path names, or null when they
+ * may: the record of approvals, and a spec's document before its turn.
+ */
+export function refusal(cwd: string, given: string): string | null {
+	const at = specFileAt(cwd, given);
+	if (!at) return null;
+	if (at.file === APPROVALS) return `${given} is the record of what the person approved, and only /spec-approve writes it.`;
+	const turn = SPEC_DOCS.indexOf(at.file as SpecDoc);
+	if (turn === -1) return null;
+	const { approved, waiting } = specState(cwd, at.name);
+	if (turn <= approved) return null;
+	const before = SPEC_DOCS[approved]!;
+	if (waiting !== before) return `${at.file} cannot be written yet: a spec's documents are written in turn (${SPEC_DOCS.join(", ")}), and ${before} is not written yet.`;
+	return `${at.file} comes after ${before}, which the person has not approved as it is now, so it cannot be written yet. They approve ${before} themselves, with /spec-approve, once they have read it. Do not ask them to approve it: stop here, and change ${before} only if they ask.`;
 }
 
 /** The requirements document's form, as Kiro's spec prompt gives it. */
@@ -175,6 +216,15 @@ export default function spec(pi: ExtensionAPI): void {
 			pi.sendMessage({ customType: "spec", content: specPrompt({ line, prefix: unnamed(branch), branch, taken }), display: false }, { deliverAs: "nextTurn" });
 			pi.sendUserMessage(`/spec ${line}`);
 		},
+	});
+
+	// A document before its turn, or the record of approvals: refused before
+	// the tool runs, with the reason for the model to read.
+	pi.on("tool_call", async (event, ctx) => {
+		if (event.toolName !== "edit" && event.toolName !== "write") return undefined;
+		const path: unknown = event.input.path;
+		const reason = typeof path === "string" ? refusal(ctx.cwd, path) : null;
+		return reason ? { block: true, reason } : undefined;
 	});
 
 	// Once the run is over — retries and all; pi tells anyone else only after
