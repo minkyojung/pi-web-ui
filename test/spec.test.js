@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 
@@ -574,4 +574,118 @@ test("실제 pi 세션에서: 한 줄은 사람의 메시지로, 지시문은 �
   assert.equal(git("branch", "--show-current"), "minkyojung/email-auth");
   assert.deepEqual(git("branch", "--format=%(refname:short)").split("\n"), ["minkyojung/email-auth"]);
   assert.match(git("reflog", "-1", "--format=%gs"), /renamed refs\/heads\/minkyojung\/tokyo to refs\/heads\/minkyojung\/email-auth/, "git's own record of it");
+});
+
+test("실제 pi 세션에서 사슬 한 바퀴: 세 문서가 차례로, 승인 없이는 막히고, 되돌아가면 뒤 문서가 다시 기다린다", async (t) => {
+  const { InMemoryCredentialStore, fauxAssistantMessage, fauxProvider, fauxToolCall } = await import("@earendil-works/pi-ai");
+  const { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } = await import("@earendil-works/pi-coding-agent");
+  const cwd = mkdtempSync(join(tmpdir(), "spec-chain-"));
+  const agentDir = mkdtempSync(join(tmpdir(), "spec-agent-"));
+  t.after(() => {
+    rmSync(cwd, { recursive: true, force: true });
+    rmSync(agentDir, { recursive: true, force: true });
+  });
+  const dir = ".octave/specs/email-auth";
+  const read = (doc) => readFileSync(join(cwd, dir, doc), "utf8");
+  const has = (doc) => existsSync(join(cwd, dir, doc));
+  const state = () => specState(cwd, "email-auth");
+
+  // The model, one reply at a time: what it was sent is kept to look at.
+  const faux = fauxProvider();
+  const sent = [];
+  const reply = (make) => (context) => (sent.push(context.messages), make());
+  const text = (message) => (typeof message.content === "string" ? message.content : message.content.map((c) => c.text ?? "").join(""));
+  const write = (doc, content) => reply(() => fauxAssistantMessage(fauxToolCall("write", { path: `${dir}/${doc}`, content }), { stopReason: "toolUse" }));
+  const say = (words) => reply(() => fauxAssistantMessage(words));
+  faux.setResponses([
+    // /spec: the requirements.
+    write("requirements.md", "# Requirements Document\n\n## Requirements\n\n### Requirement 1\n"),
+    say("I wrote the requirements."),
+    // Asked for the design before approving: refused, and it stops.
+    write("design.md", "# Design Document\n"),
+    say("The requirements are not approved yet."),
+    // /spec-approve: the design.
+    write("design.md", "# Design Document\n\n## Overview\n"),
+    say("I wrote the design."),
+    // /spec-approve: the tasks.
+    write("tasks.md", "# Implementation Plan\n\n- [ ] 1. Set up\n  - _Requirements: 1.1_\n"),
+    say("I wrote the tasks."),
+    // Back to the requirements at the person's word; the design is refused on the way.
+    write("requirements.md", "# Requirements Document\n\n## Requirements\n\n### Requirement 1\n\n### Requirement 2\n"),
+    write("design.md", "# Design Document\n\n## Overview\n\nGoogle as well.\n"),
+    say("I added the requirement; the design waits for your approval."),
+    // /spec-approve: the design brought into line.
+    reply(() => fauxAssistantMessage(fauxToolCall("edit", { path: `${dir}/design.md`, edits: [{ oldText: "## Overview\n", newText: "## Overview\n\nGoogle as well.\n" }] }), { stopReason: "toolUse" })),
+    say("I added Google to the design."),
+  ]);
+
+  const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false } });
+  const resourceLoader = new DefaultResourceLoader({
+    cwd,
+    agentDir,
+    settingsManager,
+    noExtensions: true,
+    extensionFactories: [
+      { name: "faux", factory: (pi) => pi.registerProvider(faux.provider) },
+      { name: "spec", factory: spec },
+    ],
+  });
+  await resourceLoader.reload();
+  const modelRuntime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false });
+  const { session } = await createAgentSession({ cwd, agentDir, model: faux.getModel(), thinkingLevel: "off", modelRuntime, resourceLoader, settingsManager, sessionManager: SessionManager.inMemory(cwd) });
+  t.after(() => session.dispose?.());
+  // A screen that keeps what it is told, as Octave's does in the conversation.
+  const notes = [];
+  await session.bindExtensions({ uiContext: new Proxy({ notify: (words) => notes.push(words) }, { get: (ui, key) => ui[key] ?? (() => undefined) }) });
+
+  let settled = false;
+  session.subscribe((event) => {
+    if (event.type === "agent_settled") settled = true;
+  });
+  /** A message sent, and its run over — the code's own settling with it. */
+  const send = async (words) => {
+    settled = false;
+    await session.prompt(words);
+    const deadline = Date.now() + 20_000;
+    while (!settled && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
+    assert.ok(settled, `${words}: the run settled`);
+  };
+  const toolErrors = () => session.messages.filter((m) => m.role === "toolResult" && m.isError).map(text);
+
+  await send("/spec 이메일 인증 추가");
+  assert.deepEqual(state(), { approved: 0, waiting: "requirements.md" });
+  assert.match(notes.at(-1), /requirements\.md is waiting for you: .* \/spec-approve\./);
+
+  await send("설계도 써 줘");
+  assert.equal(has("design.md"), false, "승인 전에는 설계를 쓸 수 없다");
+  assert.match(toolErrors().at(-1), /design\.md comes after requirements\.md, which the person has not approved/);
+  const told = notes.length;
+
+  await send("/spec-approve");
+  assert.ok(text(sent.at(-2).at(-1)).includes("# Design Document"), "설계 지시문은 그 턴에 모델에게");
+  assert.deepEqual(state(), { approved: 1, waiting: "design.md" });
+  assert.equal(notes.length, told + 1);
+  assert.match(notes.at(-1), /design\.md is waiting for you/);
+
+  await send("/spec-approve");
+  assert.ok(text(sent.at(-2).at(-1)).includes("# Implementation Plan"));
+  assert.deepEqual(state(), { approved: 2, waiting: "tasks.md" });
+
+  const calls = sent.length;
+  await session.prompt("/spec-approve");
+  assert.deepEqual(state(), { approved: 3, waiting: null });
+  assert.equal(sent.length, calls, "마지막 승인에는 모델을 부르지 않는다");
+  assert.match(notes.at(-1), /The spec email-auth is ready/);
+
+  await send("요구사항에 구글 로그인도 넣어 줘");
+  assert.match(read("requirements.md"), /Requirement 2/, "되돌아가 고치는 것은 된다");
+  assert.equal(read("design.md"), "# Design Document\n\n## Overview\n", "새 요구사항이 승인되기 전에는 설계를 못 고친다");
+  assert.deepEqual(state(), { approved: 0, waiting: "requirements.md" }, "요구사항을 고치니 뒤 승인이 모두 풀렸다");
+
+  await send("/spec-approve");
+  assert.match(text(sent.at(-2).at(-1)), /as they were before/, "새로 쓰지 말고 맞추라고");
+  assert.equal(read("design.md"), "# Design Document\n\n## Overview\n\nGoogle as well.\n");
+  assert.deepEqual(state(), { approved: 1, waiting: "design.md" });
+  assert.match(notes.at(-1), /design\.md is waiting for you/);
+  assert.equal(JSON.parse(readFileSync(join(cwd, dir, "approvals.json"), "utf8"))["requirements.md"].length, 1);
 });
