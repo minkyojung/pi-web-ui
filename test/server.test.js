@@ -1155,3 +1155,18 @@ it("스펙은 노트 목록에도 검색에도 들지 않고, 노트의 이름 �
   await want("note", (m) => m.path === path);
   assert.equal(readFileSync(join(cwd, path), "utf8"), "SPECONLYWORD\n", "그대로 있다");
 });
+
+it("붙는 탭은 명령 목록에서 /spec을 듣는다 — 메뉴가 그것을 보여 준다", async () => {
+  const other = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  const heard = [];
+  other.onmessage = (e) => heard.push(JSON.parse(e.data));
+  try {
+    const { commands } = await until("commands", () => heard.find((m) => m.type === "commands"));
+    const found = commands.find((c) => c.name === "spec");
+    assert.ok(found, `spec among ${commands.map((c) => c.name).join(", ")}`);
+    assert.equal(found.source, "extension");
+    assert.ok(found.description);
+  } finally {
+    other.close();
+  }
+});

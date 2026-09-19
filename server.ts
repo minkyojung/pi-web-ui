@@ -34,6 +34,7 @@ import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice as m
 import { readSettings, updateSettings, type Settings } from "./settings.ts";
 import { askForName } from "./sessionName.ts";
 import { askUser } from "./askUser.ts";
+import specCommand from "./spec.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { extensionUI } from "./extensionUI.ts";
 import { deleteSessionFile } from "./sessionDelete.ts";
@@ -232,6 +233,9 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 				// The bridge is reached when a question is asked, not now: it is
 				// made further down, after this first session is.
 				{ name: "ask", factory: askUser(() => prompts.ask) },
+				// `/spec` and a line: the requirements of a spec, written for the
+				// person to read — see spec.ts, which runs in pi's terminal too.
+				{ name: "spec", factory: specCommand },
 			],
 			// The extensions installed for the person's own pi — ~/.pi/agent/
 			// extensions, the packages in its settings — load here as they load
