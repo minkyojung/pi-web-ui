@@ -127,3 +127,57 @@ test("기록은 사람이 읽을 수 있는 JSON이다 — PR에서 보인다", 
   const text = readFileSync(join(spec.dir, APPROVALS), "utf8");
   assert.equal(text, `{\n  "requirements.md": [\n    "${print("x")}"\n  ]\n}\n`);
 });
+
+// --- the tasks, whose boxes are progress rather than a change to the plan ---
+
+const PLAN = "# Implementation Plan\n\n- [ ] 1. One\n- [ ] 2. Two\n";
+
+/** A spec approved to the end, its tasks as PLAN. */
+function planned(t) {
+  const spec = folder(t);
+  spec.write("requirements.md", "# Requirements Document\n");
+  spec.approve();
+  spec.write("design.md", "# Design Document\n");
+  spec.approve();
+  spec.write("tasks.md", PLAN);
+  spec.approve();
+  assert.deepEqual(spec.state(), { approved: 3, waiting: null });
+  return spec;
+}
+
+test("작업을 끝내 칸을 체크해도 승인은 그대로다 — 승인한 것은 계획이지 진척이 아니다", (t) => {
+  const spec = planned(t);
+  spec.write("tasks.md", "# Implementation Plan\n\n- [x] 1. One\n- [ ] 2. Two\n");
+  assert.deepEqual(spec.state(), { approved: 3, waiting: null }, "하나 끝냄");
+  spec.write("tasks.md", "# Implementation Plan\n\n- [x] 1. One\n- [X] 2. Two\n");
+  assert.deepEqual(spec.state(), { approved: 3, waiting: null }, "전부 끝냄 — 대문자 X도 끝난 것");
+  spec.write("tasks.md", PLAN);
+  assert.deepEqual(spec.state(), { approved: 3, waiting: null }, "칸을 되돌려도");
+});
+
+test("작업 목록의 본문을 고치면 승인이 풀린다 — 칸만 예외다", (t) => {
+  const spec = planned(t);
+  spec.write("tasks.md", "# Implementation Plan\n\n- [x] 1. One\n- [ ] 2. Two and a half\n");
+  assert.deepEqual(spec.state(), { approved: 2, waiting: "tasks.md" }, "제목이 바뀌었다");
+  spec.write("tasks.md", "# Implementation Plan\n\n- [x] 1. One\n- [ ] 2. Two\n\n");
+  assert.deepEqual(spec.state(), { approved: 2, waiting: "tasks.md" }, "빈 줄 하나도 고친 것이다");
+});
+
+test("앞 두 문서는 칸이 있어도 그대로 엄격하다", (t) => {
+  const spec = folder(t);
+  spec.write("requirements.md", "- [ ] 1. A box in the requirements\n");
+  spec.approve();
+  spec.write("requirements.md", "- [x] 1. A box in the requirements\n");
+  assert.deepEqual(spec.state(), { approved: 0, waiting: "requirements.md" });
+});
+
+test("기록에 적히는 작업 목록의 지문은 칸을 비운 글의 것이다", (t) => {
+  const spec = folder(t);
+  spec.write("requirements.md", "r");
+  spec.approve();
+  spec.write("design.md", "d");
+  spec.approve();
+  spec.write("tasks.md", "- [x] 1. Already done when it was approved\n");
+  spec.approve();
+  assert.equal(spec.record()["tasks.md"].at(-1), print("- [ ] 1. Already done when it was approved\n"));
+});

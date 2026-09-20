@@ -16,7 +16,9 @@
  * again, with no code to undo an approval. Going back to the requirements is
  * then the way forward was: approve them again, and the design is the one
  * waiting. And put back as it was, a document is approved again, since what
- * was approved is the text.
+ * was approved is the text. The one loosening is the boxes of the tasks,
+ * which say how far the work has got rather than what was agreed — see
+ * fingerprint below, and docs/spec-mode/task-runs.md.
  *
  * In the spec's folder, so it goes into the repository with the documents:
  * a pull request shows what was approved, and a session that starts later —
@@ -32,6 +34,7 @@ import { join } from "node:path";
 
 import { writeAtomic } from "./atomic.ts";
 import { SPECS_DIR } from "./documentKinds.ts";
+import { withDone } from "./specTasks.ts";
 
 /** A spec's documents, in the order they are written and approved. */
 export const SPEC_DOCS = ["requirements.md", "design.md", "tasks.md"] as const;
@@ -47,10 +50,23 @@ export interface SpecState {
 	waiting: SpecDoc | null;
 }
 
-/** The file's fingerprint, or null when there is no file to read. */
-function fingerprint(file: string): string | null {
+/**
+ * The file's fingerprint, or null when there is no file to read.
+ *
+ * The tasks are fingerprinted with their boxes emptied. What the person
+ * approved is the plan, and a task checked off is how far it has got, not a
+ * change to it: a list approved and then worked through is the same list, and
+ * without this every finished task would ask to be approved again. The text
+ * around the boxes is held to as closely as the other two documents are.
+ */
+function fingerprint(doc: SpecDoc, file: string): string | null {
 	try {
-		return createHash("sha256").update(readFileSync(file)).digest("hex");
+		const read = readFileSync(file);
+		// Bytes for the documents that are only text, so what was approved before
+		// this went in reads the same; the tasks are read as the text they are.
+		return createHash("sha256")
+			.update(doc === "tasks.md" ? withDone(read.toString("utf8"), new Set()) : read)
+			.digest("hex");
 	} catch {
 		return null;
 	}
@@ -71,7 +87,7 @@ function look(dir: string): SpecState & { prints: string[] } {
 	const approvals = readApprovals(dir);
 	const prints: string[] = [];
 	for (const doc of SPEC_DOCS) {
-		const print = fingerprint(join(dir, doc));
+		const print = fingerprint(doc, join(dir, doc));
 		if (print === null) return { approved: prints.length, waiting: null, prints };
 		prints.push(print);
 		const record = approvals[doc];
