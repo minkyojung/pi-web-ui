@@ -1125,7 +1125,18 @@ async function bind(): Promise<void> {
 		commandContextActions: {
 			waitForIdle: () => session().waitForIdle(),
 			newSession: async (options) => {
-				const result = await runtime.newSession(options);
+				const result = await runtime.newSession({
+					...options,
+					// On the person's mode, as a session opened from the window is
+					// (new_session below). Here rather than after, because the caller
+					// may send the session its first message — /spec-run starts a task
+					// this way — and a turn begun before this would run on pi's own
+					// four tools, handing the agent a shell the person did not ask for.
+					withSession: async (replaced) => {
+						openOnDefaultMode();
+						await options?.withSession?.(replaced);
+					},
+				});
 				if (!result.cancelled) await swapped();
 				return result;
 			},

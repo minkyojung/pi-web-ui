@@ -1170,3 +1170,35 @@ it("붙는 탭은 명령 목록에서 /spec을 듣는다 — 메뉴가 그것을
     other.close();
   }
 });
+
+// Last in the file: the run leaves a session of its own, and the tests above
+// look for "the earlier session with messages".
+//
+// A session a command opens is the person's session too. /spec-run is the
+// first thing in Octave to open one, and the mode was only ever set at
+// startup and on the window's own "new session": the run came up on pi's
+// four defaults instead, which include the shell — a rung the person had
+// not chosen. Aborted as soon as the tools have been seen.
+it("명령이 연 세션도 사람이 고른 모드로 열린다 — 셸이 딸려 오지 않는다", async () => {
+  const name = "tools-check";
+  const dir = join(cwd, ".octave/specs", name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "requirements.md"), "# Requirements Document\n");
+  writeFileSync(join(dir, "design.md"), "# Design Document\n");
+  writeFileSync(join(dir, "tasks.md"), "# Implementation Plan\n\n- [ ] 1. Do the one thing\n");
+  const { approve } = await import("../specApproval.ts");
+  while (approve(cwd, name)) {}
+
+  clear();
+  send({ type: "prompt", text: `/spec-run ${name}`, command: true });
+  // The whole state, pushed once the session has been replaced: the first
+  // config of that burst is what the run is on.
+  await want("snapshot", () => true, 60_000);
+  const config = inbox.find((m) => m.type === "config");
+  assert.ok(config, "the tab was told what the new session is on");
+  assert.ok(!config.activeTools.includes("bash"), `no shell among ${config.activeTools.join(", ")}`);
+  assert.ok(config.activeTools.includes("write"), "and still the mode's own tools");
+  send({ type: "abort" });
+  await want("agent_settled", () => true, 60_000);
+  rmSync(join(cwd, ".octave"), { recursive: true, force: true });
+});
