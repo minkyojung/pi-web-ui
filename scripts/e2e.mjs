@@ -28,6 +28,8 @@ import { fileURLToPath } from "node:url";
 
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
+import { approve } from "../specApproval.ts";
+
 const root = fileURLToPath(new URL("..", import.meta.url));
 const bin = (name) => join(root, "node_modules", ".bin", name);
 
@@ -3232,6 +3234,31 @@ check("a spec opens in the editor by its address, keeps no record of who wrote i
 	assert.equal(readFileSync(join(cwd, path), "utf8"), "# Requirements\n\nthe agent's again\n", "the agent's words are still there");
 	await app.evaluate(`[...document.querySelectorAll('#editor [role=alert] button')].find((b) => b.textContent === "Reload").click()`);
 	await until("the disk's text", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("the agent's again"));
+});
+
+// What the person has to read before anything else can happen: written by the
+// agent, waiting for their approval, and in front of them without being asked
+// for. The state is the files, so this writes them as the agent would.
+check("a spec's document comes to the front as it starts waiting, and stays closed once closed", async ({ app, cwd }) => {
+	const dir = join(cwd, ".octave/specs/waiting");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n\nWAITINGWORD\n");
+	await until("the requirements in front", async () => (await editorText(app)).includes("WAITINGWORD"));
+
+	// Closed, and written again while it is still the one waiting: it stays shut.
+	await app.press("w", { meta: true });
+	await until("the tab closed", async () => !(await editorText(app)).includes("WAITINGWORD"));
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n\nWAITINGWORD, again\n");
+	await new Promise((r) => setTimeout(r, 800));
+	assert.equal((await editorText(app)).includes("WAITINGWORD"), false, "what was closed does not come back");
+
+	// Approved — which writes the record beside the documents and nothing else
+	// — and the design written on it: that one is waiting now, so it opens.
+	approve(cwd, "waiting");
+	writeFileSync(join(dir, "design.md"), "# Design\n\nDESIGNWORD\n");
+	await until("the design in front", async () => (await editorText(app)).includes("DESIGNWORD"));
+	await app.press("w", { meta: true });
+	await until("the tab closed", async () => !(await editorText(app)).includes("DESIGNWORD"));
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {

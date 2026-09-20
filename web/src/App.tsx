@@ -18,6 +18,8 @@ import { UpdateToast } from "./components/UpdateToast";
 import { pageNamed, type Place } from "../../links.ts";
 import { hashForNote, noteFromHash } from "./noteSync";
 import { pageOf, whatsNewPath } from "./pages";
+import { toOpen } from "./specTabs";
+import type { SpecInfo } from "../../protocol.ts";
 import { pageAskedStore, updateStore } from "./update";
 import { Watermark } from "./components/Watermark";
 import { WhatsNew } from "./components/WhatsNew";
@@ -30,7 +32,7 @@ import { NoteTabs } from "./components/NoteTabs";
 import { bump, forget, readRecent, writeRecent } from "./recent";
 import { back as stepBack, canBack, canForward, forget as forgetStep, forward as stepForward, go, here, type Left, type Nav, read as readNav, remember, replace, write as writeNav } from "./nav";
 import { type Closed, add as addTab, close as closeTabIn, move, neighbour, readTabs, reopen, writeTabs } from "./tabs";
-import { noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
+import { noteCreatedStore, noteDeletedStore, noteRenamedStore, specsStore } from "./serverState";
 import { Button } from "./components/ui/button";
 import { getConnection, subscribe } from "./store";
 import { send } from "./ws";
@@ -383,6 +385,19 @@ export function App() {
 		noteDeletedStore.set(null); // Whatever came back, or a new one: nothing left to restore.
 		setOpen(created.path);
 	}, [created, setOpen]);
+
+	// A spec's document that has just started waiting for the person comes to
+	// the front: nothing else in that spec can happen until it is read, and the
+	// turn that wrote it has stopped. The rule for which, and when not to, is
+	// specTabs.ts; what is held here is what was last heard.
+	const specs = useSyncExternalStore(specsStore.subscribe, specsStore.get);
+	const specsBefore = useRef<SpecInfo[] | null>(null);
+	useEffect(() => {
+		if (!specs) return;
+		const waiting = toOpen(specsBefore.current, specs, open !== null);
+		specsBefore.current = specs;
+		if (waiting) setOpen(waiting);
+	}, [specs, open, setOpen]);
 
 	// A note in the trash keeps its tab while it is in front, and the column
 	// under it offers to bring it back; opening something else, or closing the
