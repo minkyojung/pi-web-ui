@@ -784,15 +784,6 @@ const known = new Map<string, number>();
  * could have a version of it yet. A note that is gone is only news to the list.
  */
 function noticed(path: string): void {
-	// A file somebody has open to read, sent to them again. First, and on its
-	// own: a note and a spec open in the editor and are answered below, and
-	// only what the window opened as a file is in here.
-	const looking = [...reading].filter(([, at]) => at === path).map(([ws]) => ws);
-	if (looking.length > 0) {
-		const text = safeStringify(code(path));
-		for (const ws of looking) if (ws.readyState === ws.OPEN) ws.send(text);
-		return;
-	}
 	// A document has no log and no tab: the only news is that it is there or not.
 	if (documentAt(CWD, path)) {
 		if (notes.sawDocument(path, existsSync(join(CWD, path)))) broadcast(files());
@@ -816,6 +807,16 @@ function noticed(path: string): void {
 	// spec stands.
 	if (specRecordAt(CWD, path)) {
 		saySpecs();
+		return;
+	}
+	// A file somebody has open to read, sent to them again. After the three
+	// above, so a tab that asked for a path which is also a note or a spec
+	// cannot stand in front of what that path really is; nothing else here
+	// answers for a file that is neither.
+	const looking = [...reading].filter(([, at]) => at === path).map(([ws]) => ws);
+	if (looking.length > 0) {
+		const text = safeStringify(code(path));
+		for (const ws of looking) if (ws.readyState === ws.OPEN) ws.send(text);
 		return;
 	}
 	const found = readNote(CWD, path);
