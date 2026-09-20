@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { documentAt, listFiles, listNotes, newNoteName, notePath, readNote, readSpec, renameNote, resolveNote, restoreNote, specAt, specRecordAt, trashNote, withCreated, writeNote, writeSpec } from "../vault.ts";
+import { CODE_MAX, codeAt, documentAt, listFiles, listNotes, newNoteName, notePath, readCode, readNote, readSpec, renameNote, resolveNote, restoreNote, specAt, specRecordAt, trashNote, withCreated, writeNote, writeSpec } from "../vault.ts";
 import { isSpec, isSpecRecord, specNameOf } from "../documentKinds.ts";
 
 const DIR = mkdtempSync(join(tmpdir(), "notes-"));
@@ -373,4 +373,38 @@ test("스펙의 문과 노트의 문은 서로를 열지 않는다", () => {
   assert.equal(readNote(DIR, ".octave/specs/doors/requirements.md"), null);
   assert.equal(readFileSync(join(DIR, "doors.md"), "utf8"), "# note\n");
   assert.equal(readFileSync(join(DIR, ".octave/specs/doors/requirements.md"), "utf8"), "# note\n");
+});
+
+test("코드의 문은 저장소의 아무 파일이나 열고, .git과 .pi만 거절한다", () => {
+  put("server.ts", 100);
+  put(".github/workflows/ci.yml", 100);
+  put(".octave/specs/doors/design.md", 100);
+  put(".git/config", 100);
+  put(".pi/links.json", 100);
+  put("deep/.git/HEAD", 100);
+  assert.equal(codeAt(DIR, "server.ts").path, "server.ts");
+  assert.equal(codeAt(DIR, ".github/workflows/ci.yml").path, ".github/workflows/ci.yml", "저장소의 점 폴더는 저장소의 것이다");
+  assert.equal(codeAt(DIR, ".octave/specs/doors/design.md").path, ".octave/specs/doors/design.md");
+  assert.equal(codeAt(DIR, ".git/config"), null);
+  assert.equal(codeAt(DIR, "deep/.git/HEAD"), null, "깊은 곳의 .git도 git의 것이다");
+  assert.equal(codeAt(DIR, ".pi/links.json"), null);
+  assert.equal(codeAt(DIR, "../outside.ts"), null, "폴더 밖은 폴더 밖이다");
+  assert.equal(codeAt(DIR, join(DIR, "server.ts")), null, "절대 경로로는 부르지 않는다");
+});
+
+test("읽기는 글자와 쓰인 시각을 주고, 글자가 아닌 것은 그렇다고 말한다", () => {
+  writeFileSync(join(DIR, "read-me.ts"), "const a = 1;\n");
+  utimesSync(join(DIR, "read-me.ts"), 400, 400);
+  assert.deepEqual(readCode(DIR, "read-me.ts"), { ok: true, path: "read-me.ts", text: "const a = 1;\n", modified: 400_000, truncated: false });
+  assert.deepEqual(readCode(DIR, "nothing-here.ts"), { ok: false, reason: "missing" });
+  assert.deepEqual(readCode(DIR, ".git/config"), { ok: false, reason: "missing" }, "거절은 없는 것과 같이 말한다");
+
+  writeFileSync(join(DIR, "picture.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d]));
+  assert.deepEqual(readCode(DIR, "picture.png"), { ok: false, reason: "binary" });
+
+  writeFileSync(join(DIR, "long.txt"), "x".repeat(CODE_MAX + 10));
+  const long = readCode(DIR, "long.txt");
+  assert.equal(long.ok, true);
+  assert.equal(long.text.length, CODE_MAX);
+  assert.equal(long.truncated, true);
 });

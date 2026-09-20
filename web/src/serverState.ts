@@ -11,6 +11,8 @@ import type {
 	AuthorsMsg,
 	Backlink,
 	BranchPoint,
+	CodeGoneMsg,
+	CodeMsg,
 	ConfigMsg,
 	CommandInfo,
 	ContextSourcesMsg,
@@ -151,6 +153,14 @@ export const repoStore = createStore<string[]>([]);
  * than to let a file be missing from it with nothing to explain why.
  */
 export const repoTruncatedStore = createStore<boolean>(false);
+
+/**
+ * The file a code tab is reading, as the server last read it off the disk, or
+ * why there is nothing to read (CodeMsg). One store for the one tab in front:
+ * the middle column draws only what is in front, so a second would never be
+ * looked at. Null before anything has been asked for.
+ */
+export const codeStore = createStore<CodeMsg | CodeGoneMsg | null>(null);
 
 /**
  * Where each spec stands — what is approved, what is waiting for the person —

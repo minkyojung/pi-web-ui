@@ -93,6 +93,12 @@ export type ClientMsg =
 	/** A note, or a spec, to look at. Answered with `note` (a SpecMsg for a spec), or `note_gone` if there is no such note. */
 	| { type: "open_note"; path: string }
 	/**
+	 * A file of the repository to read in a tab, which is not a note and is
+	 * not written from here. Answered with `code`, or `code_gone` where there
+	 * is nothing to show.
+	 */
+	| { type: "open_code"; path: string }
+	/**
 	 * A note's whole text, on top of the version it was read at — `base` is
 	 * that version's `modified`, or null for a note that did not exist yet.
 	 * `edits` is what the editor did to that version to get here, in its
@@ -767,6 +773,33 @@ export interface NoteGoneMsg {
 	path: string;
 }
 
+/**
+ * A file of the repository as text, to be read and not written — what a code
+ * tab shows (pages.ts). The answer to open_code.
+ *
+ * Not a note's message and not a spec's: there is no log to say a change
+ * against, no links, no version to save over. `modified` is here so a tab can
+ * tell a file it has from the same file written since, and for nothing else.
+ */
+export interface CodeMsg {
+	type: "code";
+	path: string;
+	text: string;
+	modified: number;
+	/** The file is longer than a tab will read, and `text` is its first part (vault.ts's CODE_MAX). */
+	truncated: boolean;
+}
+
+/**
+ * There is nothing to show: no such file, or one that is not text — a
+ * picture, a binary — which is said rather than drawn as the bytes it is.
+ */
+export interface CodeGoneMsg {
+	type: "code_gone";
+	path: string;
+	reason: "missing" | "binary";
+}
+
 /** The save was refused: the note changed since `base`. `modified` is what is there now. */
 export interface NoteConflictMsg {
 	type: "note_conflict";
@@ -893,6 +926,8 @@ export type StateMsg =
 	| NoteRenamedMsg
 	| NoteRenameFailedMsg
 	| NoteGoneMsg
+	| CodeMsg
+	| CodeGoneMsg
 	| NoteDeletedMsg
 	| NoteConflictMsg
 	| AuthorsMsg

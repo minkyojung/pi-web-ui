@@ -40,7 +40,7 @@ import { extensionUI } from "./extensionUI.ts";
 import { deleteSessionFile } from "./sessionDelete.ts";
 import { Cancelled } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { documentAt, listNotes, newNoteName, type Note, readNote, readSpec, renameNote, restoreNote, specAt, specRecordAt, withCreated, writeNote, writeSpec, type WriteResult } from "./vault.ts";
+import { documentAt, listNotes, newNoteName, type Note, readCode, readNote, readSpec, renameNote, restoreNote, specAt, specRecordAt, withCreated, writeNote, writeSpec, type WriteResult } from "./vault.ts";
 import { attachmentAt } from "./pictures.ts";
 import { FileIndex } from "./fileIndex.ts";
 import { type Repo, repoFiles } from "./repoFiles.ts";
@@ -70,6 +70,8 @@ import type {
 	Authored,
 	BranchesMsg,
 	ClientMsg,
+	CodeGoneMsg,
+	CodeMsg,
 	CommandsMsg,
 	ConfigMsg,
 	ContextSourcesMsg,
@@ -559,6 +561,18 @@ function branches(): BranchesMsg {
 /** The notes in the working folder. See vault.ts. */
 function files(): FilesMsg {
 	return { type: "files", files: notes.all(), documents: notes.documents(), truncated: notes.truncated };
+}
+
+/**
+ * A file of the repository as a tab reads it, or why there is nothing to
+ * read — see readCode. Nothing of the note's message is here: a file read in
+ * a tab has no log, no links and no save to be refused.
+ */
+function code(path: string): CodeMsg | CodeGoneMsg {
+	const read = readCode(CWD, path);
+	return read.ok
+		? { type: "code", path: read.path, text: read.text, modified: read.modified, truncated: read.truncated }
+		: { type: "code_gone", path, reason: read.reason };
 }
 
 /** The repository's files as git last listed them, or none where the folder is in no repository. */
@@ -2096,6 +2110,15 @@ wss.on("connection", async (ws) => {
 						return;
 					}
 					reply(found);
+					break;
+				}
+
+				// A file of the repository, to read and not to write. A door of
+				// its own rather than open_note's, because what comes back is
+				// not a note and the folder answers for a different set of paths.
+				case "open_code": {
+					if (typeof msg.path !== "string") return;
+					reply(code(msg.path));
 					break;
 				}
 

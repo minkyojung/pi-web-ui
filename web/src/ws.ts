@@ -14,6 +14,7 @@ import {
 	providersStore,
 	applySettings,
 	applyLogin,
+	codeStore,
 	commandsStore,
 	contextSourcesStore,
 	authorsStore,
@@ -92,6 +93,8 @@ const STATE: Record<StateMsg["type"], true> = {
 	files: true,
 	repo: true,
 	note: true,
+	code: true,
+	code_gone: true,
 	specs: true,
 	backlinks: true,
 	tagged: true,
@@ -165,6 +168,12 @@ function receive(msg: ServerMsg): void {
 		case "repo":
 			repoStore.set(msg.files);
 			repoTruncatedStore.set(msg.truncated);
+			return;
+		// Both answers to the same ask, and the tab reading one tells them
+		// apart by their type: there is the file, or there is why there is not.
+		case "code":
+		case "code_gone":
+			codeStore.set(msg);
 			return;
 		case "specs":
 			specsStore.set(msg.specs);
