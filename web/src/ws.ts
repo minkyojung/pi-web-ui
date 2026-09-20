@@ -38,6 +38,7 @@ import {
 	runUndoneStore,
 	searchResultsStore,
 	sessionsStore,
+	specsStore,
 	usageStore,
 } from "./serverState";
 import { clearedText } from "./queue";
@@ -88,6 +89,7 @@ const STATE: Record<StateMsg["type"], true> = {
 	snapshot: true,
 	files: true,
 	note: true,
+	specs: true,
 	backlinks: true,
 	tagged: true,
 	property_types: true,
@@ -156,6 +158,9 @@ function receive(msg: ServerMsg): void {
 			filesStore.set(msg.files);
 			documentsStore.set(msg.documents);
 			filesTruncatedStore.set(msg.truncated);
+			return;
+		case "specs":
+			specsStore.set(msg.specs);
 			return;
 		case "note":
 			// A spec is in none of the notes' lists, so it has neither.

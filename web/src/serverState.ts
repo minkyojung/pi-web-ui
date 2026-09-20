@@ -36,6 +36,7 @@ import type {
 	ServerMsg,
 	SessionInfo,
 	SettingsMsg,
+	SpecInfo,
 	SpecMsg,
 	Tagged,
 	UsageMsg,
@@ -136,6 +137,13 @@ export const filesStore = createStore<NoteFile[]>([]);
 
 /** The documents beside the notes — a PDF the agent can read — by path, as the server last listed them. */
 export const documentsStore = createStore<string[]>([]);
+
+/**
+ * Where each spec stands — what is approved, what is waiting for the person —
+ * as the server last read it off the folder. Null until it has said, which is
+ * not the same as a folder with no specs in it (SpecsMsg).
+ */
+export const specsStore = createStore<SpecInfo[] | null>(null);
 
 /**
  * The folder held more notes than the walk would take, so this list is not all
