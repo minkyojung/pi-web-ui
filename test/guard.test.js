@@ -101,23 +101,20 @@ const refusing = (root) => {
   return (toolName, input) => handler({ type: "tool_call", toolCallId: "c1", toolName, input });
 };
 
-test("노트를 edit이나 write로 쓰려 하면 막고, 무엇을 쓰라고 알려 준다", async () => {
+test("노트도 다른 파일과 같이 edit·write로 쓴다 — 파일 종류로 막지 않는다", async () => {
   const ask = refusing("/v");
   for (const tool of ["edit", "write"]) {
     for (const path of ["a.md", "ideas/b.md", "/v/a.md"]) {
-      const answer = await ask(tool, { path });
-      assert.equal(answer?.block, true, `${tool} ${path}`);
-      assert.match(answer.reason, /note_edit/);
-      assert.match(answer.reason, /note_write/);
+      assert.equal(await ask(tool, { path }), undefined, `${tool} ${path}`);
     }
   }
 });
 
-test("노트가 아닌 파일은 pi가 그대로 고친다", async () => {
+test("다른 파일도 그대로 고친다", async () => {
   const ask = refusing("/v");
   assert.equal(await ask("edit", { path: "server.ts" }), undefined);
   assert.equal(await ask("write", { path: "sub/script.py" }), undefined);
-  assert.equal(await ask("write", { path: "../outside.md" }), undefined, "폴더 밖은 노트가 아니다");
+  assert.equal(await ask("write", { path: "../outside.md" }), undefined);
   assert.equal(await ask("read", { path: "a.md" }), undefined, "읽기는 막지 않는다");
 });
 
@@ -153,21 +150,8 @@ test("앱의 폴더는 여전히 먼저 막히고, 그 이유로 막힌다", asy
   assert.match(answer.reason, /belongs to the app/);
 });
 
-test("대문자로 쓴 확장자도 노트로 알아본다 — 파일시스템이 같은 파일을 열어 준다면", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "guard-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  writeFileSync(join(dir, "a.md"), "mine\n");
-  try {
-    readFileSync(join(dir, "a.MD"));
-  } catch {
-    return t.skip("대소문자를 구분하는 파일시스템");
-  }
-  const answer = await refusing(dir)("write", { path: "a.MD" });
-  assert.equal(answer?.block, true, "글자만 봐서는 노트가 아니지만, 쓰면 노트가 바뀐다");
-  assert.match(answer.reason, /note_write/);
-});
-
-test("프롬프트는 노트를 쓰는 도구가 무엇인지 말한다", () => {
-  assert.match(VAULT_PROMPT, /note_edit/);
-  assert.match(VAULT_PROMPT, /note_write/);
+test("프롬프트는 노트도 edit·write로 쓴다고 말하고, 막는다는 말은 더 없다", () => {
+  assert.match(VAULT_PROMPT, /edit and write/);
+  assert.equal(/refused on a note/.test(VAULT_PROMPT), false);
+  assert.equal(/cannot write a note/.test(VAULT_PROMPT), false);
 });

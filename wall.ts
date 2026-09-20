@@ -1,19 +1,19 @@
 /**
- * The wall pi's shell runs behind: it cannot write a note, or anything under
- * .pi/, because the operating system refuses it.
+ * The wall pi's shell runs behind: it cannot write anything under `.pi/`,
+ * because the operating system refuses it.
  *
- * `bash` names nothing. A command that writes a note cannot be told from one
- * that reads it, and there is no parse of a shell line that settles it — the
- * app used to answer that by guessing afterwards, from the clock: a note that
- * changed while a shell call was in flight was pi's for ten seconds and then
- * "outside", which was right almost always and wrong in a way nothing could
- * catch. What cannot be told apart is better made impossible. So the shell is
- * run inside a macOS sandbox profile that denies writing to `*.md` under the
- * folder (bar the agent's specs, in `.octave/`) and to `.pi/`, and everything
- * else — reading the notes, building, testing, writing any other file — is
- * as it was. pi is told in its prompt
- * that this is so and where to go instead (note_edit); the wall is for when
- * the prompt is not enough, as guard.ts is for edit and write.
+ * `bash` names nothing — there is no parse of a shell line that says which
+ * files it will write — so a folder the shell must not touch is kept from it
+ * by the kernel rather than by reading the command. guard.ts refuses a bash
+ * call that mentions the folder, which catches the plain ones; this catches
+ * the rest, and the paths that only resolve there.
+ *
+ * It used to deny writing `*.md` as well, so that every note went through the
+ * app's own pair and was recorded as the agent's. That record is given up
+ * (docs/spec-mode) and the denial went with it: a note is a file like any
+ * other now, and the shell writes it. The hole this profile used to punch for
+ * the agent's specs went too — with no rule over markdown there is nothing to
+ * make an exception to.
  *
  * Done by rewriting the command in `tool_call`, which pi documents as the way
  * to patch a tool's arguments before it runs: the command becomes
@@ -30,7 +30,6 @@ import { existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { OCTAVE_DIR } from "./documentKinds.ts";
 import { APP_DIR_NAME } from "./documentKinds.ts";
 import { APP_DIR } from "./settings.ts";
 
@@ -39,8 +38,6 @@ export const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 /** Whether this machine can put up the wall. */
 export const hasWall = (): boolean => process.platform === "darwin" && existsSync(SANDBOX_EXEC);
 
-/** A path as a Seatbelt regex literal wants it: every metacharacter, and the quote that ends the literal, escaped. */
-const inRegex = (path: string) => path.replace(/[\\^$.*+?()[\]{}|"]/g, "\\$&");
 /** A path as a Seatbelt string literal wants it. */
 const inString = (path: string) => path.replace(/[\\"]/g, "\\$&");
 
@@ -53,12 +50,8 @@ export function profileFor(vault: string): string {
 	return [
 		"(version 1)",
 		"(allow default)",
-		`(deny file-write* (regex #"^${inRegex(vault)}/.*\\.[mM][dD]$"))`,
-		// Where the agent's specs are (documentKinds.ts): markdown that is not a
-		// note, and the agent's to write from the shell as from write. The rule
-		// that matches last wins, so this opens `.octave/` in the one above, and
-		// the `.pi/` below it stays shut whatever path leads there.
-		`(allow file-write* (subpath "${inString(join(vault, OCTAVE_DIR))}"))`,
+		// Whatever path leads there: the kernel matches the real one, which is
+		// why `vault` is the folder's real path and not a link to it.
 		`(deny file-write* (subpath "${inString(join(vault, APP_DIR_NAME))}"))`,
 		"",
 	].join("\n");

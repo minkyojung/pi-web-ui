@@ -286,55 +286,38 @@ wins.
 
 ### The door pi writes a note by
 
-pi's own `edit` and `write` put bytes on disk and tell nobody. Everything a note
-needs around a write — refusing one made on a version the person has since typed
-past, recording whose words the new ones are, telling the tabs where the change
-fell — would have to be bolted on afterwards by reading the file again and
-guessing. So a note is taken out of their reach: `guard.ts` refuses `edit` and
-`write` on one and says where to go instead, and `noteEdit.ts` registers the
-pair that goes there.
+pi's own `edit` and `write` put bytes on disk and tell nobody, so a note used to
+be taken out of their reach: `guard.ts` refused them on one, `noteEdit.ts`
+registered a pair that went through the vault instead, and the shell was walled
+off `*.md` because a command that writes a note cannot be told from one that
+reads it. What all of that bought was the record of whose words were whose.
 
-- `note_edit { path, edits: [{ oldText, newText }] }`
-- `note_write { path, content }`
+That record is given up (docs/spec-mode), and once it was, the lock was holding
+nothing up but the work: a task of a spec that had to touch a `README` could not,
+by any door. So markdown is not special any more. `edit`, `write` and the shell
+change a note as they change any other file, which is what every other harness
+on pi does, and the two things the lock also happened to do are done where they
+belong:
 
-Their shapes are pi's exactly, because `edit` and `write` are still there for
-every other file in the folder and a model holding two near-identical pairs will
-send one's arguments to the other. Matching is exact rather than fuzzy: pi's own
-matcher is not part of its public surface, and a note is prose a person wrote,
-where the wrong paragraph silently replaced is worse than a refusal pi can read
-and retry. They sit on the Execution rung of the tool ladder — they are ours,
-but they are writing all the same, and a Plan mode that let the agent rewrite a
-note would not be one.
+- **The person's unsaved typing.** The editor already holds it against a write
+  that lands from elsewhere — the watcher sees the file change whoever changed
+  it, and `noteSync.ts` decides: show it, or say there is a conflict to settle.
+  That path was built for `bash` and other editors; the agent is simply one more
+  writer on it now.
+- **Undoing the agent's change.** git. A spec's task is a commit, so what a run
+  wrote is one `git revert` away, and there is a diff to read first.
 
-Told in as many words to use the plain `edit` tool on a note, pi used `note_edit`
-anyway. The prompt was enough; the block is for when it is not.
+`note_edit`, `note_write` and `note_properties` are still registered — a note's
+YAML block is worth changing through something that understands it — but nothing
+is refused for not using them.
 
-### And when it came through no door
-
-`bash` names nothing. A command that writes a note cannot be told from one that
-reads it, and there is no parse of a shell line that settles it. The app used to
-answer afterwards, from the clock — a note that changed while a shell call was in
-flight was pi's for ten seconds and then `outside` — which was right almost
-always and wrong in a way nothing could catch. What cannot be told apart is
-better made impossible: pi's shell runs behind a wall (`wall.ts`), a macOS
-sandbox profile that denies writing to `*.md` under the folder and to `.pi/`
-and allows everything else. Reading the notes, building, testing, writing any
-other file — as before. Writing a note — "Operation not permitted", which pi
-reads, and its prompt has already told it where to go instead.
-
-The wall is the command rewritten in `tool_call`, the way pi documents for
-patching a tool's arguments: `sandbox-exec -f <profile> /bin/bash -c <command>`.
-pi's own shell still spawns it and still kills it on timeout, and the
-conversation still shows the command pi wrote. One consequence is meant: a
-`git checkout` or `git pull` pi runs cannot rewrite notes either. Where
-`sandbox-exec` is not there — another platform — there is no wall, and a note
-the shell writes is found the way any write from outside is, and called so.
-
-So the log's author is never guessed. The editor's save is `me`; `note_edit`
-and `note_write` are `pi`, with the session and the message; a note that
-appears in a folder that did not have it is `outside`, whole; and a difference
-between the disk and what the log knew is `outside`, or `before` when the log
-knew nothing. Four rules, and no clock.
+The wall (`wall.ts`) stays, and denies one thing: writing under `.pi/`. `bash`
+still names nothing, and the app's own folder is not for the agent to rewrite,
+so the kernel keeps it rather than a reading of the command. It is the command
+rewritten in `tool_call`, the way pi documents for patching a tool's arguments:
+`sandbox-exec -f <profile> /bin/bash -c <command>`. Where `sandbox-exec` is not
+there — another platform — there is no wall, and `guard.ts`'s refusal of a bash
+call that names `.pi` is what is left.
 
 ## Writing
 
