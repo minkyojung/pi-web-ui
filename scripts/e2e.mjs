@@ -398,6 +398,14 @@ check("the app renders a conversation", async ({ app }) => {
 	await until("the conversation", () => app.evaluate("!!document.getElementById('chat')"));
 });
 
+// Before anything has been opened, which is where the window starts and where
+// a new workspace leaves you: the middle column is the commands, not a note.
+check("with nothing open, the middle column says what there is to do", async ({ app }) => {
+	const commands = await until("the watermark", () =>
+		app.evaluate("document.getElementById('watermark') && [...document.querySelectorAll('#watermark kbd')].map((k) => k.textContent).join(',')"));
+	assert.equal(commands, "/spec,/spec-approve,/spec-run");
+});
+
 check("the sidebar is the folder's tree: its notes and folders, a folder's notes once it is opened, and nothing else", async ({ app }) => {
 	const rows = () => app.evaluate("[...document.querySelectorAll('#notes button')].map((b) => b.dataset.folder ?? b.dataset.path).join(',')");
 	const listed = await until("the notes", rows);

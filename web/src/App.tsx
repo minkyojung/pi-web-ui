@@ -19,6 +19,7 @@ import { pageNamed, type Place } from "../../links.ts";
 import { hashForNote, noteFromHash } from "./noteSync";
 import { pageOf, WELCOME, whatsNewPath } from "./pages";
 import { pageAskedStore, updateStore } from "./update";
+import { Watermark } from "./components/Watermark";
 import { Welcome } from "./components/Welcome";
 import { WhatsNew } from "./components/WhatsNew";
 
@@ -30,7 +31,7 @@ import { NoteTabs } from "./components/NoteTabs";
 import { bump, forget, readRecent, writeRecent } from "./recent";
 import { back as stepBack, canBack, canForward, forget as forgetStep, forward as stepForward, go, here, type Left, type Nav, read as readNav, remember, replace, write as writeNav } from "./nav";
 import { type Closed, add as addTab, close as closeTabIn, move, neighbour, readTabs, reopen, writeTabs } from "./tabs";
-import { filesStore, noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
+import { noteCreatedStore, noteDeletedStore, noteRenamedStore } from "./serverState";
 import { Button } from "./components/ui/button";
 import { getConnection, subscribe } from "./store";
 import { send } from "./ws";
@@ -380,8 +381,6 @@ export function App() {
 
 	const [picking, setPicking] = useState(false);
 	const [searching, setSearching] = useState(false);
-	// An empty vault is a first run, or as good as one: the column says how to start.
-	const files = useSyncExternalStore(filesStore.subscribe, filesStore.get);
 
 	// ⌘N asks the server for a new note; it comes back named, and is opened by
 	// address like any other. The server names it, since it owns the folder.
@@ -666,13 +665,8 @@ export function App() {
 										<span className="text-xs">In the Trash · Put Back in the Finder brings it here with its history</span>
 									)}
 								</>
-							) : files.length === 0 ? (
-								<div className="max-w-sm text-center leading-relaxed">
-									<p className="text-foreground">This folder has no notes yet.</p>
-									<p className="mt-2">⌘N makes one. The agent reads and writes the same files; who wrote which words is kept beside them, in .pi/.</p>
-								</div>
 							) : (
-								<span>No note open · ⌘P to find one · ⌘N for a new one</span>
+								<Watermark />
 							)}
 						</div>
 					)}
