@@ -17,10 +17,9 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import { UpdateToast } from "./components/UpdateToast";
 import { pageNamed, type Place } from "../../links.ts";
 import { hashForNote, noteFromHash } from "./noteSync";
-import { pageOf, WELCOME, whatsNewPath } from "./pages";
+import { pageOf, whatsNewPath } from "./pages";
 import { pageAskedStore, updateStore } from "./update";
 import { Watermark } from "./components/Watermark";
-import { Welcome } from "./components/Welcome";
 import { WhatsNew } from "./components/WhatsNew";
 
 // pdf.js is larger than the rest of the window put together, and most days no
@@ -327,15 +326,7 @@ export function App() {
 		if (!pageAsked || !update) return;
 		pageAskedStore.set(null);
 		if (pageAsked === "whats-new") setOpen(whatsNewPath(update.current));
-		if (pageAsked === "welcome") setOpen(WELCOME);
 	}, [pageAsked, update, setOpen]);
-	// The first run: the welcome page in front, until Done is pressed on it.
-	const welcomedOnce = useRef(false);
-	useEffect(() => {
-		if (welcomedOnce.current || update?.welcomed !== false) return;
-		welcomedOnce.current = true;
-		setOpen(WELCOME);
-	}, [update?.welcomed, setOpen]);
 
 	const [tabs, setTabs] = useState(readTabs);
 	useEffect(() => {
@@ -622,9 +613,7 @@ export function App() {
 					    be had, and the room was the one to go: a note short enough for
 					    this to matter is a note that does not scroll, and room to scroll
 					    into is nothing to a page that has nowhere to go. */}
-					{page?.kind === "welcome" ? (
-						<Welcome onDone={() => closeTab(WELCOME)} />
-					) : page?.kind === "document" ? (
+					{page?.kind === "document" ? (
 						<Boundary name="document" hint="The file itself is untouched.">
 							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
 								<Pdf key={page.path} path={page.path} page={pageNamed(place)} />

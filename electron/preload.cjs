@@ -59,8 +59,6 @@ contextBridge.exposeInMainWorld("pi", {
 		check: () => ipcRenderer.invoke("update:check"),
 		restart: () => ipcRenderer.invoke("update:restart"),
 		seen: () => ipcRenderer.invoke("update:seen"),
-		/** The first run's page has been seen through: not again. */
-		welcomed: () => ipcRenderer.invoke("welcome:done"),
 	},
 	/** The shell asking for a page of the app's own to be opened — Help › What's New. */
 	onOpenPage: (listen) => {

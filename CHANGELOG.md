@@ -20,9 +20,10 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - Octave opens where you left off — the workspace you were last in — and works only in repositories now: a folder of notes is no longer opened, and the first run no longer asks for a folder.
 - Opening another folder no longer restarts Octave. The folder you left keeps running — a reply the agent was writing there carries on — and going back to it finds your tabs where they were.
 - The agent can no longer write git's own files in `.git` with its file tools, which goes around git and can leave a repository broken; it changes the repository with git commands, as before.
-- With nothing open, the middle of the window says what there is to do — `/spec` and a line about what to build, then `/spec-approve` and `/spec-run` — where it used to offer to make a note.
+- With nothing open, the middle of the window says what there is to do — `/spec` and a line about what to build, then `/spec-approve` and `/spec-run` — where it used to offer to make a note. Before you have signed in anywhere it says that instead, and the button there opens Settings on your accounts.
 
 ### Removed
+- The Welcome page is gone, and Help › Welcome with it. Its three steps are each somewhere better now: a workspace is made when you add a repository, signing in is said in the middle of the window until you have, and the note of things to try belonged to the app this one no longer is.
 - The sidebar no longer lists the folder's notes; it lists your repositories and their workspaces instead. ⌘P still finds a note.
 - The folder menu at the foot of the sidebar, and its list of folders opened before, are gone: the repositories and their workspaces are the list now.
 

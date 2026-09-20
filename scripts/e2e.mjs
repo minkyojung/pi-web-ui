@@ -3052,7 +3052,7 @@ check("the loadout screen keeps a model pi does not offer, and shows a change an
 	}
 });
 
-check("a version ready to install is offered in the corner, × leaves a dot, About answers a check, and a new version opens What's new, and the first run opens Welcome", async ({ app, cwd }) => {
+check("a version ready to install is offered in the corner, × leaves a dot, About answers a check, and a new version opens What's new", async ({ app }) => {
 	// The shell's bridge, stood in for: the page is served to a browser here,
 	// where there is no window.pi. What the stub is told is what the page is
 	// told, and what the page asks of it is written down.
@@ -3071,7 +3071,6 @@ check("a version ready to install is offered in the corner, × leaves a dot, Abo
 			check: async () => window.__update.calls.push("check"),
 			restart: async () => window.__update.calls.push("restart"),
 			seen: async () => window.__update.calls.push("seen"),
-			welcomed: async () => window.__update.calls.push("welcomed"),
 		}, onOpenSettings: (l) => { window.__update.opens.push(l); return () => {}; }, onOpenPage: (l) => { window.__update.pages.push(l); return () => {}; } };
 		}`);
 	try {
@@ -3156,37 +3155,6 @@ check("a version ready to install is offered in the corner, × leaves a dot, Abo
 		await app.press("w", { meta: true });
 		await until("the tab closed again", async () => !(await tabs()).includes("What's new"));
 
-		// The first run: the shell says nobody has been welcomed, and the
-		// Welcome page opens in front with its three steps — the folder is
-		// ticked from the start, the note's button writes the note into the
-		// folder with its text, and Done tells the shell and closes the tab.
-		await app.evaluate(`window.__update.say({ welcomed: false })`);
-		await until("the Welcome tab, in front", async () => (await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.textContent ?? ''")).includes("Welcome"));
-		const steps = () => app.evaluate("[...document.querySelectorAll('#page [data-step]')].map((s) => s.dataset.done).join(',')");
-		await until("the folder step ticked, the note's not", async () => {
-			const seen = await steps();
-			if (seen.startsWith("true,") && seen.endsWith(",false")) return true;
-			throw new Error(seen);
-		});
-		await app.evaluate("document.querySelector('#page [data-step=\"3\"] button').scrollIntoView({ block: 'center' })");
-		assert.ok(await app.click("#page [data-step='3'] button"), "the note's button");
-		await until("the welcome note, in the folder and open", async () => {
-			const tab = await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.textContent ?? ''");
-			if (existsSync(join(cwd, "Welcome to Octave.md")) && tab.includes("Welcome to Octave")) return true;
-			throw new Error(JSON.stringify({ file: existsSync(join(cwd, "Welcome to Octave.md")), tab, steps: await steps() }));
-		});
-		assert.match(readFileSync(join(cwd, "Welcome to Octave.md"), "utf8"), /^---\ncreated: [^\n]+\n---\n# Welcome to Octave\n/, "the note's text, under the created stamp");
-		assert.ok(await app.click("[role=tab]", await app.evaluate("[...document.querySelectorAll('[role=tab]')].findIndex((t) => t.textContent.trim() === 'Welcome')")), "the Welcome tab");
-		await until("the note step ticked", async () => (await steps()).endsWith(",true"));
-		await app.evaluate("[...document.querySelectorAll('#page button')].find((b) => b.textContent === 'Done').scrollIntoView({ block: 'center' })");
-		assert.ok(await app.click("#page button", await app.evaluate("[...document.querySelectorAll('#page button')].findIndex((b) => b.textContent === 'Done')")), "Done");
-		// The note's tab says Welcome too: the page's is the one that says only that.
-		const welcomeTab = async () => (await tabs()).split("|").some((t) => t.trim() === "Welcome");
-		await until("the shell told, the tab gone", async () => (await app.evaluate("window.__update.calls.includes('welcomed')")) && !(await welcomeTab()));
-		await app.evaluate("window.__update.pages.forEach((l) => l('welcome'))");
-		await until("the page back, from Help", welcomeTab);
-		await app.press("w", { meta: true });
-		await until("the Welcome tab closed", async () => !(await welcomeTab()));
 		bodyDone = true;
 	} finally {
 		await stopStanding();

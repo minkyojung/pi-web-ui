@@ -47,10 +47,9 @@ together.
 
 ## 3. Sign in
 
-The first run opens a **Welcome** page with three steps: your folder, signing in, and a button that writes a
-welcome note into the folder with a few things to try. Sign in with a subscription account, or paste an API key.
-You are signing in to the provider, not to us — Octave has no account of its own. **Help › Welcome** opens the
-page again; accounts are also in Settings (`⌘,`).
+With nobody signed in yet, the middle of the window says so and has the button. The agent runs on models from
+an account of your own — a ChatGPT or Claude subscription, or an API key. You are signing in to the provider,
+not to us: Octave has no account of its own. Accounts are in Settings (`⌘,`) at any time.
 
 ## 4. Write, and ask
 

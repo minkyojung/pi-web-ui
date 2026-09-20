@@ -10,19 +10,17 @@
 import { isDocument } from "../../documentKinds.ts";
 
 const WHATS_NEW = "octave://whats-new/";
-export const WELCOME = "octave://welcome";
 
 /**
  * A page of the app's own, or a document in the folder — a PDF — whose
  * address is its path like a note's, and which is no more a note than the
  * first: the middle column is its viewer's, and nothing reads it as text.
  */
-export type Page = { kind: "whats-new"; version: string; title: string } | { kind: "welcome"; title: string } | { kind: "document"; path: string; title: string };
+export type Page = { kind: "whats-new"; version: string; title: string } | { kind: "document"; path: string; title: string };
 
 export const whatsNewPath = (version: string): string => `${WHATS_NEW}${version}`;
 
 export function pageOf(path: string | null): Page | null {
-	if (path === WELCOME) return { kind: "welcome", title: "Welcome" };
 	// Its name whole, extension and all: that is how the tab says what it is.
 	if (path && isDocument(path)) return { kind: "document", path, title: path.slice(path.lastIndexOf("/") + 1) };
 	if (!path?.startsWith(WHATS_NEW)) return null;

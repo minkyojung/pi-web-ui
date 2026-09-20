@@ -85,7 +85,8 @@ export function Settings() {
   const offered = useRef(false);
   useEffect(() => {
     if (offered.current || !config || !providers) return;
-    // In the app the welcome page does this, with the rest of the first run.
+    // In the app the middle column says it, and has the button (Watermark.tsx):
+    // a dialog over a window that has just been opened is one thing too many.
     if (bridge()) return;
     if (config.model !== null || providers.some((p) => p.signedIn)) return;
     offered.current = true;
