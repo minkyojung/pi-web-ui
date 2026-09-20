@@ -17,19 +17,21 @@
  *
  * Pure, and the rule in one place: App.tsx holds the two states this reads.
  */
-import { SPECS_DIR } from "../../documentKinds.ts";
 import type { SpecInfo } from "../../protocol.ts";
+import { docPath, waitingSpec } from "./specStanding.ts";
 
 /** Where a spec's waiting document is, as a path from the folder, or null when none is. */
-export const waitingPath = (spec: SpecInfo): string | null => (spec.waiting ? `${SPECS_DIR}${spec.name}/${spec.waiting}` : null);
+export const waitingPath = (spec: SpecInfo): string | null => (spec.waiting ? docPath(spec.name, spec.waiting) : null);
 
-/** The newest of the specs given, by when its waiting document was written; of none, null. */
+/**
+ * The newest of the specs given, by when its waiting document was written; of
+ * none, null. Which spec that is belongs to specStanding.ts, where the control
+ * that names a spec asks the same question: what opens by itself and what is
+ * named cannot be two different specs.
+ */
 function newest(waiting: SpecInfo[]): string | null {
-	let best: SpecInfo | null = null;
-	// At least as new wins, so that of several written in the same millisecond
-	// — or of several the disk cannot date — it is the last listed.
-	for (const spec of waiting) if (!best || (spec.waitingAt ?? 0) >= (best.waitingAt ?? 0)) best = spec;
-	return best && waitingPath(best);
+	const spec = waitingSpec(waiting);
+	return spec && waitingPath(spec);
 }
 
 /**
