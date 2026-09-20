@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameS
 import { writeAtomic } from "./atomic.ts";
 import { propertiesOf, setProperty, withProperties } from "./properties.ts";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import { isDocument, isSpec } from "./documentKinds.ts";
+import { isDocument, isSpec, isSpecRecord } from "./documentKinds.ts";
 
 export type NoteFile = {
 	/** Relative to the folder, with forward slashes, so it reads as a name. */
@@ -168,6 +168,18 @@ export function specAt(root: string, given: string): { path: string; full: strin
 	if (isAbsolute(given)) return null;
 	const file = inFolder(root, given);
 	return file && isSpec(file.path) ? file : null;
+}
+
+/**
+ * The approvals record a path names, placed as a spec is, or null. Not a
+ * document and not a note: nothing opens it and nothing writes it from the
+ * window — but what it says is what is waiting for the person, so the
+ * watcher has to be able to recognise it.
+ */
+export function specRecordAt(root: string, given: string): { path: string; full: string } | null {
+	if (isAbsolute(given)) return null;
+	const file = inFolder(root, given);
+	return file && isSpecRecord(file.path) ? file : null;
 }
 
 /**

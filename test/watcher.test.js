@@ -69,6 +69,15 @@ test("스펙이 쓰이면 보고되고, .octave의 다른 것은 아니다", asy
   assert.deepEqual(seen, [".octave/specs/email-auth/requirements.md"]);
 });
 
+test("승인 기록이 바뀌어도 보고된다 — 기다리는 문서가 달라지므로", async () => {
+  mkdirSync(join(DIR, ".octave", "specs", "email-auth"), { recursive: true });
+  const seen = await report(() => {
+    writeFileSync(join(DIR, ".octave", "specs", "email-auth", "approvals.json"), "{}\n");
+    writeFileSync(join(DIR, ".octave", "specs", "cache.json"), "{}\n");
+  });
+  assert.deepEqual(seen, [".octave/specs/email-auth/approvals.json"]);
+});
+
 test("멈춘 뒤에는 아무것도 보고되지 않는다", async () => {
   const seen = [];
   const stop = watchNotes(DIR, (path) => seen.push(path), 40);
