@@ -12,7 +12,9 @@ process.env.HOME = HOME;
 delete process.env.APP_DIR;
 const { DEFAULTS, SETTINGS_PATH, readSettings, writeSettings } = await import("../settings.ts");
 const LEGACY = join(HOME, ".pi", "web-ui", "settings.json");
-const chosen = { toolMode: "full", loadout: ["openai/gpt-4o-mini", "anthropic/claude-fable-5"], created: true };
+// Plan, which the ladder has had throughout: what is pinned here is the move
+// from one path to another, not what a mode saved long ago now means.
+const chosen = { toolMode: "plan", loadout: ["openai/gpt-4o-mini", "anthropic/claude-fable-5"], created: true };
 
 const fresh = () => {
   rmSync(join(HOME, ".octave"), { recursive: true, force: true });
@@ -41,7 +43,7 @@ test("예전 자리에만 설정이 있으면 새 자리로 옮겨 와 그대로
 test("새 자리에 파일이 있으면 예전 자리는 보지 않는다 — 옮겨 온 뒤의 변경을 되돌리지 않도록", () => {
   fresh();
   legacy(JSON.stringify(chosen));
-  const later = writeSettings({ toolMode: "coding", loadout: ["openai/gpt-5.5"], created: false });
+  const later = writeSettings({ toolMode: "execution", loadout: ["openai/gpt-5.5"], created: false });
   assert.deepEqual(readSettings(), later);
 });
 

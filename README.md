@@ -302,9 +302,9 @@ every other file in the folder and a model holding two near-identical pairs will
 send one's arguments to the other. Matching is exact rather than fuzzy: pi's own
 matcher is not part of its public surface, and a note is prose a person wrote,
 where the wrong paragraph silently replaced is worse than a refusal pi can read
-and retry. They sit on the Coding rung of the tool ladder — they are ours, but
-they are writing all the same, and a Plan mode that let the agent rewrite a note
-would not be one.
+and retry. They sit on the Execution rung of the tool ladder — they are ours,
+but they are writing all the same, and a Plan mode that let the agent rewrite a
+note would not be one.
 
 Told in as many words to use the plain `edit` tool on a note, pi used `note_edit`
 anyway. The prompt was enough; the block is for when it is not.
@@ -538,8 +538,8 @@ and the step a run is on:
 - **Thinking** — only the levels the current model supports. `setThinkingLevel`
   clamps rather than rejects, so the server validates the value first; otherwise
   an unknown level silently becomes `off`. Persisted the same way.
-- **Tools** — a mode rather than a row of checkboxes: Plan, Coding, Full access,
-  each a strict superset of the one below, with the per-tool list still a
+- **Tools** — a mode rather than a row of checkboxes: Plan and Execution, the
+  upper a strict superset of the lower, with the per-tool list still a
   submenu. Turning a tool off genuinely prevents its use; the model is told what
   it has and calls nothing else. Takes effect on the next turn, not the one in
   flight.

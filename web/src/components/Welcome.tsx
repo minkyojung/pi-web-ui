@@ -27,7 +27,7 @@ Five minutes of things to try:
 - [ ] **Have it change something.** Select the sentence below and ask: *make this shorter*. What it writes stays a suggestion — press **Keep** to take it or **Undo** to put the old words back. Leave it undecided for as long as you like.
 - [ ] **See who wrote what.** Point at the agent's share in the strip at the foot of the window and turn on **Who wrote what**: your words and the agent's are told apart, and stay told apart.
 - [ ] **Link to another note.** Type \`[[\` and pick one; ⌘+click a link to follow it.
-- [ ] **Change what the agent may do.** The tool menu under the message box starts on Coding — reading and editing notes, no shell, no web. Full access and Web access are one step away, and stay where you put them.
+- [ ] **Change what the agent may do.** The tool menu under the message box starts on Execution — changing files and running commands, though not reaching the web. Plan is one click below for reading only, and Web access is a switch beside them; both stay where you put them.
 
 The sentence for the second one: this paragraph, written in more words than it needs to say what it says, is here for the agent to shorten when you ask it to, and for you to decide about afterwards.
 

@@ -11,8 +11,8 @@
  * person's words, so the model makes it; the specs already there are facts,
  * read here and written into the instructions. The branch is git's, and git
  * renames it, here, once the turn that wrote the spec is over: asked to run
- * `git branch -m` with no shell — Octave's Coding mode has none — a model
- * wrote `.git/HEAD` and a ref by hand, which leaves the old branch standing
+ * `git branch -m` with no shell to run it in — the mode of the day had none — a
+ * model wrote `.git/HEAD` and a ref by hand, which leaves the old branch standing
  * and nothing in git's log. GitHub's Spec Kit has its script make the branch
  * for the same reason. It is renamed only while it still has a workspace's
  * placeholder name — a city, as electron/cities.js gives them — so `main`, or
@@ -389,9 +389,11 @@ async function waitingToCommit(pi: ExtensionAPI, cwd: string): Promise<{ reposit
 
 /**
  * The end of a task's run: one commit for what it changed, and its box in
- * tasks.md checked — both here rather than by the model. A session opens on
- * Coding, which has no shell to commit with (toolModes.ts), and a box and a
- * commit that disagreed could not be told apart afterwards. Which boxes are
+ * tasks.md checked — both here rather than by the model. Not because the model
+ * could not: on Plan it has no shell at all, and on Execution it has one, and a
+ * task that is committed or not depending on the rung the person happens to be
+ * on is not a unit of anything. A box and a commit that disagreed could not be
+ * told apart afterwards either. Which boxes are
  * checked is written from what was done when the run began and the one task it
  * was for, so a box the model checked on its way past is not a task done.
  *

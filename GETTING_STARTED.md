@@ -69,10 +69,14 @@ page again; accounts are also in Settings (`⌘,`).
 
 ## 5. What the agent may do
 
-A new conversation starts careful: the agent can read and edit your notes, and **cannot run shell commands or
-reach the web**. Both are one step away in the tool menu under the message box — *Full access* and *Web access* —
-and stay where you put them. Octave does not ask before each step, so the mode is the boundary: leave it on
-*Coding* unless you want the agent to run commands on your Mac.
+There are two modes in the tool menu under the message box. *Execution*, where a new conversation starts, lets
+the agent change files and run commands — which is what running a spec's task takes, since a task that cannot run
+its own tests cannot tell whether it did the job. *Plan* is one click below: reading, searching and listing only,
+for asking about a repository before anything is changed.
+
+Octave does not ask before each step, so the mode is the boundary. Drop to *Plan* when you only want to talk.
+Reaching the web is a switch of its own beside the modes, off until you turn it on, and both stay where you put
+them.
 
 ## 6. What leaves your Mac
 
