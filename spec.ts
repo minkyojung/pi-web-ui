@@ -641,7 +641,14 @@ export default function spec(pi: ExtensionAPI): void {
 			await ctx.newSession({
 				withSession: async (session) => {
 					await session.sendMessage({ customType: TASK_MARK, content: taskPrompt(mark), display: false, details: mark }, { deliverAs: "nextTurn" });
-					await session.sendUserMessage(`/spec-run ${task.number}`);
+					// Started, not waited for. pi's sendUserMessage runs the turn to
+					// its end before it resolves, and newSession does not return until
+					// this does — so waiting here would hold the host on the session it
+					// just left for the whole run, and the person would watch nothing
+					// happen until the commit landed.
+					void session.sendUserMessage(`/spec-run ${task.number}`).catch((error: unknown) => {
+						session.ui.notify(`The run of ${task.number} stopped: ${error instanceof Error ? error.message : String(error)}`, "error");
+					});
 				},
 			});
 		},

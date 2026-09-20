@@ -81,6 +81,8 @@ function fakePi(branch, branches = []) {
   let dirty = [];
   /** The session's entries, as the end of a turn reads them. */
   let entries = [];
+  /** Whether the turn a run starts never finishes, as a long one has not yet. */
+  let hangs = false;
   const gits = [];
   const sessions = [];
   const answer = (code, stdout = "") => ({ code, stdout, stderr: "", killed: false });
@@ -114,8 +116,13 @@ function fakePi(branch, branches = []) {
       sessions.push(options);
       await options?.withSession?.({
         cwd,
+        ui: { notify: (text, type) => notes.push({ text, type }) },
         sendMessage: async (message, opts) => done.push({ sendMessage: message, options: opts }),
-        sendUserMessage: async (content, opts) => done.push({ sendUserMessage: content, options: opts }),
+        // As pi's own does: it runs the turn to the end before it resolves.
+        sendUserMessage: (content, opts) => {
+          done.push({ sendUserMessage: content, options: opts });
+          return hangs ? new Promise(() => {}) : Promise.resolve();
+        },
       });
       return { cancelled: false };
     },
@@ -164,6 +171,7 @@ function fakePi(branch, branches = []) {
     cleanup,
     cwd,
     setDirty: (entries) => (dirty = entries),
+    hangTurn: () => (hangs = true),
     setEntries: (given) => (entries = given),
     tasks: (name) => readFileSync(join(cwd, ".octave/specs", name, "tasks.md"), "utf8"),
   };
@@ -1165,4 +1173,19 @@ test("앱의 폴더가 커밋을 기다려도 작업은 시작된다 — Octave�
   await pi.runTask();
   assert.deepEqual(pi.notes, [], "막지 않는다");
   assert.equal(pi.sessions.length, 1);
+});
+
+test("실행이 시작되면 명령은 돌아온다 — 턴이 끝나기를 기다리면 창이 그 실행을 보지 못한다", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.plan("email-auth");
+  // pi's own sendUserMessage runs the turn to the end before it resolves, and
+  // until newSession returns the host has not bound to the new session: it
+  // would hear nothing of the run until it was over. So the turn is started,
+  // not waited for. Were it waited for, this would never return.
+  pi.hangTurn();
+  await pi.runTask();
+  assert.equal(pi.sessions.length, 1);
+  assert.equal(pi.done.at(-1).sendUserMessage, "/spec-run 1");
+  assert.deepEqual(pi.notes, []);
 });
