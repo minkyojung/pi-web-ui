@@ -542,6 +542,20 @@ const editorStatus = (page) => page.evaluate("document.getElementById('editor')?
  * A note picked from the sidebar's tree: the folders around it opened first,
  * as a person would, then its row clicked once it is there.
  */
+/**
+ * Open a file that is not a note: the palette, since the sidebar lists notes
+ * and a repository's other files are only offered there once something is
+ * typed (quickOpen.ts).
+ */
+const pickFile = async (page, path) => {
+	await page.press("p", { meta: true });
+	await until("the palette", () => page.evaluate("document.activeElement?.dataset.slot === 'command-input'"));
+	await page.keys(path.slice(path.lastIndexOf("/") + 1));
+	await until("the file offered", () => page.evaluate(`[...document.querySelectorAll('[data-slot=command-list] [cmdk-item]')].some((i) => i.dataset.value === ${JSON.stringify(path.toLowerCase())})`));
+	await page.evaluate(`[...document.querySelectorAll('[data-slot=command-list] [cmdk-item]')].find((i) => i.dataset.value === ${JSON.stringify(path.toLowerCase())}).click()`);
+	await until("the file in front", () => page.evaluate(`!!document.querySelector('#page[data-code=${JSON.stringify(path)}]')`));
+};
+
 const pickNote = async (page, path) => {
 	const folders = path.split("/").slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join("/"));
 	for (const folder of folders) {
@@ -1277,6 +1291,20 @@ check("⌘P offers the rest of the repository, and a file that is not a note ope
 	await app.keys("XXX");
 	assert.equal((await text()).includes("XXX"), false, "a file here is read-only");
 	assert.equal(readFileSync(join(cwd, "tool.ts"), "utf8"), "// what it answers\nexport const answer = 42;\n");
+});
+
+check("a file open to read follows the disk, and says so when it goes from under the tab", async ({ app, cwd }) => {
+	await pickFile(app, "tool.ts");
+	const text = () => app.evaluate("document.querySelector('#page .cm-content')?.textContent ?? ''");
+	await until("the file", async () => (await text()).includes("answer = 42;"));
+	// As a task would write it: not through the app, and with the tab open on it.
+	writeFileSync(join(cwd, "tool.ts"), "// what it answers\nexport const answer = 43;\n");
+	await until("the new text", async () => (await text()).includes("answer = 43;"));
+	// Gone from under the tab, and said rather than left as it was.
+	rmSync(join(cwd, "tool.ts"));
+	await until("the file gone", () => app.evaluate("document.querySelector('#page')?.textContent?.includes('not in the folder') ?? false"));
+	writeFileSync(join(cwd, "tool.ts"), "// what it answers\nexport const answer = 42;\n");
+	await until("back again", async () => (await text()).includes("answer = 42;"));
 });
 
 check("⌘F finds in the note, and Escape puts the panel away", async ({ app }) => {

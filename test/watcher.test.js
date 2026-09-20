@@ -78,6 +78,17 @@ test("승인 기록이 바뀌어도 보고된다 — 기다리는 문서가 달�
   assert.deepEqual(seen, [".octave/specs/email-auth/approvals.json"]);
 });
 
+test("노트가 아닌 파일은 누가 열어 두었을 때만 소식이다", async () => {
+  const seen = [];
+  const stop = watchNotes(DIR, (path) => seen.push(path), 40, (path) => path === "watched.ts");
+  await wait(150);
+  writeFileSync(join(DIR, "watched.ts"), "const a = 1;\n");
+  writeFileSync(join(DIR, "ignored.ts"), "const b = 2;\n");
+  await wait(400);
+  stop();
+  assert.deepEqual(seen, ["watched.ts"], "아무도 안 보는 파일은 빌드 하나에 수천 개가 된다");
+});
+
 test("멈춘 뒤에는 아무것도 보고되지 않는다", async () => {
   const seen = [];
   const stop = watchNotes(DIR, (path) => seen.push(path), 40);

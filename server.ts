@@ -784,6 +784,15 @@ const known = new Map<string, number>();
  * could have a version of it yet. A note that is gone is only news to the list.
  */
 function noticed(path: string): void {
+	// A file somebody has open to read, sent to them again. First, and on its
+	// own: a note and a spec open in the editor and are answered below, and
+	// only what the window opened as a file is in here.
+	const looking = [...reading].filter(([, at]) => at === path).map(([ws]) => ws);
+	if (looking.length > 0) {
+		const text = safeStringify(code(path));
+		for (const ws of looking) if (ws.readyState === ws.OPEN) ws.send(text);
+		return;
+	}
 	// A document has no log and no tab: the only news is that it is there or not.
 	if (documentAt(CWD, path)) {
 		if (notes.sawDocument(path, existsSync(join(CWD, path)))) broadcast(files());
@@ -1052,6 +1061,18 @@ async function abortWithin(ms: number): Promise<void> {
 }
 
 const clients = new Set<WebSocket>();
+
+/**
+ * Which file of the repository each tab has open to read — what to send it
+ * again when that file changes on disk (CodeMsg). One path per tab, since one
+ * tab is in front and the middle column draws only what is in front.
+ *
+ * Beside the sockets because it is a fact about a window looking, true only
+ * while it is: the entry goes when the tab closes the file, and with the
+ * socket when the window does. It is also what narrows the watcher, which
+ * would otherwise wake for every file a build or a checkout writes.
+ */
+const reading = new Map<WebSocket, string>();
 
 function broadcast(payload: ServerMsg): void {
 	const text = safeStringify(payload);
@@ -1636,12 +1657,16 @@ wss.on("connection", async (ws) => {
 	// Someone is looking: a list that has gone stale since the last pass is
 	// brought up to date, and this tab hears of it like every other.
 	void refreshModels();
-	ws.on("close", () => clients.delete(ws));
+	ws.on("close", () => {
+		clients.delete(ws);
+		reading.delete(ws);
+	});
 	// ws emits 'error' for a malformed frame. Node throws on an 'error' event
 	// with no listener, so without this one bad frame takes the process down.
 	ws.on("error", (err) => {
 		console.error("websocket error:", err.message);
 		clients.delete(ws);
+		reading.delete(ws);
 	});
 	/** To this tab only: answers to what it asked, and the state it needs to start. */
 	const reply = (msg: ServerMsg) => ws.send(safeStringify(msg));
@@ -2118,9 +2143,15 @@ wss.on("connection", async (ws) => {
 				// not a note and the folder answers for a different set of paths.
 				case "open_code": {
 					if (typeof msg.path !== "string") return;
+					reading.set(ws, msg.path);
 					reply(code(msg.path));
 					break;
 				}
+
+				// The tab has gone, or has moved to something that is not a file.
+				case "close_code":
+					reading.delete(ws);
+					break;
 
 				// The editor's save. Refused rather than merged when the note has
 				// moved on since it was read — see vault.ts — and recorded to the
@@ -2450,8 +2481,9 @@ wss.on("connection", async (ws) => {
  */
 const systemTrash = shellTrash();
 
-// Writes that do not pass through here — see watcher.ts.
-const stopWatching = watchNotes(CWD, noticed);
+// Writes that do not pass through here — see watcher.ts. A file is watched
+// only while a tab has it open, which is what `reading` is for.
+const stopWatching = watchNotes(CWD, noticed, undefined, (path) => [...reading.values()].includes(path));
 
 server.listen(PORT, HOST, () => {
 	console.log(`open http://localhost:${PORT}  (ctrl+c to stop)`);

@@ -96,8 +96,15 @@ export type ClientMsg =
 	 * A file of the repository to read in a tab, which is not a note and is
 	 * not written from here. Answered with `code`, or `code_gone` where there
 	 * is nothing to show.
+	 *
+	 * A watch as well as an ask, the way an editor's didOpen is: while a tab
+	 * has a file open, a write to it on disk — a task's, a branch changed
+	 * underneath — comes back as another `code`. One file at a time, since one
+	 * tab is in front; `close_code` ends it, and so does the socket.
 	 */
 	| { type: "open_code"; path: string }
+	/** The file is no longer open here. Nothing is watched for this tab until it asks again. */
+	| { type: "close_code" }
 	/**
 	 * A note's whole text, on top of the version it was read at — `base` is
 	 * that version's `modified`, or null for a note that did not exist yet.
@@ -775,7 +782,8 @@ export interface NoteGoneMsg {
 
 /**
  * A file of the repository as text, to be read and not written — what a code
- * tab shows (pages.ts). The answer to open_code.
+ * tab shows (pages.ts). The answer to open_code, and what the tab reading it
+ * is sent again whenever the file changes on disk.
  *
  * Not a note's message and not a spec's: there is no log to say a change
  * against, no links, no version to save over. `modified` is here so a tab can

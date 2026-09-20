@@ -217,6 +217,47 @@ it("접속하면 서버의 상태가 먼저 온다 — 설정, 목록, 스냅샷
   await want("snapshot");
 });
 
+it("저장소의 파일은 읽기로 열리고, 열어 둔 동안 디스크의 변경이 따라오며, 닫으면 멈춘다", async () => {
+  writeFileSync(join(cwd, "tool.ts"), "const a = 1;\n");
+  clear();
+  send({ type: "open_code", path: "tool.ts" });
+  const first = await want("code");
+  assert.equal(first.path, "tool.ts");
+  assert.equal(first.text, "const a = 1;\n");
+  assert.equal(first.truncated, false);
+
+  // 앱을 거치지 않은 쓰기 — 작업이 쓰는 것이 이것이다.
+  clear();
+  writeFileSync(join(cwd, "tool.ts"), "const a = 2;\n");
+  await want("code", (m) => m.text === "const a = 2;\n");
+
+  // 닫은 뒤에는 오지 않는다: 저장소 하나를 통째로 방송하지 않기 위한 전부다.
+  send({ type: "close_code" });
+  await new Promise((r) => setTimeout(r, 300));
+  clear();
+  writeFileSync(join(cwd, "tool.ts"), "const a = 3;\n");
+  await new Promise((r) => setTimeout(r, 700));
+  assert.equal(inbox.some((m) => m.type === "code"), false, "닫은 탭에는 보내지 않는다");
+});
+
+it("읽을 것이 없으면 없다고 말한다 — 없는 파일, 글자가 아닌 파일, git의 것", async () => {
+  clear();
+  send({ type: "open_code", path: "nothing-here.ts" });
+  assert.equal((await want("code_gone")).reason, "missing");
+
+  writeFileSync(join(cwd, "icon.bin"), Buffer.from([0x01, 0x00, 0x02]));
+  clear();
+  send({ type: "open_code", path: "icon.bin" });
+  assert.equal((await want("code_gone")).reason, "binary");
+
+  mkdirSync(join(cwd, ".git"), { recursive: true });
+  writeFileSync(join(cwd, ".git", "config"), "[core]\n");
+  clear();
+  send({ type: "open_code", path: ".git/config" });
+  assert.equal((await want("code_gone")).reason, "missing", "git의 것은 없는 것과 같이 말한다");
+  send({ type: "close_code" });
+});
+
 it("노트를 열면 본문과 버전이 오고, pi가 손대지 않은 노트에는 결정할 것이 없다", async () => {
   clear();
   send({ type: "open_note", path: "a.md" });

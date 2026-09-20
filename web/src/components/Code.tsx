@@ -86,10 +86,16 @@ export default function Code({ path }: { path: string }) {
 	const mine = answer?.path === path ? answer : null;
 
 	// Asked again when the socket comes back: the server keeps nothing for a
-	// tab that was away, and the file may have been written while it was.
+	// tab that was away, and the file may have been written while it was. The
+	// ask is a watch too, so leaving says so — a window that has moved on to a
+	// note should not be sent a file it is not showing.
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	useEffect(() => {
-		if (online) send({ type: "open_code", path });
+		if (!online) return;
+		send({ type: "open_code", path });
+		return () => {
+			send({ type: "close_code" });
+		};
 	}, [online, path]);
 
 	useEffect(() => {
