@@ -1025,3 +1025,110 @@ test("턴이 끝나면 표식을 보고 마무리한다 — 한 세션에 한 �
   await pi.settle();
   assert.deepEqual(pi.gits.map((args) => args[0]), ["add", "commit"], "같은 세션의 다음 턴은 다시 커밋하지 않는다");
 });
+
+test("실제 pi 세션에서 작업 둘을 이어서: 저마다 자기 세션에서 지시문을 받고, 커밋 둘이 쌓인다", async (t) => {
+  const { InMemoryCredentialStore, fauxAssistantMessage, fauxProvider, fauxToolCall } = await import("@earendil-works/pi-ai");
+  const { createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices, ModelRuntime, SessionManager, SettingsManager } =
+    await import("@earendil-works/pi-coding-agent");
+  const cwd = mkdtempSync(join(tmpdir(), "spec-run-"));
+  const agentDir = mkdtempSync(join(tmpdir(), "spec-agent-"));
+  t.after(() => {
+    rmSync(cwd, { recursive: true, force: true });
+    rmSync(agentDir, { recursive: true, force: true });
+  });
+
+  // A workspace as a spec leaves one: a repository, and three documents approved.
+  const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
+  git("init", "-q", "-b", "minkyojung/email-auth");
+  writeFileSync(join(cwd, "README.md"), "# app\n");
+  git("add", "-A");
+  git("commit", "-q", "-m", "app");
+  const dir = join(cwd, ".octave/specs/email-auth");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "requirements.md"), "# Requirements Document\n");
+  writeFileSync(join(dir, "design.md"), "# Design Document\n");
+  writeFileSync(join(dir, "tasks.md"), PLAN);
+  while (approve(cwd, "email-auth")) {}
+
+  // The model does each task by writing one file, and says so.
+  const faux = fauxProvider();
+  const sent = [];
+  const reply = (make) => (context) => (sent.push(context.messages), make());
+  faux.setResponses([
+    reply(() => fauxAssistantMessage(fauxToolCall("write", { path: "door.js", content: "export const door = true;\n" }), { stopReason: "toolUse" })),
+    reply(() => fauxAssistantMessage("The door is in.")),
+    reply(() => fauxAssistantMessage(fauxToolCall("write", { path: "board.js", content: "export const board = true;\n" }), { stopReason: "toolUse" })),
+    reply(() => fauxAssistantMessage("The board is cut.")),
+  ]);
+
+  // A runtime, not a bare session: ctx.newSession is the runtime's, and a bare
+  // session's stands in for it without ever calling withSession.
+  const modelRuntime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false });
+  const createRuntime = async ({ cwd: at, sessionManager, sessionStartEvent }) => {
+    const services = await createAgentSessionServices({
+      cwd: at,
+      modelRuntime,
+      settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
+      resourceLoaderOptions: {
+        agentDir,
+        noExtensions: true,
+        extensionFactories: [
+          { name: "faux", factory: (pi) => pi.registerProvider(faux.provider) },
+          { name: "spec", factory: spec },
+        ],
+      },
+    });
+    return { ...(await createAgentSessionFromServices({ services, sessionManager, sessionStartEvent, model: faux.getModel(), thinkingLevel: "off" })), services, diagnostics: services.diagnostics };
+  };
+  const runtime = await createAgentSessionRuntime(createRuntime, { cwd, agentDir, sessionManager: SessionManager.inMemory(cwd) });
+  t.after(() => runtime.dispose());
+  // As server.ts binds it: a command that moves the session is followed by the
+  // same rebind, so the next command has a session to move in turn.
+  const bind = async () => {
+    await runtime.session.bindExtensions({
+      commandContextActions: {
+        newSession: async (options) => {
+          const result = await runtime.newSession(options);
+          if (!result.cancelled) await bind();
+          return result;
+        },
+      },
+    });
+  };
+  await bind();
+
+  const subjects = () => git("log", "--format=%s").split("\n");
+  const tasks = () => readFileSync(join(dir, "tasks.md"), "utf8");
+  const until = async (what, check) => {
+    const deadline = Date.now() + 30_000;
+    while (!check() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
+    assert.ok(check(), what);
+  };
+
+  await runtime.session.prompt("/spec-run");
+  await until("첫 작업이 커밋됐다", () => subjects().length === 2);
+
+  assert.deepEqual(subjects(), ["Add the door", "app"], "커밋 메시지는 작업 줄 그대로");
+  assert.equal(tasks(), PLAN.replace("- [ ] 1.", "- [x] 1."), "칸 하나만");
+  const first = git("show", "--name-only", "--format=", "HEAD").split("\n").sort();
+  assert.deepEqual(first, [".octave/specs/email-auth/approvals.json", ".octave/specs/email-auth/design.md", ".octave/specs/email-auth/requirements.md", ".octave/specs/email-auth/tasks.md", "door.js"], "첫 작업이 세 문서를 데려간다");
+  assert.equal(git("status", "--porcelain"), "", "남는 것이 없다");
+  assert.deepEqual(specState(cwd, "email-auth"), { approved: 3, waiting: null }, "체크해도 승인은 그대로");
+
+  // What the run's own session was sent: its line, and the instructions beside it.
+  const texts = sent.at(-1).map((m) => (typeof m.content === "string" ? m.content : m.content.map((c) => c.text ?? "").join("")));
+  const line = texts.findIndex((text) => text === "/spec-run 1");
+  const told = texts.findIndex((text) => text.includes("Do not go on to the next task"));
+  assert.ok(line >= 0, `친 명령이 사람의 메시지로 ${JSON.stringify(texts)}`);
+  assert.ok(told > line, "지시문은 그 줄 뒤, 같은 턴에");
+  for (const doc of ["requirements.md", "design.md", "tasks.md"]) assert.ok(texts[told].includes(`.octave/specs/email-auth/${doc}`), doc);
+
+  await runtime.session.prompt("/spec-run");
+  await until("다음 작업이 커밋됐다", () => subjects().length === 3);
+
+  assert.deepEqual(subjects(), ["Cut the board", "Add the door", "app"], "2는 묶음이므로 2.1이 다음");
+  assert.deepEqual(git("show", "--name-only", "--format=", "HEAD").split("\n").sort(), [".octave/specs/email-auth/tasks.md", "board.js"], "두 번째는 자기 것만");
+  assert.equal(tasks(), PLAN.replace("- [ ] 1.", "- [x] 1.").replace("- [ ] 2.1", "- [x] 2.1"));
+  assert.equal(git("rev-parse", "HEAD~1"), git("rev-parse", "HEAD^"), "두 번째가 첫 번째 위에 쌓였다");
+  assert.equal(git("branch", "--show-current"), "minkyojung/email-auth", "브랜치는 그대로");
+});
