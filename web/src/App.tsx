@@ -29,6 +29,7 @@ import { WhatsNew } from "./components/WhatsNew";
 const Pdf = lazy(() => import("./components/Pdf"));
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
+import { SpecButton } from "./components/SpecButton";
 import { bump, forget, readRecent, writeRecent } from "./recent";
 import { back as stepBack, canBack, canForward, forget as forgetStep, forward as stepForward, go, here, type Left, type Nav, read as readNav, remember, replace, write as writeNav } from "./nav";
 import { type Closed, add as addTab, close as closeTabIn, move, neighbour, readTabs, reopen, writeTabs } from "./tabs";
@@ -577,6 +578,9 @@ export function App() {
 						className="drag-region flex h-11 shrink-0 items-center gap-0.5 pr-2"
 						style={sidebarOpen ? undefined : { marginLeft: stripWidth ?? railWidth ?? undefined }}
 					>
+						{/* Before the tabs and outside the row they scroll in: what a
+						    spec is waiting for is a fact about the workspace, not a tab. */}
+						<SpecButton open={open} onOpen={setOpen} />
 						<NoteTabs
 							tabs={tabs}
 							open={open}

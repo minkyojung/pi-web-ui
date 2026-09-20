@@ -406,6 +406,9 @@ check("with nothing open, the middle column says what there is to do", async ({ 
 	const commands = await until("the watermark", () =>
 		app.evaluate("document.getElementById('watermark') && [...document.querySelectorAll('#watermark kbd')].map((k) => k.textContent).join(',')"));
 	assert.equal(commands, "/spec,/spec-approve,/spec-run");
+	// And nothing about a spec anywhere: the folder has none yet, and the
+	// control that names one is absent rather than empty.
+	assert.equal(await app.evaluate("!!document.getElementById('spec')"), false, "no spec, no spec button");
 });
 
 check("the sidebar is the folder's tree: its notes and folders, a folder's notes once it is opened, and nothing else", async ({ app }) => {
@@ -3259,6 +3262,54 @@ check("a spec's document comes to the front as it starts waiting, and stays clos
 	await until("the design in front", async () => (await editorText(app)).includes("DESIGNWORD"));
 	await app.press("w", { meta: true });
 	await until("the tab closed", async () => !(await editorText(app)).includes("DESIGNWORD"));
+});
+
+// The control at the start of the row: what is waiting, from anywhere, and the
+// approval that would otherwise be a command typed into the box. By now the
+// folder holds other specs from the checks above, which is the case worth
+// having — the one that is waiting and newest is the one it names.
+check("the spec at the start of the row names what is waiting, opens its documents and approves them", async ({ app, cwd }) => {
+	const dir = join(cwd, ".octave/specs/menu");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n\nMENUWORD\n");
+	const button = () => app.evaluate("document.getElementById('spec')?.textContent ?? ''");
+	await until("the newest spec named", async () => (await button()).includes("menu") && (await button()).includes("Requirements waiting"));
+	assert.equal(await app.evaluate("document.getElementById('spec').dataset.standing"), "waiting");
+
+	// It opened by itself (specTabs.ts); closed, the menu is the way back.
+	await app.press("w", { meta: true });
+	await until("the tab closed", async () => !(await editorText(app)).includes("MENUWORD"));
+	await app.click("#spec");
+	await until("the menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitem]')"));
+	const standings = () =>
+		app.evaluate("[...document.querySelectorAll('[role=menu] [data-spec=\"menu\"]')].map((i) => i.dataset.doc + ':' + i.dataset.standing).join(',')");
+	assert.equal(await standings(), "requirements.md:waiting,design.md:unwritten,tasks.md:unwritten");
+	assert.equal(
+		await app.evaluate("document.querySelector('[role=menu] [data-spec=\"menu\"][data-doc=\"design.md\"]').getAttribute('aria-disabled')"),
+		"true",
+		"a document the agent has not written cannot be opened",
+	);
+	await app.evaluate("document.querySelector('[role=menu] [data-spec=\"menu\"][data-doc=\"requirements.md\"]').click()");
+	await until("the document back", async () => (await editorText(app)).includes("MENUWORD"));
+
+	// Approved from the menu: the same command, and the record it writes.
+	await app.click("#spec");
+	await until("the approval offered", () =>
+		app.evaluate("document.querySelector('[role=menu] [data-approve=\"menu\"]')?.getAttribute('aria-disabled') !== 'true'"));
+	await app.evaluate("document.querySelector('[role=menu] [data-approve=\"menu\"]').click()");
+	await until("the record on disk", () => {
+		const file = join(dir, "approvals.json");
+		return existsSync(file) && JSON.parse(readFileSync(file, "utf8"))["requirements.md"]?.length === 1;
+	});
+	// And the window hears it from the folder, as it heard the document: the
+	// menu is open while it changes under the pointer.
+	await app.click("#spec");
+	await until("the menu again", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitem]')"));
+	await until("the approval in the menu", async () => (await standings()) === "requirements.md:approved,design.md:unwritten,tasks.md:unwritten");
+	assert.equal(await app.evaluate("!!document.querySelector('[role=menu] [data-approve=\"menu\"]')"), false, "nothing of this spec is waiting now");
+	// Away, so the check after this one does not read a page with a menu over it.
+	await app.press("Escape");
+	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {
