@@ -29,6 +29,7 @@ import { WhatsNew } from "./components/WhatsNew";
 const Pdf = lazy(() => import("./components/Pdf"));
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
+import { SpecBar } from "./components/SpecBar";
 import { SpecButton } from "./components/SpecButton";
 import { bump, forget, readRecent, writeRecent } from "./recent";
 import { back as stepBack, canBack, canForward, forget as forgetStep, forward as stepForward, go, here, type Left, type Nav, read as readNav, remember, replace, write as writeNav } from "./nav";
@@ -615,6 +616,10 @@ export function App() {
 					<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-background" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
 					<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
 					<NoteHeader path={note} onOpen={setOpen} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
+					{/* Under the header and over the page, so it stays while a long
+					    document scrolls — and `note` is null for anything that is not
+					    a note or a spec, which keeps it off a PDF and off a page. */}
+					<SpecBar path={note} />
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
