@@ -44,14 +44,16 @@
  * A file of its own with nothing of Octave's in it but the name of the folder,
  * so the same command runs in pi's terminal: `pi -e spec.ts`.
  */
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
+import { writeAtomic } from "./atomic.ts";
 import { SPECS_DIR } from "./documentKinds.ts";
 import { CITIES } from "./electron/cities.js";
 import { APPROVALS, approve, SPEC_DOCS, type SpecDoc, type SpecState, specState } from "./specApproval.ts";
+import { nextTask, parseTasks, withDone, withParents } from "./specTasks.ts";
 
 /** A workspace's placeholder name: a city, or a city of a later round (`lisbon-v2`). */
 const PLACEHOLDER = new RegExp(`^(?:${CITIES.join("|")})(?:-v\\d+)?$`);
@@ -282,6 +284,105 @@ export function nextPrompt({ name, next, redo }: { name: string; next: "design.m
 						`4. ${stop("wrote", "Do not start on the tasks.")}`,
 					];
 	return [...steps, "", "Do not narrate these steps; do them."].join("\n");
+}
+
+// ---- Running a task ----
+
+/** The hidden message a task's run is told by, and marked as, in its session. */
+const TASK_MARK = "spec-task";
+
+/** What a task's run is, carried in the session it runs in. */
+export interface TaskMark {
+	spec: string;
+	/** Its number in tasks.md — `2`, or `2.1`. */
+	task: string;
+	/** Its objective, which is its commit's subject. */
+	title: string;
+	/** The tasks already done when the run began. */
+	done: string[];
+}
+
+/** As much of a session's entry as the mark is read out of. */
+interface SessionEntry {
+	type?: string;
+	customType?: string;
+	details?: unknown;
+}
+
+/** Somewhere to say something to the person: the part of a context this uses. */
+interface Speaking {
+	cwd: string;
+	ui: { notify: (message: string, type?: "info" | "warning" | "error") => void };
+}
+
+/**
+ * The task this session is a run of, read back out of the session, or null for
+ * a session that is not one.
+ *
+ * Not remembered in a variable here: newSession makes the extension over —
+ * the command runs in one of it and the end of the turn in the next, and what
+ * the first wrote down is not there for the second. So it travels in the
+ * session the command opened, on the message that carries the instructions,
+ * which is also where it still is after a restart.
+ */
+export function taskMark(entries: readonly SessionEntry[]): TaskMark | null {
+	for (let at = entries.length - 1; at >= 0; at--) {
+		const entry = entries[at]!;
+		if (entry.type !== "custom_message" || entry.customType !== TASK_MARK) continue;
+		const details = entry.details as Partial<TaskMark> | undefined;
+		if (!details || typeof details.spec !== "string" || typeof details.task !== "string" || typeof details.title !== "string" || !Array.isArray(details.done)) return null;
+		return { spec: details.spec, task: details.task, title: details.title, done: details.done.filter((number): number is string => typeof number === "string") };
+	}
+	return null;
+}
+
+/**
+ * The end of a task's run: one commit for what it changed, and its box in
+ * tasks.md checked — both here rather than by the model. A session opens on
+ * Coding, which has no shell to commit with (toolModes.ts), and a box and a
+ * commit that disagreed could not be told apart afterwards. Which boxes are
+ * checked is written from what was done when the run began and the one task it
+ * was for, so a box the model checked on its way past is not a task done.
+ *
+ * A run that changed nothing leaves nothing — no commit and no box, and the
+ * same task is next again.
+ */
+export async function finishTask(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark): Promise<void> {
+	const git = (args: string[]) => pi.exec("git", args, { cwd, timeout: 30_000 });
+	const where = `${SPECS_DIR}${mark.spec}/tasks.md`;
+	const file = join(cwd, where);
+	// Every untracked file by name: git collapses an untracked folder to the
+	// folder, and `.octave/` on its own cannot be told from work outside it.
+	const status = await git(["status", "--porcelain", "-z", "--untracked-files=all"]).catch(() => null);
+	const repository = status !== null && status.code === 0;
+	// The spec's own folder is not the task's work: its documents were written
+	// before the run and ride into this commit with the code. So a run that
+	// touched nothing else did nothing, however much is waiting to be committed.
+	if (repository && !status.stdout.split("\0").filter(Boolean).some((entry) => !entry.slice(3).startsWith(SPECS_DIR))) {
+		ui.notify(`${mark.task} changed nothing, so it is not checked off and there is no commit.`, "warning");
+		return;
+	}
+	let text: string;
+	try {
+		text = readFileSync(file, "utf8");
+	} catch {
+		ui.notify(`${where} is not there, so ${mark.task} could not be checked off.`, "warning");
+		return;
+	}
+	writeAtomic(file, withDone(text, withParents(parseTasks(text), new Set([...mark.done, mark.task]))));
+	if (!repository) {
+		ui.notify(`${mark.task} is done. There is no repository here, so nothing was committed.`, "warning");
+		return;
+	}
+	const added = await git(["add", "-A"]);
+	const made = added.code === 0 ? await git(["commit", "-m", mark.title, "-m", `${where} ${mark.task}`]) : added;
+	if (made.code !== 0) {
+		ui.notify(`${mark.task} is done, but git could not commit it: ${(made.stderr || made.stdout).trim()}`, "warning");
+		return;
+	}
+	const at = await git(["rev-parse", "--short", "HEAD"]);
+	const next = nextTask(parseTasks(readFileSync(file, "utf8")));
+	ui.notify(`${mark.task} is done${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}. ${next ? `Next is ${next.number} — /spec-run` : "That was the last task."}`, "info");
 }
 
 /** What each spec in the folder is waiting on, by name. */
