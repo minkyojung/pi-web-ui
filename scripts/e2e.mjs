@@ -19,7 +19,7 @@
  */
 
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -1255,6 +1255,28 @@ check("⌘P finds a note by a few letters, and makes one that is not there", asy
 	await app.press("Enter");
 	await until("the new note", async () => (await app.evaluate("location.hash")) === "#brand%20new.md" && (await editorStatus(app)) === "saved");
 	assert.equal(existsSync(join(cwd, "brand new.md")), true);
+});
+
+check("⌘P offers the rest of the repository, and a file that is not a note opens as one to read", async ({ app, cwd }) => {
+	await app.press("p", { meta: true });
+	await until("the palette", () => app.evaluate("document.activeElement?.dataset.slot === 'command-input'"));
+	await app.keys("tool");
+	await until("the file, under its own heading", () =>
+		app.evaluate(`[...document.querySelectorAll('[data-slot=command-list] [cmdk-group]')].some((g) => g.querySelector('[cmdk-group-heading]')?.textContent === 'Files' && g.textContent.includes('tool.ts'))`),
+	);
+	await app.evaluate(`[...document.querySelectorAll('[data-slot=command-list] [cmdk-item]')].find((i) => i.textContent.includes('tool.ts')).click()`);
+	await until("the file in front", async () => (await app.evaluate("location.hash")) === "#tool.ts" && (await app.evaluate(`!!document.querySelector('#page[data-code="tool.ts"]')`)));
+	const text = () => app.evaluate("document.querySelector('#page .cm-content')?.textContent ?? ''");
+	await until("its text", async () => (await text()).includes("export const answer = 42;"));
+	// A file, not a note: no title to rename it by and no properties above it.
+	assert.equal(await app.evaluate("!!document.getElementById('note')"), false);
+	assert.equal(await app.evaluate("document.querySelectorAll('#page .cm-lineNumbers .cm-gutterElement').length > 1"), true, "lines are numbered");
+	await app.shot("code");
+	// Read, not written: the keys reach it and change nothing.
+	await app.click("#page .cm-content");
+	await app.keys("XXX");
+	assert.equal((await text()).includes("XXX"), false, "a file here is read-only");
+	assert.equal(readFileSync(join(cwd, "tool.ts"), "utf8"), "// what it answers\nexport const answer = 42;\n");
 });
 
 check("⌘F finds in the note, and Escape puts the panel away", async ({ app }) => {
@@ -3405,6 +3427,11 @@ async function main() {
 	writeFileSync(join(cwd, "ideas", "second.md"), "# second\n");
 	writeFileSync(join(cwd, "first.md"), "# first\n");
 	writeFileSync(join(cwd, "not-a-note.txt"), "no\n");
+	// The folder Octave opens is a repository (docs/spec-mode), which is what
+	// puts the rest of its files in ⌘P and lets a tab read one: repoFiles.ts
+	// asks git, and a folder that is in none has nothing to offer.
+	writeFileSync(join(cwd, "tool.ts"), "// what it answers\nexport const answer = 42;\n");
+	execFileSync("git", ["init", "-q"], { cwd });
 	// A note pi has written in, with the history that says so: the heading's
 	// word replaced, and a line added. Replaying the log gives the file.
 	writeFileSync(join(cwd, "ideas", "second.md"), "# SECOND\n\npi wrote this\n");

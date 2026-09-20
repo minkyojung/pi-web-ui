@@ -34,7 +34,9 @@ test("주소에서 노트를 읽고, 노트로 주소를 만든다", () => {
   assert.equal(noteFromHash("#my%20note.md"), "my note.md");
   assert.equal(noteFromHash("#"), null);
   assert.equal(noteFromHash(""), null);
-  assert.equal(noteFromHash("#today"), null);
+  // 폴더 안의 무엇이든 열리게 된 뒤로, 노트가 아닌 이름은 읽을 파일의 이름이다.
+  // 그런 파일이 없으면 탭이 없다고 말한다 — 없는 노트를 가리키는 주소와 같다.
+  assert.equal(noteFromHash("#today"), "today");
   assert.equal(noteFromHash("#%E0%A4%A"), null, "깨진 인코딩은 아무것도 아니다");
   assert.equal(hashForNote("ideas/my note.md"), "#ideas/my%20note.md");
   assert.equal(noteFromHash(hashForNote("한글 노트/a b.md")), "한글 노트/a b.md");

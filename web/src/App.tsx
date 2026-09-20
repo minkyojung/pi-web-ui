@@ -27,6 +27,9 @@ import { WhatsNew } from "./components/WhatsNew";
 // pdf.js is larger than the rest of the window put together, and most days no
 // PDF is opened: it is fetched when the first one is.
 const Pdf = lazy(() => import("./components/Pdf"));
+// Lazy for the reason Pdf is: a repository of one language loads that
+// language's grammar, and a window that opens no file loads none of them.
+const Code = lazy(() => import("./components/Code"));
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
 import { SpecBar } from "./components/SpecBar";
@@ -641,6 +644,12 @@ export function App() {
 						<Boundary name="document" hint="The file itself is untouched.">
 							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
 								<Pdf key={page.path} path={page.path} page={pageNamed(place)} />
+							</Suspense>
+						</Boundary>
+					) : page?.kind === "code" ? (
+						<Boundary name="file" hint="The file itself is untouched.">
+							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
+								<Code key={page.path} path={page.path} />
 							</Suspense>
 						</Boundary>
 					) : page ? (
