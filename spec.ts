@@ -11,8 +11,8 @@
  * person's words, so the model makes it; the specs already there are facts,
  * read here and written into the instructions. The branch is git's, and git
  * renames it, here, once the turn that wrote the spec is over: asked to run
- * `git branch -m` with no shell — Octave's Coding mode has none — a model
- * wrote `.git/HEAD` and a ref by hand, which leaves the old branch standing
+ * `git branch -m` with no shell to run it in — the mode of the day had none — a
+ * model wrote `.git/HEAD` and a ref by hand, which leaves the old branch standing
  * and nothing in git's log. GitHub's Spec Kit has its script make the branch
  * for the same reason. It is renamed only while it still has a workspace's
  * placeholder name — a city, as electron/cities.js gives them — so `main`, or
@@ -44,14 +44,16 @@
  * A file of its own with nothing of Octave's in it but the name of the folder,
  * so the same command runs in pi's terminal: `pi -e spec.ts`.
  */
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { SPECS_DIR } from "./documentKinds.ts";
+import { writeAtomic } from "./atomic.ts";
+import { APP_DIR_NAME, SPECS_DIR } from "./documentKinds.ts";
 import { CITIES } from "./electron/cities.js";
 import { APPROVALS, approve, SPEC_DOCS, type SpecDoc, type SpecState, specState } from "./specApproval.ts";
+import { nextTask, parseTasks, taskToRun, withDone, withParents } from "./specTasks.ts";
 
 /** A workspace's placeholder name: a city, or a city of a later round (`lisbon-v2`). */
 const PLACEHOLDER = new RegExp(`^(?:${CITIES.join("|")})(?:-v\\d+)?$`);
@@ -284,6 +286,156 @@ export function nextPrompt({ name, next, redo }: { name: string; next: "design.m
 	return [...steps, "", "Do not narrate these steps; do them."].join("\n");
 }
 
+// ---- Running a task ----
+
+/** The hidden message a task's run is told by, and marked as, in its session. */
+const TASK_MARK = "spec-task";
+
+/** What a task's run is, carried in the session it runs in. */
+export interface TaskMark {
+	spec: string;
+	/** Its number in tasks.md — `2`, or `2.1`. */
+	task: string;
+	/** Its objective, which is its commit's subject. */
+	title: string;
+	/** The tasks already done when the run began. */
+	done: string[];
+}
+
+/**
+ * What the model is told at the start of a task's run — Kiro's task
+ * instructions, which are the whole of its execution rule: read all three
+ * documents, do the one task, check it against the criteria it names, stop.
+ * Ours on the end are the two things the code does instead of it.
+ */
+export function taskPrompt({ spec, task, title }: TaskMark): string {
+	const dir = `${SPECS_DIR}${spec}/`;
+	const steps = [
+		`Read all three of ${dir}requirements.md, ${dir}design.md and ${dir}tasks.md before you change anything. A task done without the requirements or the design is done wrong.`,
+		`Do task ${task} of ${dir}tasks.md — "${title}" — and only it. Do not build any part of another task, even one you can see it will need.`,
+		"Check what you built against the acceptance criteria the task names (_Requirements: 1.2, 3.3_), by their numbers in the requirements.",
+		"Then stop. Say in a line or two what you did and anything the person should look at. Do not go on to the next task.",
+	];
+	return [
+		`The person asked for task ${task} of the spec "${spec}" to be run with /spec-run.`,
+		"",
+		"In order:",
+		...steps.map((step, i) => `${i + 1}. ${step}`),
+		"",
+		`Leave ${dir}tasks.md alone: the task is checked off for you when this turn ends, and changing the plan is something to go back to the person about. Do not commit and do not touch the branch or anything under .git — the commit for this task is made for you too.`,
+		"",
+		"Do not narrate these steps; do them.",
+	].join("\n");
+}
+
+/** As much of a session's entry as the mark is read out of. */
+interface SessionEntry {
+	type?: string;
+	customType?: string;
+	details?: unknown;
+}
+
+/** Somewhere to say something to the person: the part of a context this uses. */
+interface Speaking {
+	cwd: string;
+	ui: { notify: (message: string, type?: "info" | "warning" | "error") => void };
+}
+
+/**
+ * The task this session is a run of, read back out of the session, or null for
+ * a session that is not one.
+ *
+ * Not remembered in a variable here: newSession makes the extension over —
+ * the command runs in one of it and the end of the turn in the next, and what
+ * the first wrote down is not there for the second. So it travels in the
+ * session the command opened, on the message that carries the instructions,
+ * which is also where it still is after a restart.
+ */
+export function taskMark(entries: readonly unknown[]): TaskMark | null {
+	for (let at = entries.length - 1; at >= 0; at--) {
+		const entry = entries[at] as SessionEntry | null;
+		if (!entry || entry.type !== "custom_message" || entry.customType !== TASK_MARK) continue;
+		const details = entry.details as Partial<TaskMark> | undefined;
+		if (!details || typeof details.spec !== "string" || typeof details.task !== "string" || typeof details.title !== "string" || !Array.isArray(details.done)) return null;
+		return { spec: details.spec, task: details.task, title: details.title, done: details.done.filter((number): number is string => typeof number === "string") };
+	}
+	return null;
+}
+
+/**
+ * Whether this is a repository at all, and what is waiting to be committed in
+ * it that is the person's — neither the spec's documents nor the app's folder.
+ *
+ * The documents are not a task's work: they were written before it and only
+ * ride into its commit, so they neither stand in the way of a run starting nor
+ * stand for one having done something. `.pi/` is not the person's at all —
+ * Octave writes it into every folder it opens, and its own `.gitignore` is
+ * left untracked there, so counting it would mean no task could ever start.
+ *
+ * Every untracked file is asked for by name: git collapses an untracked folder
+ * to the folder, and `.octave/` on its own cannot be told apart from work
+ * outside it.
+ */
+async function waitingToCommit(pi: ExtensionAPI, cwd: string): Promise<{ repository: boolean; work: string[] }> {
+	const status = await pi.exec("git", ["status", "--porcelain", "-z", "--untracked-files=all"], { cwd, timeout: 30_000 }).catch(() => null);
+	if (!status || status.code !== 0) return { repository: false, work: [] };
+	const work = status.stdout
+		.split("\0")
+		.filter(Boolean)
+		.map((entry) => entry.slice(3))
+		.filter((path) => !path.startsWith(SPECS_DIR) && !path.startsWith(`${APP_DIR_NAME}/`));
+	return { repository: true, work };
+}
+
+/**
+ * The end of a task's run: one commit for what it changed, and its box in
+ * tasks.md checked — both here rather than by the model. Not because the model
+ * could not: on Plan it has no shell at all, and on Execution it has one, and a
+ * task that is committed or not depending on the rung the person happens to be
+ * on is not a unit of anything. A box and a commit that disagreed could not be
+ * told apart afterwards either. Which boxes are
+ * checked is written from what was done when the run began and the one task it
+ * was for, so a box the model checked on its way past is not a task done.
+ *
+ * A run that changed nothing leaves nothing — no commit and no box, and the
+ * same task is next again.
+ */
+export async function finishTask(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark): Promise<void> {
+	const git = (args: string[]) => pi.exec("git", args, { cwd, timeout: 30_000 });
+	const where = `${SPECS_DIR}${mark.spec}/tasks.md`;
+	const file = join(cwd, where);
+	const { repository, work } = await waitingToCommit(pi, cwd);
+	// A run that touched nothing outside the spec's folder did nothing, however
+	// much is waiting there: the documents were written before it.
+	if (repository && work.length === 0) {
+		ui.notify(`${mark.task} changed nothing, so it is not checked off and there is no commit.`, "warning");
+		return;
+	}
+	let text: string;
+	try {
+		text = readFileSync(file, "utf8");
+	} catch {
+		ui.notify(`${where} is not there, so ${mark.task} could not be checked off.`, "warning");
+		return;
+	}
+	writeAtomic(file, withDone(text, withParents(parseTasks(text), new Set([...mark.done, mark.task]))));
+	if (!repository) {
+		ui.notify(`${mark.task} is done. There is no repository here, so nothing was committed.`, "warning");
+		return;
+	}
+	// Everything the run left but the app's own folder, which belongs to no
+	// commit of the person's.
+	const added = await git(["add", "-A", "--", ".", `:(exclude)${APP_DIR_NAME}`]);
+	const made = added.code === 0 ? await git(["commit", "-m", mark.title, "-m", `${where} ${mark.task}`]) : added;
+	if (made.code !== 0) {
+		ui.notify(`${mark.task} is done, but git could not commit it: ${(made.stderr || made.stdout).trim()}`, "warning");
+		return;
+	}
+	const at = await git(["rev-parse", "--short", "HEAD"]);
+	const next = nextTask(parseTasks(readFileSync(file, "utf8")));
+	ui.notify(`${mark.task} is done${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}. ${next ? `Next is ${next.number} — /spec-run` : "That was the last task."}`, "info");
+}
+
 /** What each spec in the folder is waiting on, by name. */
 function waitingIn(cwd: string): Map<string, SpecDoc | null> {
 	return new Map(takenSpecs(cwd).map((name) => [name, specState(cwd, name).waiting]));
@@ -349,6 +501,8 @@ export default function spec(pi: ExtensionAPI): void {
 	let waitedAtStart: Map<string, SpecDoc | null> | null = null;
 	/** The spec /spec-approve went on with, until its run is over. */
 	let approving: string | null = null;
+	/** Whether this session's task has been finished: a session runs one. */
+	let ranTask = false;
 
 	pi.registerCommand("spec", {
 		description: "Start a spec from a line: the agent names it and writes its requirements for you to read",
@@ -425,6 +579,83 @@ export default function spec(pi: ExtensionAPI): void {
 		},
 	});
 
+	pi.registerCommand("spec-run", {
+		description: "Run the next task of a spec you have approved: a session of its own, one task, one commit",
+		handler: async (args, ctx) => {
+			if (!ctx.isIdle()) {
+				ctx.ui.notify("The agent is working. Run the task when it has finished.", "warning");
+				return;
+			}
+			// A word that is a number is the task; any other word names the spec.
+			const words = args.trim().split(/\s+/).filter(Boolean);
+			const number = words.find((word) => /^\d+(?:\.\d+)?$/.test(word)) ?? null;
+			const given = words.find((word) => word !== number) ?? null;
+			const specs = takenSpecs(ctx.cwd).map((name) => ({ name, ...specState(ctx.cwd, name) }));
+			const ready = (spec: SpecState) => spec.approved === SPEC_DOCS.length;
+			const run = specs.filter(ready);
+			// The ready ones when there are any, and otherwise all of them, so
+			// that the one spec there is says what it is waiting for rather than
+			// going unfound.
+			const candidates = given ? specs.filter((spec) => spec.name === given) : run.length > 0 ? run : specs;
+			const chosen = candidates[0];
+			if (!chosen) {
+				const none = "No spec is ready to run. A spec starts with /spec and a line of what to build, and its tasks are run once you have approved all three of its documents.";
+				ctx.ui.notify(given ? `There is no spec called ${given}.` : none, "info");
+				return;
+			}
+			if (candidates.length > 1) {
+				ctx.ui.notify(`More than one spec: ${candidates.map((spec) => spec.name).join(", ")}. Say which: /spec-run ${chosen.name}${number ? ` ${number}` : ""}`, "info");
+				return;
+			}
+			if (!ready(chosen)) {
+				ctx.ui.notify(
+					chosen.waiting
+						? `${SPECS_DIR}${chosen.name}/${chosen.waiting} is waiting for you: read it, and approve it with ${approveWith(chosen.name, waitingNow(ctx.cwd))} before its tasks can be run.`
+						: `${chosen.name} has no tasks to run yet: its ${SPEC_DOCS[chosen.approved]} is still to be written.`,
+					"info",
+				);
+				return;
+			}
+			const text = readFileSync(join(ctx.cwd, SPECS_DIR, chosen.name, "tasks.md"), "utf8");
+			const tasks = parseTasks(text);
+			const task = number ? taskToRun(tasks, number) : nextTask(tasks);
+			if (!task) {
+				ctx.ui.notify(number ? `${chosen.name} has no task ${number}.` : `Every task of ${chosen.name} is done.`, "info");
+				return;
+			}
+			if (task.done) {
+				ctx.ui.notify(`${task.number} is already done. To have it done again, clear its box in ${SPECS_DIR}${chosen.name}/tasks.md first.`, "info");
+				return;
+			}
+			// A task's commit takes the whole folder, so the folder must hold
+			// nothing else of the person's when it starts.
+			const { work } = await waitingToCommit(pi, ctx.cwd);
+			if (work.length > 0) {
+				const some = work.slice(0, 3).join(", ");
+				ctx.ui.notify(`Commit or put back what has changed first — a task's commit takes the whole folder: ${some}${work.length > 3 ? `, and ${work.length - 3} more` : ""}.`, "warning");
+				return;
+			}
+			const mark: TaskMark = { spec: chosen.name, task: task.number, title: task.title, done: tasks.filter((other) => other.done).map((other) => other.number) };
+			// A session of its own, as Kiro runs a task: the three documents are
+			// all it needs, and a dozen tasks in one conversation would not fit.
+			// The mark rides on the instructions, which is how the end of the turn
+			// knows what this session was — see taskMark.
+			await ctx.newSession({
+				withSession: async (session) => {
+					await session.sendMessage({ customType: TASK_MARK, content: taskPrompt(mark), display: false, details: mark }, { deliverAs: "nextTurn" });
+					// Started, not waited for. pi's sendUserMessage runs the turn to
+					// its end before it resolves, and newSession does not return until
+					// this does — so waiting here would hold the host on the session it
+					// just left for the whole run, and the person would watch nothing
+					// happen until the commit landed.
+					void session.sendUserMessage(`/spec-run ${task.number}`).catch((error: unknown) => {
+						session.ui.notify(`The run of ${task.number} stopped: ${error instanceof Error ? error.message : String(error)}`, "error");
+					});
+				},
+			});
+		},
+	});
+
 	// A document before its turn, or the record of approvals: refused before
 	// the tool runs, with the reason for the model to read.
 	pi.on("tool_call", async (event, ctx) => {
@@ -455,6 +686,15 @@ export default function spec(pi: ExtensionAPI): void {
 	// this — the spec /spec wrote names the branch, and a document the run left
 	// waiting is said, once.
 	pi.on("agent_settled", async (_event, ctx) => {
+		// A session opened by /spec-run is the run of one task, and this is the
+		// end of it: the box and the commit. Later turns in it are conversation.
+		const mark = ranTask ? null : taskMark(ctx.sessionManager.buildContextEntries());
+		if (mark) {
+			ranTask = true;
+			waitedAtStart = null;
+			await finishTask(pi, ctx, mark);
+			return;
+		}
 		await nameBranch(ctx);
 		const had = waitedAtStart ?? new Map<string, SpecDoc | null>();
 		const asked = approving;

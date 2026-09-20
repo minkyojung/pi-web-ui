@@ -20,7 +20,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { APP_DIR_NAME } from "./guard.ts";
+import { APP_DIR_NAME } from "./documentKinds.ts";
 
 export const GITIGNORE = [
 	"# Written by Octave, once; edit freely. What is not listed here travels with",

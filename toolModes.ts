@@ -9,6 +9,16 @@
  * tools. Turning bash off is a stronger read-only than any prompt, and it needs
  * no new protocol: `set_tools` already exists.
  *
+ * Two rungs, not three (2026-09-20). There was a middle one, Coding, that
+ * could write files but not run a command, and it was the default. It stopped
+ * being a line worth drawing when Octave became a coding agent: a spec's task
+ * is run, and a run that cannot run the tests it just wrote cannot tell whether
+ * it did the task — it commits either way, which is the one thing the step was
+ * for. The person still has the read-only rung for asking about a repository
+ * before anything is changed; past that, work is work. What guards against a
+ * run that goes wrong is git, which every task's commit goes into, and the
+ * turn-by-turn checkpoints that come with it — docs/spec-mode.
+ *
  * The ladder tools are pi's own eight built-ins (core/tools/index.js), plus
  * the three a note is written by — those are ours, but they are writing all
  * the same, and a Plan mode that let the agent rewrite a note, or refile it
@@ -23,20 +33,24 @@
  * two that can drift.
  */
 
-export type ToolModeId = "plan" | "coding" | "full";
+export type ToolModeId = "plan" | "execution";
 
 /**
  * Each rung adds one capability to the one below it. Strict supersets, so the
  * ladder reads as "unlock one more thing" and a mode's grants are just the
  * rungs at or below it.
  *
- * Full access is the top because it is every tool pi has. There is no rung
- * above it to add: with no approval layer there is nothing left to bypass.
+ * Execution is the top because it is every tool pi has. There is no rung above
+ * it to add: with no approval layer there is nothing left to bypass.
  */
 const RUNGS: { id: ToolModeId; name: string; tools: string[]; grant: string }[] = [
 	{ id: "plan", name: "Plan", tools: ["read", "grep", "find", "ls"], grant: "Read, search and list files" },
-	{ id: "coding", name: "Coding", tools: ["edit", "write", "note_edit", "note_write", "note_properties"], grant: "Edit and create files" },
-	{ id: "full", name: "Full access", tools: ["bash", "powershell"], grant: "Run shell commands" },
+	{
+		id: "execution",
+		name: "Execution",
+		tools: ["edit", "write", "note_edit", "note_write", "note_properties", "bash", "powershell"],
+		grant: "Change files and run commands",
+	},
 ];
 
 export const MODE_IDS = RUNGS.map((r) => r.id);
@@ -48,14 +62,13 @@ export const MODE_IDS = RUNGS.map((r) => r.id);
  * setModel. So the mode is chosen here, the same one every time, rather than
  * accumulated somewhere.
  *
- * Coding rather than full: pi does not ask before it runs a shell command, so
- * the rung is the only line there is, and the first person to open Octave on
- * their notes has not been told that the agent at the table can run one. The
- * shell is one step up, taken on purpose. It was full while the only user was
- * the one who built it — the setting remembers a change (settings.ts), so
- * this is only where a fresh install begins.
+ * Execution: what Octave is opened for is a repository, and the work asked of
+ * the agent there — a spec's task — is not work it can finish without running
+ * anything. Plan is the rung to drop to for asking rather than building, and
+ * it is one click away. The setting remembers a change (settings.ts), so this
+ * is only where a fresh install begins.
  */
-export const DEFAULT_MODE: ToolModeId = "coding";
+export const DEFAULT_MODE: ToolModeId = "execution";
 
 const LADDER_TOOLS = new Set(RUNGS.flatMap((r) => r.tools));
 
@@ -66,14 +79,14 @@ export const isExtensionTool = (name: string) => !LADDER_TOOLS.has(name);
  * The web (pi-web-access, loaded in server.ts): a switch beside the ladder
  * rather than a rung on it.
  *
- * The ladder asks what happens to your notes — read, then write, then the
- * shell — and each rung contains the one below it, which is what lets three
- * names stand for eight tools. The web asks something else entirely: what
- * leaves this machine (the words you chose, sent to a search provider) and
- * what comes back into the conversation (a page somebody else wrote). That is
- * neither above writing nor below it, so it has no rung: put it in Plan and
- * every mode has it, put it in Coding and planning with the web is impossible,
- * put it in Full and a search costs you the shell.
+ * The ladder asks what happens to the folder — read, then change and run —
+ * and the upper rung contains the lower, which is what lets two names stand
+ * for the whole set. The web asks something else entirely: what leaves this
+ * machine (the words you chose, sent to a search provider) and what comes
+ * back into the conversation (a page somebody else wrote). That is neither
+ * above writing nor below it, so it has no rung: put it in Plan and every
+ * mode has it, put it in Execution and looking something up before you change
+ * anything is impossible.
  *
  * The same split the rest of the field settled on — Claude Code manages web
  * access apart from file permissions, Codex and Cursor have a network switch

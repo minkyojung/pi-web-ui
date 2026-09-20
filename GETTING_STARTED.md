@@ -38,6 +38,13 @@ first. The agent cannot write a document before you approve the one before it, a
 you approved, the documents after it wait for you again, and the next `/spec-approve` has the agent bring them into
 line. What you approved is kept beside the documents, in `approvals.json`.
 
+Once all three are approved, `/spec-run` does the tasks, one at a time. Each one opens a session of its own that
+reads the three documents, does that task and stops; the task is then checked off in `tasks.md`, and what it
+changed becomes a commit of its own, named after the task. Run it again for the next one, or name one:
+`/spec-run 2.1`. It will not start while you have changes of your own uncommitted, since a task's commit takes
+the whole folder. When every task is done the branch is the pull request: the code and the three documents
+together.
+
 ## 3. Sign in
 
 The first run opens a **Welcome** page with three steps: your folder, signing in, and a button that writes a
@@ -62,10 +69,14 @@ page again; accounts are also in Settings (`⌘,`).
 
 ## 5. What the agent may do
 
-A new conversation starts careful: the agent can read and edit your notes, and **cannot run shell commands or
-reach the web**. Both are one step away in the tool menu under the message box — *Full access* and *Web access* —
-and stay where you put them. Octave does not ask before each step, so the mode is the boundary: leave it on
-*Coding* unless you want the agent to run commands on your Mac.
+There are two modes in the tool menu under the message box. *Execution*, where a new conversation starts, lets
+the agent change files and run commands — which is what running a spec's task takes, since a task that cannot run
+its own tests cannot tell whether it did the job. *Plan* is one click below: reading, searching and listing only,
+for asking about a repository before anything is changed.
+
+Octave does not ask before each step, so the mode is the boundary. Drop to *Plan* when you only want to talk.
+Reaching the web is a switch of its own beside the modes, off until you turn it on, and both stay where you put
+them.
 
 ## 6. What leaves your Mac
 

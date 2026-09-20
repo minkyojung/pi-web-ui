@@ -19,6 +19,21 @@ import { writeAtomic } from "./atomic.ts";
 import { LOADOUT_SLOTS } from "./models.ts";
 import { DEFAULT_MODE, MODE_IDS, type ToolModeId } from "./toolModes.ts";
 
+/**
+ * A mode that was saved before the ladder became two rungs (toolModes.ts).
+ * Both of the old upper rungs are the one that is left: somebody who chose
+ * Coding chose to have the agent change their files, and that is Execution
+ * now. Read by name rather than let fall through to the default, so what
+ * somebody set is what they get, and so removing a rung is written down.
+ */
+const LEGACY_MODES: Record<string, ToolModeId> = { coding: "execution", full: "execution" };
+
+/** The mode a settings file names, whatever it names, as one of the modes there are. */
+function modeFrom(value: unknown): ToolModeId {
+	if (MODE_IDS.includes(value as ToolModeId)) return value as ToolModeId;
+	return (typeof value === "string" ? LEGACY_MODES[value] : undefined) ?? DEFAULT_MODE;
+}
+
 export const APP_DIR = process.env.APP_DIR ?? join(homedir(), ".octave");
 export const SETTINGS_PATH = join(APP_DIR, "settings.json");
 
@@ -69,7 +84,7 @@ export const DEFAULTS: Settings = {
 export function coerce(raw: unknown): Settings {
 	const o = (raw ?? {}) as Record<string, unknown>;
 	return {
-		toolMode: MODE_IDS.includes(o.toolMode as ToolModeId) ? (o.toolMode as ToolModeId) : DEFAULTS.toolMode,
+		toolMode: modeFrom(o.toolMode),
 		// Whatever of the list is a string survives; a model that has since gone
 		// is dropped when the list is read against what pi offers, not here, so a
 		// provider that is merely logged out keeps its place in the file. Once

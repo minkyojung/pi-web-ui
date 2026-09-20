@@ -1051,7 +1051,7 @@ test("설정은 접속할 때 오고, 바꾼 칸만 디스크에 겹쳐 쓰이�
 
     assert.equal((await post("{ 반쯤")).status, 400, "읽을 수 없는 몸통");
     assert.equal((await post("[1]")).status, 400, "객체가 아닌 몸통");
-    assert.equal((await post(JSON.stringify({ toolMode: "coding" }))).status, 200);
+    assert.equal((await post(JSON.stringify({ toolMode: "execution" }))).status, 200);
   } finally {
     other.close();
   }
@@ -1168,5 +1168,51 @@ it("붙는 탭은 명령 목록에서 /spec을 듣는다 — 메뉴가 그것을
     assert.ok(found.description);
   } finally {
     other.close();
+  }
+});
+
+// Last in the file: the run leaves a session of its own, and the tests above
+// look for "the earlier session with messages".
+//
+// A session a command opens is the person's session too. /spec-run is the
+// first thing in Octave to open one, and the mode was only ever set at
+// startup and on the window's own "new session": the run came up on pi's
+// own defaults instead, which include the shell — whatever the person had
+// chosen. Asked on Plan, where the difference is plain, and aborted as soon
+// as the tools have been seen.
+it("명령이 연 세션도 사람이 고른 모드로 열린다 — Plan이면 셸도 쓰기도 없다", async () => {
+  const name = "tools-check";
+  const dir = join(cwd, ".octave/specs", name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "requirements.md"), "# Requirements Document\n");
+  writeFileSync(join(dir, "design.md"), "# Design Document\n");
+  writeFileSync(join(dir, "tasks.md"), "# Implementation Plan\n\n- [ ] 1. Do the one thing\n");
+  const { approve } = await import("../specApproval.ts");
+  while (approve(cwd, name)) {}
+
+  const setMode = async (toolMode) =>
+    await fetch(`http://127.0.0.1:${port}/api/settings`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ toolMode }) });
+  clear();
+  assert.equal((await setMode("plan")).status, 200);
+  try {
+    // Changing the setting tells every tab, current session and all; those have
+    // to be out of the way before the run's own are read.
+    await want("settings", (m) => m.settings?.toolMode === "plan", 10_000);
+    await want("config", () => true, 10_000);
+    clear();
+    send({ type: "prompt", text: `/spec-run ${name}`, command: true });
+    // The whole state, pushed once the session has been replaced: the first
+    // config of that burst is what the run is on.
+    await want("snapshot", () => true, 60_000);
+    const config = inbox.find((m) => m.type === "config");
+    assert.ok(config, "the tab was told what the new session is on");
+    assert.ok(!config.activeTools.includes("bash"), `no shell among ${config.activeTools.join(", ")}`);
+    assert.ok(!config.activeTools.includes("write"), `and no writing among ${config.activeTools.join(", ")}`);
+    assert.ok(config.activeTools.includes("read"), "Plan is still Plan");
+    send({ type: "abort" });
+    await want("agent_settled", () => true, 60_000);
+  } finally {
+    await setMode("execution");
+    rmSync(join(cwd, ".octave"), { recursive: true, force: true });
   }
 });

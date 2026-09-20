@@ -32,7 +32,14 @@ test("모르는 툴 모드는 기본 모드가 된다", () => {
 });
 
 test("모르는 칸은 버려진다 — 파일을 손으로 고칠 수 있으므로", () => {
-  assert.deepEqual(coerce({ toolMode: "coding", feedDays: 3 }), { toolMode: "coding", loadout: [], created: true, loadExtensions: true });
+  assert.deepEqual(coerce({ toolMode: "plan", feedDays: 3 }), { toolMode: "plan", loadout: [], created: true, loadExtensions: true });
+});
+
+test("사다리가 두 칸이 되기 전에 고른 모드는 이름으로 읽힌다 — 기본값으로 떨어뜨리지 않고", () => {
+  // Both of the old upper rungs are the one that is left; Plan was and is Plan.
+  assert.equal(coerce({ toolMode: "coding" }).toolMode, "execution");
+  assert.equal(coerce({ toolMode: "full" }).toolMode, "execution");
+  assert.equal(coerce({ toolMode: "plan" }).toolMode, "plan");
 });
 
 test("로드아웃은 문자열만 남기고, 목록이 아니면 비운다", () => {

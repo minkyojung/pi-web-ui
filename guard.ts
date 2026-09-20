@@ -15,11 +15,14 @@
  *   `edit`, `write` and `bash` are blocked before they run, whatever the
  *   mode. The instruction above is the soft version; this is the one that
  *   holds when the instruction is forgotten.
- * - A hard stop on writing a note by hand. A note is written by the app's own
- *   pair — see noteEdit.ts — which refuses a write made on a version the
- *   person has typed past, and records whose words the new ones are. `edit`
- *   and `write` can do neither, so on a note they are refused and told where
- *   to go instead. Every other file in the folder is pi's as it always was.
+ * There used to be a fourth: a hard stop on writing a note by hand, so that
+ * every note went through the app's own pair and was recorded as the agent's.
+ * The record is given up (docs/spec-mode), and the stop outlived it — it was
+ * what kept a task from touching a README. A file is a file now, as it is on
+ * every other harness; what a change of the person's is protected by is the
+ * editor, which already holds unsaved typing against a write from elsewhere
+ * and asks (noteSync.ts), and what a change of the agent's is undone by is
+ * git, a task being a commit.
  * - A hard stop on writing git's own files by hand. A branch renamed by
  *   writing `.git/HEAD` and a ref leaves the old branch standing and no
  *   record in git's logs, and the model reaches for that when it has no
@@ -39,11 +42,9 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, relative, sep } from "node:path";
-import { isDocument, isSpec } from "./documentKinds.ts";
-import { notePath } from "./vault.ts";
+import { APP_DIR_NAME, isDocument, isSpec } from "./documentKinds.ts";
 
 /** What the app keeps beside the notes. Nothing of pi's may go there. */
-export const APP_DIR_NAME = ".pi";
 
 /** Who the agent is here, in place of pi's coding-agent opening. */
 export const OCTAVE_PROMPT = `You are at the table with a person and their notes. You are not their programmer: you are someone they think with, and someone who gets things done for them.
@@ -59,18 +60,13 @@ Talk as a person across the table would: plainly, and briefly unless they ask fo
 
 export const VAULT_PROMPT = [
 	"You are working in a folder of a person's notes: markdown files (.md), one note per file, the file's name being the note's title.",
-	"Read notes with read, grep, find and ls; change them with note_edit, or note_write for a new note. Keep a note's existing style, headings and links.",
+	"Read notes with read, grep, find and ls; change them with edit and write, as you would any other file. Keep a note's existing style, headings and links.",
 	"A .pdf in the folder is read with read as well: it comes back as its text, page by page, and a long one is continued with offset like any file. grep and bash see only its bytes.",
 	"A note may open with a `---` block of properties — its tags, its dates, what it is filed by. Change those with note_properties, never by editing that block as text: it is YAML, and a quote or an indent out of place there takes the note out of the app's index without saying so.",
-	"edit and write are refused on a note, because what they write could not be told from the person's own words; they are for every other file here.",
-	"bash cannot write a note either, or anything under .pi/: the operating system refuses it. Read with bash all you like; change a note with note_edit.",
+	`bash cannot write anything under ${APP_DIR_NAME}/: the operating system refuses it. Everything else in the folder it may write.`,
 	`The folder ${APP_DIR_NAME}/ belongs to the app that shows these notes — it holds the record of who wrote what — and must not be read as notes, written, or removed; tools that try are refused.`,
 	"When you refer to a note, use its path relative to this folder.",
 ].join(" ");
-
-/** Why a note cannot be written by hand, and what to use instead. */
-export const NOT_BY_HAND = (path: string) =>
-	`${path} is a note. Notes are changed with note_edit, or note_write for a new one, so that your words are kept as yours and the person can accept them or put them back. edit and write are for every other file here.`;
 
 /** Whether a path, as a tool would take it, lies under the app's folder. */
 export function underAppDir(root: string, given: string): boolean {
@@ -129,9 +125,6 @@ export const guard = (root: string, openNote: OpenNote) => (pi: ExtensionAPI) =>
 		if ((event.toolName === "edit" || event.toolName === "write") && typeof input.path === "string") {
 			if (underAppDir(root, input.path)) {
 				return { block: true, reason: `${input.path} is under ${APP_DIR_NAME}/, which belongs to the app and is not to be changed.` };
-			}
-			if (notePath(root, input.path)) {
-				return { block: true, reason: NOT_BY_HAND(input.path) };
 			}
 			if (inGit(input.path)) {
 				return { block: true, reason: `${input.path} is git's own file. Change the repository with a git command, not by writing its files.` };

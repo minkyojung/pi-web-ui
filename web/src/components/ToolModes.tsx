@@ -1,4 +1,4 @@
-import { ClipboardListIcon, FilePenIcon, GlobeIcon, SlidersHorizontalIcon, TerminalIcon } from "lucide-react";
+import { ClipboardListIcon, GlobeIcon, SlidersHorizontalIcon, TerminalIcon } from "lucide-react";
 
 import { MODE_IDS, type ToolModeId, activeModeId, describeMode, isWebOn, isWebTool, modeToolNames, withWeb } from "../../../toolModes";
 import { Button } from "./ui/button";
@@ -23,13 +23,12 @@ export interface ToolInfo {
 
 /**
  * One icon per mode, each naming the capability that mode unlocks: a checklist
- * for planning, a pen on a file for editing, a terminal for the shell. Custom
- * gets sliders, since that is what it is.
+ * for planning, a terminal for changing and running. Custom gets sliders,
+ * since that is what it is.
  */
 const ICONS: Record<ToolModeId, typeof TerminalIcon> = {
 	plan: ClipboardListIcon,
-	coding: FilePenIcon,
-	full: TerminalIcon,
+	execution: TerminalIcon,
 };
 
 const Icon = ({ id }: { id: ToolModeId | null }) => {
