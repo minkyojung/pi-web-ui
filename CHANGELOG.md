@@ -16,6 +16,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - A spec's document opens in front of you the moment it is waiting for your approval — the requirements, then the design, then the tasks — whether the agent wrote it here or in the terminal. Close it and it stays closed; the next one to wait opens in its turn.
 - The spec you are working on sits at the start of the row of tabs: its name, and what it is waiting for. Its menu holds every spec's three documents and what has become of each, opens any of them, and approves the one waiting for you — the same approval as the command, without typing it.
 - A spec document waiting for you says so in a line above it, with the button that approves it. The line goes when you approve, and the next document arrives with its own.
+- A spec document no longer carries a note's furniture: no properties to add at its head, and no word count in the strip at the foot.
 
 ### Changed
 - The agent can change any file in the folder now, notes among them, with its ordinary tools and from the shell. It used to be refused on markdown, which also meant a spec's task could not touch a README or a changelog. Your unsaved typing is still safe: a note open in front of you that changes underneath is shown, and if you have unsaved words in it you are asked which to keep.

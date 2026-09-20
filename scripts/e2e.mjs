@@ -3199,6 +3199,11 @@ check("a spec opens in the editor by its address, keeps no record of who wrote i
 	await app.moveTo(1, 1);
 	await until("the card gone", async () => !(await app.evaluate("!!document.getElementById('whoWrote')")));
 
+	// What a note carries at its head and at the foot of the window, for the
+	// comparison below: a spec carries neither.
+	assert.equal(await app.evaluate("!!document.getElementById('add-property')"), true, "a note is offered properties");
+	assert.equal(await app.evaluate("!!document.getElementById('count')"), true, "and its length is in the strip");
+
 	const path = ".octave/specs/e2e/requirements.md";
 	mkdirSync(join(cwd, ".octave/specs/e2e"), { recursive: true });
 	writeFileSync(join(cwd, path), "# Requirements\n\nfirst\n");
@@ -3212,6 +3217,10 @@ check("a spec opens in the editor by its address, keeps no record of who wrote i
 	// its menu has what points at it, and not the note's Rename or Delete.
 	assert.equal(await app.evaluate("document.getElementById('title').value"), "requirements");
 	assert.equal(await app.evaluate("document.getElementById('title').readOnly"), true);
+	// And none of the note's own furniture: a spec is in none of the lists
+	// properties are for, and how many words are in it says nothing about it.
+	assert.equal(await app.evaluate("!!document.getElementById('add-property')"), false, "no properties on a spec");
+	assert.equal(await app.evaluate("!!document.getElementById('count')"), false, "no word count on a spec");
 	await app.click("#noteMenu");
 	await until("the menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitem]')"));
 	const items = await app.evaluate("[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((i) => i.textContent.trim())");

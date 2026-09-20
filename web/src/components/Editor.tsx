@@ -9,6 +9,7 @@ import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/sea
 import { drawSelection, dropCursor, EditorView, keymap, placeholder } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
+import { isSpec } from "../../../documentKinds.ts";
 import { choose, chosenStore } from "../chosen";
 import { linkCompletion } from "../features/linkCompletion";
 import { indentListItem, listBackspace, listEnter, outdentListItem } from "../features/listEdit";
@@ -836,8 +837,11 @@ export function Editor({
 					</Button>
 				</div>
 			)}
-			{/* Above the text, on the page with it: the panel for the block the text hides. Not before the text is here — an empty note is not a note with no properties yet. */}
-			{status !== "loading" && <Properties view={view.current} read={read} />}
+			{/* Above the text, on the page with it: the panel for the block the text
+			    hides. Not before the text is here — an empty note is not a note with
+			    no properties yet — and not on a spec, which is in none of the lists
+			    properties are for and is written in a form of its own. */}
+			{status !== "loading" && !isSpec(path) && <Properties view={view.current} read={read} />}
 			{status === "gone" && (
 				<div role="alert" className="sticky top-0 z-10 flex items-center gap-2 bg-muted px-4 py-2 text-xs">
 					<span className="flex-1">This note is no longer on disk. What is here is the only copy.</span>
