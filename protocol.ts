@@ -547,6 +547,19 @@ export interface SpecInfo {
 	waiting: SpecDoc | null;
 	/** When that document was last written, so a window can tell the newest of several. Null with nothing waiting. */
 	waitingAt: number | null;
+	/**
+	 * Which of the documents are on the disk at all, in SPEC_DOCS order.
+	 *
+	 * `approved` and `waiting` cannot answer this: the reading stops at the
+	 * first document that is not approved, so a spec whose three documents
+	 * were all approved and whose requirements were then changed reads as
+	 * `approved: 0, waiting: "requirements.md"` while the design and the tasks
+	 * are still there. A window offering the documents has to tell the one
+	 * that is merely later from the one that was never written — opening the
+	 * second would put a spec document in front of the person that the agent
+	 * has not written yet.
+	 */
+	written: SpecDoc[];
 }
 
 export interface SpecsMsg {

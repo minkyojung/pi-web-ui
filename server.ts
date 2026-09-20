@@ -51,7 +51,7 @@ import { claimAppDir } from "./appDir.ts";
 import { wall } from "./wall.ts";
 import { documents } from "./documents.ts";
 import { MAX_BYTES, saveAttachment, type Saved } from "./attach.ts";
-import { documentType, SPECS_DIR } from "./documentKinds.ts";
+import { documentType, SPEC_DOCS, SPECS_DIR } from "./documentKinds.ts";
 import { specState } from "./specApproval.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
@@ -634,14 +634,22 @@ function spec(path: string): SpecMsg | null {
  * Where every spec in the folder stands (SpecsMsg): read off the documents
  * and the record beside them, never kept. The window opens what is waiting,
  * so it is also told when each waiting document was written — of two specs
- * waiting at once, the newer is the one the person has just been given.
+ * waiting at once, the newer is the one the person has just been given — and
+ * which documents are there at all, which the approvals alone cannot say.
  */
 function specs(): SpecsMsg {
 	return {
 		type: "specs",
 		specs: takenSpecs(CWD).map((name) => {
+			const dir = join(CWD, SPECS_DIR, name);
 			const { approved, waiting } = specState(CWD, name);
-			return { name, approved, waiting, waitingAt: waiting ? writtenAt(join(CWD, SPECS_DIR, name, waiting)) : null };
+			return {
+				name,
+				approved,
+				waiting,
+				waitingAt: waiting ? writtenAt(join(dir, waiting)) : null,
+				written: SPEC_DOCS.filter((doc) => existsSync(join(dir, doc))),
+			};
 		}),
 	};
 }
