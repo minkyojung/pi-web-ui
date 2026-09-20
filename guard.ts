@@ -39,11 +39,10 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, relative, sep } from "node:path";
-import { isDocument, isSpec } from "./documentKinds.ts";
+import { APP_DIR_NAME, isDocument, isSpec } from "./documentKinds.ts";
 import { notePath } from "./vault.ts";
 
 /** What the app keeps beside the notes. Nothing of pi's may go there. */
-export const APP_DIR_NAME = ".pi";
 
 /** Who the agent is here, in place of pi's coding-agent opening. */
 export const OCTAVE_PROMPT = `You are at the table with a person and their notes. You are not their programmer: you are someone they think with, and someone who gets things done for them.

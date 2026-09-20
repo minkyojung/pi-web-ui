@@ -31,6 +31,9 @@ export const isDocument = (path: string): boolean => documentType(path) !== null
 /** The folder of Octave's own that goes into the repository with the work — not `.pi/`, which is the app's and stays out. */
 export const OCTAVE_DIR = ".octave";
 
+/** That other folder: the app's own, in the person's folder but not of it, and never in their commits. */
+export const APP_DIR_NAME = ".pi";
+
 /** Where the specs are, from the top of the folder. */
 export const SPECS_DIR = `${OCTAVE_DIR}/specs/`;
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 
@@ -833,7 +833,10 @@ function ran(t, { plan = PLAN, name = "email-auth", repository = true } = {}) {
     git,
     notes,
     /** The run doing its work: a file it wrote. */
-    wrote: (file, text) => writeFileSync(join(cwd, file), text),
+    wrote: (file, text) => {
+      mkdirSync(dirname(join(cwd, file)), { recursive: true });
+      writeFileSync(join(cwd, file), text);
+    },
     tasks: () => readFileSync(join(dir, "tasks.md"), "utf8"),
     setTasks: (text) => writeFileSync(join(dir, "tasks.md"), text),
     finish: (mark) => finishTask(pi, { cwd, ui: { notify: (text, type) => notes.push({ text, type }) } }, { spec: name, done: [], ...mark }),
@@ -1131,4 +1134,35 @@ test("실제 pi 세션에서 작업 둘을 이어서: 저마다 자기 세션에
   assert.equal(tasks(), PLAN.replace("- [ ] 1.", "- [x] 1.").replace("- [ ] 2.1", "- [x] 2.1"));
   assert.equal(git("rev-parse", "HEAD~1"), git("rev-parse", "HEAD^"), "두 번째가 첫 번째 위에 쌓였다");
   assert.equal(git("branch", "--show-current"), "minkyojung/email-auth", "브랜치는 그대로");
+});
+
+// --- .pi/, which Octave writes into every folder it opens ---
+
+test("앱의 폴더 .pi/만 바뀐 것은 작업이 한 일이 아니다", async (t) => {
+  const run = ran(t);
+  run.wrote(".pi/.gitignore", "links.json\n");
+  await run.finish({ task: "1", title: "Add the door" });
+  assert.equal(run.tasks(), PLAN, "체크하지 않았다");
+  assert.deepEqual(run.subjects(), ["app"], "커밋이 없다");
+});
+
+test("커밋에 .pi/는 들어가지 않는다 — 앱의 것이지 사람의 저장소의 것이 아니다", async (t) => {
+  const run = ran(t);
+  run.wrote("door.js", "export const door = true;\n");
+  run.wrote(".pi/.gitignore", "links.json\n");
+  await run.finish({ task: "1", title: "Add the door" });
+  const files = run.git("show", "--name-only", "--format=", "HEAD").split("\n");
+  assert.ok(files.includes("door.js"));
+  assert.equal(files.some((file) => file.startsWith(".pi/")), false, files.join(", "));
+  assert.equal(run.git("status", "--porcelain", "-uall"), "?? .pi/.gitignore", "앱의 것은 그대로 남는다");
+});
+
+test("앱의 폴더가 커밋을 기다려도 작업은 시작된다 — Octave는 여는 폴더마다 .pi/를 쓴다", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.plan("email-auth");
+  pi.setDirty(["?? .pi/.gitignore", "?? .octave/specs/email-auth/tasks.md"]);
+  await pi.runTask();
+  assert.deepEqual(pi.notes, [], "막지 않는다");
+  assert.equal(pi.sessions.length, 1);
 });

@@ -31,7 +31,7 @@ import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { OCTAVE_DIR } from "./documentKinds.ts";
-import { APP_DIR_NAME } from "./guard.ts";
+import { APP_DIR_NAME } from "./documentKinds.ts";
 import { APP_DIR } from "./settings.ts";
 
 export const SANDBOX_EXEC = "/usr/bin/sandbox-exec";

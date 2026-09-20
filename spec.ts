@@ -50,7 +50,7 @@ import { join, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { writeAtomic } from "./atomic.ts";
-import { SPECS_DIR } from "./documentKinds.ts";
+import { APP_DIR_NAME, SPECS_DIR } from "./documentKinds.ts";
 import { CITIES } from "./electron/cities.js";
 import { APPROVALS, approve, SPEC_DOCS, type SpecDoc, type SpecState, specState } from "./specApproval.ts";
 import { nextTask, parseTasks, taskToRun, withDone, withParents } from "./specTasks.ts";
@@ -364,13 +364,17 @@ export function taskMark(entries: readonly unknown[]): TaskMark | null {
 
 /**
  * Whether this is a repository at all, and what is waiting to be committed in
- * it that is not the spec's own documents.
+ * it that is the person's — neither the spec's documents nor the app's folder.
  *
- * The documents are not a task's work — they were written before it and only
- * ride into its commit — so they neither stand in the way of a run starting
- * nor stand for one having done something. Every untracked file is asked for
- * by name: git collapses an untracked folder to the folder, and `.octave/` on
- * its own cannot be told apart from work outside it.
+ * The documents are not a task's work: they were written before it and only
+ * ride into its commit, so they neither stand in the way of a run starting nor
+ * stand for one having done something. `.pi/` is not the person's at all —
+ * Octave writes it into every folder it opens, and its own `.gitignore` is
+ * left untracked there, so counting it would mean no task could ever start.
+ *
+ * Every untracked file is asked for by name: git collapses an untracked folder
+ * to the folder, and `.octave/` on its own cannot be told apart from work
+ * outside it.
  */
 async function waitingToCommit(pi: ExtensionAPI, cwd: string): Promise<{ repository: boolean; work: string[] }> {
 	const status = await pi.exec("git", ["status", "--porcelain", "-z", "--untracked-files=all"], { cwd, timeout: 30_000 }).catch(() => null);
@@ -379,7 +383,7 @@ async function waitingToCommit(pi: ExtensionAPI, cwd: string): Promise<{ reposit
 		.split("\0")
 		.filter(Boolean)
 		.map((entry) => entry.slice(3))
-		.filter((path) => !path.startsWith(SPECS_DIR));
+		.filter((path) => !path.startsWith(SPECS_DIR) && !path.startsWith(`${APP_DIR_NAME}/`));
 	return { repository: true, work };
 }
 
@@ -417,7 +421,9 @@ export async function finishTask(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: 
 		ui.notify(`${mark.task} is done. There is no repository here, so nothing was committed.`, "warning");
 		return;
 	}
-	const added = await git(["add", "-A"]);
+	// Everything the run left but the app's own folder, which belongs to no
+	// commit of the person's.
+	const added = await git(["add", "-A", "--", ".", `:(exclude)${APP_DIR_NAME}`]);
 	const made = added.code === 0 ? await git(["commit", "-m", mark.title, "-m", `${where} ${mark.task}`]) : added;
 	if (made.code !== 0) {
 		ui.notify(`${mark.task} is done, but git could not commit it: ${(made.stderr || made.stdout).trim()}`, "warning");
