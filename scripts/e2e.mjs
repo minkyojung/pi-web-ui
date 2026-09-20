@@ -1293,6 +1293,31 @@ check("⌘P offers the rest of the repository, and a file that is not a note ope
 	assert.equal(readFileSync(join(cwd, "tool.ts"), "utf8"), "// what it answers\nexport const answer = 42;\n");
 });
 
+check("a file says where it is in the line above it, and its ⋯ offers what can be done to a file", async ({ app }) => {
+	await pickFile(app, "web/src/components/page.tsx");
+	const crumbs = () => app.evaluate("[...document.querySelectorAll('[data-crumb]')].map((c) => c.dataset.crumb).join(',')");
+	await until("the path", async () => (await crumbs()) === "web,web/src/components");
+	assert.match(await app.evaluate("document.getElementById('crumbs')?.textContent ?? ''"), /page\.tsx/, "and the file at the end of it");
+	await app.shot("code-header");
+	// A crumb opens what is in that folder — the files, not only the notes,
+	// which down here are none.
+	await app.click('[data-crumb="web/src/components"]');
+	await until("what is in it", () => app.evaluate("[...document.querySelectorAll('[cmdk-item]')].some((i) => i.textContent.includes('page.tsx'))"));
+	assert.equal(
+		await app.evaluate("[...document.querySelectorAll('[cmdk-item]')].some((i) => i.textContent.includes('Show in sidebar'))"),
+		false,
+		"a folder with no note in it is not in the sidebar to be shown",
+	);
+	await app.press("Escape");
+	// The menu: where it is, not what it is called — a file is git's to rename.
+	await app.click("#noteMenu");
+	const items = await until("the menu", () => app.evaluate("[...document.querySelectorAll('[role=menuitem]')].map((i) => i.textContent).join('|')"));
+	// Reveal in Finder is the shell's, and a browser tab has none — the Finder
+	// is not a page's to open (noteActions.ts). What is left is where it is.
+	assert.deepEqual(items.split("|"), ["Copy path"]);
+	await app.press("Escape");
+});
+
 check("a file open to read follows the disk, and says so when it goes from under the tab", async ({ app, cwd }) => {
 	await pickFile(app, "tool.ts");
 	const text = () => app.evaluate("document.querySelector('#page .cm-content')?.textContent ?? ''");
@@ -3459,6 +3484,9 @@ async function main() {
 	// puts the rest of its files in ⌘P and lets a tab read one: repoFiles.ts
 	// asks git, and a folder that is in none has nothing to offer.
 	writeFileSync(join(cwd, "tool.ts"), "// what it answers\nexport const answer = 42;\n");
+	// One of them down a path, for the line above it to have something to say.
+	mkdirSync(join(cwd, "web", "src", "components"), { recursive: true });
+	writeFileSync(join(cwd, "web", "src", "components", "page.tsx"), 'import { Button } from "./button";\n\nexport const Page = () => <Button />;\n');
 	execFileSync("git", ["init", "-q"], { cwd });
 	// A note pi has written in, with the history that says so: the heading's
 	// word replaced, and a line added. Replaying the log gives the file.

@@ -30,7 +30,9 @@ export function noteActions(path: string): (NoteAction | "separator")[] {
 	// A document can be pointed at and found; renaming and deleting are the
 	// note's, done through its title and its log, and a PDF has neither here.
 	// Nor has a spec: its name is its place in the spec, which the agent keeps.
-	if (isDocument(path) || isSpec(path)) return where;
+	// Nor a file of the repository, which this window reads and does not write:
+	// its name is the code's, and git is what moves and removes it.
+	if (isDocument(path) || isSpec(path) || !path.endsWith(".md")) return where;
 	return [
 		{
 			label: "Rename",

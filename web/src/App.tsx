@@ -618,7 +618,12 @@ export function App() {
 					<div className={`flex min-h-0 flex-1 flex-col pr-2 ${sidebarOpen ? "" : "pl-2"}`}>
 					<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-background" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
 					<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
-					<NoteHeader path={note} onOpen={setOpen} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
+					{/* A file of the repository has a path and no title of its own, so
+					    the header is the one place it is said — and the ⋯ beside it
+					    offers what can be done to a file, which is to find it, not to
+					    rename it (noteActions.ts). A PDF is left out: its viewer
+					    reaches the top of the column, and the words there are its own. */}
+					<NoteHeader path={page?.kind === "code" ? page.path : note} onOpen={setOpen} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
 					{/* Under the header and over the page, so it stays while a long
 					    document scrolls — and `note` is null for anything that is not
 					    a note or a spec, which keeps it off a PDF and off a page. */}

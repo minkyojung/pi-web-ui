@@ -19,6 +19,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - A spec document no longer carries a note's furniture: no properties to add at its head, and no word count in the strip at the foot.
 - ⌘P opens any file in the repository now, not only your notes. Type a few letters of a name and the rest of the repository is offered under Files — the code a task just wrote, a config, a workflow — including files that are not committed yet. What git ignores is left out, so `node_modules` and build folders never appear.
 - A file that is not a note opens in a tab of its own, to read: its lines numbered, its language set in a monospace, ⌘F to search it, and words chosen in it asked about like words in a note. It follows the file on disk, so a file a task is writing is never yesterday's. It is read-only — the code is the agent's to change, and yours in your own editor.
+- A file says where it is in the line above it, the way a note does, so two files with the same name are told apart; the ⋯ there copies its path or shows it in the Finder. A folder in that line now opens everything in it, not only the notes — which down among the code is none of it.
 
 ### Changed
 - The agent can change any file in the folder now, notes among them, with its ordinary tools and from the shell. It used to be refused on markdown, which also meant a spec's task could not touch a README or a changelog. Your unsaved typing is still safe: a note open in front of you that changes underneath is shown, and if you have unsaved words in it you are asked which to keep.
