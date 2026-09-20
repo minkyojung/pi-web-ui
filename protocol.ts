@@ -481,6 +481,30 @@ export interface FilesMsg {
 }
 
 /**
+ * Every file of the repository the folder is, as git lists them. See repoFiles.ts.
+ *
+ * Beside FilesMsg rather than in it, because they answer different questions
+ * and are read by different things. The notes' list is what the tree draws,
+ * what `[[` and `@` offer, and what a search of every note reads; a
+ * repository's files are not notes and belong in none of those. This is the
+ * palette's list — what `⌘P` can open, which in a repository is everything
+ * in it — and it is also sent on its own beat: the notes' list changes on
+ * every note made or gone, and resending a repository's thousands of paths
+ * each time one did would be the cost of a feature nothing asked for.
+ *
+ * Sent when a tab connects, and again when the answer is not the one the tabs
+ * have — asked after the agent settles, which is when a turn has written
+ * files and when somebody is about to go and read them.
+ */
+export interface RepoMsg {
+	type: "repo";
+	/** From the top of the folder, forward slashes, in git's own order. Empty for a folder that is in no repository. */
+	files: string[];
+	/** The repository held more files than the list would take (repoFiles.ts's LIMIT), so this is not all of them. */
+	truncated: boolean;
+}
+
+/**
  * A note as it is on disk, whole, with who wrote which of its words. The
  * answer to open_note, and what a tab falls back to when a change arrives on
  * a version it does not have.
@@ -856,6 +880,7 @@ export type StateMsg =
 	| SessionsMsg
 	| SnapshotMsg
 	| FilesMsg
+	| RepoMsg
 	| NoteMsg
 	| SpecMsg
 	| SpecsMsg

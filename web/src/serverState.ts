@@ -139,6 +139,20 @@ export const filesStore = createStore<NoteFile[]>([]);
 export const documentsStore = createStore<string[]>([]);
 
 /**
+ * Every file of the repository the folder is, as git last listed them
+ * (RepoMsg). Empty for a folder that is in none, which is also what it says
+ * before the server has answered — the palette then offers what it always did.
+ */
+export const repoStore = createStore<string[]>([]);
+
+/**
+ * The repository held more files than the list would take, so `repoStore` is
+ * not all of them — a thing to say where the palette says what it has, rather
+ * than to let a file be missing from it with nothing to explain why.
+ */
+export const repoTruncatedStore = createStore<boolean>(false);
+
+/**
  * Where each spec stands — what is approved, what is waiting for the person —
  * as the server last read it off the folder. Null until it has said, which is
  * not the same as a folder with no specs in it (SpecsMsg).

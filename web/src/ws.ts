@@ -33,6 +33,8 @@ import {
 	propertyNamesStore,
 	propertyTypesStore,
 	pushRaw,
+	repoStore,
+	repoTruncatedStore,
 	removePrompt,
 	restoredStore,
 	runUndoneStore,
@@ -88,6 +90,7 @@ const STATE: Record<StateMsg["type"], true> = {
 	sessions: true,
 	snapshot: true,
 	files: true,
+	repo: true,
 	note: true,
 	specs: true,
 	backlinks: true,
@@ -158,6 +161,10 @@ function receive(msg: ServerMsg): void {
 			filesStore.set(msg.files);
 			documentsStore.set(msg.documents);
 			filesTruncatedStore.set(msg.truncated);
+			return;
+		case "repo":
+			repoStore.set(msg.files);
+			repoTruncatedStore.set(msg.truncated);
 			return;
 		case "specs":
 			specsStore.set(msg.specs);

@@ -43,6 +43,7 @@ import { branchPoints } from "./branches.ts";
 import { documentAt, listNotes, newNoteName, type Note, readNote, readSpec, renameNote, restoreNote, specAt, specRecordAt, withCreated, writeNote, writeSpec, type WriteResult } from "./vault.ts";
 import { attachmentAt } from "./pictures.ts";
 import { FileIndex } from "./fileIndex.ts";
+import { type Repo, repoFiles } from "./repoFiles.ts";
 import { startLogging } from "./log.ts";
 import { deleteNote, shellTrash } from "./trash.ts";
 import { createLoginBridge } from "./login.ts";
@@ -80,6 +81,7 @@ import type {
 	PiSettings,
 	PiEventMsg,
 	ProvidersMsg,
+	RepoMsg,
 	ServerMsg,
 	SessionsMsg,
 	SettingsMsg,
@@ -559,6 +561,24 @@ function files(): FilesMsg {
 	return { type: "files", files: notes.all(), documents: notes.documents(), truncated: notes.truncated };
 }
 
+/** The repository's files as git last listed them, or none where the folder is in no repository. */
+function repoMsg(): RepoMsg {
+	return { type: "repo", files: repo?.files ?? [], truncated: repo?.truncated ?? false };
+}
+
+/**
+ * Ask git again, and tell the tabs only when the answer is not the one they
+ * have — the same rule the notes' index answers by (fileIndex.ts), for the
+ * same reason: most turns write into files that are already on the list.
+ */
+async function loadRepo(): Promise<void> {
+	const was = repo;
+	const next = await repoFiles(CWD);
+	repo = next;
+	const same = was?.files.length === next?.files.length && (was?.files ?? []).every((path, at) => next?.files[at] === path);
+	if (!same) broadcast(repoMsg());
+}
+
 /**
  * Bring a note's log up to what is on disk, asking whose the difference is.
  *
@@ -692,6 +712,16 @@ claimAppDir(CWD);
 /** Which notes the folder holds, so that a save does not read the folder again — see fileIndex.ts. */
 const notes = new FileIndex(CWD);
 notes.load();
+
+/**
+ * Which files the repository holds, as git last listed them — see repoFiles.ts.
+ * Null for a folder that is in no repository, and until git has first answered.
+ *
+ * Kept rather than asked for where it is wanted: git is a process, the answer
+ * does not change between turns, and a tab connecting cannot wait on one.
+ */
+let repo: Repo | null = null;
+void loadRepo();
 
 /** Every note's links, for "who links here" — see linkIndex.ts. */
 const links = new LinkStore(CWD);
@@ -1109,6 +1139,9 @@ function onEvent(event: AgentSessionEvent): void {
 	// hears — a shell command. One walk at the end of a turn, and only if what
 	// it found differs.
 	if (event.type === "agent_settled" && notes.load()) broadcast(files());
+	// And it may have written a file that is not a note at all, which is what
+	// a spec's task writes. git is asked the same question at the same moment.
+	if (event.type === "agent_settled") void loadRepo();
 	// A finished turn is the first moment there can be something to name the
 	// session by, and each one after is another chance while there is not.
 	if (event.type === "agent_settled") void nameSession();
@@ -1609,6 +1642,10 @@ wss.on("connection", async (ws) => {
 	reply(branches());
 	notes.load();
 	reply(files());
+	// What git last said, at once; and git asked again, which reaches every tab
+	// if the answer has moved on since the last turn ended.
+	reply(repoMsg());
+	void loadRepo();
 	reply(specs());
 	reply({ type: "property_types", types: propertyTypes.all() });
 	reply({ type: "property_names", ...propertyNames.all() });
