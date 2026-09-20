@@ -38,9 +38,47 @@ export const APP_DIR_NAME = ".pi";
 export const SPECS_DIR = `${OCTAVE_DIR}/specs/`;
 
 /**
+ * A spec's documents, in the order they are written and approved. The record
+ * of which of them a person has approved is specApproval.ts's, which reads
+ * the disk; the order and the names are read by the window too, so they are
+ * here with the rest of what both ends must agree on.
+ */
+export const SPEC_DOCS = ["requirements.md", "design.md", "tasks.md"] as const;
+export type SpecDoc = (typeof SPEC_DOCS)[number];
+
+/** That record's name, in the spec's folder beside the documents. */
+export const APPROVALS = "approvals.json";
+
+/**
+ * What a path under SPECS_DIR is made of, or null for anything that is not
+ * under it — and null too for a hidden file below, or a name that is empty.
+ * The one reading the three questions below are asked of.
+ */
+function specParts(path: string): string[] | null {
+	if (!path.startsWith(SPECS_DIR)) return null;
+	const parts = path.slice(SPECS_DIR.length).split("/");
+	return parts.some((part) => part === "" || part.startsWith(".")) ? null : parts;
+}
+
+/**
  * Whether a path from the folder, as the vault names it, is a spec: markdown
  * under SPECS_DIR, spelled `.md` as a note must be, and no hidden file below.
  * Read off the name, as documentType is; what the disk says is specAt's.
  */
-export const isSpec = (path: string): boolean =>
-	path.startsWith(SPECS_DIR) && path.endsWith(".md") && !path.slice(SPECS_DIR.length).split("/").some((part) => part === "" || part.startsWith("."));
+export const isSpec = (path: string): boolean => specParts(path) !== null && path.endsWith(".md");
+
+/** The spec a path belongs to — the folder under SPECS_DIR it is in — or null. */
+export function specNameOf(path: string): string | null {
+	const parts = specParts(path);
+	return parts && parts.length > 1 ? parts[0] : null;
+}
+
+/**
+ * Whether a path is a spec's approvals record: the file itself, in the spec's
+ * own folder. It opens in no tab — it is not markdown — but a change to it
+ * changes what is waiting for the person, so it is watched like the documents.
+ */
+export const isSpecRecord = (path: string): boolean => {
+	const parts = specParts(path);
+	return parts !== null && parts.length === 2 && parts[1] === APPROVALS;
+};

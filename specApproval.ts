@@ -33,15 +33,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { writeAtomic } from "./atomic.ts";
-import { SPECS_DIR } from "./documentKinds.ts";
+import { APPROVALS, SPEC_DOCS, type SpecDoc, SPECS_DIR } from "./documentKinds.ts";
 import { withDone } from "./specTasks.ts";
-
-/** A spec's documents, in the order they are written and approved. */
-export const SPEC_DOCS = ["requirements.md", "design.md", "tasks.md"] as const;
-export type SpecDoc = (typeof SPEC_DOCS)[number];
-
-/** The record of what was approved, in the spec's folder beside the documents. */
-export const APPROVALS = "approvals.json";
 
 export interface SpecState {
 	/** How many of SPEC_DOCS, from the first, are approved as they are now. */
