@@ -46,6 +46,13 @@ export function pageOf(path: string | null): Page | null {
 
 export const isPage = (path: string | null): boolean => pageOf(path) !== null;
 
+/**
+ * A file of the repository — one this window reads and does not write. The one
+ * place that question is answered, so the tab that draws it, the line that
+ * says where it is and the menu beside that line cannot disagree about it.
+ */
+export const isCode = (path: string | null): boolean => pageOf(path)?.kind === "code";
+
 /** Where the server gives a file in the folder out, by its path (the /vault route). */
 export const vaultUrl = (path: string): string => `/vault/${path.split("/").map(encodeURIComponent).join("/")}`;
 

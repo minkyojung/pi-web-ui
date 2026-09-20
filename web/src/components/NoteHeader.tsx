@@ -1,11 +1,13 @@
 import { useState, useSyncExternalStore } from "react";
-import { ChevronLeft, ChevronRight, Ellipsis, FileTextIcon, FolderIcon, MoreHorizontal } from "lucide-react";
+import { ChevronLeft, ChevronRight, Ellipsis, FileTextIcon, FolderIcon, LockIcon, MoreHorizontal } from "lucide-react";
 
 import { noteActions } from "../noteActions";
+import { isCode } from "../pages";
 import { titleOf } from "../noteSync";
 import { documentsStore, filesStore, repoStore } from "../serverState";
 import { childrenOf, foldersOf, openFoldersStore, setOpenFolders } from "../tree";
 import { getConnection, subscribe } from "../store";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "./ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -285,6 +287,20 @@ export function NoteHeader({ path, onOpen, trailing }: { path: string | null; on
 						{folders.length > 0 && <ChevronRight className="size-3 shrink-0" />}
 						<span className="min-w-0 truncate">{titleOf(path)}</span>
 					</>
+				)}
+				{/* Said where the path is said, because it is the same kind of fact
+				    about the thing in front — and said at all because the only other
+				    way to learn it is to type into the page and watch nothing
+				    happen. A chip rather than another muted word: this line is all
+				    muted, and a state that reads as part of the path is not read.
+				    Its words are the line's colour all the same — the fill is what
+				    sets it apart, and the brightest thing here should be the name
+				    of the file rather than a fact about it. */}
+				{isCode(path) && (
+					<Badge variant="secondary" className="ml-1 shrink-0 gap-1 font-normal text-muted-foreground" title="This file is read-only. The agent changes the code; git moves and removes it.">
+						<LockIcon className="size-3 shrink-0" />
+						Read-only
+					</Badge>
 				)}
 			</div>
 			{path && <NoteMenu path={path} />}

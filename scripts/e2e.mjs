@@ -1298,6 +1298,9 @@ check("a file says where it is in the line above it, and its ⋯ offers what can
 	const crumbs = () => app.evaluate("[...document.querySelectorAll('[data-crumb]')].map((c) => c.dataset.crumb).join(',')");
 	await until("the path", async () => (await crumbs()) === "web,web/src/components");
 	assert.match(await app.evaluate("document.getElementById('crumbs')?.textContent ?? ''"), /page\.tsx/, "and the file at the end of it");
+	// And that it is read, not written — the only other way to learn it is to
+	// type into the page and watch nothing happen.
+	assert.match(await app.evaluate("document.getElementById('crumbs')?.textContent ?? ''"), /Read-only/);
 	await app.shot("code-header");
 	// A crumb opens what is in that folder — the files, not only the notes,
 	// which down here are none.
@@ -1316,6 +1319,11 @@ check("a file says where it is in the line above it, and its ⋯ offers what can
 	// is not a page's to open (noteActions.ts). What is left is where it is.
 	assert.deepEqual(items.split("|"), ["Copy path"]);
 	await app.press("Escape");
+	// A note is written here, and its line says nothing about being read-only.
+	await pickNote(app, "first.md");
+	const crumbLine = () => app.evaluate("document.getElementById('crumbs')?.textContent ?? ''");
+	await until("the note", async () => (await crumbLine()).includes("first"));
+	assert.doesNotMatch(await crumbLine(), /Read-only/);
 });
 
 check("a file open to read follows the disk, and says so when it goes from under the tab", async ({ app, cwd }) => {
