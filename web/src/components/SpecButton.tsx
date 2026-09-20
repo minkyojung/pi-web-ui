@@ -102,8 +102,11 @@ export function SpecButton({ open, onOpen }: { open: string | null; onOpen: (pat
 									</DropdownMenuItem>
 								);
 							})}
-							{/* An item, not a button inside one: a button in a menu item is
-							    not reachable from the keyboard. */}
+							{/* Set apart from the three, being the one thing here that does
+							    something rather than opening something. An item, not a button
+							    inside one: a button in a menu item is not reachable from the
+							    keyboard. */}
+							{spec.waiting && <DropdownMenuSeparator />}
 							{spec.waiting && (
 								<DropdownMenuItem data-approve={spec.name} disabled={stop(spec) !== null} onSelect={() => approve(spec)}>
 									Approve {docTitle(spec.waiting).toLowerCase()}
