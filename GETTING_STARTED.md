@@ -38,6 +38,13 @@ first. The agent cannot write a document before you approve the one before it, a
 you approved, the documents after it wait for you again, and the next `/spec-approve` has the agent bring them into
 line. What you approved is kept beside the documents, in `approvals.json`.
 
+Once all three are approved, `/spec-run` does the tasks, one at a time. Each one opens a session of its own that
+reads the three documents, does that task and stops; the task is then checked off in `tasks.md`, and what it
+changed becomes a commit of its own, named after the task. Run it again for the next one, or name one:
+`/spec-run 2.1`. It will not start while you have changes of your own uncommitted, since a task's commit takes
+the whole folder. When every task is done the branch is the pull request: the code and the three documents
+together.
+
 ## 3. Sign in
 
 The first run opens a **Welcome** page with three steps: your folder, signing in, and a button that writes a
