@@ -13,6 +13,10 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - `/spec` and a line of what you want built starts a spec: the agent names the work, writes its requirements to `.octave/specs/<name>/requirements.md`, and stops for you to read them — and a new workspace's branch takes the spec's name.
 - `/spec-approve` approves the spec document waiting for you, when you have read it and it is right, and the agent goes on to the next: the design, then the tasks. It never asks — change a document as many times as you like first. The agent cannot write the next document before you approve the one before it, and if you go back and change one you approved, what comes after it waits for you again, brought into line with the change.
 - `/spec-run` runs the next task of a spec you have approved. It opens a session of its own, which reads the three documents, does that one task and stops — and then the task is checked off in `tasks.md` and what it changed is committed on its own. Run it again for the task after it, or name one: `/spec-run 2.1`. It will not start while you have changes of your own uncommitted, since a task's commit takes the whole folder.
+- A spec's document opens in front of you the moment it is waiting for your approval — the requirements, then the design, then the tasks — whether the agent wrote it here or in the terminal. Close it and it stays closed; the next one to wait opens in its turn.
+- The spec you are working on sits at the start of the row of tabs: its name, and what it is waiting for. Its menu holds every spec's three documents and what has become of each, opens any of them, and approves the one waiting for you — the same approval as the command, without typing it.
+- A spec document waiting for you says so in a line above it, with the button that approves it. The line goes when you approve, and the next document arrives with its own.
+- A spec document no longer carries a note's furniture: no properties to add at its head, and no word count in the strip at the foot.
 
 ### Changed
 - The agent can change any file in the folder now, notes among them, with its ordinary tools and from the shell. It used to be refused on markdown, which also meant a spec's task could not touch a README or a changelog. Your unsaved typing is still safe: a note open in front of you that changes underneath is shown, and if you have unsaved words in it you are asked which to keep.
@@ -20,8 +24,10 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - Octave opens where you left off — the workspace you were last in — and works only in repositories now: a folder of notes is no longer opened, and the first run no longer asks for a folder.
 - Opening another folder no longer restarts Octave. The folder you left keeps running — a reply the agent was writing there carries on — and going back to it finds your tabs where they were.
 - The agent can no longer write git's own files in `.git` with its file tools, which goes around git and can leave a repository broken; it changes the repository with git commands, as before.
+- With nothing open, the middle of the window says what there is to do — `/spec` and a line about what to build, then `/spec-approve` and `/spec-run` — where it used to offer to make a note. Before you have signed in anywhere it says that instead, and the button there opens Settings on your accounts.
 
 ### Removed
+- The Welcome page is gone, and Help › Welcome with it. Its three steps are each somewhere better now: a workspace is made when you add a repository, signing in is said in the middle of the window until you have, and the note of things to try belonged to the app this one no longer is.
 - The sidebar no longer lists the folder's notes; it lists your repositories and their workspaces instead. ⌘P still finds a note.
 - The folder menu at the foot of the sidebar, and its list of folders opened before, are gone: the repositories and their workspaces are the list now.
 

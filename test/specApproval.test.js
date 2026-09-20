@@ -5,7 +5,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { APPROVALS, SPEC_DOCS, approve, specState } from "../specApproval.ts";
+import { APPROVALS, SPEC_DOCS } from "../documentKinds.ts";
+import { approve, specState } from "../specApproval.ts";
 
 /** A folder with one spec in it, written as the agent would write it. */
 function folder(t) {

@@ -16,6 +16,8 @@ import { createServer } from "node:net";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 
+import { approve } from "../specApproval.ts";
+
 const root = new URL("..", import.meta.url).pathname;
 const NO_CREDENTIALS = "No provider is signed in";
 
@@ -1154,6 +1156,57 @@ it("스펙은 노트 목록에도 검색에도 들지 않고, 노트의 이름 �
   send({ type: "open_note", path });
   await want("note", (m) => m.path === path);
   assert.equal(readFileSync(join(cwd, path), "utf8"), "SPECONLYWORD\n", "그대로 있다");
+});
+
+it("스펙이 어디까지 왔는지 탭이 듣는다 — 문서가 써지면 대기, 승인하면 다음", async () => {
+  putSpec(".octave/specs/waiting/requirements.md", "# Requirements\n");
+  const said = await want("specs", (m) => m.specs.some((spec) => spec.name === "waiting"));
+  const waiting = said.specs.find((spec) => spec.name === "waiting");
+  assert.equal(waiting.approved, 0);
+  assert.equal(waiting.waiting, "requirements.md", "쓰였고 승인은 없으니 기다린다");
+  assert.equal(typeof waiting.waitingAt, "number", "언제 쓰였는지도 — 여럿이 기다릴 때 새것을 가린다");
+  assert.deepEqual(waiting.written, ["requirements.md"], "디스크에 있는 문서가 무엇인지도");
+  clear();
+  // Approving writes the record beside the documents and nothing else, which
+  // is the one change the tabs would otherwise never hear.
+  approve(cwd, "waiting");
+  const after = await want("specs", (m) => m.specs.find((spec) => spec.name === "waiting")?.waiting === null);
+  assert.deepEqual(after.specs.find((spec) => spec.name === "waiting"), { name: "waiting", approved: 1, waiting: null, waitingAt: null, written: ["requirements.md"] });
+  clear();
+  // The next document, written on the approved one: waiting in its turn.
+  putSpec(".octave/specs/waiting/design.md", "# Design\n");
+  const next = await want("specs", (m) => m.specs.find((spec) => spec.name === "waiting")?.waiting === "design.md");
+  assert.equal(next.specs.find((spec) => spec.name === "waiting").approved, 1);
+});
+
+it("승인이 풀려도 써진 문서는 써진 것이다 — 승인만으로는 알 수 없는 것", async () => {
+  for (const doc of ["requirements.md", "design.md", "tasks.md"]) {
+    putSpec(`.octave/specs/back/${doc}`, `# ${doc}\n`);
+    await want("specs", (m) => m.specs.find((spec) => spec.name === "back")?.waiting === doc);
+    approve(cwd, "back");
+  }
+  const all = await want("specs", (m) => m.specs.find((spec) => spec.name === "back")?.approved === 3);
+  assert.equal(all.specs.find((spec) => spec.name === "back").waiting, null, "셋 다 승인됐다");
+  clear();
+  // Back to the requirements: the approvals after it fall away, but the design
+  // and the tasks are still on the disk and can still be read.
+  putSpec(".octave/specs/back/requirements.md", "# requirements.md, changed\n");
+  const back = await want("specs", (m) => m.specs.find((spec) => spec.name === "back")?.waiting === "requirements.md");
+  const spec = back.specs.find((entry) => entry.name === "back");
+  assert.equal(spec.approved, 0, "고친 문서와 그 뒤의 승인이 함께 풀린다");
+  assert.deepEqual(spec.written, ["requirements.md", "design.md", "tasks.md"], "그래도 셋 다 써져 있다");
+});
+
+it("붙는 탭은 스펙이 어디까지 왔는지를 연결하자마자 듣는다", async () => {
+  const other = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  const heard = [];
+  other.onmessage = (e) => heard.push(JSON.parse(e.data));
+  try {
+    const said = await until("specs", () => heard.find((m) => m.type === "specs"));
+    assert.ok(said.specs.some((spec) => spec.name === "waiting"), `waiting among ${said.specs.map((spec) => spec.name).join(", ")}`);
+  } finally {
+    other.close();
+  }
 });
 
 it("붙는 탭은 명령 목록에서 /spec을 듣는다 — 메뉴가 그것을 보여 준다", async () => {

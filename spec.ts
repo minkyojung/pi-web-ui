@@ -50,9 +50,9 @@ import { join, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { writeAtomic } from "./atomic.ts";
-import { APP_DIR_NAME, SPECS_DIR } from "./documentKinds.ts";
+import { APP_DIR_NAME, APPROVALS, SPEC_DOCS, type SpecDoc, SPECS_DIR } from "./documentKinds.ts";
 import { CITIES } from "./electron/cities.js";
-import { APPROVALS, approve, SPEC_DOCS, type SpecDoc, type SpecState, specState } from "./specApproval.ts";
+import { approve, type SpecState, specState } from "./specApproval.ts";
 import { nextTask, parseTasks, taskToRun, withDone, withParents } from "./specTasks.ts";
 
 /** A workspace's placeholder name: a city, or a city of a later round (`lisbon-v2`). */

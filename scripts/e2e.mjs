@@ -28,6 +28,8 @@ import { fileURLToPath } from "node:url";
 
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
+import { approve } from "../specApproval.ts";
+
 const root = fileURLToPath(new URL("..", import.meta.url));
 const bin = (name) => join(root, "node_modules", ".bin", name);
 
@@ -396,6 +398,17 @@ const allDisabled = (page, title) =>
 
 check("the app renders a conversation", async ({ app }) => {
 	await until("the conversation", () => app.evaluate("!!document.getElementById('chat')"));
+});
+
+// Before anything has been opened, which is where the window starts and where
+// a new workspace leaves you: the middle column is the commands, not a note.
+check("with nothing open, the middle column says what there is to do", async ({ app }) => {
+	const commands = await until("the watermark", () =>
+		app.evaluate("document.getElementById('watermark') && [...document.querySelectorAll('#watermark kbd')].map((k) => k.textContent).join(',')"));
+	assert.equal(commands, "/spec,/spec-approve,/spec-run");
+	// And nothing about a spec anywhere: the folder has none yet, and the
+	// control that names one is absent rather than empty.
+	assert.equal(await app.evaluate("!!document.getElementById('spec')"), false, "no spec, no spec button");
 });
 
 check("the sidebar is the folder's tree: its notes and folders, a folder's notes once it is opened, and nothing else", async ({ app }) => {
@@ -3044,7 +3057,7 @@ check("the loadout screen keeps a model pi does not offer, and shows a change an
 	}
 });
 
-check("a version ready to install is offered in the corner, × leaves a dot, About answers a check, and a new version opens What's new, and the first run opens Welcome", async ({ app, cwd }) => {
+check("a version ready to install is offered in the corner, × leaves a dot, About answers a check, and a new version opens What's new", async ({ app }) => {
 	// The shell's bridge, stood in for: the page is served to a browser here,
 	// where there is no window.pi. What the stub is told is what the page is
 	// told, and what the page asks of it is written down.
@@ -3063,7 +3076,6 @@ check("a version ready to install is offered in the corner, × leaves a dot, Abo
 			check: async () => window.__update.calls.push("check"),
 			restart: async () => window.__update.calls.push("restart"),
 			seen: async () => window.__update.calls.push("seen"),
-			welcomed: async () => window.__update.calls.push("welcomed"),
 		}, onOpenSettings: (l) => { window.__update.opens.push(l); return () => {}; }, onOpenPage: (l) => { window.__update.pages.push(l); return () => {}; } };
 		}`);
 	try {
@@ -3148,37 +3160,6 @@ check("a version ready to install is offered in the corner, × leaves a dot, Abo
 		await app.press("w", { meta: true });
 		await until("the tab closed again", async () => !(await tabs()).includes("What's new"));
 
-		// The first run: the shell says nobody has been welcomed, and the
-		// Welcome page opens in front with its three steps — the folder is
-		// ticked from the start, the note's button writes the note into the
-		// folder with its text, and Done tells the shell and closes the tab.
-		await app.evaluate(`window.__update.say({ welcomed: false })`);
-		await until("the Welcome tab, in front", async () => (await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.textContent ?? ''")).includes("Welcome"));
-		const steps = () => app.evaluate("[...document.querySelectorAll('#page [data-step]')].map((s) => s.dataset.done).join(',')");
-		await until("the folder step ticked, the note's not", async () => {
-			const seen = await steps();
-			if (seen.startsWith("true,") && seen.endsWith(",false")) return true;
-			throw new Error(seen);
-		});
-		await app.evaluate("document.querySelector('#page [data-step=\"3\"] button').scrollIntoView({ block: 'center' })");
-		assert.ok(await app.click("#page [data-step='3'] button"), "the note's button");
-		await until("the welcome note, in the folder and open", async () => {
-			const tab = await app.evaluate("document.querySelector('[role=tab][data-state=active]')?.textContent ?? ''");
-			if (existsSync(join(cwd, "Welcome to Octave.md")) && tab.includes("Welcome to Octave")) return true;
-			throw new Error(JSON.stringify({ file: existsSync(join(cwd, "Welcome to Octave.md")), tab, steps: await steps() }));
-		});
-		assert.match(readFileSync(join(cwd, "Welcome to Octave.md"), "utf8"), /^---\ncreated: [^\n]+\n---\n# Welcome to Octave\n/, "the note's text, under the created stamp");
-		assert.ok(await app.click("[role=tab]", await app.evaluate("[...document.querySelectorAll('[role=tab]')].findIndex((t) => t.textContent.trim() === 'Welcome')")), "the Welcome tab");
-		await until("the note step ticked", async () => (await steps()).endsWith(",true"));
-		await app.evaluate("[...document.querySelectorAll('#page button')].find((b) => b.textContent === 'Done').scrollIntoView({ block: 'center' })");
-		assert.ok(await app.click("#page button", await app.evaluate("[...document.querySelectorAll('#page button')].findIndex((b) => b.textContent === 'Done')")), "Done");
-		// The note's tab says Welcome too: the page's is the one that says only that.
-		const welcomeTab = async () => (await tabs()).split("|").some((t) => t.trim() === "Welcome");
-		await until("the shell told, the tab gone", async () => (await app.evaluate("window.__update.calls.includes('welcomed')")) && !(await welcomeTab()));
-		await app.evaluate("window.__update.pages.forEach((l) => l('welcome'))");
-		await until("the page back, from Help", welcomeTab);
-		await app.press("w", { meta: true });
-		await until("the Welcome tab closed", async () => !(await welcomeTab()));
 		bodyDone = true;
 	} finally {
 		await stopStanding();
@@ -3218,6 +3199,11 @@ check("a spec opens in the editor by its address, keeps no record of who wrote i
 	await app.moveTo(1, 1);
 	await until("the card gone", async () => !(await app.evaluate("!!document.getElementById('whoWrote')")));
 
+	// What a note carries at its head and at the foot of the window, for the
+	// comparison below: a spec carries neither.
+	assert.equal(await app.evaluate("!!document.getElementById('add-property')"), true, "a note is offered properties");
+	assert.equal(await app.evaluate("!!document.getElementById('count')"), true, "and its length is in the strip");
+
 	const path = ".octave/specs/e2e/requirements.md";
 	mkdirSync(join(cwd, ".octave/specs/e2e"), { recursive: true });
 	writeFileSync(join(cwd, path), "# Requirements\n\nfirst\n");
@@ -3231,6 +3217,10 @@ check("a spec opens in the editor by its address, keeps no record of who wrote i
 	// its menu has what points at it, and not the note's Rename or Delete.
 	assert.equal(await app.evaluate("document.getElementById('title').value"), "requirements");
 	assert.equal(await app.evaluate("document.getElementById('title').readOnly"), true);
+	// And none of the note's own furniture: a spec is in none of the lists
+	// properties are for, and how many words are in it says nothing about it.
+	assert.equal(await app.evaluate("!!document.getElementById('add-property')"), false, "no properties on a spec");
+	assert.equal(await app.evaluate("!!document.getElementById('count')"), false, "no word count on a spec");
 	await app.click("#noteMenu");
 	await until("the menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitem]')"));
 	const items = await app.evaluate("[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((i) => i.textContent.trim())");
@@ -3256,6 +3246,99 @@ check("a spec opens in the editor by its address, keeps no record of who wrote i
 	assert.equal(readFileSync(join(cwd, path), "utf8"), "# Requirements\n\nthe agent's again\n", "the agent's words are still there");
 	await app.evaluate(`[...document.querySelectorAll('#editor [role=alert] button')].find((b) => b.textContent === "Reload").click()`);
 	await until("the disk's text", async () => (await editorStatus(app)) === "saved" && (await editorText(app)).includes("the agent's again"));
+});
+
+// What the person has to read before anything else can happen: written by the
+// agent, waiting for their approval, and in front of them without being asked
+// for. The state is the files, so this writes them as the agent would.
+check("a spec's document comes to the front as it starts waiting, and stays closed once closed", async ({ app, cwd }) => {
+	const dir = join(cwd, ".octave/specs/waiting");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n\nWAITINGWORD\n");
+	await until("the requirements in front", async () => (await editorText(app)).includes("WAITINGWORD"));
+
+	// Closed, and written again while it is still the one waiting: it stays shut.
+	await app.press("w", { meta: true });
+	await until("the tab closed", async () => !(await editorText(app)).includes("WAITINGWORD"));
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n\nWAITINGWORD, again\n");
+	await new Promise((r) => setTimeout(r, 800));
+	assert.equal((await editorText(app)).includes("WAITINGWORD"), false, "what was closed does not come back");
+
+	// Approved — which writes the record beside the documents and nothing else
+	// — and the design written on it: that one is waiting now, so it opens.
+	approve(cwd, "waiting");
+	writeFileSync(join(dir, "design.md"), "# Design\n\nDESIGNWORD\n");
+	await until("the design in front", async () => (await editorText(app)).includes("DESIGNWORD"));
+	await app.press("w", { meta: true });
+	await until("the tab closed", async () => !(await editorText(app)).includes("DESIGNWORD"));
+});
+
+// The control at the start of the row: what is waiting, from anywhere, and the
+// approval that would otherwise be a command typed into the box. By now the
+// folder holds other specs from the checks above, which is the case worth
+// having — the one that is waiting and newest is the one it names.
+check("the spec at the start of the row names what is waiting, opens its documents and approves them", async ({ app, cwd }) => {
+	const dir = join(cwd, ".octave/specs/menu");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n\nMENUWORD\n");
+	const button = () => app.evaluate("document.getElementById('spec')?.textContent ?? ''");
+	await until("the newest spec named", async () => (await button()).includes("menu") && (await button()).includes("Requirements waiting"));
+	assert.equal(await app.evaluate("document.getElementById('spec').dataset.standing"), "waiting");
+
+	// It opened by itself (specTabs.ts); closed, the menu is the way back.
+	await app.press("w", { meta: true });
+	await until("the tab closed", async () => !(await editorText(app)).includes("MENUWORD"));
+	await app.click("#spec");
+	await until("the menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitem]')"));
+	const standings = () =>
+		app.evaluate("[...document.querySelectorAll('[role=menu] [data-spec=\"menu\"]')].map((i) => i.dataset.doc + ':' + i.dataset.standing).join(',')");
+	assert.equal(await standings(), "requirements.md:waiting,design.md:unwritten,tasks.md:unwritten");
+	assert.equal(
+		await app.evaluate("document.querySelector('[role=menu] [data-spec=\"menu\"][data-doc=\"design.md\"]').getAttribute('aria-disabled')"),
+		"true",
+		"a document the agent has not written cannot be opened",
+	);
+	await app.evaluate("document.querySelector('[role=menu] [data-spec=\"menu\"][data-doc=\"requirements.md\"]').click()");
+	await until("the document back", async () => (await editorText(app)).includes("MENUWORD"));
+
+	// Approved from the menu: the same command, and the record it writes.
+	await app.click("#spec");
+	await until("the approval offered", () =>
+		app.evaluate("document.querySelector('[role=menu] [data-approve=\"menu\"]')?.getAttribute('aria-disabled') !== 'true'"));
+	await app.evaluate("document.querySelector('[role=menu] [data-approve=\"menu\"]').click()");
+	await until("the record on disk", () => {
+		const file = join(dir, "approvals.json");
+		return existsSync(file) && JSON.parse(readFileSync(file, "utf8"))["requirements.md"]?.length === 1;
+	});
+	// And the window hears it from the folder, as it heard the document: the
+	// menu is open while it changes under the pointer.
+	await app.click("#spec");
+	await until("the menu again", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitem]')"));
+	await until("the approval in the menu", async () => (await standings()) === "requirements.md:approved,design.md:unwritten,tasks.md:unwritten");
+	assert.equal(await app.evaluate("!!document.querySelector('[role=menu] [data-approve=\"menu\"]')"), false, "nothing of this spec is waiting now");
+	// Away, so the check after this one does not read a page with a menu over it.
+	await app.press("Escape");
+	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+});
+
+// The other place the answer can be given: over the document being read.
+check("a document waiting for approval says so above itself, and the line goes once it is approved", async ({ app, cwd }) => {
+	const dir = join(cwd, ".octave/specs/bar");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n\nBARWORD\n");
+	await until("the document in front with its line", async () => (await editorText(app)).includes("BARWORD") && (await app.evaluate("!!document.getElementById('specBar')")));
+	assert.match(await app.evaluate("document.getElementById('specBar').textContent"), /Requirements waiting for your approval/);
+
+	// About the document in front, not about the folder: on a note, nothing.
+	await pickNote(app, "first.md");
+	await until("the line gone", async () => !(await app.evaluate("!!document.getElementById('specBar')")));
+
+	// Back to it, and answered from the line itself.
+	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/bar/requirements.md")}`);
+	await until("the button ready", () => app.evaluate("document.getElementById('approveSpec')?.disabled === false"));
+	assert.equal(await app.click("#approveSpec"), true);
+	await until("the record on disk", () => existsSync(join(dir, "approvals.json")));
+	await until("the line gone once it is approved", async () => !(await app.evaluate("!!document.getElementById('specBar')")));
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {

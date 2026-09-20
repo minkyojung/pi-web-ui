@@ -288,7 +288,7 @@ async function stopServers(event) {
 // The guides are files in the repository, read on GitHub: one copy, current with the latest release.
 const DOCS = "https://github.com/minkyojung/pi-web-ui/blob/main";
 
-let update = { current: app.getVersion(), phase: "idle", version: null, progress: null, error: null, justUpdated: null, welcomed: true };
+let update = { current: app.getVersion(), phase: "idle", version: null, progress: null, error: null, justUpdated: null };
 
 function sayUpdate(patch) {
 	update = { ...update, ...patch };
@@ -312,12 +312,6 @@ function serveUpdates() {
 		quitting = true;
 		await servers.stopAll();
 		autoUpdater.quitAndInstall();
-	});
-	// The first run's page: shown until the person says Done, then not again.
-	update.welcomed = readSettings().welcomed === true;
-	ipcMain.handle("welcome:done", () => {
-		writeSettings({ ...readSettings(), welcomed: true });
-		sayUpdate({ welcomed: true });
 	});
 	ipcMain.handle("update:seen", () => {
 		writeSettings({ ...readSettings(), whatsNewSeen: app.getVersion() });
@@ -634,7 +628,6 @@ function buildMenu(workdir) {
 			{
 				role: "help",
 				submenu: [
-					{ label: "Welcome", click: () => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send("open-page", "welcome"); } },
 					{ label: "What's New", click: () => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send("open-page", "whats-new"); } },
 					{ label: "Getting Started", click: () => void shell.openExternal(`${DOCS}/GETTING_STARTED.md`) },
 					{ label: "What Leaves Your Mac", click: () => void shell.openExternal(`${DOCS}/PRIVACY.md`) },

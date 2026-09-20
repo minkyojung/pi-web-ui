@@ -4,8 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { documentAt, listFiles, listNotes, newNoteName, notePath, readNote, readSpec, renameNote, resolveNote, restoreNote, specAt, trashNote, withCreated, writeNote, writeSpec } from "../vault.ts";
-import { isSpec } from "../documentKinds.ts";
+import { documentAt, listFiles, listNotes, newNoteName, notePath, readNote, readSpec, renameNote, resolveNote, restoreNote, specAt, specRecordAt, trashNote, withCreated, writeNote, writeSpec } from "../vault.ts";
+import { isSpec, isSpecRecord, specNameOf } from "../documentKinds.ts";
 
 const DIR = mkdtempSync(join(tmpdir(), "notes-"));
 /** What the disk calls DIR: on a Mac the temp folder is reached through a symlink. */
@@ -275,6 +275,31 @@ test("이름만 보고도 스펙인지 안다 — .octave/specs/ 아래의 마�
   assert.equal(isSpec(".octave/specs/x/requirements.MD"), false, "노트처럼, 디스크 철자가 .md여야");
   assert.equal(isSpec(".octave/specs/x/.draft.md"), false, "그 아래의 숨김 파일");
   assert.equal(isSpec("docs/.octave/specs/x.md"), false, "폴더의 맨 위에서만");
+});
+
+test("어느 스펙의 것인지도 이름으로 안다", () => {
+  assert.equal(specNameOf(".octave/specs/email-auth/requirements.md"), "email-auth");
+  assert.equal(specNameOf(".octave/specs/email-auth/approvals.json"), "email-auth", "문서가 아니어도 그 스펙의 것이다");
+  assert.equal(specNameOf(".octave/specs/email-auth/notes/draft.md"), "email-auth", "더 깊어도 그 스펙 아래다");
+  assert.equal(specNameOf(".octave/specs/a.md"), null, "스펙 폴더가 아니라 specs/ 바로 아래의 파일");
+  assert.equal(specNameOf(".octave/specs/.hidden/requirements.md"), null, "숨김 폴더는 아무것도 아니다");
+  assert.equal(specNameOf("a.md"), null);
+});
+
+test("승인 기록도 폴더 안에 있을 때만 그것이다", () => {
+  put(".octave/specs/email-auth/approvals.json", 100);
+  assert.equal(specRecordAt(DIR, ".octave/specs/email-auth/approvals.json")?.path, ".octave/specs/email-auth/approvals.json");
+  assert.equal(specRecordAt(DIR, ".octave/specs/email-auth/requirements.md"), null, "문서는 기록이 아니다");
+  assert.equal(specRecordAt(DIR, "../.octave/specs/x/approvals.json"), null, "폴더 밖");
+  assert.equal(specRecordAt(DIR, join(DIR, ".octave/specs/email-auth/approvals.json")), null, "폴더 기준 이름으로만");
+});
+
+test("승인 기록은 스펙 폴더 바로 안의 approvals.json 하나다", () => {
+  assert.equal(isSpecRecord(".octave/specs/email-auth/approvals.json"), true);
+  assert.equal(isSpecRecord(".octave/specs/email-auth/requirements.md"), false, "문서는 기록이 아니다");
+  assert.equal(isSpecRecord(".octave/specs/approvals.json"), false, "스펙 폴더 안에서만");
+  assert.equal(isSpecRecord(".octave/specs/x/deep/approvals.json"), false, "폴더 바로 안에서만");
+  assert.equal(isSpecRecord("approvals.json"), false);
 });
 
 test("스펙은 폴더 안의 .octave/specs/ 아래 마크다운이고, 노트가 아니다", () => {

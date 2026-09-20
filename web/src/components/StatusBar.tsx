@@ -35,6 +35,7 @@
  */
 import { useSyncExternalStore, useState } from "react";
 
+import { isSpec } from "../../../documentKinds.ts";
 import { showAuthorsStore } from "../features/authors";
 import { inFrontStore, type Saved } from "../inFront";
 import type { Authored } from "../../../protocol.ts";
@@ -160,6 +161,9 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi }: { path: strin
 	// being left behind, and the foot of the window is not the place to learn
 	// about a note you have just closed.
 	const note = front && front.path === path && front.saved !== "loading" ? front : null;
+	// A spec is not a note: how many words are in it is not a thing about it
+	// worth a place in the bar, any more than its tags or its backlinks are.
+	const counted = note && path !== null && !isSpec(path) ? note : null;
 	const hand = note?.authored ? share(note.authored) : null;
 	const showing = useSyncExternalStore(showAuthorsStore.subscribe, showAuthorsStore.get);
 
@@ -176,13 +180,13 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi }: { path: strin
 				    only on the notes it has written in, and coming and going after
 				    the count it moves nothing, where before it the count would shift
 				    every time a note was opened. */}
-				{note && (
+				{counted && (
 					<Item
 						title={counting === "words" ? "Count characters instead" : "Count words instead"}
 						onClick={() => count(counting === "words" ? "characters" : "words")}
 					>
 						<span id="count" data-counting={counting}>
-							{note[counting].toLocaleString()} {counting === "words" ? (note.words === 1 ? "word" : "words") : note.characters === 1 ? "character" : "characters"}
+							{counted[counting].toLocaleString()} {counting === "words" ? (counted.words === 1 ? "word" : "words") : counted.characters === 1 ? "character" : "characters"}
 						</span>
 					</Item>
 				)}

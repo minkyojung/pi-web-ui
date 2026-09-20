@@ -7,7 +7,7 @@
  * server's state and are rebroadcast whenever it changes.
  */
 
-import { existsSync, mkdirSync, readFileSync, watch, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, watch, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -34,13 +34,13 @@ import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice as m
 import { readSettings, updateSettings, type Settings } from "./settings.ts";
 import { askForName } from "./sessionName.ts";
 import { askUser } from "./askUser.ts";
-import specCommand from "./spec.ts";
+import specCommand, { takenSpecs } from "./spec.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { extensionUI } from "./extensionUI.ts";
 import { deleteSessionFile } from "./sessionDelete.ts";
 import { Cancelled } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { documentAt, listNotes, newNoteName, type Note, readNote, readSpec, renameNote, restoreNote, specAt, withCreated, writeNote, writeSpec, type WriteResult } from "./vault.ts";
+import { documentAt, listNotes, newNoteName, type Note, readNote, readSpec, renameNote, restoreNote, specAt, specRecordAt, withCreated, writeNote, writeSpec, type WriteResult } from "./vault.ts";
 import { attachmentAt } from "./pictures.ts";
 import { FileIndex } from "./fileIndex.ts";
 import { startLogging } from "./log.ts";
@@ -51,7 +51,8 @@ import { claimAppDir } from "./appDir.ts";
 import { wall } from "./wall.ts";
 import { documents } from "./documents.ts";
 import { MAX_BYTES, saveAttachment, type Saved } from "./attach.ts";
-import { documentType } from "./documentKinds.ts";
+import { documentType, SPEC_DOCS, SPECS_DIR } from "./documentKinds.ts";
+import { specState } from "./specApproval.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { watchNotes } from "./watcher.ts";
@@ -84,6 +85,7 @@ import type {
 	SettingsMsg,
 	SnapshotMsg,
 	SpecMsg,
+	SpecsMsg,
 	UsageMsg,
 } from "./protocol.ts";
 
@@ -629,6 +631,54 @@ function spec(path: string): SpecMsg | null {
 }
 
 /**
+ * Where every spec in the folder stands (SpecsMsg): read off the documents
+ * and the record beside them, never kept. The window opens what is waiting,
+ * so it is also told when each waiting document was written — of two specs
+ * waiting at once, the newer is the one the person has just been given — and
+ * which documents are there at all, which the approvals alone cannot say.
+ */
+function specs(): SpecsMsg {
+	return {
+		type: "specs",
+		specs: takenSpecs(CWD).map((name) => {
+			const dir = join(CWD, SPECS_DIR, name);
+			const { approved, waiting } = specState(CWD, name);
+			return {
+				name,
+				approved,
+				waiting,
+				waitingAt: waiting ? writtenAt(join(dir, waiting)) : null,
+				written: SPEC_DOCS.filter((doc) => existsSync(join(dir, doc))),
+			};
+		}),
+	};
+}
+
+/** When a file was last written, or null where it cannot be asked. */
+function writtenAt(file: string): number | null {
+	try {
+		return statSync(file).mtimeMs;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The tabs told where the specs stand, if it has changed since they were last
+ * told. Writing a document and writing the record beside it are two changes a
+ * moment apart that often mean one thing, and a tab that opens a document
+ * because it is waiting must not be told twice that it is.
+ */
+let saidSpecs = "";
+function saySpecs(): void {
+	const msg = specs();
+	const said = JSON.stringify(msg);
+	if (said === saidSpecs) return;
+	saidSpecs = said;
+	broadcast(msg);
+}
+
+/**
  * A note being made now, as it starts out: with when it was made written in
  * it, unless that has been turned off. Only at the making — a note restored
  * from the trash or noticed on disk was made some other time, and one that
@@ -703,6 +753,16 @@ function noticed(path: string): void {
 		if (!found) {
 			if (known.delete(path)) broadcast({ type: "note_gone", path });
 		} else if (found.modified !== had) broadcast(found);
+		// A document written, or changed after it was approved, moves what the
+		// spec is waiting on — including when the write was this app's own and
+		// the tabs have the words already.
+		saySpecs();
+		return;
+	}
+	// The record itself: nothing opens it, and all it can change is where the
+	// spec stands.
+	if (specRecordAt(CWD, path)) {
+		saySpecs();
 		return;
 	}
 	const found = readNote(CWD, path);
@@ -1549,6 +1609,7 @@ wss.on("connection", async (ws) => {
 	reply(branches());
 	notes.load();
 	reply(files());
+	reply(specs());
 	reply({ type: "property_types", types: propertyTypes.all() });
 	reply({ type: "property_names", ...propertyNames.all() });
 	// A tab opened while a question is waiting should see it too.

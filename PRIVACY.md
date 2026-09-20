@@ -37,7 +37,7 @@ connected.
 | `<folder>/.pi/exports/` | Conversations you exported | Octave |
 | `~/.pi/agent/` | pi's own: your sign-in (`auth.json`), sessions, settings. Shared with `pi` in a terminal if you use it | pi |
 | `~/.octave/` | Octave's settings, and its log (`logs/server.log`) | Octave |
-| `~/Library/Application Support/Octave/` | Your repositories and their workspaces, the one you were in last, and that you have seen the Welcome page | Octave |
+| `~/Library/Application Support/Octave/` | Your repositories and their workspaces, the one you were in last, and which version's What's New you have seen | Octave |
 
 ## Removing it
 

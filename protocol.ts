@@ -11,6 +11,7 @@
  * Shared at the repo root like toolModes.ts. Types only: the client bundles
  * this, so nothing here may run.
  */
+import type { SpecDoc } from "./documentKinds.ts";
 import type { Suggestions } from "./properties.ts";
 import type { PropertyType, Registry } from "./propertyTypes.ts";
 import type { Ask, AskOutcome } from "./ask";
@@ -528,6 +529,45 @@ export interface SpecMsg {
 }
 
 /**
+ * Where every spec in the folder stands: what the person has approved, and
+ * what is waiting for them to.
+ *
+ * The state is the files — the documents and the record beside them — and the
+ * server reads it (specApproval.ts) rather than keeping one, so this is sent
+ * when a tab opens and again whenever what it says would be different. The
+ * window opens the document that is waiting; the bar over it, and how far the
+ * tasks have got, are read from the same message.
+ */
+export interface SpecInfo {
+	/** The spec's folder under .octave/specs/. */
+	name: string;
+	/** How many of SPEC_DOCS, from the first, are approved as the files are now. */
+	approved: number;
+	/** The document written and waiting for the person, or null when none is. */
+	waiting: SpecDoc | null;
+	/** When that document was last written, so a window can tell the newest of several. Null with nothing waiting. */
+	waitingAt: number | null;
+	/**
+	 * Which of the documents are on the disk at all, in SPEC_DOCS order.
+	 *
+	 * `approved` and `waiting` cannot answer this: the reading stops at the
+	 * first document that is not approved, so a spec whose three documents
+	 * were all approved and whose requirements were then changed reads as
+	 * `approved: 0, waiting: "requirements.md"` while the design and the tasks
+	 * are still there. A window offering the documents has to tell the one
+	 * that is merely later from the one that was never written — opening the
+	 * second would put a spec document in front of the person that the agent
+	 * has not written yet.
+	 */
+	written: SpecDoc[];
+}
+
+export interface SpecsMsg {
+	type: "specs";
+	specs: SpecInfo[];
+}
+
+/**
  * How much of a note was written by somebody other than the person reading it,
  * in characters of the text on disk.
  *
@@ -818,6 +858,7 @@ export type StateMsg =
 	| FilesMsg
 	| NoteMsg
 	| SpecMsg
+	| SpecsMsg
 	| BacklinksMsg
 	| TaggedMsg
 	| PropertyTypesMsg
