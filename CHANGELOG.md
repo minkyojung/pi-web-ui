@@ -12,6 +12,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - The + beside Repositories in the sidebar adds another: open a local one, or clone one from GitHub.
 - `/spec` and a line of what you want built starts a spec: the agent names the work, writes its requirements to `.octave/specs/<name>/requirements.md`, and stops for you to read them — and a new workspace's branch takes the spec's name.
 - `/spec-approve` approves the spec document waiting for you, when you have read it and it is right, and the agent goes on to the next: the design, then the tasks. It never asks — change a document as many times as you like first. The agent cannot write the next document before you approve the one before it, and if you go back and change one you approved, what comes after it waits for you again, brought into line with the change.
+- `/spec-run` runs the next task of a spec you have approved. It opens a session of its own, which reads the three documents, does that one task and stops — and then the task is checked off in `tasks.md` and what it changed is committed on its own. Run it again for the task after it, or name one: `/spec-run 2.1`. It will not start while you have changes of your own uncommitted, since a task's commit takes the whole folder.
 
 ### Changed
 - Octave opens where you left off — the workspace you were last in — and works only in repositories now: a folder of notes is no longer opened, and the first run no longer asks for a folder.

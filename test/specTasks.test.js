@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { nextTask, parseTasks, taskNumbered, withDone, withParents } from "../specTasks.ts";
+import { nextTask, parseTasks, taskToRun, withDone, withParents } from "../specTasks.ts";
 
 /** Kiro's own example, from its spec prompt — the form our agent is told to write. */
 const KIRO = `# Implementation Plan
@@ -81,11 +81,13 @@ test("전부 끝나면 다음은 없다 — 묶음뿐인 상위가 열려 있어
   assert.equal(nextTask(parseTasks(done)), null);
 });
 
-test("번호로 고르기", () => {
+test("번호로 고르면 그 작업, 묶음을 고르면 그 하위 중 남은 첫 번째", () => {
   const tasks = parseTasks(KIRO);
-  assert.equal(taskNumbered(tasks, "2.2").title, "Implement User model with validation");
-  assert.equal(taskNumbered(tasks, "2").number, "2", "묶음도 이름으로는 고를 수 있다");
-  assert.equal(taskNumbered(tasks, "3"), null);
+  assert.equal(taskToRun(tasks, "2.2").title, "Implement User model with validation");
+  assert.equal(taskToRun(tasks, "2").number, "2.1", "묶음은 일이 아니다 — 하위부터");
+  assert.equal(taskToRun(parseTasks(withDone(KIRO, new Set(["2.1"]))), "2").number, "2.2");
+  assert.equal(taskToRun(parseTasks(withDone(KIRO, new Set(["2.1", "2.2"]))), "2").number, "2", "하위가 다 끝났으면 묶음 그대로 — 이미 끝났다고 말할 수 있게");
+  assert.equal(taskToRun(tasks, "3"), null);
 });
 
 // --- writing the boxes back ---

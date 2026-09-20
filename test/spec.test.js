@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 
-import spec, { finishTask, nextPrompt, specPrompt, takenSpecs, taskMark, unnamed } from "../spec.ts";
+import spec, { finishTask, nextPrompt, specPrompt, takenSpecs, taskMark, taskPrompt, unnamed } from "../spec.ts";
 import { approve, specState } from "../specApproval.ts";
 
 test("아직 도시 이름인 브랜치만 이름을 바꿀 자리다 — main이나 이미 이름이 있는 브랜치는 그대로", () => {
@@ -77,6 +77,12 @@ function fakePi(branch, branches = []) {
   const heads = new Set(branches);
   const cwd = mkdtempSync(join(tmpdir(), "spec-fake-"));
   const commands = {};
+  /** What `git status --porcelain -z -uall` says the folder has waiting. */
+  let dirty = [];
+  /** The session's entries, as the end of a turn reads them. */
+  let entries = [];
+  const gits = [];
+  const sessions = [];
   const answer = (code, stdout = "") => ({ code, stdout, stderr: "", killed: false });
   const pi = {
     registerCommand: (name, options) => (commands[name] = { name, ...options }),
@@ -84,6 +90,9 @@ function fakePi(branch, branches = []) {
     exec: async (_git, args) => {
       if (branch === undefined) return answer(128);
       if (args[0] === "branch" && args[1] === "--show-current") return answer(0, `${branch}\n`);
+      if (args[0] === "status") return answer(0, dirty.map((entry) => `${entry}\0`).join(""));
+      if (args[0] === "add" || args[0] === "commit") return (gits.push(args), answer(0));
+      if (args[0] === "rev-parse") return answer(0, "abc1234\n");
       if (args[0] === "show-ref") return answer(heads.has(args.at(-1).replace("refs/heads/", "")) ? 0 : 1);
       if (args[0] === "branch" && args[1] === "-m") {
         renamed.push(args[2]);
@@ -96,7 +105,21 @@ function fakePi(branch, branches = []) {
     sendUserMessage: (content, options) => done.push({ sendUserMessage: content, options }),
   };
   spec(pi);
-  const ctx = (idle) => ({ cwd, isIdle: () => idle, ui: { notify: (text, type) => notes.push({ text, type }) } });
+  const ctx = (idle) => ({
+    cwd,
+    isIdle: () => idle,
+    ui: { notify: (text, type) => notes.push({ text, type }) },
+    sessionManager: { buildContextEntries: () => entries },
+    newSession: async (options) => {
+      sessions.push(options);
+      await options?.withSession?.({
+        cwd,
+        sendMessage: async (message, opts) => done.push({ sendMessage: message, options: opts }),
+        sendUserMessage: async (content, opts) => done.push({ sendUserMessage: content, options: opts }),
+      });
+      return { cancelled: false };
+    },
+  });
   const run = (args, { idle = true } = {}) => commands.spec.handler(args, ctx(idle));
   const approveCommand = (args = "", { idle = true } = {}) => commands["spec-approve"].handler(args, ctx(idle));
   /** The agent writing a spec's first document, as the model would. */
@@ -111,7 +134,39 @@ function fakePi(branch, branches = []) {
   /** A tool called with a path, as pi would put it to the extension before running it. */
   const call = (toolName, path) => handlers.tool_call?.({ type: "tool_call", toolCallId: "call-1", toolName, input: { path, content: "x" } }, ctx(true));
   const cleanup = () => rmSync(cwd, { recursive: true, force: true });
-  return { command: () => commands.spec, commands, done, notes, renamed, run, approve: approveCommand, write, start, beside, settle, call, cleanup, cwd };
+  const runTask = (args = "", { idle = true } = {}) => commands["spec-run"].handler(args, ctx(idle));
+  /** A spec approved to the end, its tasks as given. */
+  const plan = (name, text = PLAN) => {
+    const dir = join(cwd, ".octave/specs", name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "requirements.md"), "# Requirements Document\n");
+    writeFileSync(join(dir, "design.md"), "# Design Document\n");
+    writeFileSync(join(dir, "tasks.md"), text);
+    while (approve(cwd, name)) {}
+  };
+  return {
+    command: () => commands.spec,
+    commands,
+    done,
+    notes,
+    renamed,
+    gits,
+    sessions,
+    run,
+    runTask,
+    plan,
+    approve: approveCommand,
+    write,
+    start,
+    beside,
+    settle,
+    call,
+    cleanup,
+    cwd,
+    setDirty: (entries) => (dirty = entries),
+    setEntries: (given) => (entries = given),
+    tasks: (name) => readFileSync(join(cwd, ".octave/specs", name, "tasks.md"), "utf8"),
+  };
 }
 
 test("/spec 한 줄은 그 줄만 대화에 남기고, 지시문은 같은 턴에 모델에게만 간다 — 기다림 없이", async (t) => {
@@ -850,4 +905,123 @@ test("표식은 세션의 숨긴 메시지에서 읽는다 — newSession이 확
   assert.deepEqual(taskMark(entries), mark);
   assert.equal(taskMark(entries.filter((entry) => entry.customType !== "spec-task")), null, "작업의 실행이 아닌 세션");
   assert.equal(taskMark([{ type: "custom_message", customType: "spec-task", details: { spec: "x" } }]), null, "모양이 다른 표식은 없는 것으로");
+});
+
+// --- /spec-run: one task, in a session of its own ---
+
+test("/spec-run은 새 세션을 열고, 그 안에 지시문과 표식과 친 명령을 넣는다", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  assert.ok(pi.commands["spec-run"].description);
+  pi.plan("email-auth");
+  await pi.runTask();
+
+  assert.deepEqual(pi.notes, []);
+  assert.equal(pi.sessions.length, 1, "세션 하나");
+  assert.equal(pi.done.length, 2);
+  const [hidden, shown] = pi.done;
+  assert.equal(hidden.sendMessage.customType, "spec-task");
+  assert.equal(hidden.sendMessage.display, false, "화면에는 안 보인다");
+  assert.equal(hidden.options.deliverAs, "nextTurn");
+  assert.deepEqual(hidden.sendMessage.details, { spec: "email-auth", task: "1", title: "Add the door", done: [] }, "표식은 세션이 들고 간다");
+  assert.equal(shown.sendUserMessage, "/spec-run 1", "보이는 것은 친 명령");
+});
+
+test("지시문은 Kiro의 실행 규칙이다 — 세 문서를 먼저, 이 작업만, 요구사항에 비추어, 그리고 멈춤", () => {
+  const said = taskPrompt({ spec: "email-auth", task: "2.1", title: "Cut the board", done: ["1"] });
+  assert.ok(said.includes(".octave/specs/email-auth/requirements.md"), said);
+  assert.ok(said.includes(".octave/specs/email-auth/design.md"));
+  assert.ok(said.includes(".octave/specs/email-auth/tasks.md"));
+  assert.ok(said.includes('"Cut the board"'), "어느 작업인지");
+  assert.match(said, /only it/i, "한 번에 작업 하나");
+  assert.match(said, /_Requirements/, "적힌 수용 기준에 비추어 확인");
+  assert.match(said, /Do not go on to the next task/);
+  assert.match(said, /Do not commit/, "커밋은 코드가 한다");
+  assert.match(said, /tasks\.md alone/, "칸도 코드가 적는다");
+});
+
+test("승인이 끝나지 않은 스펙은 돌리지 않고, 무엇이 기다리는지 말한다", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.write("email-auth"); // requirements only, unapproved
+  await pi.runTask();
+  assert.deepEqual(pi.sessions, []);
+  assert.equal(pi.notes.length, 1);
+  assert.match(pi.notes[0].text, /requirements\.md/);
+  assert.match(pi.notes[0].text, /\/spec-approve/);
+});
+
+test("번호를 주면 그 작업, 안 주면 다음 작업, 묶음을 주면 그 하위 — Kiro의 하위부터", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.plan("email-auth", PLAN.replace("- [ ] 1.", "- [x] 1."));
+  await pi.runTask();
+  assert.equal(pi.done[0].sendMessage.details.task, "2.1", "1은 끝났고 2는 묶음이다");
+  assert.deepEqual(pi.done[0].sendMessage.details.done, ["1"], "시작할 때 끝나 있던 것");
+  await pi.runTask("2.2");
+  assert.equal(pi.done[2].sendMessage.details.task, "2.2");
+  await pi.runTask("2");
+  assert.equal(pi.done[4].sendMessage.details.task, "2.1", "묶음은 일이 아니다");
+});
+
+test("없는 번호, 이미 끝난 작업, 전부 끝남 — 알리기만 한다", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.plan("email-auth", PLAN.replace("- [ ] 1.", "- [x] 1."));
+  await pi.runTask("9");
+  await pi.runTask("1");
+  pi.plan("done-one", PLAN.replaceAll("- [ ]", "- [x]"));
+  await pi.runTask("done-one");
+  assert.deepEqual(pi.sessions, []);
+  assert.equal(pi.notes.length, 3);
+  assert.match(pi.notes[0].text, /no task 9/i);
+  assert.match(pi.notes[1].text, /already done/i);
+  assert.match(pi.notes[2].text, /every task/i);
+});
+
+test("에이전트가 일하는 중이거나, 돌릴 스펙이 없거나 여럿이면 알리기만 한다", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  await pi.runTask();
+  assert.match(pi.notes[0].text, /\/spec/, "스펙이 없다");
+  pi.plan("email-auth");
+  await pi.runTask("", { idle: false });
+  assert.equal(pi.notes[1].type, "warning");
+  pi.plan("sign-in");
+  await pi.runTask();
+  assert.match(pi.notes[2].text, /email-auth, sign-in/);
+  await pi.runTask("nowhere");
+  assert.match(pi.notes[3].text, /no spec called nowhere/i);
+  assert.deepEqual(pi.sessions, []);
+});
+
+test("커밋 안 한 변경이 있으면 시작하지 않는다 — 스펙 폴더는 첫 작업이 데려가므로 예외", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.plan("email-auth");
+  pi.setDirty(["?? .octave/specs/email-auth/requirements.md", "?? .octave/specs/email-auth/tasks.md"]);
+  await pi.runTask();
+  assert.equal(pi.sessions.length, 1, "스펙 문서만 기다리는 것은 시작을 막지 않는다");
+
+  pi.setDirty([" M server.ts", "?? .octave/specs/email-auth/tasks.md"]);
+  await pi.runTask();
+  assert.equal(pi.sessions.length, 1, "시작하지 않았다");
+  assert.equal(pi.notes.length, 1);
+  assert.equal(pi.notes[0].type, "warning");
+  assert.match(pi.notes[0].text, /server\.ts/);
+});
+
+test("턴이 끝나면 표식을 보고 마무리한다 — 한 세션에 한 번뿐", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.plan("email-auth");
+  pi.setDirty([" M door.js"]);
+  pi.setEntries([{ type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [] } }]);
+  await pi.settle();
+  assert.match(pi.tasks("email-auth"), /- \[x\] 1\. Add the door/);
+  assert.deepEqual(pi.gits.map((args) => args[0]), ["add", "commit"]);
+  assert.deepEqual(pi.renamed, [], "작업의 턴은 브랜치를 건드리지 않는다");
+
+  await pi.settle();
+  assert.deepEqual(pi.gits.map((args) => args[0]), ["add", "commit"], "같은 세션의 다음 턴은 다시 커밋하지 않는다");
 });

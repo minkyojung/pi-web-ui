@@ -60,9 +60,14 @@ export function nextTask(tasks: Task[]): Task | null {
 	return tasks.find((task) => !task.done && childrenOf(tasks, task.number).length === 0) ?? null;
 }
 
-/** The task with this number, or null. A heading can be named as well as a leaf. */
-export function taskNumbered(tasks: Task[], number: string): Task | null {
-	return tasks.find((task) => task.number === number) ?? null;
+/**
+ * The task to run when the person names `number`: that one, or — a heading
+ * being no work of its own — the first of its sub-tasks still to do, which is
+ * Kiro's rule again. Null when the list has no such number.
+ */
+export function taskToRun(tasks: Task[], number: string): Task | null {
+	const named = tasks.find((task) => task.number === number);
+	return named ? (nextTask(childrenOf(tasks, number)) ?? named) : null;
 }
 
 /** `done` with every heading whose sub-tasks are all in it: the heading is done when they are. */
