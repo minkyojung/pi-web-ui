@@ -19,18 +19,21 @@ fine — the update goes in the next time you quit. **Help › What's New** says
 
 With no repository yet, Octave opens on a screen that adds one. **Open local repository** takes a repository
 you have on this Mac. **Clone from GitHub** lists yours to pick from — signed in with `gh`, private ones too —
-or takes any by owner/name or its address, and clones it into `~/octave/repos/`. Either way Octave makes the
-repository's first workspace and opens it.
+or takes any by owner/name or its address, and clones it into `~/octave/repos/`. Either way the repository is
+added to your list and nothing else happens: no workspace is made or opened until you ask for one.
 
 A workspace is a folder and a branch of its own, made from the latest on the remote, under
 `~/octave/workspaces/`; the agent works there, and your own clone is never touched. The sidebar lists your
-repositories and their workspaces: + on a repository makes another workspace, + beside **Repositories** adds
-another repository, and `⌘O` opens a local one.
+repositories and their workspaces — and so does the first screen, until a workspace is open: click a workspace
+to move into it, + beside **Repositories** adds another repository, and `⌘O` opens a local one.
 
-In a workspace, `/spec` and a line of what you want built starts a spec. The agent names the work, writes its
-requirements to `.octave/specs/<name>/requirements.md` in the workspace's folder, and stops for you to read and
-change them; the workspace's branch then takes the spec's name. One spec to a workspace: for the next one, make
-another with +.
++ on a repository starts a spec, and that is how a workspace is made. Say what you want built, choose the model
+and effort for it, and **Create** (`⌘↵`): the workspace is made, the window moves into it, and your line is sent
+there as `/spec`. The agent names the work, writes its requirements to `.octave/specs/<name>/requirements.md`
+in the workspace's folder, and stops for you to read and change them; the workspace's branch then takes the
+spec's name. If you are not signed in yet, the line waits in the message box for you to send once you are. One
+spec to a workspace: for the next one, press + again. `/spec` and a line, typed in a workspace that has no spec
+yet, does the same there.
 
 When the requirements are right, `/spec-approve` approves them and the agent writes the design; approve that and
 it writes the tasks. Nobody asks you to approve: ask for changes, or make them yourself, as many times as you like

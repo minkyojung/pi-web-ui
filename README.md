@@ -60,8 +60,13 @@ it picks — one server for each workspace, kept by the shell (`electron/`), so
 moving to another workspace points the window at that one's server and nothing
 restarts. One nobody has used for ten minutes is stopped, and started again on
 the same port when it is opened, since a page keeps its tabs by its address.
-With no workspace yet, the window opens on a start page the shell serves itself
-(`octave://app/start.html`), since there is no folder for a server to work in.
+With no workspace open, the window is on a start page the shell serves itself
+(`octave://app/start.html`), since there is no folder for a server to work in;
+it lists the repositories, which is all the shell knows. A workspace is made
+only by the new spec dialog: the page that asked is gone by the time the
+workspace's own is up, so the shell holds the line typed and gives it to the
+new page once, which sends it as `/spec` (`electron/firstSpec.js`,
+`web/src/firstSpec.ts`).
 A packaged app is launched with a working directory of `/` and launchd's bare
 `PATH`, so the login shell's environment is read once at start, as VS Code
 does, and the agent finds the tools a terminal would.
