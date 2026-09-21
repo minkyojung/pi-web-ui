@@ -625,7 +625,7 @@ export function App() {
 					    offers what can be done to a file, which is to find it, not to
 					    rename it (noteActions.ts). A PDF is left out: its viewer
 					    reaches the top of the column, and the words there are its own. */}
-					<NoteHeader path={page?.kind === "code" ? page.path : note} onOpen={setOpen} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
+					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} onOpen={setOpen} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
 					{/* Under the header and over the page, so it stays while a long
 					    document scrolls — and `note` is null for anything that is not
 					    a note or a spec, which keeps it off a PDF and off a page. */}

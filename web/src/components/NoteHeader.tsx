@@ -7,7 +7,9 @@ import { inFrontStore } from "../inFront";
 import { noteActions } from "../noteActions";
 import { isCode } from "../pages";
 import { titleOf, wholePath } from "../noteSync";
-import { configStore, documentsStore, filesStore, repoStore } from "../serverState";
+import { taskOfCommit } from "../resultsList.ts";
+import { configStore, documentsStore, filesStore, repoStore, specsStore } from "../serverState";
+import { docPath } from "../specStanding.ts";
 import { childrenOf, foldersOf, openFoldersStore, setOpenFolders } from "../tree";
 import { getConnection, subscribe } from "../store";
 import { Badge } from "./ui/badge";
@@ -348,7 +350,45 @@ function NoteMenu({ path }: { path: string }) {
  *
  * One height with pi's header, so the two panes of the card start level.
  */
-export function NoteHeader({ path, onOpen, trailing }: { path: string | null; onOpen: (path: string) => void; trailing?: React.ReactNode }) {
+/**
+ * Where a commit's page is, in the line a file says where it is: the spec, its
+ * tasks, and the task this commit is the result of — `greeting › tasks › Task 2`.
+ *
+ * The page is reached from the plan (a task's chip) or from the list at the
+ * foot of the window, and without this the only way back to the plan was the
+ * way back. `tasks` is that way, said: it opens tasks.md. The spec's name is
+ * not pressed — a spec is three documents and the name is none of them. A
+ * commit that is no task's says its hash, which is all there is to say.
+ *
+ * Read off the results the window already has (resultsList.ts), like the
+ * tab's name, so the two agree and nothing is asked.
+ */
+function CommitCrumbs({ commit, onOpen }: { commit: string; onOpen: (path: string) => void }) {
+	const specs = useSyncExternalStore(specsStore.subscribe, specsStore.get);
+	const of = taskOfCommit(specs, commit);
+	if (!of) return <span className="min-w-0 truncate px-1 font-mono text-xs">{commit.slice(0, 7)}</span>;
+	return (
+		<>
+			<span className="max-w-40 shrink-0 truncate px-1">{of.spec}</span>
+			<ChevronRight className="size-3 shrink-0" />
+			<button
+				type="button"
+				data-crumb="tasks"
+				title="Open the plan"
+				className="shrink-0 rounded-sm px-1 py-0.5 hover:bg-accent hover:text-accent-foreground"
+				onClick={() => onOpen(docPath(of.spec, "tasks.md"))}
+			>
+				tasks
+			</button>
+			<ChevronRight className="size-3 shrink-0" />
+			<span className="min-w-0 truncate px-1 text-foreground" title={`${of.title} · ${of.short}`}>
+				Task {of.task}
+			</span>
+		</>
+	);
+}
+
+export function NoteHeader({ path, commit = null, onOpen, trailing }: { path: string | null; commit?: string | null; onOpen: (path: string) => void; trailing?: React.ReactNode }) {
 	// The same identifiers the sidebar keys its open folders on, so a crumb and
 	// a row are talking about the same folder without either being told.
 	const folders = path ? foldersOf(path) : [];
@@ -380,6 +420,7 @@ export function NoteHeader({ path, onOpen, trailing }: { path: string | null; on
 						<span className="min-w-0 truncate">{titleOf(path)}</span>
 					</>
 				)}
+				{!path && commit && <CommitCrumbs commit={commit} onOpen={onOpen} />}
 			</div>
 			{/* Beside the ⋯ rather than after the path, because it is not part of
 			    where the file is: it is a state of the file and a way out of it,

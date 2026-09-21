@@ -3657,14 +3657,14 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	task("1", "Add the door", "door.js", "export const door = 1;\n", "npm test — 4 passed");
 	const button = () => app.evaluate("document.getElementById('results')?.innerText.replace(/\\s+/g, ' ') ?? ''");
 	await until("the first result", async () => (await button()).includes("1 task · 1 new"));
-	task("2", "Hang the sign", "sign.js", "export const sign = 1;\nexport const hung = true;\n", "none");
+	const second = task("2", "Hang the sign", "sign.js", "export const sign = 1;\nexport const hung = true;\n", "none");
 	const again = task("1", "Add the door", "door.js", "export const door = 2;\n", "npm test — 5 passed");
 	await until("three runs, two tasks", async () => (await button()).includes("2 tasks · 2 new"));
 
 	// In the plan itself, each task done says the commit it ended in at the end
 	// of its line — its last run's — drawn and not written: the file is as it was.
 	const chips = () => app.evaluate("[...document.querySelectorAll('#editor .cm-task-commit')].map((c) => c.dataset.task + ':' + c.textContent).join(',')");
-	await until("the chips", async () => (await chips()) === `1:${again.slice(0, 7)},2:${git("rev-parse", "--short", "HEAD~1")}`);
+	await until("the chips", async () => (await chips()) === `1:${again.slice(0, 7)},2:${second.slice(0, 7)}`);
 	assert.doesNotMatch(readFileSync(join(dir, "tasks.md"), "utf8"), new RegExp(again.slice(0, 7)), "nothing of it is in the file, whose words are what was approved");
 	// The done line is struck through, and the chip is not: a strike is not
 	// drawn across an inline-block, which is the only way out of it.
@@ -3696,11 +3696,28 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	// results the window already has — and every tab is one width, so a long
 	// name is cut rather than the row going ragged.
 	const tabs = await app.evaluate("[...document.querySelectorAll('[role=tab][data-path]')].map((t) => ({ path: t.dataset.path, text: t.innerText.trim(), width: Math.round(t.getBoundingClientRect().width) }))");
-	const commitTab = tabs.find((tab) => tab.path.startsWith("octave://commit/"));
+	// This check's own: others before it have left commits' tabs in the row.
+	const commitTab = tabs.find((tab) => tab.path === `octave://commit/${again}`);
 	assert.equal(commitTab.text, "Task 1 · Add the door", JSON.stringify(tabs));
 	assert.equal(new Set(tabs.map((tab) => tab.width)).size, 1, `one width for every tab: ${JSON.stringify(tabs.map((tab) => tab.width))}`);
 	assert.equal(commitTab.width, 192, "twelve rem");
 	await app.shot("tab-widths");
+	// Where the page is, in the line a file says where it is: the spec, its
+	// tasks, the task — and `tasks` is the way back to the plan, said.
+	const crumbs = () => app.evaluate("document.getElementById('crumbs')?.innerText.replace(/\\s+/g, ' ').trim() ?? ''");
+	assert.equal(await crumbs(), "came tasks Task 1", `the crumbs: ${await crumbs()}`);
+	await app.shot("commit-crumbs");
+	await app.evaluate("document.querySelector('#crumbs [data-crumb=\"tasks\"]').click()");
+	await until("the plan, by its crumb", async () => (await editorText(app)).includes("Hang the sign"));
+	// A commit that is no task's has only its hash to say. One made here: run
+	// on its own, this check's first task is the repository's first commit.
+	writeFileSync(join(cwd, "came", "mine.js"), "export const mine = 1;\n");
+	git("add", "came/mine.js");
+	git("commit", "-q", "-m", "Something of my own");
+	const base = git("rev-parse", "HEAD");
+	await app.evaluate(`location.hash = ${JSON.stringify("#octave://commit/" + base)}`);
+	await until("somebody's own commit", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(base)}`));
+	assert.equal(await crumbs(), base.slice(0, 7), `the crumbs of a commit that is no task's: ${await crumbs()}`);
 	// And it stays looked at when the window is opened again.
 	assert.equal(await app.evaluate("JSON.parse(localStorage.getItem('seen-results')).came"), again);
 	// The chip is the other way to the same page: from the plan, at the line.
@@ -3708,7 +3725,7 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	await until("the plan again", async () => (await editorText(app)).includes("Hang the sign"));
 	await until("its chips", async () => (await chips()).startsWith("1:"));
 	await app.evaluate("document.querySelector('#editor .cm-task-commit[data-task=\"2\"]').click()");
-	await until("the other task's commit", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(git("rev-parse", "HEAD~1"))}`));
+	await until("the other task's commit", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(second)}`));
 });
 
 // The other place the answer can be given: over the document being read.
