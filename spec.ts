@@ -196,22 +196,43 @@ export function specPrompt({ line, prefix, branch, taken }: { line: string; pref
 	].join("\n");
 }
 
-/** The design document's form: the sections Kiro's spec prompt asks for, under the heading its documents have. */
+/**
+ * The design document's shape. Kiro's asks for six sections whatever the
+ * work is — a data model and an error-handling section for a change of one
+ * line — which is the same filling of slots the requirements had. What is
+ * always there is here: the approach, the decisions with what each was
+ * chosen over (a plan goes wrong where nobody weighed another way —
+ * spec-mode.md 1절), the real files, where each criterion is met, and how
+ * it is tested. The rest is written when the work has it.
+ */
 const DESIGN_FORM = `\`\`\`md
 # Design Document
 
 ## Overview
+[The approach in a few sentences: what changes, and where.]
 
-## Architecture
+## Decisions
+- [What was decided] — [what else was considered, and why it was passed over].
 
-## Components and Interfaces
+## Changes
+- \`path/to/file\` — [what is added or changed there, and the pattern already in the repository that it follows].
 
-## Data Models
+## Requirements Met
+- 1.1 — [where in the design this criterion is met].
+- 1.2 — […]
 
-## Error Handling
-
-## Testing Strategy
+## Testing
+[What is tested and how, the way this repository tests: which test files, what kind of test, and the check for each criterion.]
 \`\`\``;
+
+/** What makes a design good, which the shape cannot say. */
+const DESIGN_RULES = [
+	"Stand on this code: real paths and real names. Follow a pattern that is already there rather than bring a new one, and say so when one has to be brought.",
+	"A decision that would be costly to reverse is written with what it was chosen over. One nobody would question takes a line, or is left out.",
+	"Every acceptance criterion is under Requirements Met, by its number. One the design cannot meet is not dropped quietly: see the next step.",
+	"What the requirements left under Decisions for You is settled as the person answered it; where they did not, the assumed one stands, and the design says so.",
+	"More sections only when the work has them — data models, error handling, a migration, a diagram in Mermaid — and none that would be empty or would say the overview again. A small change has a short design.",
+];
 
 /** What Kiro's spec prompt tells its model the tasks are, word for word. */
 const TASKS_CHARGE =
@@ -267,14 +288,17 @@ export function nextPrompt({ name, next, redo }: { name: string; next: "design.m
 				: [
 						`The person approved the requirements of the spec "${name}": ${dir}requirements.md.`,
 						"",
-						"Write its design, and stop. In order:",
-						"1. Read the requirements. Then find out what the design needs: read the code it will touch, and look up what you do not know. Say briefly in your reply what you found that shapes the design; do not write it to a file of its own.",
+						'A design is how this will be built in this codebase, and why that way. It is a record of decisions: the requirements can be met in more than one way, and this says which was taken and what was passed over. It is good if someone who knows this code reads it and has no "why this way?" left — or finds the answer already there — and if every acceptance criterion can be traced to the place that meets it.',
+						"",
+						"Write it, and stop. In order:",
+						"1. Read the requirements. Then read the code the work touches until you could make the change yourself: the files and functions it starts from, the patterns the repository already uses for this kind of thing, and how it tests them. Look up what you do not know. Say briefly in your reply what you found that shapes the design; do not write it to a file of its own.",
 						[
-							`2. Write ${dir}design.md with write — it is not a note, so not note_write — in the language the requirements are written in, in this form:`,
+							`2. Write ${dir}design.md with write — it is not a note, so not note_write — in the language the requirements are written in, headings too, in this shape:`,
 							"",
 							DESIGN_FORM,
 							"",
-							"Address every requirement. Draw a diagram in Mermaid where one helps. Say what you decided, and why.",
+							"What goes in it:",
+							...DESIGN_RULES.map((rule) => `- ${rule}`),
 						].join("\n"),
 						"3. If writing it shows that the requirements miss something or are wrong, do not change them: say what, and offer to go back to them.",
 						`4. ${stop("wrote", "Do not go on to the tasks or to code.")}`,

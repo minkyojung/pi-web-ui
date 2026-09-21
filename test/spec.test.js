@@ -461,15 +461,23 @@ test("/spec-approve는 기다리는 문서를 승인하고, 같은 턴에 다음
   assert.deepEqual(pi.notes, [{ text: "The spec email-auth is ready: its requirements, design and tasks are approved.", type: "info" }]);
 });
 
-test("설계와 작업 목록의 지시문은 Kiro의 형식이고, 묻지 않고 멈추라고 한다", () => {
+test("설계와 작업 목록의 지시문은 문서가 무엇을 위한 것인지를 말하고, 묻지 않고 멈추라고 한다", () => {
   const design = nextPrompt({ name: "email-auth", next: "design.md", redo: false });
   assert.ok(design.includes(".octave/specs/email-auth/requirements.md"), "무엇이 승인됐는지");
   assert.ok(design.includes(".octave/specs/email-auth/design.md"));
-  for (const section of ["# Design Document", "## Overview", "## Architecture", "## Components and Interfaces", "## Data Models", "## Error Handling", "## Testing Strategy"]) {
+  // 무엇을 위한 문서인지가 먼저다: 결정의 기록, 그리고 기준마다 어디서 충족되는지.
+  assert.match(design, /It is a record of decisions/);
+  for (const section of ["# Design Document", "## Overview", "## Decisions", "## Changes", "## Requirements Met", "## Testing"]) {
     assert.ok(design.includes(section), section);
   }
+  for (const slot of ["## Architecture", "## Components and Interfaces", "## Data Models", "## Error Handling"]) assert.equal(design.includes(slot), false, `늘 채우는 칸은 없다: ${slot}`);
   assert.match(design, /read the code/i, "설계 단계에서 조사한다");
-  assert.match(design, /Mermaid/);
+  assert.match(design, /what it was chosen over/, "결정은 버린 길과 함께");
+  assert.match(design, /real paths and real names/, "이 코드 위에 선다");
+  assert.match(design, /Every acceptance criterion is under Requirements Met, by its number/);
+  assert.match(design, /Decisions for You is settled/, "요구사항이 남긴 결정을 받는다");
+  assert.match(design, /headings too/, "제목도 그 사람의 언어로");
+  assert.match(design, /Mermaid/, "필요할 때만");
   assert.match(design, /offer to go back/, "빈 곳을 찾으면 고치지 말고 되돌아가자고");
   assert.match(design, /Do not ask them to approve it/);
   assert.match(design, /with write, not note_write|with write — it is not a note/, "노트가 아니다");
