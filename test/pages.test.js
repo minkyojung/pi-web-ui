@@ -19,8 +19,19 @@ test("a document's address is its path, and it is a page and not a note", () => 
 	assert.equal(pageOf("about pdf.md"), null, "a note about one is a note");
 	assert.equal(isPage("a.pdf"), true);
 	assert.equal(noteFromHash("#papers/a%20b.pdf"), "papers/a b.pdf", "and the address bar may hold it");
-	assert.equal(noteFromHash("#run.sh"), null);
 	assert.equal(vaultUrl("papers/a b#1.pdf"), "/vault/papers/a%20b%231.pdf");
+});
+
+test("anything else in the folder is a file to read, and markdown never is", () => {
+	assert.deepEqual(pageOf("web/src/App.tsx"), { kind: "code", path: "web/src/App.tsx", title: "App.tsx" });
+	assert.deepEqual(pageOf("LICENSE"), { kind: "code", path: "LICENSE", title: "LICENSE" });
+	assert.deepEqual(pageOf(".github/workflows/ci.yml"), { kind: "code", path: ".github/workflows/ci.yml", title: "ci.yml" });
+	assert.equal(pageOf("ideas/second.md"), null, "a note is the editor's");
+	assert.equal(pageOf(".octave/specs/a/tasks.md"), null, "and so is a spec");
+	assert.equal(pageOf("octave://whats-new/latest"), null, "the app's own scheme is never a file");
+	// The address bar carries one, so a window reopens on the file it was reading.
+	assert.equal(noteFromHash("#run.sh"), "run.sh");
+	assert.equal(noteFromHash("#web/src/App.tsx"), "web/src/App.tsx");
 });
 
 test("a changelog section is headings, lists and paragraphs, with code set apart", () => {

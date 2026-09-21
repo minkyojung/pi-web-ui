@@ -21,6 +21,9 @@ import type { NoteFile } from "./vault";
 import type { Backlink, Tagged } from "./linkIndex";
 import type { SearchHit } from "./search";
 import type { Settings } from "./settings.ts";
+import type { CommitRead } from "./commitRead.ts";
+import type { TaskResult } from "./specResults.ts";
+import type { Progress } from "./specTasks.ts";
 
 /** Octave's own settings, for the client, which cannot import settings.ts for anything but its type. */
 export type { Settings };
@@ -92,6 +95,26 @@ export type ClientMsg =
 	| { type: "export_session"; format: "html" | "jsonl" }
 	/** A note, or a spec, to look at. Answered with `note` (a SpecMsg for a spec), or `note_gone` if there is no such note. */
 	| { type: "open_note"; path: string }
+	/**
+	 * A file of the repository to read in a tab, which is not a note and is
+	 * not written from here. Answered with `code`, or `code_gone` where there
+	 * is nothing to show.
+	 *
+	 * A watch as well as an ask, the way an editor's didOpen is: while a tab
+	 * has a file open, a write to it on disk — a task's, a branch changed
+	 * underneath — comes back as another `code`. One file at a time, since one
+	 * tab is in front; `close_code` ends it, and so does the socket.
+	 */
+	| { type: "open_code"; path: string }
+	/** The file is no longer open here. Nothing is watched for this tab until it asks again. */
+	| { type: "close_code" }
+	/**
+	 * A commit, to read what it changed (commitRead.ts): its hash, whole or
+	 * short, and nothing else — not a branch, not `HEAD~1`. Answered with a
+	 * `commit`, or a `commit_gone` when there is no such commit here. Asked
+	 * and not watched: a commit does not change.
+	 */
+	| { type: "open_commit"; commit: string }
 	/**
 	 * A note's whole text, on top of the version it was read at — `base` is
 	 * that version's `modified`, or null for a note that did not exist yet.
@@ -254,6 +277,14 @@ export interface ConfigMsg {
 	queued: { steering: string[]; followUp: string[] };
 	sessionId: string;
 	sessionName: string | null;
+	/**
+	 * The task this session is running, while it is: the spec, the task's
+	 * number and objective, and the tasks queued after it. Read off the mark
+	 * the run carries in its session (spec.ts), for the turn that is the run;
+	 * null at rest, and null in the turns after it, which are conversation.
+	 * The one thing the strip's line cannot say from the events alone.
+	 */
+	run: { spec: string; task: string; title: string; then: string[] } | null;
 	/** The folder the agent reads and writes in, in full. See CWD in server.ts. */
 	folder: string;
 	/** Where this server writes down what it says, so that a person can go and read it. See log.ts. */
@@ -481,6 +512,30 @@ export interface FilesMsg {
 }
 
 /**
+ * Every file of the repository the folder is, as git lists them. See repoFiles.ts.
+ *
+ * Beside FilesMsg rather than in it, because they answer different questions
+ * and are read by different things. The notes' list is what the tree draws,
+ * what `[[` and `@` offer, and what a search of every note reads; a
+ * repository's files are not notes and belong in none of those. This is the
+ * palette's list — what `⌘P` can open, which in a repository is everything
+ * in it — and it is also sent on its own beat: the notes' list changes on
+ * every note made or gone, and resending a repository's thousands of paths
+ * each time one did would be the cost of a feature nothing asked for.
+ *
+ * Sent when a tab connects, and again when the answer is not the one the tabs
+ * have — asked after the agent settles, which is when a turn has written
+ * files and when somebody is about to go and read them.
+ */
+export interface RepoMsg {
+	type: "repo";
+	/** From the top of the folder, forward slashes, in git's own order. Empty for a folder that is in no repository. */
+	files: string[];
+	/** The repository held more files than the list would take (repoFiles.ts's LIMIT), so this is not all of them. */
+	truncated: boolean;
+}
+
+/**
  * A note as it is on disk, whole, with who wrote which of its words. The
  * answer to open_note, and what a tab falls back to when a change arrives on
  * a version it does not have.
@@ -560,6 +615,23 @@ export interface SpecInfo {
 	 * has not written yet.
 	 */
 	written: SpecDoc[];
+	/**
+	 * How far the tasks have got, read off tasks.md (specTasks.ts): how many
+	 * tasks there are to run, how many are done, and the number of the next.
+	 * Null while there is no tasks.md. Told here rather than counted in the
+	 * window because a window that is not reading tasks.md — the tab row, a
+	 * spec's menu — still says it, and one parser reads the file for everybody.
+	 */
+	tasks: Progress | null;
+	/**
+	 * What each task that has been run came to: its commit, what that changed
+	 * and how the run said it checked it — oldest first, the order the work
+	 * was done in, and a task run twice is here twice. Read off the
+	 * repository's history (specResults.ts), where a task's commit says whose
+	 * it is; nothing about a result is kept anywhere else. Empty until a task
+	 * has been run, and in a folder that is no repository.
+	 */
+	results: TaskResult[];
 }
 
 export interface SpecsMsg {
@@ -743,6 +815,47 @@ export interface NoteGoneMsg {
 	path: string;
 }
 
+/**
+ * A file of the repository as text, to be read and not written — what a code
+ * tab shows (pages.ts). The answer to open_code, and what the tab reading it
+ * is sent again whenever the file changes on disk.
+ *
+ * Not a note's message and not a spec's: there is no log to say a change
+ * against, no links, no version to save over. `modified` is here so a tab can
+ * tell a file it has from the same file written since, and for nothing else.
+ */
+/** A commit and each file it changed, before and after — the answer to open_commit. See commitRead.ts. */
+export interface CommitMsg extends CommitRead {
+	type: "commit";
+	/** What was asked for, as it was asked: a short hash is answered with the whole one, and the tab that asked knows itself by this. */
+	asked: string;
+}
+
+/** There is no such commit in this repository, or what was asked for is not a commit's name. */
+export interface CommitGoneMsg {
+	type: "commit_gone";
+	asked: string;
+}
+
+export interface CodeMsg {
+	type: "code";
+	path: string;
+	text: string;
+	modified: number;
+	/** The file is longer than a tab will read, and `text` is its first part (vault.ts's CODE_MAX). */
+	truncated: boolean;
+}
+
+/**
+ * There is nothing to show: no such file, or one that is not text — a
+ * picture, a binary — which is said rather than drawn as the bytes it is.
+ */
+export interface CodeGoneMsg {
+	type: "code_gone";
+	path: string;
+	reason: "missing" | "binary";
+}
+
 /** The save was refused: the note changed since `base`. `modified` is what is there now. */
 export interface NoteConflictMsg {
 	type: "note_conflict";
@@ -856,6 +969,7 @@ export type StateMsg =
 	| SessionsMsg
 	| SnapshotMsg
 	| FilesMsg
+	| RepoMsg
 	| NoteMsg
 	| SpecMsg
 	| SpecsMsg
@@ -868,6 +982,10 @@ export type StateMsg =
 	| NoteRenamedMsg
 	| NoteRenameFailedMsg
 	| NoteGoneMsg
+	| CodeMsg
+	| CommitMsg
+	| CommitGoneMsg
+	| CodeGoneMsg
 	| NoteDeletedMsg
 	| NoteConflictMsg
 	| AuthorsMsg

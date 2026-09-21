@@ -22,16 +22,25 @@ const SETTLE_MS = 80;
 
 export type OnNoteEvent = (path: string) => void;
 
-export function watchNotes(root: string, onEvent: OnNoteEvent, settleMs = SETTLE_MS): () => void {
+/**
+ * `read` is the one thing here the folder cannot answer for itself: a file of
+ * the repository is only news while a tab is looking at it. The folder is a
+ * repository now, and reporting every write in one would mean a build, an
+ * install or a checkout waking this for thousands of paths nobody has open.
+ * The caller holds that set (server.ts) because it is the caller that knows
+ * who is looking.
+ */
+export function watchNotes(root: string, onEvent: OnNoteEvent, settleMs = SETTLE_MS, read: (path: string) => boolean = () => false): () => void {
 	const timers = new Map<string, ReturnType<typeof setTimeout>>();
 	let watcher: FSWatcher | null = null;
 	try {
 		watcher = watch(root, { recursive: true }, (_event, filename) => {
 			if (!filename) return;
 			const path = String(filename).split(sep).join("/");
-			// Not a note, a document, a spec or a spec's approvals — any other
-			// dotfolder, the history itself, any other file — is not news.
-			if (!resolveNote(root, path) && !documentAt(root, path) && !specAt(root, path) && !specRecordAt(root, path)) return;
+			// Not a note, a document, a spec, a spec's approvals, or a file
+			// somebody has open to read — any other dotfolder, the history
+			// itself, any other file — is not news.
+			if (!resolveNote(root, path) && !documentAt(root, path) && !specAt(root, path) && !specRecordAt(root, path) && !read(path)) return;
 			const pending = timers.get(path);
 			if (pending) clearTimeout(pending);
 			timers.set(

@@ -11,6 +11,10 @@ import type {
 	AuthorsMsg,
 	Backlink,
 	BranchPoint,
+	CodeGoneMsg,
+	CodeMsg,
+	CommitGoneMsg,
+	CommitMsg,
 	ConfigMsg,
 	CommandInfo,
 	ContextSourcesMsg,
@@ -137,6 +141,31 @@ export const filesStore = createStore<NoteFile[]>([]);
 
 /** The documents beside the notes — a PDF the agent can read — by path, as the server last listed them. */
 export const documentsStore = createStore<string[]>([]);
+
+/**
+ * Every file of the repository the folder is, as git last listed them
+ * (RepoMsg). Empty for a folder that is in none, which is also what it says
+ * before the server has answered — the palette then offers what it always did.
+ */
+export const repoStore = createStore<string[]>([]);
+
+/**
+ * The repository held more files than the list would take, so `repoStore` is
+ * not all of them — a thing to say where the palette says what it has, rather
+ * than to let a file be missing from it with nothing to explain why.
+ */
+export const repoTruncatedStore = createStore<boolean>(false);
+
+/**
+ * The file a code tab is reading, as the server last read it off the disk, or
+ * why there is nothing to read (CodeMsg). One store for the one tab in front:
+ * the middle column draws only what is in front, so a second would never be
+ * looked at. Null before anything has been asked for.
+ */
+export const codeStore = createStore<CodeMsg | CodeGoneMsg | null>(null);
+
+/** The commit a tab asked to read, or that there is none — the last answer, whoever asked (Commit.tsx tells its own by `asked`). */
+export const commitStore = createStore<CommitMsg | CommitGoneMsg | null>(null);
 
 /**
  * Where each spec stands — what is approved, what is waiting for the person —

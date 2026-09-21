@@ -34,15 +34,16 @@ import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice as m
 import { readSettings, updateSettings, type Settings } from "./settings.ts";
 import { askForName } from "./sessionName.ts";
 import { askUser } from "./askUser.ts";
-import specCommand, { takenSpecs } from "./spec.ts";
+import specCommand, { takenSpecs, taskMarkEntry } from "./spec.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { extensionUI } from "./extensionUI.ts";
 import { deleteSessionFile } from "./sessionDelete.ts";
 import { Cancelled } from "./prompts.ts";
 import { branchPoints } from "./branches.ts";
-import { documentAt, listNotes, newNoteName, type Note, readNote, readSpec, renameNote, restoreNote, specAt, specRecordAt, withCreated, writeNote, writeSpec, type WriteResult } from "./vault.ts";
+import { documentAt, listNotes, newNoteName, type Note, readCode, readNote, readSpec, renameNote, restoreNote, specAt, specRecordAt, withCreated, writeNote, writeSpec, type WriteResult } from "./vault.ts";
 import { attachmentAt } from "./pictures.ts";
 import { FileIndex } from "./fileIndex.ts";
+import { type Repo, repoFiles } from "./repoFiles.ts";
 import { startLogging } from "./log.ts";
 import { deleteNote, shellTrash } from "./trash.ts";
 import { createLoginBridge } from "./login.ts";
@@ -53,6 +54,9 @@ import { documents } from "./documents.ts";
 import { MAX_BYTES, saveAttachment, type Saved } from "./attach.ts";
 import { documentType, SPEC_DOCS, SPECS_DIR } from "./documentKinds.ts";
 import { specState } from "./specApproval.ts";
+import { parseTasks, progressOf, type Progress } from "./specTasks.ts";
+import { type TaskResult, taskResults } from "./specResults.ts";
+import { readCommit } from "./commitRead.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { watchNotes } from "./watcher.ts";
@@ -69,6 +73,8 @@ import type {
 	Authored,
 	BranchesMsg,
 	ClientMsg,
+	CodeGoneMsg,
+	CodeMsg,
 	CommandsMsg,
 	ConfigMsg,
 	ContextSourcesMsg,
@@ -80,6 +86,7 @@ import type {
 	PiSettings,
 	PiEventMsg,
 	ProvidersMsg,
+	RepoMsg,
 	ServerMsg,
 	SessionsMsg,
 	SettingsMsg,
@@ -364,6 +371,7 @@ function config(): ConfigMsg {
 	// left it out — see availableModels. Without this the picker could show the
 	// session running on nothing.
 	if (model && current) offered.set(current, model);
+	saidRun = JSON.stringify(runOf());
 	return {
 		type: "config",
 		model: current,
@@ -383,9 +391,28 @@ function config(): ConfigMsg {
 		},
 		sessionId: s.sessionId,
 		sessionName: s.sessionName ?? null,
+		run: runOf(),
 		folder: CWD,
 		log: logFile,
 	};
+}
+
+/**
+ * The mark whose turn has ended, by its entry's id. The mark stays in the
+ * session after the run — the box and the commit are made at its end — and
+ * the turns after it are conversation, so "this session is running a task"
+ * is the mark being there and its turn not being over.
+ */
+let runOver: string | null = null;
+
+/** The task this session is running now, or null. */
+function runOf(): ConfigMsg["run"] {
+	const s = session();
+	if (!s.isStreaming) return null;
+	const found = taskMarkEntry(s.sessionManager.buildContextEntries());
+	if (!found || found.id === runOver) return null;
+	const { spec, task, title, then } = found.mark;
+	return { spec, task, title, then };
 }
 
 /**
@@ -560,6 +587,36 @@ function files(): FilesMsg {
 }
 
 /**
+ * A file of the repository as a tab reads it, or why there is nothing to
+ * read — see readCode. Nothing of the note's message is here: a file read in
+ * a tab has no log, no links and no save to be refused.
+ */
+function code(path: string): CodeMsg | CodeGoneMsg {
+	const read = readCode(CWD, path);
+	return read.ok
+		? { type: "code", path: read.path, text: read.text, modified: read.modified, truncated: read.truncated }
+		: { type: "code_gone", path, reason: read.reason };
+}
+
+/** The repository's files as git last listed them, or none where the folder is in no repository. */
+function repoMsg(): RepoMsg {
+	return { type: "repo", files: repo?.files ?? [], truncated: repo?.truncated ?? false };
+}
+
+/**
+ * Ask git again, and tell the tabs only when the answer is not the one they
+ * have — the same rule the notes' index answers by (fileIndex.ts), for the
+ * same reason: most turns write into files that are already on the list.
+ */
+async function loadRepo(): Promise<void> {
+	const was = repo;
+	const next = await repoFiles(CWD);
+	repo = next;
+	const same = was?.files.length === next?.files.length && (was?.files ?? []).every((path, at) => next?.files[at] === path);
+	if (!same) broadcast(repoMsg());
+}
+
+/**
  * Bring a note's log up to what is on disk, asking whose the difference is.
  *
  * Every place that settles the disk goes through here, because the answer is
@@ -649,9 +706,47 @@ function specs(): SpecsMsg {
 				waiting,
 				waitingAt: waiting ? writtenAt(join(dir, waiting)) : null,
 				written: SPEC_DOCS.filter((doc) => existsSync(join(dir, doc))),
+				tasks: tasksOf(join(dir, "tasks.md")),
+				results: results.get(name) ?? [],
 			};
 		}),
 	};
+}
+
+/**
+ * What the tasks came to, as git last said — see specResults.ts. Held rather
+ * than asked for each time specs() is: that is read on every write to a
+ * spec's folder and is synchronous, and this is a walk of the history.
+ *
+ * Asked again when the answer can have changed: as the server starts, as a
+ * tab connects, as a turn settles — a task's commit is made at the end of
+ * its turn, before the server hears of it — and a moment after a spec's
+ * file changes, which is how a run from the terminal is seen: its box is
+ * written and then its commit made, so the asking waits for the second.
+ */
+let results = new Map<string, TaskResult[]>();
+let resultsSoon: ReturnType<typeof setTimeout> | null = null;
+
+async function loadResults(): Promise<void> {
+	results = await taskResults(CWD);
+	saySpecs();
+}
+
+function loadResultsSoon(): void {
+	if (resultsSoon) clearTimeout(resultsSoon);
+	resultsSoon = setTimeout(() => {
+		resultsSoon = null;
+		void loadResults();
+	}, 600);
+}
+
+/** How far a spec's tasks have got, or null while the file is not there. */
+function tasksOf(file: string): Progress | null {
+	try {
+		return progressOf(parseTasks(readFileSync(file, "utf8")));
+	} catch {
+		return null;
+	}
 }
 
 /** When a file was last written, or null where it cannot be asked. */
@@ -692,6 +787,17 @@ claimAppDir(CWD);
 /** Which notes the folder holds, so that a save does not read the folder again — see fileIndex.ts. */
 const notes = new FileIndex(CWD);
 notes.load();
+
+/**
+ * Which files the repository holds, as git last listed them — see repoFiles.ts.
+ * Null for a folder that is in no repository, and until git has first answered.
+ *
+ * Kept rather than asked for where it is wanted: git is a process, the answer
+ * does not change between turns, and a tab connecting cannot wait on one.
+ */
+let repo: Repo | null = null;
+void loadRepo();
+void loadResults();
 
 /** Every note's links, for "who links here" — see linkIndex.ts. */
 const links = new LinkStore(CWD);
@@ -757,12 +863,24 @@ function noticed(path: string): void {
 		// spec is waiting on — including when the write was this app's own and
 		// the tabs have the words already.
 		saySpecs();
+		// And a box checked is a task's run ending, whose commit follows it.
+		loadResultsSoon();
 		return;
 	}
 	// The record itself: nothing opens it, and all it can change is where the
 	// spec stands.
 	if (specRecordAt(CWD, path)) {
 		saySpecs();
+		return;
+	}
+	// A file somebody has open to read, sent to them again. After the three
+	// above, so a tab that asked for a path which is also a note or a spec
+	// cannot stand in front of what that path really is; nothing else here
+	// answers for a file that is neither.
+	const looking = [...reading].filter(([, at]) => at === path).map(([ws]) => ws);
+	if (looking.length > 0) {
+		const text = safeStringify(code(path));
+		for (const ws of looking) if (ws.readyState === ws.OPEN) ws.send(text);
 		return;
 	}
 	const found = readNote(CWD, path);
@@ -1009,6 +1127,18 @@ async function abortWithin(ms: number): Promise<void> {
 
 const clients = new Set<WebSocket>();
 
+/**
+ * Which file of the repository each tab has open to read — what to send it
+ * again when that file changes on disk (CodeMsg). One path per tab, since one
+ * tab is in front and the middle column draws only what is in front.
+ *
+ * Beside the sockets because it is a fact about a window looking, true only
+ * while it is: the entry goes when the tab closes the file, and with the
+ * socket when the window does. It is also what narrows the watcher, which
+ * would otherwise wake for every file a build or a checkout writes.
+ */
+const reading = new Map<WebSocket, string>();
+
 function broadcast(payload: ServerMsg): void {
 	const text = safeStringify(payload);
 	for (const client of clients) {
@@ -1081,8 +1211,20 @@ function toWireEvent(event: AgentSessionEvent): PiEventMsg {
  */
 let rereadWhenSettled = false;
 
+/** What the run was last said to be, so that a message ending mid-run is told only when that changes. */
+let saidRun = "";
+
 function onEvent(event: AgentSessionEvent): void {
 	broadcast(toWireEvent(event));
+	// The run's turn is over: the mark it carried is not a run any more.
+	if (event.type === "agent_settled") runOver = taskMarkEntry(session().sessionManager.buildContextEntries())?.id ?? runOver;
+	// The mark is written into the session as the turn's first messages end,
+	// which may be after agent_start was told: a message ending is looked at
+	// for the run having appeared, and the tabs told only when it has.
+	if (event.type === "message_end") {
+		const now = JSON.stringify(runOf());
+		if (now !== saidRun) broadcast(config());
+	}
 	// isStreaming and the queue drive the stop button and pending count.
 	if (
 		event.type === "agent_start" ||
@@ -1109,6 +1251,10 @@ function onEvent(event: AgentSessionEvent): void {
 	// hears — a shell command. One walk at the end of a turn, and only if what
 	// it found differs.
 	if (event.type === "agent_settled" && notes.load()) broadcast(files());
+	// And it may have written a file that is not a note at all, which is what
+	// a spec's task writes. git is asked the same question at the same moment.
+	if (event.type === "agent_settled") void loadRepo();
+	if (event.type === "agent_settled") void loadResults();
 	// A finished turn is the first moment there can be something to name the
 	// session by, and each one after is another chance while there is not.
 	if (event.type === "agent_settled") void nameSession();
@@ -1589,12 +1735,16 @@ wss.on("connection", async (ws) => {
 	// Someone is looking: a list that has gone stale since the last pass is
 	// brought up to date, and this tab hears of it like every other.
 	void refreshModels();
-	ws.on("close", () => clients.delete(ws));
+	ws.on("close", () => {
+		clients.delete(ws);
+		reading.delete(ws);
+	});
 	// ws emits 'error' for a malformed frame. Node throws on an 'error' event
 	// with no listener, so without this one bad frame takes the process down.
 	ws.on("error", (err) => {
 		console.error("websocket error:", err.message);
 		clients.delete(ws);
+		reading.delete(ws);
 	});
 	/** To this tab only: answers to what it asked, and the state it needs to start. */
 	const reply = (msg: ServerMsg) => ws.send(safeStringify(msg));
@@ -1609,6 +1759,11 @@ wss.on("connection", async (ws) => {
 	reply(branches());
 	notes.load();
 	reply(files());
+	// What git last said, at once; and git asked again, which reaches every tab
+	// if the answer has moved on since the last turn ended.
+	reply(repoMsg());
+	void loadRepo();
+	void loadResults();
 	reply(specs());
 	reply({ type: "property_types", types: propertyTypes.all() });
 	reply({ type: "property_names", ...propertyNames.all() });
@@ -2062,6 +2217,30 @@ wss.on("connection", async (ws) => {
 					break;
 				}
 
+				// A file of the repository, to read and not to write. A door of
+				// its own rather than open_note's, because what comes back is
+				// not a note and the folder answers for a different set of paths.
+				case "open_code": {
+					if (typeof msg.path !== "string") return;
+					reading.set(ws, msg.path);
+					reply(code(msg.path));
+					break;
+				}
+
+				// The tab has gone, or has moved to something that is not a file.
+				case "close_code":
+					reading.delete(ws);
+					break;
+
+				// A commit, to read what it changed. What is asked for is checked
+				// where it is read (commitRead.ts): a hash and nothing else.
+				case "open_commit": {
+					const asked = typeof msg.commit === "string" ? msg.commit : "";
+					const read = await readCommit(CWD, asked);
+					reply(read ? { type: "commit", asked, ...read } : { type: "commit_gone", asked });
+					break;
+				}
+
 				// The editor's save. Refused rather than merged when the note has
 				// moved on since it was read — see vault.ts — and recorded to the
 				// note's history as mine when it lands.
@@ -2390,8 +2569,9 @@ wss.on("connection", async (ws) => {
  */
 const systemTrash = shellTrash();
 
-// Writes that do not pass through here — see watcher.ts.
-const stopWatching = watchNotes(CWD, noticed);
+// Writes that do not pass through here — see watcher.ts. A file is watched
+// only while a tab has it open, which is what `reading` is for.
+const stopWatching = watchNotes(CWD, noticed, undefined, (path) => [...reading.values()].includes(path));
 
 server.listen(PORT, HOST, () => {
 	console.log(`open http://localhost:${PORT}  (ctrl+c to stop)`);

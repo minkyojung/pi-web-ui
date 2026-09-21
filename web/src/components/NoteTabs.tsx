@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { closestCenter, DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
@@ -7,7 +7,8 @@ import { Plus, X } from "lucide-react";
 
 import { titleOf, wholePath } from "../noteSync";
 import { pageOf } from "../pages";
-import { configStore } from "../serverState";
+import { commitTabTitle, taskOfCommit } from "../resultsList.ts";
+import { configStore, specsStore } from "../serverState";
 import { others, toTheRight } from "../tabs";
 import { Button } from "./ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "./ui/context-menu";
@@ -143,18 +144,33 @@ function NoteTab({
 	// The role and the tab index are the tabs pattern's, not the sortable's:
 	// this is a tab that can be dragged, not a button that can be.
 	const { attributes: { role: _role, tabIndex: _tabIndex, ...attributes }, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: path });
-	// The tab shows the title; a note in a folder says where, on hover. The
-	// rest have nothing to add, so they get no tooltip and no title either.
-	const inFolder = path.includes("/");
+	// A commit's tab is called by the task it is the result of, read off the
+	// results the window already has (resultsList.ts): a hash is an address
+	// and not a name. One that is no task's keeps its hash.
+	const specs = useSyncExternalStore(specsStore.subscribe, specsStore.get);
+	const page = pageOf(path);
+	const ofTask = page?.kind === "commit" ? taskOfCommit(specs, page.commit) : null;
+	const title = ofTask ? commitTabTitle(ofTask) : (page?.title ?? titleOf(path));
+	// What the tab cannot say in its width, on hover: where a note in a folder
+	// is, and for a commit its whole name with the hash it is known by. The
+	// rest have nothing to add, so they get no tooltip.
+	const more = ofTask ? `${title} · ${ofTask.short}` : page === null && path.includes("/") ? path : null;
 	const tab = (
 		<div
 			ref={setNodeRef}
 			data-path={path}
 			data-dragging={isDragging || undefined}
-			// Translate, not Transform: tabs differ in width, and a scale would
-			// show the one being moved stretched to the one it passes.
+			// Translate, not Transform: a drag moves a tab and has no business
+			// scaling it.
 			style={{ transform: CSS.Translate.toString(transform), transition, touchAction: "none" }}
-			className="group/tab max-w-48 flex-none justify-start pr-1 pl-3 select-none data-[dragging]:z-10 data-[dragging]:opacity-60"
+			// One width for every tab, and a little generous. They were as wide
+			// as their words up to a limit, which was a tidy row while a tab was
+			// a note's short name; a file's name and a task's line are longer,
+			// and a row of tabs each its own width reads as ragged and moves
+			// under the pointer as tabs open and close. A browser's tabs are one
+			// width for the same reason. What does not fit is cut with an
+			// ellipsis and said whole on hover.
+			className="group/tab w-48 flex-none justify-start pr-1 pl-3 select-none data-[dragging]:z-10 data-[dragging]:opacity-60"
 			{...attributes}
 			{...listeners}
 			// The wheel button: Radix already stops its default on mousedown.
@@ -169,11 +185,11 @@ function NoteTab({
 				onCloseByKey();
 			}}
 		>
-			<span className="truncate">{pageOf(path)?.title ?? titleOf(path)}</span>
+			<span className="min-w-0 flex-1 truncate text-left">{title}</span>
 			<span
 				role="button"
 				tabIndex={-1}
-				aria-label={`Close ${pageOf(path)?.title ?? titleOf(path)}`}
+				aria-label={`Close ${title}`}
 				className="rounded-sm p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover/tab:opacity-100 group-data-[state=active]/tab:opacity-100 hover:bg-accent hover:text-foreground"
 				onClick={(e) => {
 					e.stopPropagation();
@@ -200,9 +216,9 @@ function NoteTab({
 		<ContextMenu>
 			<Tooltip>
 				<TabsTrigger value={path} asChild>
-					<ContextMenuTrigger asChild>{inFolder ? <TooltipTrigger asChild>{tab}</TooltipTrigger> : tab}</ContextMenuTrigger>
+					<ContextMenuTrigger asChild>{more ? <TooltipTrigger asChild>{tab}</TooltipTrigger> : tab}</ContextMenuTrigger>
 				</TabsTrigger>
-				{inFolder && <TooltipContent side="bottom">{path}</TooltipContent>}
+				{more && <TooltipContent side="bottom">{more}</TooltipContent>}
 			</Tooltip>
 			<ContextMenuContent>
 				<ContextMenuItem onSelect={onClose}>

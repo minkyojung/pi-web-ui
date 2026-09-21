@@ -14,6 +14,8 @@ import {
 	providersStore,
 	applySettings,
 	applyLogin,
+	codeStore,
+	commitStore,
 	commandsStore,
 	contextSourcesStore,
 	authorsStore,
@@ -33,6 +35,8 @@ import {
 	propertyNamesStore,
 	propertyTypesStore,
 	pushRaw,
+	repoStore,
+	repoTruncatedStore,
 	removePrompt,
 	restoredStore,
 	runUndoneStore,
@@ -88,7 +92,12 @@ const STATE: Record<StateMsg["type"], true> = {
 	sessions: true,
 	snapshot: true,
 	files: true,
+	repo: true,
 	note: true,
+	code: true,
+	code_gone: true,
+	commit: true,
+	commit_gone: true,
 	specs: true,
 	backlinks: true,
 	tagged: true,
@@ -158,6 +167,20 @@ function receive(msg: ServerMsg): void {
 			filesStore.set(msg.files);
 			documentsStore.set(msg.documents);
 			filesTruncatedStore.set(msg.truncated);
+			return;
+		case "repo":
+			repoStore.set(msg.files);
+			repoTruncatedStore.set(msg.truncated);
+			return;
+		// Both answers to the same ask, and the tab reading one tells them
+		// apart by their type: there is the file, or there is why there is not.
+		case "code":
+		case "code_gone":
+			codeStore.set(msg);
+			return;
+		case "commit":
+		case "commit_gone":
+			commitStore.set(msg);
 			return;
 		case "specs":
 			specsStore.set(msg.specs);

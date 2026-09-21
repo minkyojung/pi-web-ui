@@ -22,6 +22,7 @@ import { createServers, idle } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
 import { branchOf, git, makeWorkspace, repositoryOf } from "./git.js";
 import { clone, login, repositories, repositoryName } from "./github.js";
+import { editorsOn, openingOf } from "./editors.js";
 import { firstWorkspace, projectsOf, withWorkspace } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
@@ -570,6 +571,34 @@ function serveFolders() {
 	// at all. showItemInFolder on a path that is not there does nothing, which
 	// is the right amount of fuss for a file that was just deleted.
 	ipcMain.handle("file:reveal", (_event, path) => shell.showItemInFolder(path));
+	// The editors this machine has, and a file opened in one — see editors.js.
+	// The icon comes back as a data URL: a NativeImage cannot cross to the page,
+	// and what the page wants of it is a src.
+	ipcMain.handle("editors", async () => {
+		const found = await editorsOn((scheme) => app.getApplicationInfoForProtocol(scheme));
+		return found.map(({ scheme, name, icon }) => ({ scheme, name, icon: icon?.isEmpty() === false ? icon.toDataURL() : null }));
+	});
+	ipcMain.handle("editor:open", async (_event, { scheme, file, line }) => {
+		// Asked again rather than remembered: what is installed can change
+		// between the menu being drawn and an item in it being chosen, and this
+		// is also where the app's path — which the opening needs — comes from.
+		const editor = (await editorsOn((s) => app.getApplicationInfoForProtocol(s))).find((one) => one.scheme === scheme);
+		const opening = editor && openingOf(scheme, editor.path, file, line);
+		if (!opening) return { error: "That editor is no longer there." };
+		try {
+			if (opening.url) await shell.openExternal(opening.url);
+			else {
+				// Let go of it: this starts an app, and an app outlives the click.
+				// Checked first, because a spawn that fails does so on an event
+				// nobody is left to hear.
+				if (!existsSync(opening.command)) return { error: `${editor.name} has no command to open a file with.` };
+				spawn(opening.command, opening.args, { detached: true, stdio: "ignore" }).unref();
+			}
+			return {};
+		} catch (error) {
+			return { error: String(error?.message ?? error) };
+		}
+	});
 }
 
 /** Where the server writes its log — log.ts says the same, from the same two places. */

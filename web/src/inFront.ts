@@ -30,6 +30,12 @@ export type InFront = {
 	tags: string[];
 	/** How much of it somebody other than you wrote, as the note was last written down. See Authored in protocol.ts. */
 	authored: Authored | null;
+	/**
+	 * Which line the cursor is on, for a file being read (Code.tsx) — what
+	 * "open this in my editor" opens it at. Absent for a note, whose editor
+	 * is this one and which nothing asks this of.
+	 */
+	line?: number;
 };
 
 const nothing = { saved: "loading" as Saved, words: 0, characters: 0, tags: [] as string[], authored: null };

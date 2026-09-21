@@ -104,11 +104,17 @@ export function looking(note: { path: string; chosen: string | null; page?: stri
 	const document = isDocument(note.path);
 	// A spec is markdown in the editor like a note, and said as what it is: told
 	// it was a note, pi reaches for note_edit, which refuses it.
+	//
+	// And a file of the repository, which the window shows and does not write:
+	// said as a file being read, so a question about it is answered about the
+	// code and not about a note nobody has.
 	const line = document
 		? `When they sent this message, the person had this document open beside the conversation: ${note.path} (read it with read; it comes back page by page)`
 		: isSpec(note.path)
 			? `When they sent this message, the person had this spec open in their editor: ${note.path} (a spec is not a note: change it with edit or write, not note_edit)`
-			: `When they sent this message, the person had this note open in their editor: ${note.path}`;
+			: note.path.endsWith(".md")
+				? `When they sent this message, the person had this note open in their editor: ${note.path}`
+				: `When they sent this message, the person was reading this file of the repository: ${note.path}`;
 	if (!note.chosen) return line;
 	const where = document && note.page ? ` on page ${note.page.replace("-", " to ")}` : "";
 	// Quoted, and said to be a part of the note rather than a thing to answer

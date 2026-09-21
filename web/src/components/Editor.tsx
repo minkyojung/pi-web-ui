@@ -4,18 +4,20 @@ import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { deleteMarkupBackward, insertNewlineContinueMarkup, markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
-import { ChangeSet, EditorState, type Extension, Transaction } from "@codemirror/state";
+import { ChangeSet, Compartment, EditorState, type Extension, Transaction } from "@codemirror/state";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { drawSelection, dropCursor, EditorView, keymap, placeholder } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-import { isSpec } from "../../../documentKinds.ts";
+import { isSpec, specNameOf } from "../../../documentKinds.ts";
 import { choose, chosenStore } from "../chosen";
 import { linkCompletion } from "../features/linkCompletion";
 import { indentListItem, listBackspace, listEnter, outdentListItem } from "../features/listEdit";
 import { listNumbers } from "../features/listNumbers";
 import { listIndent } from "../features/listIndent";
 import { authors, clearAuthors, paintAuthors, showAuthorsStore } from "../features/authors";
+import { blocked as startBlocked, chrome as startChrome, onStart, running as startRunning, taskStart } from "../features/taskStart";
+import { chipChrome, commits as taskCommits, onCommit, taskCommit } from "../features/taskCommit";
 import { forget as forgetMoves, observe as observeMoves, take as takeMoves } from "../features/moves";
 import { livePreview, toggleLivePreview, toggleTask } from "../features/livePreview";
 import { leaveTextUp } from "../features/pageMove";
@@ -43,17 +45,32 @@ import { tagsIn, type Place } from "../../../links.ts";
 import type { Left } from "../nav";
 import type { Edit } from "../types";
 import type { Authored } from "../../../protocol.ts";
-import { authorsStore, documentsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
+import { authorsStore, commandsStore, configStore, documentsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, specsStore } from "../serverState";
+import { RUN, runBlocked, runMessage, runWhy, tasksBetween } from "../specRun.ts";
+import { pickTasks, runOnOf, runOnStore } from "../runOn";
+import { commitPath } from "../pages";
+import { listOf } from "../resultsList.ts";
 import { inFrontStore, say as sayInFront } from "../inFront";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { flushSaves, registerSave } from "../saves";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Properties } from "./Properties";
-import { Button } from "./ui/button";
+import { badgeVariants } from "./ui/badge";
+import { Button, buttonVariants } from "./ui/button";
 
 /** How long typing has to stop before it is written down. */
 const AUTOSAVE_MS = 600;
+
+/**
+ * The Starts beside a spec's tasks (taskStart.ts), in a compartment: the
+ * editor is made once, and only a spec's tasks.md has them — and what blocks
+ * them is read off stores that change under a live editor.
+ */
+const startRoom = new Compartment();
+
+/** Whether a path is the tasks document of a spec, which is the one with Starts. */
+const isTasks = (path: string): boolean => isSpec(path) && path.endsWith("/tasks.md");
 
 /**
  * How much note there is, for the strip at the foot of the window.
@@ -382,6 +399,8 @@ export function Editor({
 			listNumbers,
 			// A mark typed over chosen words wraps them.
 			wrapSelection,
+			// Start beside each task still to do, on a spec's tasks.md only.
+			startRoom.of([]),
 		];
 		const state = EditorState.create({
 			doc: "",
@@ -457,6 +476,14 @@ export function Editor({
 				theme,
 				EditorView.updateListener.of((u) => {
 					if (held.current.length > 0 && !u.view.composing) releaseHeld();
+					// What the selection covers of a spec's tasks, for the bar over
+					// them (TaskBar): a cursor covers nothing — one task is its Start.
+					if (u.selectionSet || u.docChanged) {
+						const spec = isTasks(at.current) ? specNameOf(at.current) : null;
+						const text = u.state.doc.toString();
+						const numbers = spec === null ? [] : [...new Set(u.state.selection.ranges.filter((range) => !range.empty).flatMap((range) => tasksBetween(text, range.from, range.to).map((task) => task.number)))];
+						pickTasks(spec !== null && numbers.length > 0 ? { spec, numbers } : null);
+					}
 					if (u.state.field(propertiesField) !== u.startState.field(propertiesField)) setRead(u.state.field(propertiesField));
 					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) {
 						// A cut or a paste is seen here, while `local` is still the way
@@ -537,6 +564,74 @@ export function Editor({
 		send({ type: "open_note", path });
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [online, path]);
+
+	// The Starts beside a spec's tasks: on tasks.md only, pressable when the
+	// command can be sent (specRun.ts), and pressing sends it — the same as
+	// typing it. "Starting…" holds from the press until the agent is seen to
+	// be working, or a moment passes with no sign of it (a refusal is a
+	// notice, not a state).
+	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
+	const commands = useSyncExternalStore(commandsStore.subscribe, commandsStore.get);
+	const specs = useSyncExternalStore(specsStore.subscribe, specsStore.get);
+	const runOn = useSyncExternalStore(runOnStore.subscribe, runOnStore.get);
+	const [starting, setStarting] = useState<string | null>(null);
+	const streaming = config?.isStreaming ?? false;
+	useEffect(() => {
+		if (streaming) setStarting(null);
+	}, [streaming]);
+	useEffect(() => {
+		if (starting === null) return;
+		const timer = setTimeout(() => setStarting(null), 5000);
+		return () => clearTimeout(timer);
+	}, [starting]);
+	useEffect(() => {
+		const v = view.current;
+		if (!v) return;
+		const spec = isTasks(path) ? specNameOf(path) : null;
+		if (spec === null) {
+			v.dispatch({ effects: startRoom.reconfigure([]) });
+			pickTasks(null);
+			return;
+		}
+		const why = runWhy(
+			runBlocked({
+				online,
+				streaming,
+				compacting: config?.isCompacting ?? false,
+				hasCommand: commands.some((command) => command.name === RUN),
+				spec: specs?.find((entry) => entry.name === spec) ?? null,
+				count: 1,
+				sent: starting !== null,
+			}),
+		);
+		v.dispatch({
+			effects: startRoom.reconfigure([
+				taskStart,
+				startChrome.of(buttonVariants({ variant: "ghost", size: "icon-xs" })),
+				startBlocked.of(why),
+				// What each task done came to, at the end of its line: the commit of
+				// its last run, as the list at the foot of the window has it (listOf),
+				// so the two cannot name different ones.
+				taskCommit,
+				// Filled, as the strip's task chip and a file's Read-only are: the
+				// border token is a twentieth of white in the dark themes, and an
+				// outline drawn in it is a word and not a chip.
+				chipChrome.of(`${badgeVariants({ variant: "secondary" })} h-5 px-1.5 text-[11px] font-normal text-muted-foreground hover:text-foreground`),
+				taskCommits.of(new Map(listOf(specs?.find((entry) => entry.name === spec)?.results ?? [], null).lines.map((line) => [line.task, { commit: line.commit, short: line.short }]))),
+				onCommit.of((commit) => onOpen?.(commitPath(commit))),
+				// The task being run, when it is this spec's: its Start turns.
+				startRunning.of(config?.run?.spec === spec ? config.run.task : null),
+				onStart.of((number) => {
+					// On what the bar over the tasks chose (TaskBar), if anything.
+					const on = runOnOf(runOn, spec);
+					send(runMessage(spec, [number], on ? { model: on.model, effort: on.level } : {}));
+					setStarting(number);
+				}),
+			]),
+		});
+	}, [path, online, streaming, config?.isCompacting, config?.run, commands, specs, starting, runOn]);
+	// Gone from the page, the selection covers nothing.
+	useEffect(() => () => pickTasks(null), []);
 
 	// A note made or renamed elsewhere may be the one a link here names.
 	const notes = useSyncExternalStore(filesStore.subscribe, filesStore.get);

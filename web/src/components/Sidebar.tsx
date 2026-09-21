@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { cn } from "cn";
 import { ChevronLeftIcon, ChevronRightIcon, FileIcon, FileTextIcon, FolderIcon, GitBranchIcon, PlusIcon } from "lucide-react";
@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { titleOf } from "../noteSync";
 import { isDocument } from "../../../documentKinds.ts";
-import { documentsStore, filesStore, filesTruncatedStore } from "../serverState";
+import { configStore, documentsStore, filesStore, filesTruncatedStore } from "../serverState";
 import { type Node, openFoldersStore, reveal, setOpenFolders, toggle, treeOf } from "../tree";
 import { noteActions } from "../noteActions";
 import { getConnection, subscribe } from "../store";
@@ -210,6 +210,8 @@ const branchName = (branch: string) => branch.slice(branch.indexOf("/") + 1);
  */
 function useWorkspaceList(): WorkspaceList | null | undefined {
 	const [list, setList] = useState<WorkspaceList | null | undefined>(workspaceShell ? undefined : null);
+	/** The one way to ask, held where the turn below can reach it too. */
+	const ask = useRef<() => void>(() => {});
 	useEffect(() => {
 		if (!workspaceShell) return;
 		let live = true;
@@ -219,9 +221,10 @@ function useWorkspaceList(): WorkspaceList | null | undefined {
 				() => live && setList((was) => was ?? null),
 			);
 		};
+		ask.current = load;
 		load();
 		const stop = workspaceShell.onChange(load);
-		// A branch renamed inside a workspace — by the agent, by hand — is news
+		// A branch renamed inside a workspace — by hand, in a terminal — is news
 		// only git has, so the list is asked again when the window comes back.
 		window.addEventListener("focus", load);
 		return () => {
@@ -230,6 +233,21 @@ function useWorkspaceList(): WorkspaceList | null | undefined {
 			window.removeEventListener("focus", load);
 		};
 	}, []);
+	// And the moment a turn ends, which is the other time it changes: the turn
+	// that names a spec renames the branch after it (spec.ts), so a row that
+	// said `bangkok` says `email-auth` as the answer arrives rather than the
+	// next time the window is clicked away from and back to.
+	//
+	// Not a race with that rename: pi awaits its extensions' agent_settled
+	// before it emits the one the server turns into this (agent-session.ts),
+	// so by the time a turn reads as ended here, git has the new name.
+	const streaming = useSyncExternalStore(configStore.subscribe, () => configStore.get()?.isStreaming ?? false);
+	const before = useRef(streaming);
+	useEffect(() => {
+		const was = before.current;
+		before.current = streaming;
+		if (was && !streaming) ask.current();
+	}, [streaming]);
 	return list;
 }
 

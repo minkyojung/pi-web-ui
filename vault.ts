@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameS
 import { writeAtomic } from "./atomic.ts";
 import { propertiesOf, setProperty, withProperties } from "./properties.ts";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import { isDocument, isSpec, isSpecRecord } from "./documentKinds.ts";
+import { APP_DIR_NAME, isDocument, isSpec, isSpecRecord } from "./documentKinds.ts";
 
 export type NoteFile = {
 	/** Relative to the folder, with forward slashes, so it reads as a name. */
@@ -190,6 +190,62 @@ export function specRecordAt(root: string, given: string): { path: string; full:
 export function resolveNote(root: string, path: string): string | null {
 	if (isAbsolute(path)) return null;
 	return noteAt(root, path)?.full ?? null;
+}
+
+/**
+ * Any file of the repository a path names, as the vault names it, or null.
+ *
+ * Placed as a note is — inside the folder once resolved, on the disk's
+ * spelling — and then refused for exactly two names, at any depth: `.git`,
+ * which is git's own working parts and not a thing to read as text, and the
+ * app's own `.pi/`. Every other dot-folder is part of the repository and
+ * opens, which is the whole difference from fileAt: that one refuses them all
+ * because the notes' lists must not hold `.obsidian`, and this list is git's
+ * (repoFiles.ts), where `.github/workflows` and `.octave/specs` belong.
+ *
+ * Says nothing about what the file is. Whether a path opens as a note, a
+ * spec, a document or as text is the window's question (pages.ts); this one
+ * is only whether the folder will give it out at all.
+ */
+export function codeAt(root: string, given: string): { path: string; full: string } | null {
+	if (isAbsolute(given)) return null;
+	const file = inFolder(root, given);
+	return file && !file.path.split("/").some((part) => part === ".git" || part === APP_DIR_NAME) ? file : null;
+}
+
+/** How much of a file is read into a tab. Past this it is not a file anyone is reading; see CodeMsg. */
+export const CODE_MAX = 1_000_000;
+
+export type CodeRead =
+	| { ok: true; path: string; text: string; modified: number; truncated: boolean }
+	/** No such file, or one there is nothing to show of. */
+	| { ok: false; reason: "missing" | "binary" };
+
+/**
+ * A file of the repository as text, to be read and not written.
+ *
+ * Binary is decided as git decides it — a NUL byte in the first eight
+ * thousand, which no text has — rather than by the name, so a file with no
+ * extension is read and a `.png` is not mistaken for one that is.
+ *
+ * A file longer than CODE_MAX comes back cut, and says so. The cut is at a
+ * byte, so the last character of a long file can arrive broken; that is the
+ * price of not deciding a file's encoding, and it is at the end of something
+ * already announced as not all there.
+ */
+export function readCode(root: string, given: string): CodeRead {
+	const found = codeAt(root, given);
+	if (!found) return { ok: false, reason: "missing" };
+	let bytes: Buffer;
+	let modified: number;
+	try {
+		bytes = readFileSync(found.full);
+		modified = statSync(found.full).mtimeMs;
+	} catch {
+		return { ok: false, reason: "missing" };
+	}
+	if (bytes.subarray(0, 8000).includes(0)) return { ok: false, reason: "binary" };
+	return { ok: true, path: found.path, text: bytes.subarray(0, CODE_MAX).toString("utf8"), modified, truncated: bytes.length > CODE_MAX };
 }
 
 /**

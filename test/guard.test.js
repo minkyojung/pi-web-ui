@@ -92,6 +92,17 @@ test("스펙을 열어 두었으면 노트가 아니라 스펙이라고, 무엇�
   assert.ok(said.endsWith("> 첫 줄"));
 });
 
+test("저장소의 파일을 읽고 있었으면 노트가 아니라 파일이라고 말한다", () => {
+  assert.equal(
+    looking({ path: "web/src/App.tsx", chosen: null }),
+    "When they sent this message, the person was reading this file of the repository: web/src/App.tsx",
+  );
+  const said = looking({ path: "server.ts", chosen: "const a = 1;" });
+  assert.match(said, /was reading this file of the repository: server\.ts/);
+  assert.match(said, /They have chosen these words in it, which is what their message is about/);
+  assert.ok(said.endsWith("> const a = 1;"));
+});
+
 // --- what the guard refuses, as pi's runner would ask it ---
 
 /** The handler pi would call, from a guard bound to `root`. */

@@ -217,6 +217,47 @@ it("접속하면 서버의 상태가 먼저 온다 — 설정, 목록, 스냅샷
   await want("snapshot");
 });
 
+it("저장소의 파일은 읽기로 열리고, 열어 둔 동안 디스크의 변경이 따라오며, 닫으면 멈춘다", async () => {
+  writeFileSync(join(cwd, "tool.ts"), "const a = 1;\n");
+  clear();
+  send({ type: "open_code", path: "tool.ts" });
+  const first = await want("code");
+  assert.equal(first.path, "tool.ts");
+  assert.equal(first.text, "const a = 1;\n");
+  assert.equal(first.truncated, false);
+
+  // 앱을 거치지 않은 쓰기 — 작업이 쓰는 것이 이것이다.
+  clear();
+  writeFileSync(join(cwd, "tool.ts"), "const a = 2;\n");
+  await want("code", (m) => m.text === "const a = 2;\n");
+
+  // 닫은 뒤에는 오지 않는다: 저장소 하나를 통째로 방송하지 않기 위한 전부다.
+  send({ type: "close_code" });
+  await new Promise((r) => setTimeout(r, 300));
+  clear();
+  writeFileSync(join(cwd, "tool.ts"), "const a = 3;\n");
+  await new Promise((r) => setTimeout(r, 700));
+  assert.equal(inbox.some((m) => m.type === "code"), false, "닫은 탭에는 보내지 않는다");
+});
+
+it("읽을 것이 없으면 없다고 말한다 — 없는 파일, 글자가 아닌 파일, git의 것", async () => {
+  clear();
+  send({ type: "open_code", path: "nothing-here.ts" });
+  assert.equal((await want("code_gone")).reason, "missing");
+
+  writeFileSync(join(cwd, "icon.bin"), Buffer.from([0x01, 0x00, 0x02]));
+  clear();
+  send({ type: "open_code", path: "icon.bin" });
+  assert.equal((await want("code_gone")).reason, "binary");
+
+  mkdirSync(join(cwd, ".git"), { recursive: true });
+  writeFileSync(join(cwd, ".git", "config"), "[core]\n");
+  clear();
+  send({ type: "open_code", path: ".git/config" });
+  assert.equal((await want("code_gone")).reason, "missing", "git의 것은 없는 것과 같이 말한다");
+  send({ type: "close_code" });
+});
+
 it("노트를 열면 본문과 버전이 오고, pi가 손대지 않은 노트에는 결정할 것이 없다", async () => {
   clear();
   send({ type: "open_note", path: "a.md" });
@@ -1171,12 +1212,27 @@ it("스펙이 어디까지 왔는지 탭이 듣는다 — 문서가 써지면 �
   // is the one change the tabs would otherwise never hear.
   approve(cwd, "waiting");
   const after = await want("specs", (m) => m.specs.find((spec) => spec.name === "waiting")?.waiting === null);
-  assert.deepEqual(after.specs.find((spec) => spec.name === "waiting"), { name: "waiting", approved: 1, waiting: null, waitingAt: null, written: ["requirements.md"] });
+  assert.deepEqual(after.specs.find((spec) => spec.name === "waiting"), { name: "waiting", approved: 1, waiting: null, waitingAt: null, written: ["requirements.md"], tasks: null, results: [] });
   clear();
   // The next document, written on the approved one: waiting in its turn.
   putSpec(".octave/specs/waiting/design.md", "# Design\n");
   const next = await want("specs", (m) => m.specs.find((spec) => spec.name === "waiting")?.waiting === "design.md");
   assert.equal(next.specs.find((spec) => spec.name === "waiting").approved, 1);
+});
+
+it("작업이 어디까지 왔는지도 같은 메시지로 — tasks.md가 없으면 null, 칸이 체크되면 움직인다", async () => {
+  putSpec(".octave/specs/count/requirements.md", "# Requirements\n");
+  const none = await want("specs", (m) => m.specs.some((spec) => spec.name === "count"));
+  assert.equal(none.specs.find((spec) => spec.name === "count").tasks, null, "tasks.md가 아직 없다");
+  clear();
+  putSpec(".octave/specs/count/tasks.md", "- [ ] 1. First\n- [ ] 2. Heading\n- [ ] 2.1 Second\n- [ ] 2.2 Third\n");
+  const fresh = await want("specs", (m) => m.specs.find((spec) => spec.name === "count")?.tasks !== null);
+  assert.deepEqual(fresh.specs.find((spec) => spec.name === "count").tasks, { total: 4, done: 0, next: "1" }, "칸 넷, 묶음 2의 것도");
+  clear();
+  // The box checked as the run's end checks it (spec.ts): the count moves.
+  putSpec(".octave/specs/count/tasks.md", "- [x] 1. First\n- [ ] 2. Heading\n- [ ] 2.1 Second\n- [ ] 2.2 Third\n");
+  const moved = await want("specs", (m) => m.specs.find((spec) => spec.name === "count")?.tasks?.done === 1);
+  assert.deepEqual(moved.specs.find((spec) => spec.name === "count").tasks, { total: 4, done: 1, next: "2.1" });
 });
 
 it("승인이 풀려도 써진 문서는 써진 것이다 — 승인만으로는 알 수 없는 것", async () => {
@@ -1233,6 +1289,33 @@ it("붙는 탭은 명령 목록에서 /spec을 듣는다 — 메뉴가 그것을
 // own defaults instead, which include the shell — whatever the person had
 // chosen. Asked on Plan, where the difference is plain, and aborted as soon
 // as the tools have been seen.
+it("작업이 도는 동안 탭은 어느 작업인지 듣는다 — 세션의 표식에서; 턴이 끝나면 null", async () => {
+  const name = "running-check";
+  const dir = join(cwd, ".octave/specs", name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "requirements.md"), "# Requirements Document\n");
+  writeFileSync(join(dir, "design.md"), "# Design Document\n");
+  writeFileSync(join(dir, "tasks.md"), "# Implementation Plan\n\n- [ ] 1. Do the one thing\n- [ ] 2. Do the next\n");
+  const { approve } = await import("../specApproval.ts");
+  while (approve(cwd, name)) {}
+  clear();
+  try {
+    // One task, not a queue: this folder is no repository, so an aborted
+    // run still counts as done there and a queue would go on to the next
+    // while the check after this one is asking for a session of its own.
+    send({ type: "prompt", text: `/spec-run ${name} 1`, command: true });
+    const running = await want("config", (m) => m.run !== null, 60_000);
+    assert.deepEqual(running.run, { spec: name, task: "1", title: "Do the one thing", then: [] }, "무엇을 돌리는지, 뒤에 무엇이 남았는지");
+    assert.equal(running.isStreaming, true);
+    send({ type: "abort" });
+    await want("agent_settled", () => true, 60_000);
+    const rested = await want("config", (m) => m.isStreaming === false, 10_000);
+    assert.equal(rested.run, null, "턴이 끝나면 실행이 아니다");
+  } finally {
+    rmSync(join(cwd, ".octave"), { recursive: true, force: true });
+  }
+});
+
 it("명령이 연 세션도 사람이 고른 모드로 열린다 — Plan이면 셸도 쓰기도 없다", async () => {
   const name = "tools-check";
   const dir = join(cwd, ".octave/specs", name);
@@ -1267,5 +1350,39 @@ it("명령이 연 세션도 사람이 고른 모드로 열린다 — Plan이면 
   } finally {
     await setMode("execution");
     rmSync(join(cwd, ".octave"), { recursive: true, force: true });
+  }
+});
+
+// Last, because it makes the folder a repository for as long as it runs, and
+// the checks above were written for a folder that is none.
+it("작업이 무엇에 이르렀는지는 저장소의 역사에서 — 커밋의 트레일러로 찾아, 스펙마다", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
+  const dir = join(cwd, ".octave/specs/came-to");
+  try {
+    git("init", "-q", "-b", "main");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "requirements.md"), "# Requirements Document\n");
+    const none = await want("specs", (m) => m.specs.some((spec) => spec.name === "came-to"), 10_000);
+    assert.deepEqual(none.specs.find((spec) => spec.name === "came-to").results, [], "아직 돌린 작업이 없다");
+    clear();
+    // A task's end, as spec.ts makes it: the box, and then the commit that
+    // says whose it is. From outside the app, as a run in the terminal is.
+    writeFileSync(join(cwd, "came-to.js"), "export const x = 1;\nexport const y = 2;\n");
+    writeFileSync(join(dir, "tasks.md"), "- [x] 1. Make it\n- [ ] 2. Test it\n");
+    git("add", "-A", "--", ".octave", "came-to.js");
+    git("commit", "-q", "-m", "Make it", "-m", "Spec: came-to\nTask: 1\nChecks: node --test — 3 passed");
+    const told = await want("specs", (m) => m.specs.find((spec) => spec.name === "came-to")?.results.length === 1, 15_000);
+    const [result] = told.specs.find((spec) => spec.name === "came-to").results;
+    assert.equal(result.task, "1");
+    assert.equal(result.title, "Make it");
+    assert.equal(result.commit, git("rev-parse", "HEAD"));
+    assert.equal(result.checks, "node --test — 3 passed");
+    assert.deepEqual(result.files, [{ path: "came-to.js", added: 2, deleted: 0 }], "스펙 폴더의 것은 작업이 바꾼 것이 아니다");
+    assert.deepEqual([result.added, result.deleted], [2, 0]);
+  } finally {
+    rmSync(join(cwd, ".git"), { recursive: true, force: true });
+    rmSync(join(cwd, ".octave"), { recursive: true, force: true });
+    rmSync(join(cwd, "came-to.js"), { force: true });
   }
 });

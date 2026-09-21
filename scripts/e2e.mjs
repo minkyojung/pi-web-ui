@@ -19,7 +19,7 @@
  */
 
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -542,6 +542,20 @@ const editorStatus = (page) => page.evaluate("document.getElementById('editor')?
  * A note picked from the sidebar's tree: the folders around it opened first,
  * as a person would, then its row clicked once it is there.
  */
+/**
+ * Open a file that is not a note: the palette, since the sidebar lists notes
+ * and a repository's other files are only offered there once something is
+ * typed (quickOpen.ts).
+ */
+const pickFile = async (page, path) => {
+	await page.press("p", { meta: true });
+	await until("the palette", () => page.evaluate("document.activeElement?.dataset.slot === 'command-input'"));
+	await page.keys(path.slice(path.lastIndexOf("/") + 1));
+	await until("the file offered", () => page.evaluate(`[...document.querySelectorAll('[data-slot=command-list] [cmdk-item]')].some((i) => i.dataset.value === ${JSON.stringify(path.toLowerCase())})`));
+	await page.evaluate(`[...document.querySelectorAll('[data-slot=command-list] [cmdk-item]')].find((i) => i.dataset.value === ${JSON.stringify(path.toLowerCase())}).click()`);
+	await until("the file in front", () => page.evaluate(`!!document.querySelector('#page[data-code=${JSON.stringify(path)}]')`));
+};
+
 const pickNote = async (page, path) => {
 	const folders = path.split("/").slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join("/"));
 	for (const folder of folders) {
@@ -1255,6 +1269,78 @@ check("⌘P finds a note by a few letters, and makes one that is not there", asy
 	await app.press("Enter");
 	await until("the new note", async () => (await app.evaluate("location.hash")) === "#brand%20new.md" && (await editorStatus(app)) === "saved");
 	assert.equal(existsSync(join(cwd, "brand new.md")), true);
+});
+
+check("⌘P offers the rest of the repository, and a file that is not a note opens as one to read", async ({ app, cwd }) => {
+	await app.press("p", { meta: true });
+	await until("the palette", () => app.evaluate("document.activeElement?.dataset.slot === 'command-input'"));
+	await app.keys("tool");
+	await until("the file, under its own heading", () =>
+		app.evaluate(`[...document.querySelectorAll('[data-slot=command-list] [cmdk-group]')].some((g) => g.querySelector('[cmdk-group-heading]')?.textContent === 'Files' && g.textContent.includes('tool.ts'))`),
+	);
+	await app.evaluate(`[...document.querySelectorAll('[data-slot=command-list] [cmdk-item]')].find((i) => i.textContent.includes('tool.ts')).click()`);
+	await until("the file in front", async () => (await app.evaluate("location.hash")) === "#tool.ts" && (await app.evaluate(`!!document.querySelector('#page[data-code="tool.ts"]')`)));
+	const text = () => app.evaluate("document.querySelector('#page .cm-content')?.textContent ?? ''");
+	await until("its text", async () => (await text()).includes("export const answer = 42;"));
+	// A file, not a note: no title to rename it by and no properties above it.
+	assert.equal(await app.evaluate("!!document.getElementById('note')"), false);
+	assert.equal(await app.evaluate("document.querySelectorAll('#page .cm-lineNumbers .cm-gutterElement').length > 1"), true, "lines are numbered");
+	await app.shot("code");
+	// Read, not written: the keys reach it and change nothing.
+	await app.click("#page .cm-content");
+	await app.keys("XXX");
+	assert.equal((await text()).includes("XXX"), false, "a file here is read-only");
+	assert.equal(readFileSync(join(cwd, "tool.ts"), "utf8"), "// what it answers\nexport const answer = 42;\n");
+});
+
+check("a file says where it is in the line above it, and its ⋯ offers what can be done to a file", async ({ app }) => {
+	await pickFile(app, "web/src/components/page.tsx");
+	const crumbs = () => app.evaluate("[...document.querySelectorAll('[data-crumb]')].map((c) => c.dataset.crumb).join(',')");
+	await until("the path", async () => (await crumbs()) === "web,web/src/components");
+	assert.match(await app.evaluate("document.getElementById('crumbs')?.textContent ?? ''"), /page\.tsx/, "and the file at the end of it");
+	// And that it is read, not written — the only other way to learn it is to
+	// type into the page and watch nothing happen. Beside the ⋯, not in the path.
+	assert.doesNotMatch(await app.evaluate("document.getElementById('crumbs')?.textContent ?? ''"), /Read-only/);
+	assert.match(await app.evaluate("document.getElementById('readOnly')?.textContent ?? ''"), /Read-only/);
+	// A label here and not a way out: a page cannot start an editor, so the menu
+	// that offers one is the shell's and is not drawn in a browser tab.
+	assert.equal(await app.evaluate("document.getElementById('readOnly')?.tagName"), "SPAN");
+	await app.shot("code-header");
+	// A crumb opens what is in that folder — the files, not only the notes,
+	// which down here are none.
+	await app.click('[data-crumb="web/src/components"]');
+	await until("what is in it", () => app.evaluate("[...document.querySelectorAll('[cmdk-item]')].some((i) => i.textContent.includes('page.tsx'))"));
+	assert.equal(
+		await app.evaluate("[...document.querySelectorAll('[cmdk-item]')].some((i) => i.textContent.includes('Show in sidebar'))"),
+		false,
+		"a folder with no note in it is not in the sidebar to be shown",
+	);
+	await app.press("Escape");
+	// The menu: where it is, not what it is called — a file is git's to rename.
+	await app.click("#noteMenu");
+	const items = await until("the menu", () => app.evaluate("[...document.querySelectorAll('[role=menuitem]')].map((i) => i.textContent).join('|')"));
+	// Reveal in Finder is the shell's, and a browser tab has none — the Finder
+	// is not a page's to open (noteActions.ts). What is left is where it is.
+	assert.deepEqual(items.split("|"), ["Copy path"]);
+	await app.press("Escape");
+	// A note is written here, and says nothing about being read-only.
+	await pickNote(app, "first.md");
+	await until("the note", async () => (await app.evaluate("document.getElementById('crumbs')?.textContent ?? ''")).includes("first"));
+	assert.equal(await app.evaluate("!!document.getElementById('readOnly')"), false);
+});
+
+check("a file open to read follows the disk, and says so when it goes from under the tab", async ({ app, cwd }) => {
+	await pickFile(app, "tool.ts");
+	const text = () => app.evaluate("document.querySelector('#page .cm-content')?.textContent ?? ''");
+	await until("the file", async () => (await text()).includes("answer = 42;"));
+	// As a task would write it: not through the app, and with the tab open on it.
+	writeFileSync(join(cwd, "tool.ts"), "// what it answers\nexport const answer = 43;\n");
+	await until("the new text", async () => (await text()).includes("answer = 43;"));
+	// Gone from under the tab, and said rather than left as it was.
+	rmSync(join(cwd, "tool.ts"));
+	await until("the file gone", () => app.evaluate("document.querySelector('#page')?.textContent?.includes('not in the folder') ?? false"));
+	writeFileSync(join(cwd, "tool.ts"), "// what it answers\nexport const answer = 42;\n");
+	await until("back again", async () => (await text()).includes("answer = 42;"));
 });
 
 check("⌘F finds in the note, and Escape puts the panel away", async ({ app }) => {
@@ -3321,6 +3407,327 @@ check("the spec at the start of the row names what is waiting, opens its documen
 	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
 });
 
+// Approved to the end, the control says how far the tasks have got — read off
+// tasks.md by the server, so a box checked on disk moves it.
+check("the spec at the start of the row says how far its tasks have got once all three documents are approved", async ({ app, cwd }) => {
+	const dir = join(cwd, ".octave/specs/count");
+	mkdirSync(dir, { recursive: true });
+	const plan = (first) => `# Tasks\n\n- [${first}] 1. First\n- [ ] 2. Heading\n- [ ] 2.1 Second\n- [ ] 2.2 Third\n`;
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
+	writeFileSync(join(dir, "design.md"), "# Design\n");
+	writeFileSync(join(dir, "tasks.md"), plan(" "));
+	// Approved to the end, as the command approves (specApproval.ts). And so is
+	// whatever the checks before this one left waiting: the control names the
+	// spec that is waiting before any other (speaksFor), so while one is, this
+	// one is not the one it speaks for.
+	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
+	// With none waiting, the control names the spec being read: this one, opened.
+	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/count/tasks.md")}`);
+	await until("the plan in front", async () => (await editorText(app)).includes("Heading"));
+	const button = () => app.evaluate("document.getElementById('spec')?.textContent ?? ''");
+	await until("the count", async () => (await button()).includes("count") && (await button()).includes("0 / 4"));
+	// A box checked, as the run's end checks it: the count moves, and the
+	// approval holds — a task done is not a change to the plan. Four, not
+	// three: the heading 2 has a box on the screen, so it is counted.
+	writeFileSync(join(dir, "tasks.md"), plan("x"));
+	await until("one done", async () => (await button()).includes("1 / 4"));
+	await app.shot("spec-progress");
+	await app.click("#spec");
+	await until("the menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitem]')"));
+	assert.equal(await app.evaluate("document.querySelector('[role=menu] [data-progress=\"count\"]')?.textContent"), "1 / 4", "the menu says it beside the name");
+	await app.press("Escape");
+	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+});
+
+// A task is run from its line: the Start beside it types /spec-run.
+check("a spec's task has a Start beside its line — on the tasks still to do, shown on hover, and pressing it runs the task", async ({ app, cwd }) => {
+	const dir = join(cwd, ".octave/specs/start");
+	mkdirSync(dir, { recursive: true });
+	const plan = (first) => `# Tasks\n\n- [${first}] 1. First\n- [ ] 2. Heading\n- [x] 2.1 Second\n- [ ] 2.2 Third\n`;
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
+	writeFileSync(join(dir, "design.md"), "# Design\n");
+	writeFileSync(join(dir, "tasks.md"), plan(" "));
+	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
+	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/start/tasks.md")}`);
+	await until("the plan in front", async () => (await editorText(app)).includes("Heading"));
+	const starts = () => app.evaluate("[...document.querySelectorAll('#editor .cm-start')].map((b) => b.dataset.start).join(',')");
+	// 1, 2 and 2.2: 2 is a heading, and its Start is its sub-tasks still to
+	// do — 2.2, since 2.1 is done — and says so.
+	await until("the Starts", async () => (await starts()) === "1,2,2.2");
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-start[data-start=\"2\"]').title"), "Start 2 — 2.2");
+	assert.equal(await app.evaluate("[...document.querySelectorAll('#editor .cm-start')].every((b) => !b.disabled)"), true, "pressable: the spec is approved and the agent is idle");
+	// Out of the flow and left of the words, so the text is where it was.
+	const laid = await app.evaluate("(() => { const b = document.querySelector('#editor .cm-start[data-start=\"2.2\"]').getBoundingClientRect(); const l = document.querySelector('#editor .cm-hasStart:has([data-start=\"2.2\"])').getBoundingClientRect(); return { left: b.right <= l.left, tall: b.height }; })()");
+	assert.equal(laid.left, true, "the Start stands left of its line");
+	assert.equal(laid.tall, 24, "shadcn's icon-xs");
+	// Hidden until the line is pointed at — the cursor is not on this line.
+	const opacity = () => app.evaluate("getComputedStyle(document.querySelector('#editor .cm-start[data-start=\"2.2\"]')).opacity");
+	assert.equal(await opacity(), "0", "not shown while nothing points at its line");
+	const at = await app.evaluate("(() => { const l = document.querySelector('#editor .cm-hasStart:has([data-start=\"2.2\"])').getBoundingClientRect(); return { x: l.left + 40, y: l.top + l.height / 2 }; })()");
+	await app.moveTo(at.x, at.y);
+	await until("shown on hover", async () => (await opacity()) === "1");
+	// Pressed: the command goes as typed, and pi's spec extension answers it.
+	// This folder is a repository with the suite's notes uncommitted in it, so
+	// the answer is the refusal a task's commit needs — which is the command
+	// having reached the extension and been read, end to end; the run itself
+	// is the extension's and is proved in test/spec.test.js.
+	await app.shot("task-start");
+	await app.evaluate("document.querySelector('#editor .cm-start[data-start=\"2.2\"]').click()");
+	await until("the command answered in the conversation", async () => (await chat(app)).includes("Nothing was started"));
+	await app.moveTo(1, 1);
+	// A box checked on disk, as the run's end checks it: its Start goes.
+	writeFileSync(join(dir, "tasks.md"), plan("x"));
+	await until("the Start gone with the box", async () => (await starts()) === "2,2.2");
+});
+
+// What the tasks run on is chosen once, over the list, and rides with each Start.
+check("a bar over a spec's tasks chooses what they run on, and a Start takes the choice with it", async ({ app, cwd, api }) => {
+	const dir = join(cwd, ".octave/specs/runon");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
+	writeFileSync(join(dir, "design.md"), "# Design\n");
+	writeFileSync(join(dir, "tasks.md"), "# Tasks\n\n- [ ] 1. First\n- [ ] 2. Second\n");
+	// The first two approved, the tasks waiting: the list opens by itself as
+	// the document waiting (specTabs.ts), with the approval's line over it
+	// and not this one — the bar is for running, and nothing runs before the
+	// approvals are done.
+	for (const name of readdirSync(join(cwd, ".octave/specs"))) if (name !== "runon") while (approve(cwd, name)) {}
+	approve(cwd, "runon");
+	approve(cwd, "runon");
+	await until("the plan in front", async () => (await editorText(app)).includes("Second"));
+	await until("the approval's line", () => app.evaluate("!!document.getElementById('specBar')"));
+	assert.equal(await app.evaluate("!!document.getElementById('taskBar')"), false, "no bar before the approvals");
+	approve(cwd, "runon");
+	await until("the bar", () => app.evaluate("!!document.getElementById('taskBar')"));
+	const bar = () => app.evaluate("document.getElementById('taskBar')?.textContent ?? ''");
+	assert.match(await bar(), /the session's model/, "nothing chosen yet: the session's");
+	// Chosen: a model pi offers that is not the session's. The picker reports
+	// it to the bar and sets nothing — the message box's model is as it was.
+	const models = await (await fetch(`http://localhost:${api}/api/models`)).json();
+	const sessionModel = await app.evaluate("document.getElementById('model')?.textContent ?? ''");
+	await app.click("#runOn");
+	await until("the menu", () => app.evaluate("document.querySelectorAll('[role=menuitemradio]').length > 0"));
+	// One the menu offers that is not the session's; its key and level are
+	// what pi says of it.
+	const offered = await app.evaluate("[...document.querySelectorAll('[role=menuitemradio]')].map((i) => i.textContent)");
+	const other = models.find((m) => offered.some((text) => text.includes(m.name)) && !sessionModel.includes(m.name));
+	assert.ok(other, `a second model to choose among ${offered.join(", ")}`);
+	await app.evaluate(`[...document.querySelectorAll('[role=menuitemradio]')].find((i) => i.textContent.includes(${JSON.stringify(other.name)})).click()`);
+	await until("the choice on the bar", async () => (await bar()).includes(other.name) && !(await bar()).includes("session's model"));
+	assert.equal(await app.evaluate("document.getElementById('model')?.textContent ?? ''"), sessionModel, "the session's model is not touched");
+	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+	await app.shot("task-bar");
+	// A Start pressed sends the command with the choice on it, as the person
+	// would have typed it: the wire is watched for the line.
+	await app.evaluate("(() => { const send = WebSocket.prototype.send; window.__sent = []; WebSocket.prototype.send = function (data) { window.__sent.push(String(data)); return send.call(this, data); }; })()");
+	await until("the Starts", () => app.evaluate("document.querySelectorAll('#editor .cm-start').length === 2"));
+	await app.evaluate("document.querySelector('#editor .cm-start[data-start=\"2\"]').click()");
+	await until("the line sent", () => app.evaluate("window.__sent.some((d) => d.includes('\"prompt\"') && d.includes('/spec-run runon 2 '))"));
+	const line = await app.evaluate("JSON.parse(window.__sent.find((d) => d.includes('/spec-run runon 2 '))).text");
+	assert.equal(line, `/spec-run runon 2 ${other.key} ${other.level}`, "the model as the picker keys it, and its own level");
+});
+
+// Several tasks as one run: the selection says which, the bar runs them.
+check("tasks a selection covers are offered as one run over the list, by their numbers, and run in one command", async ({ app, cwd }) => {
+	const dir = join(cwd, ".octave/specs/picked");
+	mkdirSync(dir, { recursive: true });
+	const plan = "# Tasks\n\n- [ ] 1. First\n- [ ] 2. Heading\n- [x] 2.1 Second\n- [ ] 2.2 Third\n- [ ] 3. Fourth\n";
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
+	writeFileSync(join(dir, "design.md"), "# Design\n");
+	writeFileSync(join(dir, "tasks.md"), plan);
+	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
+	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/picked/tasks.md")}`);
+	await until("the plan in front", async () => (await editorText(app)).includes("Fourth"));
+	await until("the bar", () => app.evaluate("!!document.getElementById('taskBar')"));
+	assert.equal(await app.evaluate("!!document.getElementById('runPicked')"), false, "a cursor covers nothing: one task is its Start");
+	// A drag from inside 1 to the start of 3's line: the newline was taken
+	// and nothing of 3 — the rule editors count selected lines by.
+	const select = (from, to) => app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: ${from}, head: ${to} } })`);
+	await select(plan.indexOf("First"), plan.indexOf("- [ ] 3."));
+	const offered = () => app.evaluate("document.getElementById('runPicked')?.textContent ?? ''");
+	await until("the run offered", async () => (await offered()) === "Run 1, 2");
+	const lit = () => app.evaluate("[...document.querySelectorAll('#editor .cm-start[data-here]')].map((b) => b.dataset.start).join(',')");
+	assert.equal(await lit(), "1,2", "the Starts on the lines taken are lit — 2 is a heading and its 2.2 folds into it, 2.1 is done, 3 was not touched");
+	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-start[data-start=\"3\"]')).opacity"), "0");
+	// One character into 3, and it is in.
+	await select(plan.indexOf("First"), plan.indexOf("- [ ] 3.") + 1);
+	await until("3 in", async () => (await offered()) === "Run 1, 2, 3");
+	await app.shot("task-picked");
+	// Pressed: the one command, the numbers on it, as the person would have typed it.
+	await app.evaluate("(() => { const send = WebSocket.prototype.send; window.__sent = []; WebSocket.prototype.send = function (data) { window.__sent.push(String(data)); return send.call(this, data); }; })()");
+	await app.click("#runPicked");
+	await until("the line sent", () => app.evaluate("window.__sent.some((d) => d.includes('/spec-run picked '))"));
+	assert.equal(await app.evaluate("JSON.parse(window.__sent.find((d) => d.includes('/spec-run picked '))).text"), "/spec-run picked 1 2 3", "2 for all of it; the command unfolds it");
+	// Back to a cursor: nothing is offered, and the lit Starts go dark.
+	await select(plan.indexOf("Fourth"), plan.indexOf("Fourth"));
+	await until("nothing offered", async () => !(await app.evaluate("!!document.getElementById('runPicked')")));
+	assert.equal(await lit(), "3", "only the cursor's line now");
+});
+
+// What a task changed is its commit, and the commit is read here.
+check("a commit opens as a page: what it says of itself, then each file it changed, the unmodified lines folded", async ({ app, cwd }) => {
+	const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
+	const long = Array.from({ length: 60 }, (_, i) => `export const value${i} = ${i};`).join("\n") + "\n";
+	mkdirSync(join(cwd, "src"), { recursive: true });
+	writeFileSync(join(cwd, "src/values.ts"), long);
+	writeFileSync(join(cwd, "src/greeting.ts"), "export function greet(name: string): string {\n\treturn `Hi, ${name}`;\n}\n");
+	// Only these files: the suite's notes stay as uncommitted as they were.
+	git("add", "src");
+	git("commit", "-q", "-m", "base");
+	writeFileSync(join(cwd, "src/values.ts"), long.replace("value30 = 30", "value30 = 3000"));
+	writeFileSync(join(cwd, "src/greeting.ts"), "export function greet(name: string): string {\n\treturn `Hello, ${name}!`;\n}\n");
+	writeFileSync(join(cwd, "src/greeting.test.ts"), 'import test from "node:test";\nimport { greet } from "./greeting.ts";\n\ntest("greets", () => greet("Ada"));\n');
+	writeFileSync(join(cwd, "src/logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]));
+	mkdirSync(join(cwd, ".octave/specs/greeting"), { recursive: true });
+	writeFileSync(join(cwd, ".octave/specs/greeting/tasks.md"), "- [x] 2. Greet properly, and test it\n");
+	git("add", "src", ".octave/specs/greeting");
+	// As spec.ts commits a task: its line for a subject, and whose it is under it.
+	git("commit", "-q", "-m", "Greet properly, and test it", "-m", "Spec: greeting\nTask: 2\nChecks: npm test — 41 passed");
+	const hash = git("rev-parse", "HEAD");
+
+	// By its short name, as a person has it.
+	await app.evaluate(`location.hash = ${JSON.stringify("#octave://commit/" + hash.slice(0, 9))}`);
+	await until("the commit's page", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(hash)}`));
+	const head = await app.evaluate("document.getElementById('commitHead').innerText.replace(/\\s+/g, ' ')");
+	assert.match(head, /Task 2 Greet properly, and test it/, "whose task, and its line");
+	assert.match(head, new RegExp(hash.slice(0, 7)), "the commit");
+	// Four files of work — the box in tasks.md is in the commit and is not counted as the task's.
+	assert.match(head, /4 files \+6 −2/, head);
+	assert.match(head, /agent: npm test — 41 passed/, "the run's own word for its checks, said to be the agent's");
+	const files = () => app.evaluate("[...document.querySelectorAll('#page [data-file]')].filter((f) => f.offsetParent).map((f) => f.dataset.file).join(',')");
+	assert.equal(await files(), "src/greeting.test.ts,src/greeting.ts,src/logo.png,src/values.ts", "one after another, the spec's own file not among them");
+	await until("the differences drawn", () => app.evaluate("document.querySelectorAll('#page .cm-editor').length === 3"));
+	assert.match(await app.evaluate("document.querySelector('#page [data-file=\"src/logo.png\"]').innerText"), /Binary file/, "what cannot be drawn truly says so");
+	// The lines taken out are coloured by what each word is, as the lines put
+	// in are: the grammar is there before the view is, since the merge view
+	// draws what is gone once and not again.
+	const hues = (selector) => app.evaluate(`new Set([...document.querySelectorAll('#page [data-file="src/greeting.ts"] ${selector} span')].map((s) => getComputedStyle(s).color)).size`);
+	await until("the taken-out line in more than one colour", async () => (await hues(".cm-deletedChunk")) > 1);
+	assert.ok((await hues(".cm-changedLine")) > 1, "and the put-in line, as before");
+	// The long file: one line changed of sixty, and the rest folded either side of it.
+	const folds = () => app.evaluate("[...document.querySelectorAll('#page [data-file=\"src/values.ts\"] .cm-collapsedLines')].map((e) => e.textContent).join('|')");
+	// Line 31 of sixty: 28–30 and 32–34 are kept, and what is folded is 1–27
+	// and 35 to the end, the last line's newline being a line to the editor.
+	assert.equal(await folds(), "27 unmodified lines|27 unmodified lines", `three lines kept either side of the change, as git keeps them — ${await folds()}`);
+	const lines = () => app.evaluate("document.querySelectorAll('#page [data-file=\"src/values.ts\"] .cm-line').length");
+	const folded = await lines();
+	await app.shot("commit-page");
+	// Pressed, a fold opens where it is.
+	await app.evaluate("document.querySelector('#page [data-file=\"src/values.ts\"] .cm-collapsedLines').click()");
+	await until("the fold open", async () => (await lines()) > folded);
+	// Read-only: it takes no typing.
+	assert.equal(await app.evaluate("document.querySelector('#page .cm-content').getAttribute('contenteditable')"), "false");
+	// What rode along is there, closed.
+	assert.match(await app.evaluate("document.getElementById('specFiles').innerText"), /Spec files \(1\)/);
+	// At the foot of a long page: pressed where it is rather than by a point on
+	// the screen, which it is below.
+	await app.evaluate("document.getElementById('specFiles').click()");
+	await until("the spec's file", async () => (await files()).includes(".octave/specs/greeting/tasks.md"));
+	// A file's name opens the file as it is now, to read.
+	await app.evaluate("document.querySelector('#page [data-file=\"src/greeting.ts\"] button[title=\"Open this file\"]').click()");
+	await until("the file, to read", () => app.evaluate("document.getElementById('page')?.dataset.code === 'src/greeting.ts'"));
+	// No such commit is said, not drawn as an empty one.
+	await app.evaluate(`location.hash = ${JSON.stringify("#octave://commit/0123456789abcdef")}`);
+	await until("no such commit", async () => ((await app.evaluate("document.getElementById('page')?.innerText")) ?? "").includes("There is no commit 0123456"));
+});
+
+// The record of running a plan, apart from the plan.
+check("what a spec's tasks came to is at the foot of the window: how many, how many are new, and the list that opens each commit", async ({ app, cwd }) => {
+	const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
+	const dir = join(cwd, ".octave/specs/came");
+	mkdirSync(dir, { recursive: true });
+	mkdirSync(join(cwd, "came"), { recursive: true });
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
+	writeFileSync(join(dir, "design.md"), "# Design\n");
+	writeFileSync(join(dir, "tasks.md"), "- [ ] 1. Add the door\n- [ ] 2. Hang the sign\n");
+	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
+	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/came/tasks.md")}`);
+	await until("the plan in front", async () => (await editorText(app)).includes("Hang the sign"));
+	assert.equal(await app.evaluate("!!document.getElementById('results')"), false, "nothing to say before a task has been run");
+
+	// A task's end as spec.ts makes it — the box, then the commit that says
+	// whose it is — three times: one with no checks, and one run again.
+	const task = (number, title, file, text, checks) => {
+		writeFileSync(join(cwd, "came", file), text);
+		writeFileSync(join(dir, "tasks.md"), readFileSync(join(dir, "tasks.md"), "utf8").replace(`- [ ] ${number}.`, `- [x] ${number}.`));
+		git("add", "came", ".octave/specs/came");
+		git("commit", "-q", "-m", title, "-m", `Spec: came\nTask: ${number}\nChecks: ${checks}`);
+		return git("rev-parse", "HEAD");
+	};
+	task("1", "Add the door", "door.js", "export const door = 1;\n", "npm test — 4 passed");
+	const button = () => app.evaluate("document.getElementById('results')?.innerText.replace(/\\s+/g, ' ') ?? ''");
+	await until("the first result", async () => (await button()).includes("1 task · 1 new"));
+	const second = task("2", "Hang the sign", "sign.js", "export const sign = 1;\nexport const hung = true;\n", "none");
+	const again = task("1", "Add the door", "door.js", "export const door = 2;\n", "npm test — 5 passed");
+	await until("three runs, two tasks", async () => (await button()).includes("2 tasks · 2 new"));
+
+	// In the plan itself, each task done says the commit it ended in at the end
+	// of its line — its last run's — drawn and not written: the file is as it was.
+	const chips = () => app.evaluate("[...document.querySelectorAll('#editor .cm-task-commit')].map((c) => c.dataset.task + ':' + c.textContent).join(',')");
+	await until("the chips", async () => (await chips()) === `1:${again.slice(0, 7)},2:${second.slice(0, 7)}`);
+	assert.doesNotMatch(readFileSync(join(dir, "tasks.md"), "utf8"), new RegExp(again.slice(0, 7)), "nothing of it is in the file, whose words are what was approved");
+	// The done line is struck through, and the chip is not: a strike is not
+	// drawn across an inline-block, which is the only way out of it.
+	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-task-commit')).display"), "inline-block");
+	await app.shot("task-commit-chip");
+
+	await app.click("#results");
+	await until("the list", () => app.evaluate("document.querySelectorAll('[data-result]').length === 2"));
+	const lines = await app.evaluate("[...document.querySelectorAll('[data-result]')].map((i) => i.innerText.replace(/\\s+/g, ' ')).join(' || ')");
+	// One line a task, in the order the work was done, the task run again where it was run again.
+	assert.equal(lines, "2 Hang the sign new +2 −0 || 1 Add the door new +1 −1", lines);
+	// The mark at the left is the checks: said, or none — with the run's words behind the one that has them.
+	const marks = await app.evaluate("[...document.querySelectorAll('[data-result] [data-checks]')].map((m) => m.dataset.checks + ':' + m.title).join(' || ')");
+	assert.equal(marks, "none:The run checked nothing || said:agent: npm test — 5 passed");
+	// Not yet looked at is the line in bold, and still while the list is being read.
+	assert.equal(await app.evaluate("document.querySelectorAll('[data-result][data-fresh]').length"), 2);
+	assert.equal(await app.evaluate("[...document.querySelectorAll('[data-result][data-fresh] .font-semibold')].length"), 2);
+	// The commit and the time are the line's title: reference, on the page it opens.
+	assert.match(await app.evaluate("document.querySelector('[data-result=\"1\"]').title"), /^[0-9a-f]{7} · .* · run 2 times, this is the last$/, "and that it was run again, which is not a mark on the line");
+	assert.doesNotMatch(await app.evaluate("document.querySelector('[data-result=\"2\"]').title"), /run \d+ times/);
+	await app.shot("task-results");
+	// A line opens that task's commit, and the list goes.
+	await app.evaluate("document.querySelector('[data-result=\"1\"]').click()");
+	await until("the commit's page", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(again)}`));
+	assert.equal(await app.evaluate("!!document.querySelector('[data-result]')"), false);
+	// Looked at: nothing is new, from whatever is in front — a commit's page here.
+	await until("nothing new", async () => (await button()) === "2 tasks");
+	// The commit's tab is called by its task, not by its hash — read off the
+	// results the window already has — and every tab is one width, so a long
+	// name is cut rather than the row going ragged.
+	const tabs = await app.evaluate("[...document.querySelectorAll('[role=tab][data-path]')].map((t) => ({ path: t.dataset.path, text: t.innerText.trim(), width: Math.round(t.getBoundingClientRect().width) }))");
+	// This check's own: others before it have left commits' tabs in the row.
+	const commitTab = tabs.find((tab) => tab.path === `octave://commit/${again}`);
+	assert.equal(commitTab.text, "Task 1 · Add the door", JSON.stringify(tabs));
+	assert.equal(new Set(tabs.map((tab) => tab.width)).size, 1, `one width for every tab: ${JSON.stringify(tabs.map((tab) => tab.width))}`);
+	assert.equal(commitTab.width, 192, "twelve rem");
+	await app.shot("tab-widths");
+	// Where the page is, in the line a file says where it is: the spec, its
+	// tasks, the task — and `tasks` is the way back to the plan, said.
+	const crumbs = () => app.evaluate("document.getElementById('crumbs')?.innerText.replace(/\\s+/g, ' ').trim() ?? ''");
+	assert.equal(await crumbs(), "came tasks Task 1", `the crumbs: ${await crumbs()}`);
+	await app.shot("commit-crumbs");
+	await app.evaluate("document.querySelector('#crumbs [data-crumb=\"tasks\"]').click()");
+	await until("the plan, by its crumb", async () => (await editorText(app)).includes("Hang the sign"));
+	// A commit that is no task's has only its hash to say. One made here: run
+	// on its own, this check's first task is the repository's first commit.
+	writeFileSync(join(cwd, "came", "mine.js"), "export const mine = 1;\n");
+	git("add", "came/mine.js");
+	git("commit", "-q", "-m", "Something of my own");
+	const base = git("rev-parse", "HEAD");
+	await app.evaluate(`location.hash = ${JSON.stringify("#octave://commit/" + base)}`);
+	await until("somebody's own commit", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(base)}`));
+	assert.equal(await crumbs(), base.slice(0, 7), `the crumbs of a commit that is no task's: ${await crumbs()}`);
+	// And it stays looked at when the window is opened again.
+	assert.equal(await app.evaluate("JSON.parse(localStorage.getItem('seen-results')).came"), again);
+	// The chip is the other way to the same page: from the plan, at the line.
+	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/came/tasks.md")}`);
+	await until("the plan again", async () => (await editorText(app)).includes("Hang the sign"));
+	await until("its chips", async () => (await chips()).startsWith("1:"));
+	await app.evaluate("document.querySelector('#editor .cm-task-commit[data-task=\"2\"]').click()");
+	await until("the other task's commit", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(second)}`));
+});
+
 // The other place the answer can be given: over the document being read.
 check("a document waiting for approval says so above itself, and the line goes once it is approved", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/bar");
@@ -3405,6 +3812,14 @@ async function main() {
 	writeFileSync(join(cwd, "ideas", "second.md"), "# second\n");
 	writeFileSync(join(cwd, "first.md"), "# first\n");
 	writeFileSync(join(cwd, "not-a-note.txt"), "no\n");
+	// The folder Octave opens is a repository (docs/spec-mode), which is what
+	// puts the rest of its files in ⌘P and lets a tab read one: repoFiles.ts
+	// asks git, and a folder that is in none has nothing to offer.
+	writeFileSync(join(cwd, "tool.ts"), "// what it answers\nexport const answer = 42;\n");
+	// One of them down a path, for the line above it to have something to say.
+	mkdirSync(join(cwd, "web", "src", "components"), { recursive: true });
+	writeFileSync(join(cwd, "web", "src", "components", "page.tsx"), 'import { Button } from "./button";\n\nexport const Page = () => <Button />;\n');
+	execFileSync("git", ["init", "-q"], { cwd });
 	// A note pi has written in, with the history that says so: the heading's
 	// word replaced, and a line added. Replaying the log gives the file.
 	writeFileSync(join(cwd, "ideas", "second.md"), "# SECOND\n\npi wrote this\n");

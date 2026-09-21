@@ -84,10 +84,31 @@ export const standingWord = (standing: Standing): string => WORDS[standing];
 
 const PHRASES: Record<Standing, string> = { approved: "approved", waiting: "waiting", written: "not approved", unwritten: "not written yet" };
 
-/** A spec in three or four words, for the control that names it. */
+/**
+ * A spec in three or four words, for the control that names it: which
+ * document it is on and how that stands — and once all three are approved,
+ * how far its tasks have got, since "Tasks approved" stops being news the
+ * moment it is true and what is happening from then on is the tasks.
+ */
 export function stateWords(spec: SpecInfo): string {
+	const progress = progressWords(spec);
+	if (progress) return progress;
 	const { doc, standing } = standingOf(spec);
 	return `${docTitle(doc)} ${PHRASES[standing]}`;
+}
+
+/**
+ * How far a spec's tasks have got, as `3 / 8` — done over to do — and
+ * `8 / 8 done` at the end, or null while the spec is not yet at its tasks.
+ * Counted by the server off tasks.md (SpecInfo.tasks): every box the
+ * document draws, a heading's with the rest, so the count is the count of
+ * what is on the screen.
+ */
+export function progressWords(spec: SpecInfo): string | null {
+	if (spec.approved < SPEC_DOCS.length || !spec.tasks) return null;
+	const { done, total } = spec.tasks;
+	if (total === 0) return null;
+	return `${done} / ${total}${done === total ? " done" : ""}`;
 }
 
 /** The line over a document that is waiting to be approved. */

@@ -37,8 +37,11 @@ import type { Item } from "./types";
 export type Line =
 	/** Something is in the way, and it is drawn in the colour that says so. */
 	| { kind: "trouble"; why: "offline" | "waiting"; text: string }
-	/** A run in flight: the step, and what is waiting behind it. */
-	| { kind: "step"; what: string; detail: string | null; queued: number }
+	/**
+	 * A run in flight: the step, and what is waiting behind it — and, when
+	 * the run is a spec's task, which task and what is queued after it.
+	 */
+	| { kind: "step"; what: string; detail: string | null; queued: number; task: Task | null }
 	/** At rest: what the last run came to. */
 	| { kind: "last"; text: string };
 
@@ -122,6 +125,36 @@ export function lastRun(items: Item[]): string | null {
 	return at("answered", clock);
 }
 
+/**
+ * The task a run is, as the server reads it off the session (ConfigMsg.run):
+ * the number and the objective, and the numbers queued after it. The one
+ * thing the events alone cannot say: a tool call looks the same in a task's
+ * run and in a conversation.
+ */
+export interface Task {
+	task: string;
+	title: string;
+	then: string[];
+}
+
+/**
+ * The task as the strip says it, in the two places it does.
+ *
+ * On the line, the number alone, as a value: `Task 2.2`. It is not a
+ * sentence to read but the name of a line in the list, where that line's
+ * Start is turning — so it is drawn as a chip, and the objective, which is
+ * the longest thing here and the first to be cut, is left to the title.
+ * What is queued after it is a count, `1 more`: how much is left is what a
+ * strip is for, and which ones is in the title too.
+ */
+export const taskLabel = (task: Pick<Task, "task">): string => `Task ${task.task}`;
+
+/** "1 more", or null with nothing queued — which is most runs, one Start pressed. */
+export const moreWords = (task: Pick<Task, "then">): string | null => (task.then.length > 0 ? `${task.then.length} more` : null);
+
+/** The whole of it, for the title: "Task 2.2 · Paint it — then 3, 4". */
+export const taskTitle = (task: Task): string => `Task ${task.task} · ${task.title}${task.then.length > 0 ? ` — then ${task.then.join(", ")}` : ""}`;
+
 export function agentLine(state: {
 	connection: Connection;
 	/** Questions of pi's waiting on an answer. */
@@ -130,12 +163,14 @@ export function agentLine(state: {
 	/** Messages written while the run goes, waiting their turn. */
 	queued: number;
 	items: Item[];
+	/** The spec's task the run is, when it is one. */
+	task?: Task | null;
 }): Line | null {
 	if (state.connection !== "open") {
 		return { kind: "trouble", why: "offline", text: state.connection === "connecting" ? "Connecting…" : "Offline — reconnecting" };
 	}
 	if (state.asking > 0) return { kind: "trouble", why: "waiting", text: "Waiting for your answer" };
-	if (state.streaming) return { kind: "step", ...currentStep(state.items), queued: state.queued };
+	if (state.streaming) return { kind: "step", ...currentStep(state.items), queued: state.queued, task: state.task ?? null };
 	const last = lastRun(state.items);
 	return last ? { kind: "last", text: last } : null;
 }

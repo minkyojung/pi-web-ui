@@ -27,9 +27,14 @@ import { WhatsNew } from "./components/WhatsNew";
 // pdf.js is larger than the rest of the window put together, and most days no
 // PDF is opened: it is fetched when the first one is.
 const Pdf = lazy(() => import("./components/Pdf"));
+// Lazy for the reason Pdf is: a repository of one language loads that
+// language's grammar, and a window that opens no file loads none of them.
+const Code = lazy(() => import("./components/Code"));
+const Commit = lazy(() => import("./components/Commit"));
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
 import { SpecBar } from "./components/SpecBar";
+import { TaskBar } from "./components/TaskBar";
 import { SpecButton } from "./components/SpecButton";
 import { bump, forget, readRecent, writeRecent } from "./recent";
 import { back as stepBack, canBack, canForward, forget as forgetStep, forward as stepForward, go, here, type Left, type Nav, read as readNav, remember, replace, write as writeNav } from "./nav";
@@ -615,11 +620,19 @@ export function App() {
 					<div className={`flex min-h-0 flex-1 flex-col pr-2 ${sidebarOpen ? "" : "pl-2"}`}>
 					<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-background" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
 					<ResizablePanel id="main" minSize="30%" className="flex min-w-0 flex-col">
-					<NoteHeader path={note} onOpen={setOpen} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
+					{/* A file of the repository has a path and no title of its own, so
+					    the header is the one place it is said — and the ⋯ beside it
+					    offers what can be done to a file, which is to find it, not to
+					    rename it (noteActions.ts). A PDF is left out: its viewer
+					    reaches the top of the column, and the words there are its own. */}
+					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} onOpen={setOpen} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
 					{/* Under the header and over the page, so it stays while a long
 					    document scrolls — and `note` is null for anything that is not
 					    a note or a spec, which keeps it off a PDF and off a page. */}
 					<SpecBar path={note} />
+					{/* And over a spec's tasks, what they run on — the one setting
+					    the running of them has. */}
+					<TaskBar path={note} />
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
@@ -641,6 +654,18 @@ export function App() {
 						<Boundary name="document" hint="The file itself is untouched.">
 							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
 								<Pdf key={page.path} path={page.path} page={pageNamed(place)} />
+							</Suspense>
+						</Boundary>
+					) : page?.kind === "code" ? (
+						<Boundary name="file" hint="The file itself is untouched.">
+							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
+								<Code key={page.path} path={page.path} />
+							</Suspense>
+						</Boundary>
+					) : page?.kind === "commit" ? (
+						<Boundary name="commit" hint="Nothing in the repository was touched.">
+							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
+								<Commit key={page.commit} commit={page.commit} onOpen={setOpen} />
 							</Suspense>
 						</Boundary>
 					) : page ? (
@@ -743,7 +768,7 @@ export function App() {
 					    part of the window and reaches its edge, as VS Code's and Zed's
 					    do, and then there is only one place for anything to be centred
 					    in. */}
-					<StatusBar path={note} piWidth={piWidth} piFolded={!piOpen} onUnfoldPi={unfoldPi} />
+					<StatusBar path={note} piWidth={piWidth} piFolded={!piOpen} onUnfoldPi={unfoldPi} onOpen={setOpen} />
 				</ResizablePanel>
 			</ResizablePanelGroup>
 			</div>
