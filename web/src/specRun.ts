@@ -120,6 +120,29 @@ export function startLines(text: string): { from: number; task: Task }[] {
 	return out;
 }
 
+/**
+ * The lines a result belongs on: each task done that is work of its own, with
+ * where its line ends — which is where what it came to is said (taskCommit.ts).
+ * A heading has no line of its own here: its sub-tasks each ended in a commit
+ * and it ended in none. By offset into `text`, the end of the line's words —
+ * before a `\r`, which is the line's ending and not its end.
+ */
+export function doneLines(text: string): { to: number; task: Task }[] {
+	const lines = text.split("\n");
+	const all = lines.map(taskAt);
+	const tasks = all.filter((task): task is Task => task !== null);
+	const out: { to: number; task: Task }[] = [];
+	let from = 0;
+	for (let at = 0; at < lines.length; at++) {
+		const task = all[at];
+		const line = lines[at]!;
+		const heading = task !== null && tasks.some((other) => other.number.startsWith(`${task!.number}.`));
+		if (task && task.done && !heading) out.push({ to: from + line.replace(/\r$/, "").length, task });
+		from += line.length + 1;
+	}
+	return out;
+}
+
 /** Why running cannot be done now, or null when it can. */
 export type Block = "offline" | "busy" | "no-command" | "not-approved" | "nothing" | "sent" | null;
 

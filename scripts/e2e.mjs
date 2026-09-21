@@ -3655,6 +3655,16 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	const again = task("1", "Add the door", "door.js", "export const door = 2;\n", "npm test — 5 passed");
 	await until("three runs, two tasks", async () => (await button()).includes("2 tasks · 2 new"));
 
+	// In the plan itself, each task done says the commit it ended in at the end
+	// of its line — its last run's — drawn and not written: the file is as it was.
+	const chips = () => app.evaluate("[...document.querySelectorAll('#editor .cm-task-commit')].map((c) => c.dataset.task + ':' + c.textContent).join(',')");
+	await until("the chips", async () => (await chips()) === `1:${again.slice(0, 7)},2:${git("rev-parse", "--short", "HEAD~1")}`);
+	assert.doesNotMatch(readFileSync(join(dir, "tasks.md"), "utf8"), new RegExp(again.slice(0, 7)), "nothing of it is in the file, whose words are what was approved");
+	// The done line is struck through, and the chip is not: a strike is not
+	// drawn across an inline-block, which is the only way out of it.
+	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-task-commit')).display"), "inline-block");
+	await app.shot("task-commit-chip");
+
 	await app.click("#results");
 	await until("the list", () => app.evaluate("document.querySelectorAll('[data-result]').length === 2"));
 	const lines = await app.evaluate("[...document.querySelectorAll('[data-result]')].map((i) => i.innerText.replace(/\\s+/g, ' ')).join(' || ')");
@@ -3678,6 +3688,12 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	await until("nothing new", async () => (await button()) === "2 tasks");
 	// And it stays looked at when the window is opened again.
 	assert.equal(await app.evaluate("JSON.parse(localStorage.getItem('seen-results')).came"), again);
+	// The chip is the other way to the same page: from the plan, at the line.
+	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/came/tasks.md")}`);
+	await until("the plan again", async () => (await editorText(app)).includes("Hang the sign"));
+	await until("its chips", async () => (await chips()).startsWith("1:"));
+	await app.evaluate("document.querySelector('#editor .cm-task-commit[data-task=\"2\"]').click()");
+	await until("the other task's commit", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(git("rev-parse", "HEAD~1"))}`));
 });
 
 // The other place the answer can be given: over the document being read.

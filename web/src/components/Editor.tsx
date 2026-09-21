@@ -17,6 +17,7 @@ import { listNumbers } from "../features/listNumbers";
 import { listIndent } from "../features/listIndent";
 import { authors, clearAuthors, paintAuthors, showAuthorsStore } from "../features/authors";
 import { blocked as startBlocked, chrome as startChrome, onStart, running as startRunning, taskStart } from "../features/taskStart";
+import { chipChrome, commits as taskCommits, onCommit, taskCommit } from "../features/taskCommit";
 import { forget as forgetMoves, observe as observeMoves, take as takeMoves } from "../features/moves";
 import { livePreview, toggleLivePreview, toggleTask } from "../features/livePreview";
 import { leaveTextUp } from "../features/pageMove";
@@ -47,12 +48,15 @@ import type { Authored } from "../../../protocol.ts";
 import { authorsStore, commandsStore, configStore, documentsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, specsStore } from "../serverState";
 import { RUN, runBlocked, runMessage, runWhy, tasksBetween } from "../specRun.ts";
 import { pickTasks, runOnOf, runOnStore } from "../runOn";
+import { commitPath } from "../pages";
+import { listOf } from "../resultsList.ts";
 import { inFrontStore, say as sayInFront } from "../inFront";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { flushSaves, registerSave } from "../saves";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Properties } from "./Properties";
+import { badgeVariants } from "./ui/badge";
 import { Button, buttonVariants } from "./ui/button";
 
 /** How long typing has to stop before it is written down. */
@@ -605,6 +609,16 @@ export function Editor({
 				taskStart,
 				startChrome.of(buttonVariants({ variant: "ghost", size: "icon-xs" })),
 				startBlocked.of(why),
+				// What each task done came to, at the end of its line: the commit of
+				// its last run, as the list at the foot of the window has it (listOf),
+				// so the two cannot name different ones.
+				taskCommit,
+				// Filled, as the strip's task chip and a file's Read-only are: the
+				// border token is a twentieth of white in the dark themes, and an
+				// outline drawn in it is a word and not a chip.
+				chipChrome.of(`${badgeVariants({ variant: "secondary" })} h-5 px-1.5 text-[11px] font-normal text-muted-foreground hover:text-foreground`),
+				taskCommits.of(new Map(listOf(specs?.find((entry) => entry.name === spec)?.results ?? [], null).lines.map((line) => [line.task, { commit: line.commit, short: line.short }]))),
+				onCommit.of((commit) => onOpen?.(commitPath(commit))),
 				// The task being run, when it is this spec's: its Start turns.
 				startRunning.of(config?.run?.spec === spec ? config.run.task : null),
 				onStart.of((number) => {

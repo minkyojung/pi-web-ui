@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runBlocked, runCommand, runMessage, runWhy, startLines, tasksBetween, underOf } from "../web/src/specRun.ts";
+import { doneLines, runBlocked, runCommand, runMessage, runWhy, startLines, tasksBetween, underOf } from "../web/src/specRun.ts";
 
 const PLAN = "# Implementation Plan\n\n- [ ] 1. Add the door\n  - _Requirements: 1.1_\n- [ ] 2. Hang the sign\n- [x] 2.1 Cut the board\n- [ ] 2.2 Paint it\n- [ ] 3. Lock up\n";
 const at = (needle) => PLAN.indexOf(needle);
@@ -90,4 +90,13 @@ test("Start가 설 줄은 할 것이 남은 작업의 줄이다 — 묶음도, �
   const crlf = PLAN.replaceAll("\n", "\r\n");
   assert.deepEqual(startLines(crlf).map(({ from }) => crlf.slice(from, from + 5)), ["- [ ]", "- [ ]", "- [ ]", "- [ ]"], "CRLF에서도 줄의 시작이다");
   assert.deepEqual(startLines(PLAN.replaceAll("- [ ]", "- [x]")), [], "전부 끝나면 하나도 없다");
+});
+
+test("결과가 설 줄은 끝난 잎 작업의 줄 끝이다 — 묶음에는 없고, 안 끝난 것에도 없다", () => {
+  assert.deepEqual(doneLines(PLAN).map(({ to, task }) => [task.number, PLAN.slice(to - 5, to)]), [["2.1", "board"]], "2.1만 끝났다");
+  const all = PLAN.replaceAll("- [ ]", "- [x]");
+  assert.deepEqual(doneLines(all).map(({ task }) => task.number), ["1", "2.1", "2.2", "3"], "2는 묶음이라 제 커밋이 없다");
+  const crlf = all.replaceAll("\n", "\r\n");
+  assert.deepEqual(doneLines(crlf).map(({ to }) => crlf.slice(to, to + 2)), ["\r\n", "\r\n", "\r\n", "\r\n"], "CRLF에서는 \\r 앞이 줄의 끝이다");
+  assert.deepEqual(doneLines(""), []);
 });
