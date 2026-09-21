@@ -5,7 +5,7 @@ import { SPEC_DOCS } from "../../../documentKinds.ts";
 import type { SpecInfo } from "../../../protocol.ts";
 import { commandsStore, configStore, specsStore } from "../serverState";
 import { APPROVE, approveMessage, blocked, why } from "../specApprove.ts";
-import { docPath, docStanding, docTitle, speaksFor, standingOf, standingWord, stateWords } from "../specStanding.ts";
+import { docPath, docStanding, docTitle, progressWords, speaksFor, standingOf, standingWord, stateWords } from "../specStanding.ts";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Button } from "./ui/button";
@@ -85,7 +85,16 @@ export function SpecButton({ open, onOpen }: { open: string | null; onOpen: (pat
 					<Fragment key={spec.name}>
 						{at > 0 && <DropdownMenuSeparator />}
 						<DropdownMenuGroup>
-							<DropdownMenuLabel>{spec.name}</DropdownMenuLabel>
+							{/* Each spec's progress beside its name, so that with several the
+							    menu says where each has got to, not only the one in front. */}
+							<DropdownMenuLabel className="flex items-center gap-2">
+								<span className="min-w-0 truncate">{spec.name}</span>
+								{progressWords(spec) && (
+									<span className="ml-auto font-normal text-muted-foreground" data-progress={spec.name}>
+										{progressWords(spec)}
+									</span>
+								)}
+							</DropdownMenuLabel>
 							{SPEC_DOCS.map((doc) => {
 								const standing = docStanding(spec, doc);
 								return (

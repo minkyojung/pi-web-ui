@@ -3407,6 +3407,38 @@ check("the spec at the start of the row names what is waiting, opens its documen
 	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
 });
 
+// Approved to the end, the control says how far the tasks have got — read off
+// tasks.md by the server, so a box checked on disk moves it.
+check("the spec at the start of the row says how far its tasks have got once all three documents are approved", async ({ app, cwd }) => {
+	const dir = join(cwd, ".octave/specs/count");
+	mkdirSync(dir, { recursive: true });
+	const plan = (first) => `# Tasks\n\n- [${first}] 1. First\n- [ ] 2. Heading\n- [ ] 2.1 Second\n- [ ] 2.2 Third\n`;
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
+	writeFileSync(join(dir, "design.md"), "# Design\n");
+	writeFileSync(join(dir, "tasks.md"), plan(" "));
+	// Approved to the end, as the command approves (specApproval.ts). And so is
+	// whatever the checks before this one left waiting: the control names the
+	// spec that is waiting before any other (speaksFor), so while one is, this
+	// one is not the one it speaks for.
+	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
+	// With none waiting, the control names the spec being read: this one, opened.
+	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/count/tasks.md")}`);
+	await until("the plan in front", async () => (await editorText(app)).includes("Heading"));
+	const button = () => app.evaluate("document.getElementById('spec')?.textContent ?? ''");
+	await until("the count", async () => (await button()).includes("count") && (await button()).includes("0 / 3"));
+	// A box checked, as the run's end checks it: the count moves, and the
+	// approval holds — a task done is not a change to the plan. The heading 2
+	// is not counted: it is checked when 2.1 and 2.2 are, and is never run.
+	writeFileSync(join(dir, "tasks.md"), plan("x"));
+	await until("one done", async () => (await button()).includes("1 / 3"));
+	await app.shot("spec-progress");
+	await app.click("#spec");
+	await until("the menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitem]')"));
+	assert.equal(await app.evaluate("document.querySelector('[role=menu] [data-progress=\"count\"]')?.textContent"), "1 / 3", "the menu says it beside the name");
+	await app.press("Escape");
+	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+});
+
 // The other place the answer can be given: over the document being read.
 check("a document waiting for approval says so above itself, and the line goes once it is approved", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/bar");
