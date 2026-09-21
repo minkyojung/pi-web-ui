@@ -32,9 +32,13 @@ test("지시문은 한 줄을 인용하고, 문서가 무엇을 위한 것인지
   assert.match(said, /someone given only this document could look at a finished result and say whether it passes/);
   assert.ok(said.indexOf("Find out what is there now") < said.indexOf("Name it"), "코드를 먼저 읽는다 — 설계가 아니라 지금의 사실을");
   // 뼈대: Kiro의 번호 구조는 남고(작업이 1.2로 가리킨다), 빈칸 양식은 없다.
-  for (const shape of ["# Requirements Document", "## Introduction", "### Requirement 1", "#### Acceptance Criteria", "## Out of Scope", "## Decisions for You"]) {
+  for (const shape of ["### Requirement 1", "#### Acceptance Criteria", "## Out of Scope", "## Decisions for You"]) {
     assert.ok(said.includes(shape), `뼈대: ${shape}`);
   }
+  // 읽기 위한 구조는 모델의 것이다: 제목도 소개라는 칸도 주지 않는다.
+  for (const given of ["# Requirements Document", "## Introduction"]) assert.equal(said.includes(given), false, `주지 않는다: ${given}`);
+  assert.match(said, /the title, the opening and any section that helps someone judge a result are yours to shape/);
+  assert.match(said, /Three parts are not, because the design, the tasks and the person's approval stand on them/);
   for (const slot of ["**User Story:**", "WHEN [event]", "[system] SHALL"]) assert.equal(said.includes(slot), false, `빈칸 양식은 없다: ${slot}`);
   assert.match(said, /Every acceptance criterion can fail/, "틀릴 수 있는 문장만 기준이다");
   assert.match(said, /Say what, never how/);

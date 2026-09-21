@@ -120,16 +120,18 @@ export function refusal(cwd: string, given: string): string | null {
  * story and the WHEN/THEN/SHALL sentence. Those are slots, and a model given
  * slots fills them: from one line it wrote a role nobody has and criteria no
  * result could fail, and in Korean the borrowed keywords break the sentence
- * they are put in. What the document is for is said in words instead, below,
- * and two sections are added for what approving it is about: what is left
- * out, and what only the person can decide (spec-mode.md 6절).
+ * they are put in. What the document is for is said in words instead, below.
+ *
+ * Only three parts are given a shape, and they are the ones a model leaves
+ * out when it is given none — tried, with nothing but what the three
+ * documents are to each other: the criteria came back as bullets without
+ * numbers, nothing was said to be out of scope, and what the person should
+ * have been asked was decided for them. The rest it shapes better than a
+ * form does — it wrote "what is there now" as a list and added "what would
+ * not pass" unasked — so the title, the opening and any other section are
+ * its own (spec-mode.md 6절).
  */
 const FORM = `\`\`\`md
-# Requirements Document
-
-## Introduction
-[What is to be built and why, in a few sentences. Then what is there now, from the code: the files and the behaviour this starts from.]
-
 ## Requirements
 
 ### Requirement 1
@@ -178,7 +180,7 @@ export function specPrompt({ line, prefix, branch, taken }: { line: string; pref
 		`Name it: a short kebab-case name for the work, from their words (e.g. "user-authentication")${taken.length ? `, and not one of these, which are taken: ${taken.join(", ")}` : ""}.`,
 		`Make the folder ${SPECS_DIR}{name}/.`,
 		[
-			`Write ${SPECS_DIR}{name}/requirements.md with write — it is not a note, so not note_write — in this shape. ${THEIR_LANGUAGE}`,
+			`Write ${SPECS_DIR}{name}/requirements.md with write — it is not a note, so not note_write. ${THEIR_LANGUAGE} Open it with what is to be built and why, and what is there now, from the code — the behaviour this starts from — in whatever shape reads best; the title, the opening and any section that helps someone judge a result are yours to shape. Three parts are not, because the design, the tasks and the person's approval stand on them:`,
 			"",
 			FORM,
 			"",
