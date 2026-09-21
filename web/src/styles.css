@@ -75,6 +75,12 @@
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
+  /* Code tokens, in a file open to read (Code.tsx). */
+  --code-keyword: oklch(0.5 0.2 330);
+  --code-type: oklch(0.5 0.13 250);
+  --code-string: oklch(0.48 0.12 145);
+  --code-name: oklch(0.45 0.16 285);
+  --code-number: oklch(0.5 0.14 60);
   /*
    * pi's side of the card. The note is the page; the conversation beside it is
    * not the same page, so it takes a surface of its own — and which way it
@@ -162,6 +168,11 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  --code-keyword: oklch(0.78 0.14 330);
+  --code-type: oklch(0.8 0.1 250);
+  --code-string: oklch(0.8 0.1 145);
+  --code-name: oklch(0.78 0.1 285);
+  --code-number: oklch(0.8 0.12 60);
   /* Raised, the step a card takes off this page. */
   --panel: oklch(0.238 0 0);
   --panel-muted: oklch(0.302 0 0);
@@ -307,6 +318,11 @@
   --chart-3: oklch(0.553 0.086 209);
   --chart-4: oklch(0.477 0.073 208);
   --chart-5: oklch(0.393 0.061 206);
+  --code-keyword: oklch(0.78 0.14 330);
+  --code-type: oklch(0.8 0.1 250);
+  --code-string: oklch(0.8 0.1 145);
+  --code-name: oklch(0.78 0.1 285);
+  --code-number: oklch(0.8 0.12 60);
   /* Raised, the step a card takes off this page. */
   --panel: oklch(0.259 0.004 85);
   --panel-muted: oklch(0.316 0.004 85);

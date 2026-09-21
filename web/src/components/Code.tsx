@@ -7,29 +7,28 @@ import { drawSelection, EditorView, keymap, lineNumbers } from "@codemirror/view
 import { tags } from "@lezer/highlight";
 
 import { choose, chosenStore } from "../chosen";
+import { say as sayInFront } from "../inFront";
 import { codeStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 
 /**
- * Code, told apart without colour.
+ * Code, told apart by colour.
  *
- * Every token this window draws is grey — even the charts are `oklch(x 0 0)` —
- * so a keyword in blue would be the one coloured thing on screen. Distance
- * from the text colour carries it instead: what the language itself owns is
- * heaviest, what is written in it sits at the text colour, what is quoted
- * stands a step back, and punctuation and comments are faint. It is the same
- * decision the note's own style makes, where a heading is weight and size
- * rather than a colour.
+ * The grammar (lezer, picked by the file's name below) names each token;
+ * this table is the one place a name becomes a look. The hues are the
+ * theme's (styles.css), so a keyword reads in every window, light or dark.
  */
-const quoted = "color-mix(in oklab, var(--foreground) 62%, var(--background))";
 const code = HighlightStyle.define([
 	{
 		tag: [tags.keyword, tags.moduleKeyword, tags.controlKeyword, tags.operatorKeyword, tags.definitionKeyword, tags.modifier, tags.self],
-		fontWeight: "600",
+		color: "var(--code-keyword)",
 	},
-	{ tag: [tags.typeName, tags.className, tags.namespace, tags.atom, tags.bool, tags.null], fontWeight: "600" },
-	{ tag: [tags.string, tags.special(tags.string), tags.regexp, tags.character], color: quoted },
+	{ tag: [tags.typeName, tags.className, tags.namespace, tags.tagName], color: "var(--code-type)" },
+	{ tag: [tags.atom, tags.bool, tags.null, tags.number, tags.literal], color: "var(--code-number)" },
+	{ tag: [tags.string, tags.special(tags.string), tags.regexp, tags.character], color: "var(--code-string)" },
+	{ tag: [tags.function(tags.variableName), tags.function(tags.propertyName), tags.definition(tags.variableName)], color: "var(--code-name)" },
+	{ tag: [tags.attributeName, tags.propertyName], color: "var(--code-type)" },
 	{ tag: [tags.comment, tags.lineComment, tags.blockComment, tags.docComment], color: "var(--muted-foreground)", fontStyle: "italic" },
 	{ tag: [tags.punctuation, tags.separator, tags.bracket, tags.operator], color: "var(--muted-foreground)" },
 	{ tag: [tags.meta, tags.processingInstruction], color: "var(--muted-foreground)" },
@@ -118,10 +117,13 @@ export default function Code({ path }: { path: string }) {
 					theme,
 					// What is chosen, for the box above pi's column — the same gesture
 					// as in a note and in a PDF, so a line of code can be asked about.
+					// And which line the cursor is on, which is where the editor this
+					// file is handed to should open it (NoteHeader.tsx).
 					EditorView.updateListener.of((u) => {
 						if (!u.selectionSet && !u.docChanged) return;
 						const { from, to } = u.state.selection.main;
 						choose(path, u.state.sliceDoc(from, to));
+						sayInFront(path, { line: u.state.doc.lineAt(from).number });
 					}),
 				],
 			}),
