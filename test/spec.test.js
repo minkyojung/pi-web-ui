@@ -493,6 +493,7 @@ test("설계와 작업 목록의 지시문은 문서가 무엇을 위한 것인�
   for (const copied of ["Set up project structure", "User model", "test-driven manner"]) assert.equal(tasks.includes(copied), false, `새 프로젝트의 예시는 없다: ${copied}`);
   assert.match(tasks, /at most two levels/);
   assert.match(tasks, /one commit's worth/, "작업 하나 = 커밋 하나");
+  assert.match(tasks, /Everything else — the heading, the sub-bullets — is in the language the requirements are written in/, "커밋 제목이 될 한 줄만 저장소의 커밋을 따른다 — 문서가 통째로 영어가 되지 않게");
   assert.match(tasks, /_Done when: …_/, "끝났다는 증거가 작업 안에");
   assert.match(tasks, /Those two keys stay as they are, in English/);
   assert.match(tasks, /Test the way this repository tests/);
