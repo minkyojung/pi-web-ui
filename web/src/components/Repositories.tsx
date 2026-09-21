@@ -7,9 +7,11 @@ import { toast } from "sonner";
 import { configStore } from "../serverState";
 import { CloneRepository } from "./CloneRepository";
 import { NewSpec, type SpecOnChoices } from "./NewSpec";
+import { RemoveWorkspace } from "./RemoveWorkspace";
 import { row } from "./sidebarRow";
 import { Button } from "./ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -27,6 +29,8 @@ const workspaceShell = (
 				list(): Promise<WorkspaceList | null>;
 				create(root: string, first: { line: string; model: string | null; effort: string | null }): Promise<{ error?: string } | null>;
 				open(path: string): Promise<void>;
+				changes(path: string): Promise<number | null>;
+				remove(path: string, seen: number): Promise<{ error?: string; changes?: number } | null>;
 				onChange(listen: () => void): () => void;
 			};
 		};
@@ -102,6 +106,8 @@ export function useWorkspaceList(): WorkspaceList | null | undefined {
 export function Repositories({ list, choices }: { list: WorkspaceList; choices?: SpecOnChoices }) {
 	/** The repository a spec is being started in, while the dialog for it is open. */
 	const [starting, setStarting] = useState<{ path: string; name: string } | null>(null);
+	/** The workspace being asked about before it is removed. */
+	const [doomed, setDoomed] = useState<{ path: string; branch: string } | null>(null);
 	const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
 	const [cloning, setCloning] = useState(false);
 	const shell = workspaceShell!;
@@ -148,6 +154,7 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 				</DropdownMenu>
 			</div>
 			<CloneRepository open={cloning} onOpenChange={setCloning} />
+			<RemoveWorkspace workspace={doomed} onClose={() => setDoomed(null)} shell={shell} />
 			<NewSpec repository={starting} onClose={() => setStarting(null)} create={shell.create} choices={choices} />
 			<ul id="workspaces" className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-1">
 				{list.projects.map((project) => (
@@ -182,8 +189,12 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 										const active = worktree.path === list.current;
 										return (
 											<li key={worktree.path}>
+												{/* The menu wraps the tooltip, as the notes' rows do: both
+												    want the row, and only one can be asChild of it. */}
+												<ContextMenu>
 												<Tooltip>
 													<TooltipTrigger asChild>
+														<ContextMenuTrigger asChild>
 														<Button
 															variant="ghost"
 															size="sm"
@@ -199,9 +210,17 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 															<GitBranchIcon />
 															<span className="truncate">{branchName(worktree.branch)}</span>
 														</Button>
+														</ContextMenuTrigger>
 													</TooltipTrigger>
 													<TooltipContent side="right">{worktree.branch}</TooltipContent>
 												</Tooltip>
+												<ContextMenuContent>
+													{/* The menu is let go of first, so the dialog is not opened behind it. */}
+													<ContextMenuItem variant="destructive" onSelect={() => queueMicrotask(() => setDoomed({ path: worktree.path, branch: branchName(worktree.branch) }))}>
+														Remove workspace…
+													</ContextMenuItem>
+												</ContextMenuContent>
+												</ContextMenu>
 											</li>
 										);
 									})}

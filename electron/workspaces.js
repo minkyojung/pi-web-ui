@@ -62,6 +62,11 @@ export function withWorkspace(projects, root, worktree = null) {
 	return [...projects, next];
 }
 
+/** The projects without the workspace at `path`; its repository stays, with the rest of its workspaces. */
+export function withoutWorkspace(projects, path) {
+	return projects.map((project) => (project.worktrees.some((w) => w.path === path) ? { ...project, worktrees: project.worktrees.filter((w) => w.path !== path) } : project));
+}
+
 /**
  * The workspace to open on starting: the one in front last time, if it is
  * still on the list — the person opened it, and it is put back. Else none,

@@ -20,11 +20,11 @@ import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
 import { createServers, idle } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
-import { branchOf, git, makeWorkspace, repositoryOf } from "./git.js";
+import { branchOf, changesIn, git, makeWorkspace, removeWorktree, repositoryOf } from "./git.js";
 import { clone, login, repositories, repositoryName } from "./github.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
-import { firstWorkspace, projectsOf, withWorkspace } from "./workspaces.js";
+import { firstWorkspace, projectsOf, withWorkspace, withoutWorkspace } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
@@ -488,6 +488,49 @@ function newWorkspace(root, first) {
 	});
 }
 
+/** The repository a listed workspace is of, or null for a folder that is not one: the page does not name folders of its own. */
+const repositoryOfWorkspace = (path) => projectsOf(readSettings(), isCheckout).find((project) => project.worktrees.some((worktree) => worktree.path === path))?.path ?? null;
+
+/** How many uncommitted changes a listed workspace holds, for the person to be told before it is removed; null when git cannot say. */
+async function workspaceChanges(path) {
+	if (!repositoryOfWorkspace(path)) return null;
+	return changesIn(path).catch(() => null);
+}
+
+/**
+ * A workspace removed: its server stopped, its folder and worktree taken
+ * away, and its row off the list. The branch stays, and so does what was
+ * said in it — pi keeps a conversation by its folder's path (spec-mode.md
+ * 6절). `seen` is how many uncommitted changes the person was told would go
+ * with it: when the folder holds another number by now, nothing is removed
+ * and the number is answered instead, to be asked about again. Not while the
+ * agent is working there. One at a time with making, which reads the same
+ * folders. The window, if it was on this one, goes to the first screen.
+ */
+function removeWorkspace(path, seen) {
+	const done = making.then(async () => {
+		const root = repositoryOfWorkspace(path);
+		if (!root) return { error: "That workspace is no longer on the list." };
+		if (busy.get(path)) return { error: "The agent is working there. Remove it when it has finished." };
+		try {
+			const changes = await changesIn(path);
+			if (changes !== seen) return { changes };
+			if (path === front || path === wanted) await showStart();
+			await servers.stop(path);
+			await removeWorktree(root, path);
+			writeSettings({ ...readSettings(), projects: withoutWorkspace(projectsOf(readSettings(), isCheckout), path) });
+			waiting.take(path);
+			for (const kept of [ports, busy, since]) kept.delete(path);
+			workspacesChanged();
+			return {};
+		} catch (err) {
+			return { error: err.message };
+		}
+	});
+	making = done.then(() => {});
+	return done;
+}
+
 /** A workspace from the list put in front. Only one on the list: the page does not name folders of its own. */
 function openWorkspace(path) {
 	const known = projectsOf(readSettings(), isCheckout).some((project) => project.worktrees.some((worktree) => worktree.path === path));
@@ -579,6 +622,8 @@ function serveFolders() {
 	// Asked by the page of the workspace in front, which is the one it is for.
 	ipcMain.handle("workspace:first", () => (front ? waiting.take(front) : null));
 	ipcMain.handle("workspace:open", (_event, path) => (devUrl ? null : openWorkspace(path)));
+	ipcMain.handle("workspace:changes", (_event, path) => (devUrl ? null : workspaceChanges(path)));
+	ipcMain.handle("workspace:remove", (_event, path, seen) => (devUrl ? null : removeWorkspace(path, seen)));
 	// A note in the Finder. The page is told the folder in full by the server
 	// (ConfigMsg.folder) and joins the note's path onto it, which is a better
 	// source than this process has: in a dev run the settings hold no workdir

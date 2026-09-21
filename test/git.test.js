@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { CITIES, pickCity } from "../electron/cities.js";
-import { branchOf, fetchOrigin, makeWorkspace, repositoryOf, startOf } from "../electron/git.js";
+import { branchOf, changesIn, fetchOrigin, makeWorkspace, removeWorktree, repositoryOf, startOf } from "../electron/git.js";
 import { login } from "../electron/github.js";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
@@ -135,4 +135,34 @@ test("a clone is asked for by owner/name or by a GitHub address, and nothing els
 	for (const source of ["", "pi-web-ui", "a/b/c", "a/..", "a/.", "https://gitlab.com/a/b", "http://github.com/a/b", "https://github.com/a/b/tree/main", "--upload-pack=x/y", "a/b; rm -rf ~", "file:///etc/passwd", null]) {
 		assert.equal(repositoryName(source), null, String(source));
 	}
+});
+
+test("a workspace's changes are the person's — changed, added, untracked — and never the app's own folder", async () => {
+	const repo = cloned();
+	const made = await makeWorkspace(repo.root, { into: join(repo.dir, "ws"), owner: "me" });
+	assert.equal(await changesIn(made.path), 0);
+	mkdirSync(join(made.path, ".pi", "history"), { recursive: true });
+	writeFileSync(join(made.path, ".pi", ".gitignore"), "trash/\n");
+	writeFileSync(join(made.path, ".pi", "history", "a.jsonl"), "{}\n");
+	assert.equal(await changesIn(made.path), 0, "Octave writes .pi/ into every folder it opens");
+	writeFileSync(join(made.path, "a.txt"), "changed\n");
+	mkdirSync(join(made.path, "new"));
+	writeFileSync(join(made.path, "new", "b.txt"), "x\n");
+	writeFileSync(join(made.path, "new", "c.txt"), "x\n");
+	assert.equal(await changesIn(made.path), 3, "each untracked file, not its folder once");
+});
+
+test("removing a workspace takes the folder and leaves the branch, whatever was in the folder", async () => {
+	const repo = cloned();
+	const made = await makeWorkspace(repo.root, { into: join(repo.dir, "ws"), owner: "me" });
+	writeFileSync(join(made.path, "work.txt"), "kept on the branch\n");
+	run(made.path, "add", ".");
+	run(made.path, "commit", "-q", "-m", "work");
+	mkdirSync(join(made.path, ".pi"));
+	writeFileSync(join(made.path, ".pi", ".gitignore"), "trash/\n");
+	writeFileSync(join(made.path, "loose.txt"), "never committed\n");
+	await removeWorktree(repo.root, made.path);
+	assert.equal(existsSync(made.path), false);
+	assert.equal(run(repo.root, "worktree", "list").includes(made.path), false, "git has forgotten the worktree");
+	assert.equal(run(repo.root, "log", "-1", "--format=%s", made.branch), "work", "the branch and its commit are still there");
 });

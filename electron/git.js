@@ -121,3 +121,25 @@ export async function makeWorkspace(root, { into, owner }) {
 	await addWorktree(root, { path, branch, start });
 	return { path, branch, name };
 }
+
+/**
+ * How many of the person's changes a workspace holds that no commit has:
+ * files changed, added or not yet tracked, as `git status` counts them. The
+ * app's own folder is left out — Octave writes `.pi/` into every folder it
+ * opens, so counted, no workspace would ever be clean.
+ */
+export async function changesIn(path) {
+	const out = await git(path, ["status", "--porcelain", "--untracked-files=all"]);
+	return out.split("\n").filter((line) => line && !/^.. "?\.pi\//.test(line)).length;
+}
+
+/**
+ * A workspace's folder taken away: the worktree, and git's record of it. The
+ * branch stays, with every commit made on it. Forced, since git will not
+ * remove a worktree with anything untracked in it and the app's own folder
+ * always is — whether the person's changes may go with it is the caller's
+ * to have asked (changesIn).
+ */
+export async function removeWorktree(root, path) {
+	await git(root, ["worktree", "remove", "--force", path]);
+}

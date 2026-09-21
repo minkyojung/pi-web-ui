@@ -3618,6 +3618,42 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 	}
 });
 
+// Removing a workspace, from its row. The shell is stood in for: it says how
+// many changes the folder holds, and holds one more by the time it is asked.
+check("a workspace's row removes it from a right click: what stays is said, the changes that would be lost are counted, and a count that moved is asked about again", async ({ app }) => {
+	const stopStanding = await app.onNewDocument(`
+		if (sessionStorage.getItem("stand-in-for-removing") === "1") {
+		window.__removes = [];
+		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
+			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }, { path: "/w/lima", name: "lima", branch: "me/email-auth" }] }] }),
+				create: async () => ({}), open: async () => {}, onChange: () => () => {}, first: async () => null,
+				changes: async () => 1,
+				remove: async (path, seen) => { window.__removes.push({ path, seen }); return seen === 2 ? {} : { changes: 2 }; } } };
+		}`);
+	try {
+		await app.evaluate(`sessionStorage.setItem("stand-in-for-removing", "1"); location.reload()`);
+		await until("the rows", () => app.evaluate("document.querySelectorAll('[data-workspace]').length === 2"));
+		await app.evaluate(`(() => { const row = document.querySelector('[data-workspace="/w/lima"]'); const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: r.x + 8, clientY: r.y + 8 })); })()`);
+		await until("the menu", () => app.evaluate("[...document.querySelectorAll('[role=menuitem]')].some((i) => i.textContent.includes('Remove workspace'))"));
+		await app.evaluate("[...document.querySelectorAll('[role=menuitem]')].find((i) => i.textContent.includes('Remove workspace')).click()");
+		await until("the count", () => app.evaluate("document.getElementById('remove-workspace-changes')?.textContent === '1 uncommitted change in it will be lost.'"));
+		const said = await app.evaluate("document.getElementById('remove-workspace').innerText");
+		assert.match(said, /^Remove email-auth\?/, "by the name its row has");
+		assert.match(said, /The branch and its commits stay/);
+		await app.shot("remove-workspace");
+		await app.click("#remove-workspace-confirm");
+		await until("the count that moved", () => app.evaluate("document.getElementById('remove-workspace-changes')?.textContent === '2 uncommitted changes in it will be lost.'"));
+		await app.click("#remove-workspace-confirm");
+		await until("the dialog gone", async () => !(await app.evaluate("!!document.getElementById('remove-workspace')")));
+		assert.deepEqual(JSON.parse(await app.evaluate("JSON.stringify(window.__removes)")), [{ path: "/w/lima", seen: 1 }, { path: "/w/lima", seen: 2 }]);
+	} finally {
+		await app.press("Escape");
+		await stopStanding();
+		await app.evaluate(`sessionStorage.removeItem("stand-in-for-removing"); location.reload()`);
+		await until("the page back", () => app.evaluate("!window.__removes && !!document.getElementById('chat')"));
+	}
+});
+
 // The other end of the new spec dialog: the page of the workspace it made.
 // The shell is stood in for, and says what it kept; the wire is watched for
 // what the page does about it. The line itself is stopped at the wire — the
