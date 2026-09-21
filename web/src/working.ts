@@ -137,8 +137,23 @@ export interface Task {
 	then: string[];
 }
 
-/** "Task 2.2 · Paint it", for the line and for the title of a control that stands for it. */
-export const taskWords = (task: Pick<Task, "task" | "title">): string => `Task ${task.task} · ${task.title}`;
+/**
+ * The task as the strip says it, in the two places it does.
+ *
+ * On the line, the number alone, as a value: `Task 2.2`. It is not a
+ * sentence to read but the name of a line in the list, where that line's
+ * Start is turning — so it is drawn as a chip, and the objective, which is
+ * the longest thing here and the first to be cut, is left to the title.
+ * What is queued after it is a count, `1 more`: how much is left is what a
+ * strip is for, and which ones is in the title too.
+ */
+export const taskLabel = (task: Pick<Task, "task">): string => `Task ${task.task}`;
+
+/** "1 more", or null with nothing queued — which is most runs, one Start pressed. */
+export const moreWords = (task: Pick<Task, "then">): string | null => (task.then.length > 0 ? `${task.then.length} more` : null);
+
+/** The whole of it, for the title: "Task 2.2 · Paint it — then 3, 4". */
+export const taskTitle = (task: Task): string => `Task ${task.task} · ${task.title}${task.then.length > 0 ? ` — then ${task.then.join(", ")}` : ""}`;
 
 export function agentLine(state: {
 	connection: Connection;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { agentLine, currentStep, glyphOf, lastRun, nextUnseen, resultSeen } from "../web/src/working.ts";
+import { agentLine, currentStep, glyphOf, lastRun, moreWords, nextUnseen, resultSeen, taskLabel, taskTitle } from "../web/src/working.ts";
 
 const line = (over = {}) => agentLine({ connection: "open", asking: 0, streaming: false, queued: 0, items: [], ...over });
 const done = (over = {}) => ({ kind: "done", endedAt: Date.parse("2026-09-16T13:38:00Z"), ...over });
@@ -136,4 +136,13 @@ test("작업의 실행이면 줄이 어느 작업인지, 뒤에 무엇이 남았
   assert.equal(step.what, "Working", "단계는 항목에서, 작업은 서버에서 — 서로 상관없다");
   assert.equal(line({ streaming: true }).task, null, "대화의 턴이면 작업이 없다");
   assert.notEqual(line({ streaming: false, task })?.kind, "step", "쉬는 동안엔 단계가 아니다 — 서버가 null을 보내지만, 보내더라도");
+});
+
+test("줄에는 번호와 남은 개수, 나머지는 title에 — 제목은 제일 길고 제일 먼저 잘린다", () => {
+  const task = { task: "2.2", title: "Paint it", then: ["3", "4"] };
+  assert.equal(taskLabel(task), "Task 2.2");
+  assert.equal(moreWords(task), "2 more");
+  assert.equal(moreWords({ then: [] }), null, "▶ 하나만 누른 실행에는 없다");
+  assert.equal(taskTitle(task), "Task 2.2 · Paint it — then 3, 4");
+  assert.equal(taskTitle({ ...task, then: [] }), "Task 2.2 · Paint it");
 });

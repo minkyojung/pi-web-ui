@@ -26,10 +26,11 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { atEndStore } from "../atEnd";
 import { configStore, promptsStore } from "../serverState";
 import { getConnection, getItems, subscribe } from "../store";
-import { agentLine, glyphOf, nextUnseen, resultSeen, taskWords } from "../working";
+import { agentLine, glyphOf, moreWords, nextUnseen, resultSeen, taskLabel, taskTitle } from "../working";
 import { send } from "../ws";
 import { ContextCard } from "./ContextCard";
 import { ToolModes } from "./ToolModes";
+import { Badge } from "./ui/badge";
 import { Spinner } from "./ui/spinner";
 
 /**
@@ -82,14 +83,14 @@ function Line({ bare = false }: { bare?: boolean }) {
 	return (
 		<span id="agentLine" className="flex min-w-0 items-center gap-1.5 px-1.5">
 			{!bare && <Spinner className="size-3 shrink-0" />}
-			{/* The task before the step, when the run is one: what is being done,
-			    then how. The task gives up letters before the step does — the step
-			    is what is moving. */}
+			{/* The task before the step, when the run is one: which, then what it
+			    is doing. A chip, as Read-only is over a file — the number is the
+			    name of a line in the list, a value and not words to read — with
+			    the objective and the queue in its title (working.ts). */}
 			{line.task && (
-				<span id="agentTask" className="min-w-0 shrink truncate text-foreground/80" title={taskWords(line.task)}>
-					{taskWords(line.task)}
-					<span className="text-muted-foreground"> —</span>
-				</span>
+				<Badge id="agentTask" variant="secondary" className="h-4 shrink-0 px-1.5 text-[10px] font-normal tabular-nums" title={taskTitle(line.task)}>
+					{taskLabel(line.task)}
+				</Badge>
 			)}
 			<span key={`${line.what} ${line.detail}`} className="step-in flex min-w-0 items-center gap-1.5">
 				<span className="shrink-0 text-foreground/80">{line.what}</span>
@@ -99,8 +100,12 @@ function Line({ bare = false }: { bare?: boolean }) {
 			    is queued is a fact about the run, and it is the run that will take
 			    them. The messages themselves are still listed above the box. */}
 			{line.queued > 0 && <span className="shrink-0">· {line.queued} queued</span>}
-			{/* And the tasks queued after this one, which are the run's too. */}
-			{line.task && line.task.then.length > 0 && <span className="shrink-0 text-muted-foreground">· then {line.task.then.join(", ")}</span>}
+			{/* And how many tasks are queued after this one, which are the run's too. */}
+			{line.task && moreWords(line.task) && (
+				<span id="agentMore" className="shrink-0 text-muted-foreground" title={taskTitle(line.task)}>
+					· {moreWords(line.task)}
+				</span>
+			)}
 		</span>
 	);
 }
