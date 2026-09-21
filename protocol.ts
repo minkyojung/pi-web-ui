@@ -21,6 +21,7 @@ import type { NoteFile } from "./vault";
 import type { Backlink, Tagged } from "./linkIndex";
 import type { SearchHit } from "./search";
 import type { Settings } from "./settings.ts";
+import type { TaskResult } from "./specResults.ts";
 import type { Progress } from "./specTasks.ts";
 
 /** Octave's own settings, for the client, which cannot import settings.ts for anything but its type. */
@@ -614,6 +615,15 @@ export interface SpecInfo {
 	 * spec's menu — still says it, and one parser reads the file for everybody.
 	 */
 	tasks: Progress | null;
+	/**
+	 * What each task that has been run came to: its commit, what that changed
+	 * and how the run said it checked it — oldest first, the order the work
+	 * was done in, and a task run twice is here twice. Read off the
+	 * repository's history (specResults.ts), where a task's commit says whose
+	 * it is; nothing about a result is kept anywhere else. Empty until a task
+	 * has been run, and in a folder that is no repository.
+	 */
+	results: TaskResult[];
 }
 
 export interface SpecsMsg {

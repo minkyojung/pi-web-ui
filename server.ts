@@ -55,6 +55,7 @@ import { MAX_BYTES, saveAttachment, type Saved } from "./attach.ts";
 import { documentType, SPEC_DOCS, SPECS_DIR } from "./documentKinds.ts";
 import { specState } from "./specApproval.ts";
 import { parseTasks, progressOf, type Progress } from "./specTasks.ts";
+import { type TaskResult, taskResults } from "./specResults.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { watchNotes } from "./watcher.ts";
@@ -705,9 +706,37 @@ function specs(): SpecsMsg {
 				waitingAt: waiting ? writtenAt(join(dir, waiting)) : null,
 				written: SPEC_DOCS.filter((doc) => existsSync(join(dir, doc))),
 				tasks: tasksOf(join(dir, "tasks.md")),
+				results: results.get(name) ?? [],
 			};
 		}),
 	};
+}
+
+/**
+ * What the tasks came to, as git last said — see specResults.ts. Held rather
+ * than asked for each time specs() is: that is read on every write to a
+ * spec's folder and is synchronous, and this is a walk of the history.
+ *
+ * Asked again when the answer can have changed: as the server starts, as a
+ * tab connects, as a turn settles — a task's commit is made at the end of
+ * its turn, before the server hears of it — and a moment after a spec's
+ * file changes, which is how a run from the terminal is seen: its box is
+ * written and then its commit made, so the asking waits for the second.
+ */
+let results = new Map<string, TaskResult[]>();
+let resultsSoon: ReturnType<typeof setTimeout> | null = null;
+
+async function loadResults(): Promise<void> {
+	results = await taskResults(CWD);
+	saySpecs();
+}
+
+function loadResultsSoon(): void {
+	if (resultsSoon) clearTimeout(resultsSoon);
+	resultsSoon = setTimeout(() => {
+		resultsSoon = null;
+		void loadResults();
+	}, 600);
 }
 
 /** How far a spec's tasks have got, or null while the file is not there. */
@@ -767,6 +796,7 @@ notes.load();
  */
 let repo: Repo | null = null;
 void loadRepo();
+void loadResults();
 
 /** Every note's links, for "who links here" — see linkIndex.ts. */
 const links = new LinkStore(CWD);
@@ -832,6 +862,8 @@ function noticed(path: string): void {
 		// spec is waiting on — including when the write was this app's own and
 		// the tabs have the words already.
 		saySpecs();
+		// And a box checked is a task's run ending, whose commit follows it.
+		loadResultsSoon();
 		return;
 	}
 	// The record itself: nothing opens it, and all it can change is where the
@@ -1221,6 +1253,7 @@ function onEvent(event: AgentSessionEvent): void {
 	// And it may have written a file that is not a note at all, which is what
 	// a spec's task writes. git is asked the same question at the same moment.
 	if (event.type === "agent_settled") void loadRepo();
+	if (event.type === "agent_settled") void loadResults();
 	// A finished turn is the first moment there can be something to name the
 	// session by, and each one after is another chance while there is not.
 	if (event.type === "agent_settled") void nameSession();
@@ -1729,6 +1762,7 @@ wss.on("connection", async (ws) => {
 	// if the answer has moved on since the last turn ended.
 	reply(repoMsg());
 	void loadRepo();
+	void loadResults();
 	reply(specs());
 	reply({ type: "property_types", types: propertyTypes.all() });
 	reply({ type: "property_names", ...propertyNames.all() });

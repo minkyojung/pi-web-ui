@@ -1212,7 +1212,7 @@ it("스펙이 어디까지 왔는지 탭이 듣는다 — 문서가 써지면 �
   // is the one change the tabs would otherwise never hear.
   approve(cwd, "waiting");
   const after = await want("specs", (m) => m.specs.find((spec) => spec.name === "waiting")?.waiting === null);
-  assert.deepEqual(after.specs.find((spec) => spec.name === "waiting"), { name: "waiting", approved: 1, waiting: null, waitingAt: null, written: ["requirements.md"], tasks: null });
+  assert.deepEqual(after.specs.find((spec) => spec.name === "waiting"), { name: "waiting", approved: 1, waiting: null, waitingAt: null, written: ["requirements.md"], tasks: null, results: [] });
   clear();
   // The next document, written on the approved one: waiting in its turn.
   putSpec(".octave/specs/waiting/design.md", "# Design\n");
@@ -1350,5 +1350,39 @@ it("명령이 연 세션도 사람이 고른 모드로 열린다 — Plan이면 
   } finally {
     await setMode("execution");
     rmSync(join(cwd, ".octave"), { recursive: true, force: true });
+  }
+});
+
+// Last, because it makes the folder a repository for as long as it runs, and
+// the checks above were written for a folder that is none.
+it("작업이 무엇에 이르렀는지는 저장소의 역사에서 — 커밋의 트레일러로 찾아, 스펙마다", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
+  const dir = join(cwd, ".octave/specs/came-to");
+  try {
+    git("init", "-q", "-b", "main");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "requirements.md"), "# Requirements Document\n");
+    const none = await want("specs", (m) => m.specs.some((spec) => spec.name === "came-to"), 10_000);
+    assert.deepEqual(none.specs.find((spec) => spec.name === "came-to").results, [], "아직 돌린 작업이 없다");
+    clear();
+    // A task's end, as spec.ts makes it: the box, and then the commit that
+    // says whose it is. From outside the app, as a run in the terminal is.
+    writeFileSync(join(cwd, "came-to.js"), "export const x = 1;\nexport const y = 2;\n");
+    writeFileSync(join(dir, "tasks.md"), "- [x] 1. Make it\n- [ ] 2. Test it\n");
+    git("add", "-A", "--", ".octave", "came-to.js");
+    git("commit", "-q", "-m", "Make it", "-m", "Spec: came-to\nTask: 1\nChecks: node --test — 3 passed");
+    const told = await want("specs", (m) => m.specs.find((spec) => spec.name === "came-to")?.results.length === 1, 15_000);
+    const [result] = told.specs.find((spec) => spec.name === "came-to").results;
+    assert.equal(result.task, "1");
+    assert.equal(result.title, "Make it");
+    assert.equal(result.commit, git("rev-parse", "HEAD"));
+    assert.equal(result.checks, "node --test — 3 passed");
+    assert.deepEqual(result.files, [{ path: "came-to.js", added: 2, deleted: 0 }], "스펙 폴더의 것은 작업이 바꾼 것이 아니다");
+    assert.deepEqual([result.added, result.deleted], [2, 0]);
+  } finally {
+    rmSync(join(cwd, ".git"), { recursive: true, force: true });
+    rmSync(join(cwd, ".octave"), { recursive: true, force: true });
+    rmSync(join(cwd, "came-to.js"), { force: true });
   }
 });
