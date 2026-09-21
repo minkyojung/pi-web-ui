@@ -77,13 +77,18 @@ export function taskToRun(tasks: Task[], number: string): Task | null {
 }
 
 /**
- * How far the list has got, as a window says it: how many tasks there are to
- * run, how many of them are done, and which is next.
+ * How far the list has got, as a window says it: how many boxes there are,
+ * how many are checked, and which task is next.
  *
- * Counted in tasks that are work of their own — the leaves. A heading with
- * sub-tasks is checked when they are (withParents) and is never run, so
- * counting it would say a spec has more work than it does, and a person who
- * has watched 2.1 and 2.2 finish would see the count move by three.
+ * Every box is counted, a heading's with the rest. The count stands beside
+ * the document, and the document draws a heading with sub-tasks as one more
+ * line with a box — flush with them, since the reading is by number and not
+ * by indent — so a count of the leaves alone says three where the eye sees
+ * four, with nothing on the screen to say why. What GitHub, Obsidian and
+ * Notion count is what is drawn. The heading's box is checked by the code
+ * when its sub-tasks are (withParents), so the count moves with the boxes.
+ * Which task runs next is another question, and that one is asked of the
+ * leaves (nextTask).
  */
 export interface Progress {
 	total: number;
@@ -93,8 +98,7 @@ export interface Progress {
 }
 
 export function progressOf(tasks: Task[]): Progress {
-	const leaves = tasks.filter((task) => childrenOf(tasks, task.number).length === 0);
-	return { total: leaves.length, done: leaves.filter((task) => task.done).length, next: nextTask(tasks)?.number ?? null };
+	return { total: tasks.length, done: tasks.filter((task) => task.done).length, next: nextTask(tasks)?.number ?? null };
 }
 
 /** `done` with every heading whose sub-tasks are all in it: the heading is done when they are. */

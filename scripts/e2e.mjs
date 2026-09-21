@@ -3425,16 +3425,16 @@ check("the spec at the start of the row says how far its tasks have got once all
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/count/tasks.md")}`);
 	await until("the plan in front", async () => (await editorText(app)).includes("Heading"));
 	const button = () => app.evaluate("document.getElementById('spec')?.textContent ?? ''");
-	await until("the count", async () => (await button()).includes("count") && (await button()).includes("0 / 3"));
+	await until("the count", async () => (await button()).includes("count") && (await button()).includes("0 / 4"));
 	// A box checked, as the run's end checks it: the count moves, and the
-	// approval holds — a task done is not a change to the plan. The heading 2
-	// is not counted: it is checked when 2.1 and 2.2 are, and is never run.
+	// approval holds — a task done is not a change to the plan. Four, not
+	// three: the heading 2 has a box on the screen, so it is counted.
 	writeFileSync(join(dir, "tasks.md"), plan("x"));
-	await until("one done", async () => (await button()).includes("1 / 3"));
+	await until("one done", async () => (await button()).includes("1 / 4"));
 	await app.shot("spec-progress");
 	await app.click("#spec");
 	await until("the menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitem]')"));
-	assert.equal(await app.evaluate("document.querySelector('[role=menu] [data-progress=\"count\"]')?.textContent"), "1 / 3", "the menu says it beside the name");
+	assert.equal(await app.evaluate("document.querySelector('[role=menu] [data-progress=\"count\"]')?.textContent"), "1 / 4", "the menu says it beside the name");
 	await app.press("Escape");
 	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
 });

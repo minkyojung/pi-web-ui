@@ -110,11 +110,13 @@ test("하위가 전부 끝나면 상위도 끝난 것이다", () => {
   assert.deepEqual(withParents(tasks, new Set(["1", "2.1", "2.2"])), new Set(["1", "2.1", "2.2", "2"]));
 });
 
-test("진행은 잎만 센다 — 묶음 상위는 돌지 않으니 일이 아니다", () => {
-  assert.deepEqual(progressOf(parseTasks(KIRO)), { total: 3, done: 0, next: "1" }, "1, 2.1, 2.2 — 2는 묶음");
+test("진행은 보이는 칸을 전부 센다 — 묶음 상위의 칸도; 다음 작업은 잎에서", () => {
+  assert.deepEqual(progressOf(parseTasks(KIRO)), { total: 4, done: 0, next: "1" }, "1, 2, 2.1, 2.2 — 화면의 칸 넷");
   const half = KIRO.replace("- [ ] 1.", "- [x] 1.").replace("- [ ] 2.1", "- [x] 2.1");
-  assert.deepEqual(progressOf(parseTasks(half)), { total: 3, done: 2, next: "2.2" });
-  const all = half.replace("- [ ] 2.2", "- [x] 2.2");
-  assert.deepEqual(progressOf(parseTasks(all)), { total: 3, done: 3, next: null }, "상위 2가 열려 있어도 다음은 없다");
+  assert.deepEqual(progressOf(parseTasks(half)), { total: 4, done: 2, next: "2.2" });
+  const leaves = half.replace("- [ ] 2.2", "- [x] 2.2");
+  assert.deepEqual(progressOf(parseTasks(leaves)), { total: 4, done: 3, next: null }, "상위 2의 칸은 코드가 체크하기 전까지 열려 있고, 다음은 없다");
+  const all = leaves.replace("- [ ] 2.", "- [x] 2.");
+  assert.deepEqual(progressOf(parseTasks(all)), { total: 4, done: 4, next: null });
   assert.deepEqual(progressOf([]), { total: 0, done: 0, next: null });
 });

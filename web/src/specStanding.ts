@@ -100,8 +100,9 @@ export function stateWords(spec: SpecInfo): string {
 /**
  * How far a spec's tasks have got, as `3 / 8` — done over to do — and
  * `8 / 8 done` at the end, or null while the spec is not yet at its tasks.
- * Counted by the server off tasks.md (SpecInfo.tasks): the tasks that are
- * work of their own, a heading with sub-tasks being checked when they are.
+ * Counted by the server off tasks.md (SpecInfo.tasks): every box the
+ * document draws, a heading's with the rest, so the count is the count of
+ * what is on the screen.
  */
 export function progressWords(spec: SpecInfo): string | null {
 	if (spec.approved < SPEC_DOCS.length || !spec.tasks) return null;
