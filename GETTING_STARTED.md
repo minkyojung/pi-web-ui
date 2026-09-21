@@ -41,8 +41,16 @@ line. What you approved is kept beside the documents, in `approvals.json`.
 Once all three are approved, `/spec-run` does the tasks, one at a time. Each one opens a session of its own that
 reads the three documents, does that task and stops; the task is then checked off in `tasks.md`, and what it
 changed becomes a commit of its own, named after the task. Run it again for the next one, or name one:
-`/spec-run 2.1`. It will not start while you have changes of your own uncommitted, since a task's commit takes
-the whole folder. When every task is done the branch is the pull request: the code and the three documents
+`/spec-run 2.1` — or several, `/spec-run 2.1 2.2 3`, which run one after another, each as the one before it is
+committed. It will not start while you have changes of your own uncommitted, since a task's commit takes
+the whole folder.
+
+None of it has to be typed. In `tasks.md`, point at a task and press the ▶ to its left; select across several and
+the line over the list offers to run them as one. That line also chooses the model and effort the tasks run on,
+so a spec written by a strong model can be carried out by a cheaper one. The start of the tab row says how far
+the tasks have got, and the strip at the foot of the window says which one is running. To read what a task
+wrote, ⌘P finds any file in the repository and opens it in a tab, read-only — and from there, in your own
+editor at the line you were reading. When every task is done the branch is the pull request: the code and the three documents
 together.
 
 ## 3. Sign in
