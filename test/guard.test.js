@@ -28,6 +28,11 @@ test("셸 명령에서 .pi를 건드리는 것은 잡히고, 닮은 것은 안 �
   assert.equal(mentionsAppDir("echo api"), false);
 });
 
+test("그 말은 턴의 마지막 메시지가 홀로 읽히게 쓰라고 하고, 오래 남을 것은 문서에 쓰라고 한다", () => {
+  assert.match(WORKSPACE_PROMPT, /last message of a turn so that it can be read alone/);
+  assert.match(WORKSPACE_PROMPT, /goes in a document or a file, not in the chat/);
+});
+
 test("pi의 프롬프트 뒤에 붙는 말은 되묻는 도구를 이름으로 부른다", () => {
   assert.match(WORKSPACE_PROMPT, /\bask_user\b/);
 });
