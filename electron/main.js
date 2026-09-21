@@ -21,7 +21,7 @@ import { reportUrl } from "./report.js";
 import { createServers, idle } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
 import { branchOf, changesIn, git, makeWorkspace, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
-import { clone, login, repositories, repositoryName } from "./github.js";
+import { clone, issues, login, repositories, repositoryName } from "./github.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
 import { firstWorkspace, projectsOf, withWorkspace, withoutWorkspace } from "./workspaces.js";
@@ -617,6 +617,8 @@ function serveFolders() {
 	ipcMain.handle("repository:clone", (_event, source) => (devUrl ? null : cloneRepository(source)));
 	// What the clone dialog offers, or null when gh cannot say.
 	ipcMain.handle("github:repositories", () => (devUrl ? null : repositories()));
+	// The open issues of a repository on the list, for a spec to start from one.
+	ipcMain.handle("github:issues", (_event, root) => (devUrl || !projectsOf(readSettings(), isCheckout).some((project) => project.path === root) ? null : issues(root)));
 	// The list, and the two things done to it. In a dev run the dev server owns
 	// the folder, so there is no list to switch in.
 	ipcMain.handle("workspaces", () => (devUrl ? null : workspaces()));

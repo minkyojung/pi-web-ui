@@ -3573,6 +3573,7 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		if (sessionStorage.getItem("stand-in-for-the-list") === "1") {
 		window.__created = [];
 		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
+			repositories: { issues: async (root) => (root === "/r/other" ? [{ number: 12, title: "Sign in with email", body: "A link, not a password." }, { number: 9, title: "No body", body: "" }] : null) },
 			onNewSpec: (listen) => { window.__newSpec = listen; return () => {}; },
 			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/other", name: "other", worktrees: [] }, { path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }] }] }),
 				create: async (root, first, from) => { window.__created.push({ root, first, from }); return window.__created.length === 1 ? { error: "The remote said no." } : {}; },
@@ -3632,6 +3633,12 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		await until("the other repository", async () => (await app.evaluate("document.getElementById('new-spec-repository')?.textContent ?? ''")) === "other");
 		assert.equal(await app.evaluate("document.getElementById('new-spec-line').value"), "typed first");
 		await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+		// From an issue: gh's open issues of this repository, and the one chosen
+		// goes into the box under what was typed, to be read before Create.
+		await app.click("#new-spec-issue");
+		await until("the issues", () => app.evaluate("document.querySelectorAll('#from-issue [cmdk-item]').length === 2"));
+		await app.evaluate("[...document.querySelectorAll('#from-issue [cmdk-item]')].find((i) => i.textContent.includes('Sign in with email')).click()");
+		await until("the issue in the box", async () => (await app.evaluate("document.getElementById('new-spec-line').value")) === "typed first\n\n#12 Sign in with email\n\nA link, not a password.");
 		// Behind the ⋯: another of the remote's branches to start from, said
 		// beside it once chosen. The default one chosen is nothing chosen.
 		await app.click("#new-spec-more");

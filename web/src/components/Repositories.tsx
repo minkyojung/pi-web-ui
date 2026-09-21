@@ -41,6 +41,9 @@ const workspaceShell = (
 /** The shell asking for the new spec dialog, from its menu — see preload.cjs `onNewSpec`. */
 const onNewSpec = (window as { pi?: { onNewSpec?: (listen: () => void) => () => void } }).pi?.onNewSpec;
 
+/** The shell's way to a repository's open issues — see preload.cjs `repositories`. Null where there is no shell to ask. */
+const issuesOf = (window as { pi?: { repositories?: { issues?(root: string): Promise<{ number: number; title: string; body: string }[] | null> } } }).pi?.repositories?.issues ?? (async () => null);
+
 /** The shell's way to add a repository from the Finder — see preload.cjs `repositories`. */
 const openLocal = (window as { pi?: { repositories?: { openLocal(): Promise<{ error?: string } | null> } } }).pi?.repositories?.openLocal;
 
@@ -173,7 +176,7 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 			</div>
 			<CloneRepository open={cloning} onOpenChange={setCloning} />
 			<RemoveWorkspace workspace={doomed} onClose={() => setDoomed(null)} shell={shell} />
-			<NewSpec repository={starting} repositories={list.projects} onRepository={setStarting} onClose={() => setStarting(null)} create={shell.create} branches={shell.branches} choices={choices} />
+			<NewSpec repository={starting} repositories={list.projects} onRepository={setStarting} onClose={() => setStarting(null)} create={shell.create} branches={shell.branches} issues={issuesOf} choices={choices} />
 			<ul id="workspaces" className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-1">
 				{list.projects.map((project) => (
 					<li key={project.path}>

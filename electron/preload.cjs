@@ -16,16 +16,18 @@ contextBridge.exposeInMainWorld("pi", {
 	/** Show a file in the Finder. Takes the whole path; the page knows it. */
 	reveal: (path) => ipcRenderer.invoke("file:reveal", path),
 	/**
-	 * A repository added, with a workspace of it put in front: one chosen in
-	 * the Finder, or one cloned from GitHub by owner/name or address. Each
+	 * A repository added to the list, and nothing opened: one chosen in the
+	 * Finder, or one cloned from GitHub by owner/name or address. Each
 	 * answers `{ error }` when it cannot be done, and a Finder choice
-	 * cancelled answers null. `github` is the signed-in person's repositories,
-	 * or null when gh cannot say.
+	 * cancelled answers null. `github` is the signed-in person's repositories
+	 * and `issues` the open issues of one on the list — `[{ number, title,
+	 * body }]` — each null when gh cannot say.
 	 */
 	repositories: {
 		openLocal: () => ipcRenderer.invoke("repository:open"),
 		clone: (source) => ipcRenderer.invoke("repository:clone", source),
 		github: () => ipcRenderer.invoke("github:repositories"),
+		issues: (root) => ipcRenderer.invoke("github:issues", root),
 	},
 	/**
 	 * The editors this machine has, and a file opened in one at a line — see

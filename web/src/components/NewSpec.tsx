@@ -4,6 +4,8 @@ import { ChevronDownIcon, FolderGit2Icon } from "lucide-react";
 
 import type { ModelInfo } from "../../../protocol.ts";
 import type { ModelPicker } from "./ModelPicker";
+import { appendRestored } from "../queue";
+import { FromIssue, type Issue, issueLine } from "./FromIssue";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
@@ -11,6 +13,9 @@ import { Kbd } from "./ui/kbd";
 import { type Branches, TargetBranch } from "./TargetBranch";
 import { Spinner } from "./ui/spinner";
 import { Textarea } from "./ui/textarea";
+
+/** As long as the shell takes a line to be — electron/firstSpec.js. */
+const LONGEST = 4000;
 
 /** What is chosen beside the line: a model as the picker keys it, and its level. */
 export interface SpecOn {
@@ -53,6 +58,7 @@ export function NewSpec({
 	onClose,
 	create,
 	branches,
+	issues,
 	choices,
 }: {
 	/** The repository the spec is of, or null when the dialog is shut. */
@@ -64,6 +70,8 @@ export function NewSpec({
 	create: Create;
 	/** The branches a repository's workspace can start from — see TargetBranch.tsx. */
 	branches: (root: string) => Promise<Branches | null>;
+	/** The repository's open issues — see FromIssue.tsx. */
+	issues: (root: string) => Promise<Issue[] | null>;
 	choices?: SpecOnChoices;
 }) {
 	const [line, setLine] = useState("");
@@ -127,6 +135,10 @@ export function NewSpec({
 						</DropdownMenuContent>
 					</DropdownMenu>
 					<TargetBranch root={root} value={from} onChange={setFrom} ask={branches} disabled={making} />
+					{/* At the far end, as Conductor has it. What was typed is kept: the
+					    issue goes under it. Cut to what the shell takes (firstSpec.js). */}
+					<span className="ml-auto" />
+					<FromIssue root={root} ask={issues} disabled={making} onPick={(issue) => setLine((was) => appendRestored(was, issueLine(issue)).slice(0, LONGEST))} />
 				</div>
 				<DialogDescription className="sr-only">Say what to build. A workspace is made for it, and the agent writes its requirements there.</DialogDescription>
 				<Textarea
@@ -134,6 +146,7 @@ export function NewSpec({
 					autoFocus
 					value={line}
 					disabled={making}
+					maxLength={LONGEST}
 					placeholder="What do you want to build?"
 					onChange={(e) => setLine(e.target.value)}
 					onKeyDown={(e) => {

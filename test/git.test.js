@@ -185,3 +185,14 @@ test("a workspace can be started from another of the remote's branches, fetched 
 	await assert.rejects(makeWorkspace(repo.root, { into: join(repo.dir, "ws"), owner: "me", start: "nobody/none" }), /no branch called nobody\/none/);
 	await assert.rejects(makeWorkspace(repo.root, { into: join(repo.dir, "ws"), owner: "me", start: "--upload-pack=x" }), /no branch called/);
 });
+
+test("gh's issues are read strictly: a number and a title, a body or none, and nothing else passed on", async () => {
+	const { issuesFrom } = await import("../electron/github.js");
+	assert.deepEqual(issuesFrom('[{"number":12,"title":"Sign in","body":"with email"},{"number":13,"title":"No body","body":null,"url":"x"}]'), [
+		{ number: 12, title: "Sign in", body: "with email" },
+		{ number: 13, title: "No body", body: "" },
+	]);
+	assert.deepEqual(issuesFrom("[]"), []);
+	assert.deepEqual(issuesFrom('[{"number":"12","title":"x"},{"title":"x"},null,{"number":1,"title":2}]'), []);
+	for (const out of ["", "not json", '{"number":1}']) assert.equal(issuesFrom(out), null);
+});
