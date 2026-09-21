@@ -3658,9 +3658,16 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	await app.click("#results");
 	await until("the list", () => app.evaluate("document.querySelectorAll('[data-result]').length === 2"));
 	const lines = await app.evaluate("[...document.querySelectorAll('[data-result]')].map((i) => i.innerText.replace(/\\s+/g, ' ')).join(' || ')");
-	// In the order the work was done, the task run again where it was run again.
-	assert.match(lines, /^2 Hang the sign new no checks .*\+2 −0.* \|\| 1 Add the door ×2 new agent: npm test — 5 passed .*\+1 −1/, lines);
-	assert.equal(await app.evaluate("document.querySelectorAll('[data-result][data-fresh]').length"), 2, "both marked new, and still while the list is being read");
+	// One line a task, in the order the work was done, the task run again where it was run again.
+	assert.equal(lines, "2 Hang the sign new +2 −0 || 1 Add the door new ×2 +1 −1", lines);
+	// The mark at the left is the checks: said, or none — with the run's words behind the one that has them.
+	const marks = await app.evaluate("[...document.querySelectorAll('[data-result] [data-checks]')].map((m) => m.dataset.checks + ':' + m.title).join(' || ')");
+	assert.equal(marks, "none:The run checked nothing || said:agent: npm test — 5 passed");
+	// Not yet looked at is the line in bold, and still while the list is being read.
+	assert.equal(await app.evaluate("document.querySelectorAll('[data-result][data-fresh]').length"), 2);
+	assert.equal(await app.evaluate("[...document.querySelectorAll('[data-result][data-fresh] .font-semibold')].length"), 2);
+	// The commit and the time are the line's title: reference, on the page it opens.
+	assert.match(await app.evaluate("document.querySelector('[data-result=\"1\"]').title"), /^[0-9a-f]{7} · /);
 	await app.shot("task-results");
 	// A line opens that task's commit, and the list goes.
 	await app.evaluate("document.querySelector('[data-result=\"1\"]').click()");

@@ -72,7 +72,7 @@ export function TaskResults({ open: inFront, onOpen }: { open: string | null; on
 					{fresh && !up && <span className="text-foreground">· {fresh}</span>}
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent side="top" align="start" className="w-[28rem] p-0">
+			<PopoverContent side="top" align="start" className="w-96 p-0">
 				<Command loop>
 					<div className="flex items-baseline gap-2 px-3 pt-2.5 pb-1 text-xs">
 						<span className="min-w-0 truncate font-medium text-foreground">{spec.name}</span>
@@ -86,7 +86,15 @@ export function TaskResults({ open: inFront, onOpen }: { open: string | null; on
 						<CommandEmpty>No task by that.</CommandEmpty>
 						<CommandGroup>
 							{list.lines.map((line) => (
-								<CommandItem key={line.commit} value={`${line.task} ${line.title} ${line.short}`} data-result={line.task} data-fresh={line.fresh || undefined} onSelect={() => go(commitPath(line.commit))} className="items-start gap-2 py-1.5">
+								<CommandItem
+									key={line.commit}
+									value={`${line.task} ${line.title} ${line.short}`}
+									data-result={line.task}
+									data-fresh={line.fresh || undefined}
+									title={`${line.short} · ${new Date(line.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`}
+									onSelect={() => go(commitPath(line.commit))}
+									className="gap-2"
+								>
 									<Line line={line} />
 								</CommandItem>
 							))}
@@ -105,41 +113,45 @@ export function TaskResults({ open: inFront, onOpen }: { open: string | null; on
 	);
 }
 
-/** One task's result: which, its commit and how much, and under that how it was checked and when. */
+/**
+ * One task's result, in one line: how it was checked, which task, and how
+ * much it changed — what choosing which to open takes, and no more. The
+ * commit and the time are reference, and are on the page the line opens;
+ * here they are the line's title.
+ *
+ * The mark at the left is the checks. A filled circle: the run said it
+ * checked its work, and says what in its title. A hollow one: it checked
+ * nothing, which is the task worth opening. A circle and not a tick, because
+ * a green tick has come to mean that something ran and passed, and this is
+ * the agent's word — when the app runs checks of its own, this is where a
+ * tick and a cross will stand.
+ *
+ * Not yet looked at is the line in bold, as unread mail is: nothing to
+ * learn, and it leaves the one mark to mean one thing.
+ */
 function Line({ line }: { line: ResultLine }) {
+	const checked = line.checks !== null;
 	return (
 		<>
-			{/* The mark for not yet looked at, in a column of its own so the
-			    numbers under it stay in line whether or not it is there. */}
-			<span className="mt-1.5 flex w-1.5 shrink-0 justify-center" aria-hidden>
-				{line.fresh && <span className="size-1.5 rounded-full bg-foreground" />}
+			<span
+				className="flex w-3 shrink-0 justify-center"
+				data-checks={checked ? "said" : "none"}
+				title={checked ? `agent: ${line.checks}` : "The run checked nothing"}
+				role="img"
+				aria-label={checked ? `The agent said it checked: ${line.checks}` : "No checks"}
+			>
+				{checked ? <span className="size-2 rounded-full bg-muted-foreground/70" /> : <span className="size-2 rounded-full border border-amber-600 dark:border-amber-500" />}
 			</span>
 			<span className="w-7 shrink-0 text-muted-foreground tabular-nums">{line.task}</span>
-			<span className="flex min-w-0 flex-1 flex-col gap-0.5">
-				<span className="flex min-w-0 items-center gap-1.5">
-					<span className="min-w-0 truncate">{line.title}</span>
-					{line.runs > 1 && (
-						<Badge variant="outline" className="h-4 shrink-0 px-1 text-[10px] font-normal text-muted-foreground tabular-nums" title={`Run ${line.runs} times; this is the last`}>
-							×{line.runs}
-						</Badge>
-					)}
-					{line.fresh && <span className="sr-only">new</span>}
-				</span>
-				{/* The run's own word for its checks, said to be the agent's —
-				    nothing here ran it — and its absence said too, since a task
-				    that checked nothing is the one worth opening. */}
-				<span className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-					{line.checks ? <span className="min-w-0 truncate">agent: {line.checks}</span> : <span className="text-amber-600 dark:text-amber-500">no checks</span>}
-				</span>
-			</span>
-			<span className="flex shrink-0 flex-col items-end gap-0.5 text-[11px] text-muted-foreground tabular-nums">
-				<span className="flex items-center gap-1.5">
-					<span className="font-mono">{line.short}</span>
-					<span>
-						<span style={{ color: "var(--code-string)" }}>+{line.added}</span> <span className="text-destructive">−{line.deleted}</span>
-					</span>
-				</span>
-				<span>{new Date(line.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>
+			<span className={`min-w-0 truncate ${line.fresh ? "font-semibold text-foreground" : ""}`}>{line.title}</span>
+			{line.fresh && <span className="sr-only">new</span>}
+			{line.runs > 1 && (
+				<Badge variant="outline" className="h-4 shrink-0 px-1 text-[10px] font-normal text-muted-foreground tabular-nums" title={`Run ${line.runs} times; this is the last`}>
+					×{line.runs}
+				</Badge>
+			)}
+			<span className="ml-auto shrink-0 pl-3 text-[11px] tabular-nums">
+				<span style={{ color: "var(--code-string)" }}>+{line.added}</span> <span className="text-destructive">−{line.deleted}</span>
 			</span>
 		</>
 	);
