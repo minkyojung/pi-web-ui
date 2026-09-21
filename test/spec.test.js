@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 
-import spec, { finishTask, nextPrompt, specPrompt, takenSpecs, taskMark, taskPrompt, unnamed } from "../spec.ts";
+import spec, { checksIn, finishTask, nextPrompt, specPrompt, takenSpecs, taskMark, taskPrompt, trailersOf, unnamed } from "../spec.ts";
 import { approve, specState } from "../specApproval.ts";
 
 test("아직 도시 이름인 브랜치만 이름을 바꿀 자리다 — main이나 이미 이름이 있는 브랜치는 그대로", () => {
@@ -886,7 +886,7 @@ function ran(t, { plan = PLAN, name = "email-auth", repository = true } = {}) {
     },
     tasks: () => readFileSync(join(dir, "tasks.md"), "utf8"),
     setTasks: (text) => writeFileSync(join(dir, "tasks.md"), text),
-    finish: (mark) => finishTask(pi, { cwd, ui: { notify: (text, type) => notes.push({ text, type }) } }, { spec: name, done: [], then: [], model: null, effort: null, ...mark }),
+    finish: (mark, checks = null) => finishTask(pi, { cwd, ui: { notify: (text, type) => notes.push({ text, type }) } }, { spec: name, done: [], then: [], model: null, effort: null, ...mark }, checks),
     state: () => specState(cwd, name),
     subjects: () => git("log", "--format=%s").split("\n"),
   };
@@ -895,12 +895,16 @@ function ran(t, { plan = PLAN, name = "email-auth", repository = true } = {}) {
 test("작업 하나가 커밋 하나와 체크 하나를 남긴다 — 메시지는 승인된 작업 줄 그대로", async (t) => {
   const run = ran(t);
   run.wrote("door.js", "export const door = true;\n");
-  await run.finish({ task: "1", title: "Add the door" });
+  await run.finish({ task: "1", title: "Add the door" }, "npm test — 12 passed");
 
   assert.match(run.tasks(), /- \[x\] 1\. Add the door/);
   assert.equal(run.tasks(), PLAN.replace("- [ ] 1.", "- [x] 1."), "칸 말고는 그대로");
   assert.deepEqual(run.subjects(), ["Add the door", "app"], "작업 하나 = 커밋 하나");
-  assert.match(run.git("log", "-1", "--format=%b"), /\.octave\/specs\/email-auth\/tasks\.md 1/);
+  // What the commit says under its subject is git's trailers — read back as
+  // git reads them, not as text.
+  assert.equal(run.git("log", "-1", "--format=%(trailers:key=Spec,valueonly)"), "email-auth");
+  assert.equal(run.git("log", "-1", "--format=%(trailers:key=Task,valueonly)"), "1");
+  assert.equal(run.git("log", "-1", "--format=%(trailers:key=Checks,valueonly)"), "npm test — 12 passed");
   const files = run.git("show", "--name-only", "--format=", "HEAD").split("\n").sort();
   assert.deepEqual(files, [".octave/specs/email-auth/approvals.json", ".octave/specs/email-auth/design.md", ".octave/specs/email-auth/requirements.md", ".octave/specs/email-auth/tasks.md", "door.js"], "첫 작업의 커밋이 세 문서를 데려간다");
   assert.equal(run.git("status", "--porcelain"), "", "남는 것이 없다");
@@ -959,6 +963,23 @@ test("표식은 세션의 숨긴 메시지에서 읽는다 — newSession이 확
   assert.deepEqual(taskMark([{ type: "custom_message", customType: "spec-task", details: older }]), { ...older, then: [], model: null, effort: null }, "큐가 없던 표식은 하나짜리 큐다, 모델은 세션의 것");
 });
 
+test("검사 한 줄은 마지막 답의 `Checks:` 줄에서 — 없으면 none, 인용한 지시문에는 속지 않는다", () => {
+  const answer = (text) => ({ type: "message", message: { role: "assistant", content: [{ type: "text", text }] } });
+  const user = { type: "message", message: { role: "user", content: "/spec-run 1" } };
+  assert.equal(checksIn([user, answer("The door is in.\n\nChecks: npm test — 12 passed")]), "npm test — 12 passed");
+  assert.equal(checksIn([user, answer("checks:   none  ")]), "none", "대소문자와 여백은 상관없다");
+  assert.equal(checksIn([user, answer("Done.")]), null, "줄이 없으면 없는 것");
+  assert.equal(checksIn([user, answer("Checks: none")]), "none");
+  assert.equal(checksIn([user, answer("I was told to end with `Checks:` — so:\nChecks: vitest, 3 passed")]), "vitest, 3 passed", "마지막 줄이 이긴다");
+  assert.equal(checksIn([answer("Checks: earlier"), user, answer("later, no line")]), null, "마지막 답만 본다");
+  const toolCall = { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "c1", name: "write", arguments: {} }] } };
+  assert.equal(checksIn([user, answer("Checks: npm test — 2 passed"), toolCall]), "npm test — 2 passed", "도구 호출뿐인 답은 보고가 아니다");
+  assert.equal(checksIn([answer("Checks: earlier"), { type: "message", message: { role: "assistant", content: "Checks: as a string" } }]), "as a string");
+  assert.equal(checksIn([]), null);
+  assert.equal(trailersOf({ spec: "email-auth", task: "2.1" }, null), "Spec: email-auth\nTask: 2.1\nChecks: none");
+  assert.equal(trailersOf({ spec: "email-auth", task: "2.1" }, "npm test — 9 passed"), "Spec: email-auth\nTask: 2.1\nChecks: npm test — 9 passed");
+});
+
 // --- /spec-run: one task, in a session of its own ---
 
 test("/spec-run은 새 세션을 열고, 그 안에 지시문과 표식과 친 명령을 넣는다", async (t) => {
@@ -988,6 +1009,7 @@ test("지시문은 Kiro의 실행 규칙이다 — 세 문서를 먼저, 이 작
   assert.match(said, /only it/i, "한 번에 작업 하나");
   assert.match(said, /_Requirements/, "적힌 수용 기준에 비추어 확인");
   assert.match(said, /Do not go on to the next task/);
+  assert.match(said, /`Checks:`/, "검사 한 줄을 답 끝에 — 커밋에 들어간다");
   assert.match(said, /Do not commit/, "커밋은 코드가 한다");
   assert.match(said, /tasks\.md alone/, "칸도 코드가 적는다");
 });
@@ -1068,10 +1090,14 @@ test("턴이 끝나면 표식을 보고 마무리한다 — 한 세션에 한 �
   t.after(pi.cleanup);
   pi.plan("email-auth");
   pi.setDirty([" M door.js"]);
-  pi.setEntries([{ type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] } }]);
+  pi.setEntries([
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] } },
+    { type: "message", message: { role: "assistant", content: [{ type: "text", text: "The door is in.\nChecks: npm test — 4 passed" }] } },
+  ]);
   await pi.settle();
   assert.match(pi.tasks("email-auth"), /- \[x\] 1\. Add the door/);
   assert.deepEqual(pi.gits.map((args) => args[0]), ["add", "commit"]);
+  assert.equal(pi.gits[1].at(-1), "Spec: email-auth\nTask: 1\nChecks: npm test — 4 passed", "답의 검사 줄이 커밋의 트레일러로");
   assert.deepEqual(pi.renamed, [], "작업의 턴은 브랜치를 건드리지 않는다");
 
   await pi.settle();
@@ -1110,9 +1136,9 @@ test("실제 pi 세션에서 작업 둘을 이어서: 저마다 자기 세션에
   const reply = (make) => (context) => (sent.push(context.messages), make());
   faux.setResponses([
     reply(() => fauxAssistantMessage(fauxToolCall("write", { path: "door.js", content: "export const door = true;\n" }), { stopReason: "toolUse" })),
-    reply(() => fauxAssistantMessage("The door is in.")),
+    reply(() => fauxAssistantMessage("The door is in.\n\nChecks: node --test — 1 passed")),
     reply(() => fauxAssistantMessage(fauxToolCall("write", { path: "board.js", content: "export const board = true;\n" }), { stopReason: "toolUse" })),
-    reply(() => fauxAssistantMessage("The board is cut.")),
+    reply(() => fauxAssistantMessage("The board is cut.\nChecks: none")),
     reply(() => fauxAssistantMessage(fauxToolCall("write", { path: "paint.js", content: "export const paint = true;\n" }), { stopReason: "toolUse" })),
     reply(() => fauxAssistantMessage("It is painted.")),
   ]);
@@ -1165,6 +1191,9 @@ test("실제 pi 세션에서 작업 둘을 이어서: 저마다 자기 세션에
   await until("첫 작업이 커밋됐다", () => subjects().length === 2);
 
   assert.deepEqual(subjects(), ["Add the door", "app"], "커밋 메시지는 작업 줄 그대로");
+  assert.equal(git("log", "-1", "--format=%(trailers:key=Spec,valueonly)"), "email-auth", "스펙은 트레일러로");
+  assert.equal(git("log", "-1", "--format=%(trailers:key=Task,valueonly)"), "1");
+  assert.equal(git("log", "-1", "--format=%(trailers:key=Checks,valueonly)"), "node --test — 1 passed", "모델이 답 끝에 적은 검사 줄 그대로");
   assert.equal(tasks(), PLAN.replace("- [ ] 1.", "- [x] 1."), "칸 하나만");
   const first = git("show", "--name-only", "--format=", "HEAD").split("\n").sort();
   assert.deepEqual(first, [".octave/specs/email-auth/approvals.json", ".octave/specs/email-auth/design.md", ".octave/specs/email-auth/requirements.md", ".octave/specs/email-auth/tasks.md", "door.js"], "첫 작업이 세 문서를 데려간다");
@@ -1189,6 +1218,8 @@ test("실제 pi 세션에서 작업 둘을 이어서: 저마다 자기 세션에
   assert.equal(runtime.session.thinkingLevel, "low", "청한 effort로");
 
   assert.deepEqual(subjects(), ["Paint it", "Cut the board", "Add the door", "app"], "2.1 뒤에 2.2, 각각 커밋 하나");
+  assert.equal(git("log", "-1", "--format=%(trailers:key=Checks,valueonly)"), "none", "줄이 없으면 none");
+  assert.equal(git("log", "-1", "--format=%(trailers:key=Task,valueonly)"), "2.2");
   assert.equal(tasks(), PLAN.replaceAll("- [ ]", "- [x]"), "셋 다, 그리고 하위가 끝난 2도");
   assert.equal(git("status", "--porcelain"), "", "남는 것이 없다");
   assert.equal(git("branch", "--show-current"), "minkyojung/email-auth", "브랜치는 그대로");

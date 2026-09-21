@@ -342,7 +342,7 @@ export function taskPrompt({ spec, task, title }: TaskMark): string {
 		`Read all three of ${dir}requirements.md, ${dir}design.md and ${dir}tasks.md before you change anything. A task done without the requirements or the design is done wrong.`,
 		`Do task ${task} of ${dir}tasks.md — "${title}" — and only it. Do not build any part of another task, even one you can see it will need.`,
 		"Check what you built against the acceptance criteria the task names (_Requirements: 1.2, 3.3_), by their numbers in the requirements.",
-		"Then stop. Say in a line or two what you did and anything the person should look at. Do not go on to the next task.",
+		"Then stop. Say in a line or two what you did and anything the person should look at, and end with one line beginning `Checks:` — the checks you ran and what they said (`Checks: npm test — 923 passed`), or `Checks: none` if you ran none. That line goes into the task's commit. Do not go on to the next task.",
 	];
 	return [
 		`The person asked for task ${task} of the spec "${spec}" to be run with /spec-run.`,
@@ -393,6 +393,43 @@ export function taskMark(entries: readonly unknown[]): TaskMark | null {
 }
 
 /**
+ * The `Checks:` line of the run's last answer, or null when it ended without
+ * one — the result is a commit either way; the line is what the commit says
+ * about how the work was checked (task-runs.md "결과는 커밋에"). The last
+ * text the assistant wrote is looked at — only that one, since the report is
+ * the end of the run and an earlier turn's line is another task's — and in
+ * it the last line that begins with the word, so a model that quoted the
+ * instruction before answering is not taken at its quote.
+ */
+export function checksIn(entries: readonly unknown[]): string | null {
+	for (let at = entries.length - 1; at >= 0; at--) {
+		const entry = entries[at] as { type?: string; message?: { role?: string; content?: unknown } } | null;
+		if (entry?.type !== "message" || entry.message?.role !== "assistant") continue;
+		const content = entry.message.content;
+		const text =
+			typeof content === "string"
+				? content
+				: Array.isArray(content)
+					? content
+							.map((part) => (part && typeof part === "object" && (part as { type?: string }).type === "text" ? ((part as { text?: string }).text ?? "") : ""))
+							.join("\n")
+					: "";
+		// An answer that is only a tool call has no text and is not the report;
+		// the last one with words is, and it either has the line or does not.
+		if (text.trim() === "") continue;
+		const said = text
+			.split("\n")
+			.map((line) => line.trim())
+			.reverse()
+			.find((line) => /^checks:/i.test(line));
+		if (said === undefined) return null;
+		const rest = said.slice("checks:".length).trim();
+		return rest || null;
+	}
+	return null;
+}
+
+/**
  * Whether this is a repository at all, and what is waiting to be committed in
  * it that is the person's — neither the spec's documents nor the app's folder.
  *
@@ -430,8 +467,19 @@ async function waitingToCommit(pi: ExtensionAPI, cwd: string): Promise<{ reposit
  * A run that changed nothing leaves nothing — no commit and no box, and the
  * same task is next again.
  */
-export async function finishTask(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark): Promise<void> {
-	ended.set(endedKey(cwd, mark), await finish(pi, { cwd, ui }, mark));
+export async function finishTask(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, checks: string | null = null): Promise<void> {
+	ended.set(endedKey(cwd, mark), await finish(pi, { cwd, ui }, mark, checks));
+}
+
+/**
+ * What the commit says under its subject: git's trailers, in the place it
+ * keeps `Co-authored-by:`. The spec and the task, so a log can be read by
+ * spec; and the checks, in the run's own words, so that what was done to
+ * confirm the work is in the commit that is the work — in the clone and on
+ * the PR, read with `git log` and nothing else (task-runs.md "결과는 커밋에").
+ */
+export function trailersOf({ spec, task }: Pick<TaskMark, "spec" | "task">, checks: string | null): string {
+	return [`Spec: ${spec}`, `Task: ${task}`, `Checks: ${checks ?? "none"}`].join("\n");
 }
 
 /**
@@ -444,7 +492,7 @@ type Ended = "committed" | "checked" | "nothing" | "uncommitted";
 const ended = new Map<string, Ended>();
 const endedKey = (cwd: string, { spec, task }: TaskMark) => `${cwd}\0${spec}\0${task}`;
 
-async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark): Promise<Ended> {
+async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, checks: string | null): Promise<Ended> {
 	const git = (args: string[]) => pi.exec("git", args, { cwd, timeout: 30_000 });
 	const where = `${SPECS_DIR}${mark.spec}/tasks.md`;
 	const file = join(cwd, where);
@@ -470,7 +518,7 @@ async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark): 
 	// Everything the run left but the app's own folder, which belongs to no
 	// commit of the person's.
 	const added = await git(["add", "-A", "--", ".", `:(exclude)${APP_DIR_NAME}`]);
-	const made = added.code === 0 ? await git(["commit", "-m", mark.title, "-m", `${where} ${mark.task}`]) : added;
+	const made = added.code === 0 ? await git(["commit", "-m", mark.title, "-m", trailersOf(mark, checks)]) : added;
 	if (made.code !== 0) {
 		ui.notify(`${mark.task} is done, but git could not commit it: ${(made.stderr || made.stdout).trim()}`, "warning");
 		return "uncommitted";
@@ -853,7 +901,7 @@ export default function spec(pi: ExtensionAPI): void {
 		if (mark) {
 			ranTask = true;
 			waitedAtStart = null;
-			await finishTask(pi, ctx, mark);
+			await finishTask(pi, ctx, mark, checksIn(ctx.sessionManager.buildContextEntries()));
 			return;
 		}
 		await nameBranch(ctx);
