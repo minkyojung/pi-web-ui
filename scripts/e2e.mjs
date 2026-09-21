@@ -3439,6 +3439,45 @@ check("the spec at the start of the row says how far its tasks have got once all
 	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
 });
 
+// A task is run from its line: the Start beside it types /spec-run.
+check("a spec's task has a Start beside its line — on the tasks still to do, shown on hover, and pressing it runs the task", async ({ app, cwd }) => {
+	const dir = join(cwd, ".octave/specs/start");
+	mkdirSync(dir, { recursive: true });
+	const plan = (first) => `# Tasks\n\n- [${first}] 1. First\n- [ ] 2. Heading\n- [x] 2.1 Second\n- [ ] 2.2 Third\n`;
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
+	writeFileSync(join(dir, "design.md"), "# Design\n");
+	writeFileSync(join(dir, "tasks.md"), plan(" "));
+	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
+	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/start/tasks.md")}`);
+	await until("the plan in front", async () => (await editorText(app)).includes("Heading"));
+	const starts = () => app.evaluate("[...document.querySelectorAll('#editor .cm-start')].map((b) => b.dataset.start).join(',')");
+	// 1 and 2.2: 2 is a heading with sub-tasks and is never run, 2.1 is done.
+	await until("the Starts", async () => (await starts()) === "1,2.2");
+	assert.equal(await app.evaluate("[...document.querySelectorAll('#editor .cm-start')].every((b) => !b.disabled)"), true, "pressable: the spec is approved and the agent is idle");
+	// Out of the flow and left of the words, so the text is where it was.
+	const laid = await app.evaluate("(() => { const b = document.querySelector('#editor .cm-start[data-start=\"2.2\"]').getBoundingClientRect(); const l = document.querySelector('#editor .cm-hasStart:has([data-start=\"2.2\"])').getBoundingClientRect(); return { left: b.right <= l.left, tall: b.height }; })()");
+	assert.equal(laid.left, true, "the Start stands left of its line");
+	assert.equal(laid.tall, 24, "shadcn's icon-xs");
+	// Hidden until the line is pointed at — the cursor is not on this line.
+	const opacity = () => app.evaluate("getComputedStyle(document.querySelector('#editor .cm-start[data-start=\"2.2\"]')).opacity");
+	assert.equal(await opacity(), "0", "not shown while nothing points at its line");
+	const at = await app.evaluate("(() => { const l = document.querySelector('#editor .cm-hasStart:has([data-start=\"2.2\"])').getBoundingClientRect(); return { x: l.left + 40, y: l.top + l.height / 2 }; })()");
+	await app.moveTo(at.x, at.y);
+	await until("shown on hover", async () => (await opacity()) === "1");
+	// Pressed: the command goes as typed, and pi's spec extension answers it.
+	// This folder is a repository with the suite's notes uncommitted in it, so
+	// the answer is the refusal a task's commit needs — which is the command
+	// having reached the extension and been read, end to end; the run itself
+	// is the extension's and is proved in test/spec.test.js.
+	await app.shot("task-start");
+	await app.evaluate("document.querySelector('#editor .cm-start[data-start=\"2.2\"]').click()");
+	await until("the command answered in the conversation", async () => (await chat(app)).includes("Nothing was started"));
+	await app.moveTo(1, 1);
+	// A box checked on disk, as the run's end checks it: its Start goes.
+	writeFileSync(join(dir, "tasks.md"), plan("x"));
+	await until("the Start gone with the box", async () => (await starts()) === "2.2");
+});
+
 // The other place the answer can be given: over the document being read.
 check("a document waiting for approval says so above itself, and the line goes once it is approved", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/bar");

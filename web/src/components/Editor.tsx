@@ -4,18 +4,19 @@ import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { deleteMarkupBackward, insertNewlineContinueMarkup, markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
-import { ChangeSet, EditorState, type Extension, Transaction } from "@codemirror/state";
+import { ChangeSet, Compartment, EditorState, type Extension, Transaction } from "@codemirror/state";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { drawSelection, dropCursor, EditorView, keymap, placeholder } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-import { isSpec } from "../../../documentKinds.ts";
+import { isSpec, specNameOf } from "../../../documentKinds.ts";
 import { choose, chosenStore } from "../chosen";
 import { linkCompletion } from "../features/linkCompletion";
 import { indentListItem, listBackspace, listEnter, outdentListItem } from "../features/listEdit";
 import { listNumbers } from "../features/listNumbers";
 import { listIndent } from "../features/listIndent";
 import { authors, clearAuthors, paintAuthors, showAuthorsStore } from "../features/authors";
+import { blocked as startBlocked, chrome as startChrome, onStart, taskStart } from "../features/taskStart";
 import { forget as forgetMoves, observe as observeMoves, take as takeMoves } from "../features/moves";
 import { livePreview, toggleLivePreview, toggleTask } from "../features/livePreview";
 import { leaveTextUp } from "../features/pageMove";
@@ -43,17 +44,28 @@ import { tagsIn, type Place } from "../../../links.ts";
 import type { Left } from "../nav";
 import type { Edit } from "../types";
 import type { Authored } from "../../../protocol.ts";
-import { authorsStore, documentsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore } from "../serverState";
+import { authorsStore, commandsStore, configStore, documentsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, specsStore } from "../serverState";
+import { RUN, runBlocked, runMessage, runWhy } from "../specRun.ts";
 import { inFrontStore, say as sayInFront } from "../inFront";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { flushSaves, registerSave } from "../saves";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Properties } from "./Properties";
-import { Button } from "./ui/button";
+import { Button, buttonVariants } from "./ui/button";
 
 /** How long typing has to stop before it is written down. */
 const AUTOSAVE_MS = 600;
+
+/**
+ * The Starts beside a spec's tasks (taskStart.ts), in a compartment: the
+ * editor is made once, and only a spec's tasks.md has them — and what blocks
+ * them is read off stores that change under a live editor.
+ */
+const startRoom = new Compartment();
+
+/** Whether a path is the tasks document of a spec, which is the one with Starts. */
+const isTasks = (path: string): boolean => isSpec(path) && path.endsWith("/tasks.md");
 
 /**
  * How much note there is, for the strip at the foot of the window.
@@ -382,6 +394,8 @@ export function Editor({
 			listNumbers,
 			// A mark typed over chosen words wraps them.
 			wrapSelection,
+			// Start beside each task still to do, on a spec's tasks.md only.
+			startRoom.of([]),
 		];
 		const state = EditorState.create({
 			doc: "",
@@ -537,6 +551,56 @@ export function Editor({
 		send({ type: "open_note", path });
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [online, path]);
+
+	// The Starts beside a spec's tasks: on tasks.md only, pressable when the
+	// command can be sent (specRun.ts), and pressing sends it — the same as
+	// typing it. "Starting…" holds from the press until the agent is seen to
+	// be working, or a moment passes with no sign of it (a refusal is a
+	// notice, not a state).
+	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
+	const commands = useSyncExternalStore(commandsStore.subscribe, commandsStore.get);
+	const specs = useSyncExternalStore(specsStore.subscribe, specsStore.get);
+	const [starting, setStarting] = useState<string | null>(null);
+	const streaming = config?.isStreaming ?? false;
+	useEffect(() => {
+		if (streaming) setStarting(null);
+	}, [streaming]);
+	useEffect(() => {
+		if (starting === null) return;
+		const timer = setTimeout(() => setStarting(null), 5000);
+		return () => clearTimeout(timer);
+	}, [starting]);
+	useEffect(() => {
+		const v = view.current;
+		if (!v) return;
+		const spec = isTasks(path) ? specNameOf(path) : null;
+		if (spec === null) {
+			v.dispatch({ effects: startRoom.reconfigure([]) });
+			return;
+		}
+		const why = runWhy(
+			runBlocked({
+				online,
+				streaming,
+				compacting: config?.isCompacting ?? false,
+				hasCommand: commands.some((command) => command.name === RUN),
+				spec: specs?.find((entry) => entry.name === spec) ?? null,
+				count: 1,
+				sent: starting !== null,
+			}),
+		);
+		v.dispatch({
+			effects: startRoom.reconfigure([
+				taskStart,
+				startChrome.of(buttonVariants({ variant: "ghost", size: "icon-xs" })),
+				startBlocked.of(why),
+				onStart.of((number) => {
+					send(runMessage(spec, [number]));
+					setStarting(number);
+				}),
+			]),
+		});
+	}, [path, online, streaming, config?.isCompacting, commands, specs, starting]);
 
 	// A note made or renamed elsewhere may be the one a link here names.
 	const notes = useSyncExternalStore(filesStore.subscribe, filesStore.get);

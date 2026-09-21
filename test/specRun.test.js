@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runBlocked, runCommand, runMessage, runWhy, tasksBetween } from "../web/src/specRun.ts";
+import { runBlocked, runCommand, runMessage, runWhy, startLines, tasksBetween } from "../web/src/specRun.ts";
 
 const PLAN = "# Implementation Plan\n\n- [ ] 1. Add the door\n  - _Requirements: 1.1_\n- [x] 2. Hang the sign\n- [x] 2.1 Cut the board\n- [ ] 2.2 Paint it\n- [ ] 3. Lock up\n";
 const at = (needle) => PLAN.indexOf(needle);
@@ -58,4 +58,21 @@ test("막을 이유가 없으면 막지 않는다; 이유는 가까운 것부터
   assert.equal(runWhy("not-approved"), "Approve all three documents first");
   assert.equal(runWhy("nothing"), "No task here left to run");
   assert.equal(runWhy("sent"), "Starting…");
+});
+
+test("Start가 설 줄은 잎이고 안 끝난 작업의 줄이다 — 줄의 시작 위치로", () => {
+  assert.deepEqual(
+    startLines(PLAN).map(({ from, task }) => [task.number, PLAN.slice(from, from + 9)]),
+    [
+      ["1", "- [ ] 1. "],
+      ["2.2", "- [ ] 2.2"],
+      ["3", "- [ ] 3. "],
+    ],
+    "2는 묶음, 2.1은 끝남, 그 외 줄은 작업이 아니다",
+  );
+  assert.deepEqual(startLines(""), []);
+  assert.deepEqual(startLines("# Nothing here\n- just a bullet\n"), []);
+  const crlf = PLAN.replaceAll("\n", "\r\n");
+  assert.deepEqual(startLines(crlf).map(({ from }) => crlf.slice(from, from + 5)), ["- [ ]", "- [ ]", "- [ ]"], "CRLF에서도 줄의 시작이다");
+  assert.deepEqual(startLines(PLAN.replaceAll("- [ ]", "- [x]")), [], "전부 끝나면 하나도 없다");
 });

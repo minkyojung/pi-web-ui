@@ -71,6 +71,28 @@ export function tasksBetween(text: string, from: number, to: number): Task[] {
 	return covered.filter((task) => !task.done && !heading(task));
 }
 
+/**
+ * The lines a Start belongs on: each task still to do that is work of its
+ * own, with where its line begins. A heading with sub-tasks is left out — it
+ * is checked when they are and is never run — and so is a task done, which
+ * the command refuses. By offset into `text`, which is what a decoration
+ * wants; the text is the document's, so a line is what the document says
+ * it is, `\r` and all.
+ */
+export function startLines(text: string): { from: number; task: Task }[] {
+	const lines = text.split("\n");
+	const all = lines.map(taskAt);
+	const heading = (task: Task) => all.some((other) => other !== null && other.number.startsWith(`${task.number}.`));
+	const out: { from: number; task: Task }[] = [];
+	let from = 0;
+	for (let at = 0; at < lines.length; at++) {
+		const task = all[at];
+		if (task && !task.done && !heading(task)) out.push({ from, task });
+		from += lines[at]!.length + 1;
+	}
+	return out;
+}
+
 /** Why running cannot be done now, or null when it can. */
 export type Block = "offline" | "busy" | "no-command" | "not-approved" | "nothing" | "sent" | null;
 

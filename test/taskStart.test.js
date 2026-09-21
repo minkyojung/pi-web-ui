@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { EditorSelection, EditorState } from "@codemirror/state";
+
+import { blocked, starts, taskStart } from "../web/src/features/taskStart.ts";
+
+const PLAN = "# Plan\n\n- [ ] 1. Add the door\n- [ ] 2. Hang the sign\n- [x] 2.1 Cut the board\n- [ ] 2.2 Paint it\n";
+const state = (doc, { cursor = 0, why = null } = {}) =>
+  EditorState.create({ doc, selection: EditorSelection.cursor(cursor), extensions: [taskStart, blocked.of(why)] });
+
+/** The Starts drawn, as [line number, task number, here, why]. */
+const drawn = (s) => {
+  const out = [];
+  const it = s.field(starts).iter();
+  for (; it.value; it.next()) {
+    const widget = it.value.spec.widget;
+    if (widget) out.push([s.doc.lineAt(it.from).number, widget.number, widget.here, widget.why]);
+  }
+  return out;
+};
+
+test("Start는 잎이고 안 끝난 작업의 줄 앞에 선다 — 묶음 상위와 끝난 것에는 없다", () => {
+  assert.deepEqual(drawn(state(PLAN)), [
+    [3, "1", false, null],
+    [6, "2.2", false, null],
+  ]);
+});
+
+test("커서가 있는 줄의 Start는 그렇다고 표시된다 — 포인터 없이 보이는 하나", () => {
+  const at = PLAN.indexOf("Paint it");
+  assert.deepEqual(drawn(state(PLAN, { cursor: at })).map(([line, , here]) => [line, here]), [[3, false], [6, true]]);
+  const moved = state(PLAN, { cursor: at }).update({ selection: EditorSelection.cursor(PLAN.indexOf("door")) }).state;
+  assert.deepEqual(drawn(moved).map(([line, , here]) => [line, here]), [[3, true], [6, false]], "커서를 옮기면 따라온다");
+});
+
+test("막힌 이유는 위젯이 들고, 바뀌면 다시 그려진다", () => {
+  const busy = state(PLAN, { why: "The agent is working" });
+  assert.deepEqual(drawn(busy).map(([, number, , why]) => [number, why]), [["1", "The agent is working"], ["2.2", "The agent is working"]]);
+});
+
+test("칸이 체크되면 그 줄의 Start가 사라진다 — 문서를 따라간다", () => {
+  const s = state(PLAN);
+  const done = s.update({ changes: { from: PLAN.indexOf("[ ] 1."), to: PLAN.indexOf("[ ] 1.") + 3, insert: "[x]" } }).state;
+  assert.deepEqual(drawn(done).map(([, number]) => number), ["2.2"]);
+});
