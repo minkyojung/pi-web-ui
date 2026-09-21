@@ -101,10 +101,11 @@ export async function addWorktree(root, { path, branch, start }) {
 /**
  * A new workspace of the repository at `root`, in the folder `into` — a
  * city's name, on the branch `{owner}/{city}`, or `{city}` with no owner to
- * name. A city is not reused while its folder is there or a branch still
+ * name — started from the remote's default branch, or from its branch
+ * `start` when one is asked for (spec-mode.md 6절). A city is not reused while its folder is there or a branch still
  * carries its name, so a workspace never lands on another's leftovers.
  */
-export async function makeWorkspace(root, { into, owner }) {
+export async function makeWorkspace(root, { into, owner, start: from = null }) {
 	let folders = [];
 	try {
 		folders = readdirSync(into);
@@ -116,8 +117,52 @@ export async function makeWorkspace(root, { into, owner }) {
 	const branch = owner ? `${owner}/${name}` : name;
 	const path = join(into, name);
 	await fetchOrigin(root);
-	const start = await startOf(root);
+	// A branch asked for is one the remote has, looked for after the fetch and
+	// by its whole name: what is not there is refused, not guessed at.
+	if (from !== null && !(await git(root, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${from}`]).catch(() => null))) {
+		throw new Error(`There is no branch called ${from} on the remote.`);
+	}
+	const start = from !== null ? `origin/${from}` : await startOf(root);
 	mkdirSync(into, { recursive: true });
 	await addWorktree(root, { path, branch, start });
 	return { path, branch, name };
+}
+
+/**
+ * How many of the person's changes a workspace holds that no commit has:
+ * files changed, added or not yet tracked, as `git status` counts them. The
+ * app's own folder is left out — Octave writes `.pi/` into every folder it
+ * opens, so counted, no workspace would ever be clean.
+ */
+export async function changesIn(path) {
+	const out = await git(path, ["status", "--porcelain", "--untracked-files=all"]);
+	return out.split("\n").filter((line) => line && !/^.. "?\.pi\//.test(line)).length;
+}
+
+/**
+ * A workspace's folder taken away: the worktree, and git's record of it. The
+ * branch stays, with every commit made on it. Forced, since git will not
+ * remove a worktree with anything untracked in it and the app's own folder
+ * always is — whether the person's changes may go with it is the caller's
+ * to have asked (changesIn).
+ */
+export async function removeWorktree(root, path) {
+	await git(root, ["worktree", "remove", "--force", path]);
+}
+
+/**
+ * The branches a new workspace can be started from — the remote's, fetched
+ * first, the latest worked on first, by their names without `origin/` — and
+ * which of them it starts from when none is chosen. A repository with no
+ * remote has none to choose among: its workspaces start where startOf says.
+ */
+export async function remoteBranches(root) {
+	await fetchOrigin(root);
+	const out = await git(root, ["for-each-ref", "--sort=-committerdate", "--format=%(refname)", "refs/remotes/origin"]).catch(() => "");
+	const branches = out
+		.split("\n")
+		.filter((ref) => ref.startsWith("refs/remotes/origin/") && ref !== "refs/remotes/origin/HEAD")
+		.map((ref) => ref.slice("refs/remotes/origin/".length));
+	const start = await startOf(root);
+	return { branches, base: start.startsWith("origin/") ? start.slice("origin/".length) : null };
 }

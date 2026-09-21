@@ -10,9 +10,9 @@
 import { execFile } from "node:child_process";
 
 /** gh's answer, trimmed, or null when there is no gh, no sign-in, or no answer. */
-function gh(args, { timeoutMs = 15_000 } = {}) {
+function gh(args, { timeoutMs = 15_000, cwd } = {}) {
 	return new Promise((resolve) => {
-		execFile("gh", args, { env: { ...process.env, GH_PROMPT_DISABLED: "1" }, timeout: timeoutMs }, (err, stdout) => {
+		execFile("gh", args, { cwd, env: { ...process.env, GH_PROMPT_DISABLED: "1" }, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
 			resolve(err ? null : String(stdout).trim() || null);
 		});
 	});
@@ -74,4 +74,29 @@ export async function clone({ owner, name }, into) {
 			else resolve();
 		});
 	});
+}
+
+/** gh's list of issues as the dialog takes them — number, title, body — or null for anything that is not such a list. */
+export function issuesFrom(out) {
+	try {
+		const list = JSON.parse(out);
+		if (!Array.isArray(list)) return null;
+		return list
+			.filter((issue) => issue && Number.isInteger(issue.number) && typeof issue.title === "string")
+			.map((issue) => ({ number: issue.number, title: issue.title, body: typeof issue.body === "string" ? issue.body : "" }));
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The open issues of the repository cloned at `root`, the latest first as gh
+ * gives them, for a spec to be started from one — or null when gh cannot
+ * say: not installed, not signed in, or the clone is not of a GitHub
+ * repository. Asked from inside the clone, so gh reads which repository off
+ * its remote as it does in a terminal.
+ */
+export async function issues(root) {
+	const out = await gh(["issue", "list", "--state", "open", "--limit", "100", "--json", "number,title,body"], { cwd: root, timeoutMs: 30_000 });
+	return out === null ? null : issuesFrom(out);
 }

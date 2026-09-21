@@ -16,16 +16,18 @@ contextBridge.exposeInMainWorld("pi", {
 	/** Show a file in the Finder. Takes the whole path; the page knows it. */
 	reveal: (path) => ipcRenderer.invoke("file:reveal", path),
 	/**
-	 * A repository added, with a workspace of it put in front: one chosen in
-	 * the Finder, or one cloned from GitHub by owner/name or address. Each
+	 * A repository added to the list, and nothing opened: one chosen in the
+	 * Finder, or one cloned from GitHub by owner/name or address. Each
 	 * answers `{ error }` when it cannot be done, and a Finder choice
-	 * cancelled answers null. `github` is the signed-in person's repositories,
-	 * or null when gh cannot say.
+	 * cancelled answers null. `github` is the signed-in person's repositories
+	 * and `issues` the open issues of one on the list — `[{ number, title,
+	 * body }]` — each null when gh cannot say.
 	 */
 	repositories: {
 		openLocal: () => ipcRenderer.invoke("repository:open"),
 		clone: (source) => ipcRenderer.invoke("repository:clone", source),
 		github: () => ipcRenderer.invoke("github:repositories"),
+		issues: (root) => ipcRenderer.invoke("github:issues", root),
 	},
 	/**
 	 * The editors this machine has, and a file opened in one at a line — see
@@ -38,14 +40,24 @@ contextBridge.exposeInMainWorld("pi", {
 	},
 	/**
 	 * The repositories and their workspaces, which the shell keeps: the list,
-	 * a new workspace of a repository, and one put in front. `onChange` says
+	 * a new workspace of a repository for the spec `first` starts — `{ line,
+	 * model, effort }`, started from the remote's branch `from` when one of
+	 * `branches` is chosen, answered with `{ error }` when it could not be made —
+	 * what this page's workspace was made to be told first, given once, a
+	 * workspace put in front, and one removed — `changes` says how many
+	 * uncommitted changes it holds, and `remove` takes the number the person
+	 * was told and answers `{ changes }` instead when it no longer holds. `onChange` says
 	 * the list is to be asked for again, and returns the way to stop listening.
 	 * The list is null in a dev run, where the dev server owns the folder.
 	 */
 	workspaces: {
 		list: () => ipcRenderer.invoke("workspaces"),
-		create: (root) => ipcRenderer.invoke("workspace:new", root),
+		create: (root, first, from) => ipcRenderer.invoke("workspace:new", root, first, from),
+		branches: (root) => ipcRenderer.invoke("workspace:branches", root),
+		first: () => ipcRenderer.invoke("workspace:first"),
 		open: (path) => ipcRenderer.invoke("workspace:open", path),
+		changes: (path) => ipcRenderer.invoke("workspace:changes", path),
+		remove: (path, seen) => ipcRenderer.invoke("workspace:remove", path, seen),
 		onChange: (listen) => {
 			const handler = () => listen();
 			ipcRenderer.on("workspaces:changed", handler);
@@ -74,6 +86,12 @@ contextBridge.exposeInMainWorld("pi", {
 		const handler = (_event, page) => listen(page);
 		ipcRenderer.on("open-page", handler);
 		return () => ipcRenderer.off("open-page", handler);
+	},
+	/** The shell asking for the new spec dialog — Folder › New Spec…, ⌘⇧N. Returns the way to stop listening. */
+	onNewSpec: (listen) => {
+		const handler = () => listen();
+		ipcRenderer.on("new-spec", handler);
+		return () => ipcRenderer.off("new-spec", handler);
 	},
 	/** The shell asking for a section of Settings to be opened — from a menu item. */
 	onOpenSettings: (listen) => {

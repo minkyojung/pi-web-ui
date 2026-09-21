@@ -113,34 +113,62 @@ export function refusal(cwd: string, given: string): string | null {
 	return `${at.file} comes after ${before}, which the person has not approved as it is now, so it cannot be written yet. They approve ${before} themselves, with /spec-approve, once they have read it. Do not ask them to approve it: stop here, and change ${before} only if they ask.`;
 }
 
-/** The requirements document's form, as Kiro's spec prompt gives it. */
+/**
+ * The requirements document's shape. Kiro's skeleton — an introduction, then
+ * numbered requirements each with numbered acceptance criteria, which is what
+ * the tasks point at as 1.2, 3.1 — without what Kiro fills it with: the user
+ * story and the WHEN/THEN/SHALL sentence. Those are slots, and a model given
+ * slots fills them: from one line it wrote a role nobody has and criteria no
+ * result could fail, and in Korean the borrowed keywords break the sentence
+ * they are put in. What the document is for is said in words instead, below.
+ *
+ * Only three parts are given a shape, and they are the ones a model leaves
+ * out when it is given none — tried, with nothing but what the three
+ * documents are to each other: the criteria came back as bullets without
+ * numbers, nothing was said to be out of scope, and what the person should
+ * have been asked was decided for them. The rest it shapes better than a
+ * form does — it wrote "what is there now" as a list and added "what would
+ * not pass" unasked — so the title, the opening and any other section are
+ * its own (spec-mode.md 6절).
+ */
 const FORM = `\`\`\`md
-# Requirements Document
-
-## Introduction
-
-[Introduction text here]
-
 ## Requirements
 
 ### Requirement 1
-
-**User Story:** As a [role], I want [feature], so that [benefit]
+[One sentence: what can be done, or what holds, once this is met.]
 
 #### Acceptance Criteria
-
-1. WHEN [event] THEN [system] SHALL [response]
-2. IF [precondition] THEN [system] SHALL [response]
+1. [A statement a test or an observation can show to be true or false.]
+2. […]
 
 ### Requirement 2
+[…]
 
-**User Story:** As a [role], I want [feature], so that [benefit]
+## Out of Scope
+- [What someone might expect of this work that it will not do.]
 
-#### Acceptance Criteria
-
-1. WHEN [event] THEN [system] SHALL [response]
-2. WHEN [event] AND [condition] THEN [system] SHALL [response]
+## Decisions for You
+- [What only the person can settle] — [the options, the one you recommend, and why]. Until they say otherwise, the requirements above assume [that one].
 \`\`\``;
+
+/**
+ * The one thing said about language, the same for every language: the
+ * instructions are English and long, the person's line is short, and a model
+ * left to tell for itself wrote a Korean line's document in English
+ * (spec-mode.md 6절). Nothing asks for English, and nothing guards another.
+ */
+const THEIR_LANGUAGE = "Write the document in the language the person is writing to you in.";
+
+/** What makes a requirements document good, which the shape cannot say. */
+const REQUIREMENTS_RULES = [
+	'Every acceptance criterion can fail: a test, or a look at the running thing, shows whether it holds. "Fast", "simple", "clear", "appropriate" say nothing until they are a number, an example or a named behaviour.',
+	"Say what, never how. A library, a data structure, a file to change is the design's to decide; a requirement that names one is a design decision the person has not been asked about.",
+	'Write plain statements — "When the password is wrong, the reply does not say whether the account exists." No role-play openings ("As a user, I want…") unless there really are different kinds of user who want different things, and no formula keywords (WHEN, THEN, SHALL).',
+	"As many requirements as the work has, and no more: a small piece of work has two or three. A sentence that only says their line again in other words is removed.",
+	"What goes wrong as well as what goes right: bad input, nothing there, twice at once, halfway done.",
+	"Do not invent what you do not know, and do not stop to ask: what only the person can decide goes under Decisions for You, with what you assumed meanwhile. Leave that section out when there is nothing to decide.",
+	"Keep the numbering — requirements 1, 2, 3, and criteria 1, 2, 3 under each — because the tasks will point at them as 1.2, 3.1.",
+];
 
 /**
  * What the model is told, beside the line. `prefix` is unnamed()'s answer
@@ -148,21 +176,25 @@ const FORM = `\`\`\`md
  */
 export function specPrompt({ line, prefix, branch, taken }: { line: string; prefix: string | null; branch: string | null; taken: string[] }): string {
 	const steps = [
-		`Name it: a short kebab-case name for the feature, from their words (e.g. "user-authentication")${taken.length ? `, and not one of these, which are taken: ${taken.join(", ")}` : ""}.`,
+		"Find out what is there now. Read the code this touches — where it would live, what it would change, what already does something like it, how the repository tests such things — and no further: you are finding out what is true today, not designing. If the repository has nothing to do with it yet, that is a finding too.",
+		`Name it: a short kebab-case name for the work, from their words (e.g. "user-authentication")${taken.length ? `, and not one of these, which are taken: ${taken.join(", ")}` : ""}.`,
 		`Make the folder ${SPECS_DIR}{name}/.`,
 		[
-			`Write ${SPECS_DIR}{name}/requirements.md with write — it is not a note, so not note_write. Write it now, from their words, without asking questions first, in the language they wrote in (WHEN, IF, THEN and SHALL stay as they are, where the form puts them), in this form:`,
+			`Write ${SPECS_DIR}{name}/requirements.md with write — it is not a note, so not note_write. ${THEIR_LANGUAGE} Open it with what is to be built and why, and what is there now, from the code — the behaviour this starts from — in whatever shape reads best; the title, the opening and any section that helps someone judge a result are yours to shape. Three parts are not, because the design, the tasks and the person's approval stand on them:`,
 			"",
 			FORM,
 			"",
-			"Consider edge cases, user experience, technical constraints and success criteria. Do not explore the code for this: these are requirements, and the design comes after them.",
+			"What goes in it:",
+			...REQUIREMENTS_RULES.map((rule) => `- ${rule}`),
 		].join("\n"),
-		"Then stop. Say in a line or two what you wrote and where, point out what needs their decision, and ask them to read it and change what is not right. Do not ask them to approve it: they approve it themselves, with a command, once they have read it. Do not go on to a design or to code.",
+		"Then stop. Say in a line or two what you wrote and where, and point at Decisions for You if it is there. Do not ask them to approve it: they approve it themselves, with a command, once they have read it. Do not go on to a design or to code.",
 	];
 	return [
 		`The person started a spec with /spec: "${line}"`,
 		"",
-		"Write the first document of a spec for it, its requirements, and stop. In order:",
+		"A spec begins with its requirements: what has to be true for this work to be done. It is what the result will be judged against — by the person when they approve it, by the design and the tasks written on it, and by whoever checks the work at the end. It is good if someone given only this document could look at a finished result and say whether it passes.",
+		"",
+		"Write it, and stop. In order:",
 		...steps.map((step, i) => `${i + 1}. ${step}`),
 		...(prefix !== null
 			? ["", "Do not rename the branch or write anything under .git: once you have written the requirements, the branch is named after the spec for you."]
@@ -174,48 +206,74 @@ export function specPrompt({ line, prefix, branch, taken }: { line: string; pref
 	].join("\n");
 }
 
-/** The design document's form: the sections Kiro's spec prompt asks for, under the heading its documents have. */
+/**
+ * The design document's shape. Kiro's asks for six sections whatever the
+ * work is — a data model and an error-handling section for a change of one
+ * line — which is the same filling of slots the requirements had. What is
+ * always said is asked for in words: the approach, the real files, how it is
+ * tested. Two parts keep a shape, as the requirements' three do and for the
+ * same reason — they are what a model leaves out, and what is pointed at:
+ * the decisions with what each was chosen over (a plan goes wrong where
+ * nobody weighed another way — spec-mode.md 1절), and where each criterion
+ * is met, by its number. The rest is the model's to shape.
+ */
 const DESIGN_FORM = `\`\`\`md
-# Design Document
+## Decisions
+- [What was decided] — [what else was considered, and why it was passed over].
 
-## Overview
-
-## Architecture
-
-## Components and Interfaces
-
-## Data Models
-
-## Error Handling
-
-## Testing Strategy
+## Requirements Met
+- 1.1 — [where in the design this criterion is met].
+- 1.2 — […]
 \`\`\``;
 
-/** What Kiro's spec prompt tells its model the tasks are, word for word. */
+/** What makes a design good, which the shape cannot say. */
+const DESIGN_RULES = [
+	"Say the approach — what changes, and where — and the changes themselves: real paths and real names, and the pattern already in the repository that each follows. Follow a pattern that is there rather than bring a new one, and say so when one has to be brought.",
+	"A decision that would be costly to reverse is written with what it was chosen over. One nobody would question takes a line, or is left out.",
+	"Every acceptance criterion is under Requirements Met, by its number. One the design cannot meet is not dropped quietly: see the next step.",
+	"Say how it is tested, the way this repository tests: which test files, what kind of test, the check for each criterion. Code that no test of this repository can reach is said to be so — not covered by a test that is only named — and whether to move logic out of it to where a test can reach, or to leave it and check it another way, is one of the decisions.",
+	"What the requirements left under Decisions for You is settled as the person answered it; where they did not, the assumed one stands, and the design says so.",
+	"A data model, error handling, a migration, a diagram in Mermaid are written when the work has them, and nothing that would be empty or would say the approach again. A small change has a short design.",
+];
+
+/**
+ * What the tasks are for. Kiro's words were "a series of prompts for a
+ * code-generation LLM" done test-first; what that leaves out is who reads a
+ * task here — a session of its own that has seen none of this conversation
+ * (task-runs.md) — and how it knows it is done.
+ */
 const TASKS_CHARGE =
-	"Convert the feature design into a series of prompts for a code-generation LLM that will implement each step in a test-driven manner. Prioritize best practices, incremental progress, and early testing, ensuring no big jumps in complexity at any stage. Make sure that each prompt builds on the previous prompts, and ends with wiring things together. There should be no hanging or orphaned code that isn't integrated into a previous step. Focus ONLY on tasks that involve writing, modifying, or testing code.";
+	"The tasks are the order of the work, written for a coding agent that starts each one in a session of its own: it has read none of this conversation, only the three documents and the one line of its task. They are good if such an agent could do each task from that, and tell for itself that it is done.";
 
-/** The tasks document's form: Kiro's example, cut short where it cuts it. */
+/** What makes a task good, which the shape cannot say. */
+const TASKS_RULES = [
+	"A task is one commit's worth: when it is done the repository builds and its tests pass, and it could be reverted alone. One that would touch everything is several tasks; one that leaves nothing working on its own is part of another.",
+	"Each task builds on the ones before it, and the last ones wire things together. No code is left that nothing uses.",
+	"The line of a task is its objective and becomes its commit's subject: write it the way this repository writes its commits. Under it, as sub-bullets: what it involves, naming the files the design says it changes; the acceptance criteria it is for, by their numbers, on a line `_Requirements: 1.2, 3.3_`; and how it is known to be done, on a line `_Done when: …_` — a command to run and what it shows (`npm test -- greet` passes), or what to look at. Those two keys are written exactly so: they are read by name.",
+	"Test the way this repository tests: find out how first — its tests, its scripts, its AGENTS.md or CLAUDE.md — and follow it, the test written with the code it tests or before it. If it has no tests for this kind of thing, say so in the task rather than bring a framework of your own.",
+	"Every acceptance criterion is covered by some task. A task that is for none is left out, unless later tasks stand on it, and then it says so.",
+	"Only what a coding agent can do: writing, modifying and testing code. Leave out user testing, deployment, gathering metrics, running the app by hand to check it (an automated test that does is a task), and documentation for its own sake — what the repository asks of every change, a changelog line say, belongs to the task that makes the change.",
+];
+
+/**
+ * The tasks document's shape. Kiro's example was a new project's — "Set up
+ * project structure", "Implement User model" — and an example is what a model
+ * follows: a plan for a change to an existing repository came out scaffolding
+ * one. So the shape is shown with nothing in it. What the code reads is the
+ * task line (specTasks.ts) and, by name, the two keys.
+ */
 const TASKS_FORM = `\`\`\`md
-# Implementation Plan
-
-- [ ] 1. Set up project structure and core interfaces
-  - Create directory structure for models, services, repositories, and API components
-  - Define interfaces that establish system boundaries
+- [ ] 1. [The objective, as a commit's subject]
+  - [What it involves, naming the files]
   - _Requirements: 1.1_
+  - _Done when: [a command and what it shows, or what to look at]_
 
-- [ ] 2. Implement data models and validation
-- [ ] 2.1 Create core data model interfaces and types
-  - Write TypeScript interfaces for all data models
-  - Implement validation functions for data integrity
-  - _Requirements: 2.1, 3.3, 1.2_
-
-- [ ] 2.2 Implement User model with validation
-  - Write User class with validation methods
-  - Create unit tests for User model validation
-  - _Requirements: 1.2_
-
-[Additional coding tasks continue...]
+- [ ] 2. [An objective that has parts]
+- [ ] 2.1 [The first part]
+  - […]
+  - _Requirements: 1.2, 2.1_
+  - _Done when: […]_
+- [ ] 2.2 […]
 \`\`\``;
 
 /** How every document's turn ends: stopped, told, and not asked. */
@@ -238,21 +296,24 @@ export function nextPrompt({ name, next, redo }: { name: string; next: "design.m
 						"",
 						"Bring the design into line, and stop. In order:",
 						"1. Read the requirements and the design, and find where the design no longer fits them.",
-						"2. Change the design there, and only there, with edit, in its form and its language. If nothing needs to change, change nothing.",
+						"2. Change the design there, and only there, with edit, in its form. If nothing needs to change, change nothing.",
 						"3. If the requirements now miss something or contradict themselves, do not change them: say what, and offer to go back to them.",
 						`4. ${stop("changed, or that nothing needed to change", "Do not go on to the tasks or to code.")}`,
 					]
 				: [
 						`The person approved the requirements of the spec "${name}": ${dir}requirements.md.`,
 						"",
-						"Write its design, and stop. In order:",
-						"1. Read the requirements. Then find out what the design needs: read the code it will touch, and look up what you do not know. Say briefly in your reply what you found that shapes the design; do not write it to a file of its own.",
+						'A design is how this will be built in this codebase, and why that way. It is a record of decisions: the requirements can be met in more than one way, and this says which was taken and what was passed over. It is good if someone who knows this code reads it and has no "why this way?" left — or finds the answer already there — and if every acceptance criterion can be traced to the place that meets it.',
+						"",
+						"Write it, and stop. In order:",
+						"1. Read the requirements. Then read the code the work touches until you could make the change yourself: the files and functions it starts from, the patterns the repository already uses for this kind of thing, and how it tests them. Look up what you do not know. Say briefly in your reply what you found that shapes the design; do not write it to a file of its own.",
 						[
-							`2. Write ${dir}design.md with write — it is not a note, so not note_write — in the language the requirements are written in, in this form:`,
+							`2. Write ${dir}design.md with write — it is not a note, so not note_write. ${THEIR_LANGUAGE} Its title, its sections and their order are yours to shape, as reads best for this work. Two parts are not, because approving the design is approving them:`,
 							"",
 							DESIGN_FORM,
 							"",
-							"Address every requirement. Draw a diagram in Mermaid where one helps. Say what you decided, and why.",
+							"What goes in it:",
+							...DESIGN_RULES.map((rule) => `- ${rule}`),
 						].join("\n"),
 						"3. If writing it shows that the requirements miss something or are wrong, do not change them: say what, and offer to go back to them.",
 						`4. ${stop("wrote", "Do not go on to the tasks or to code.")}`,
@@ -270,15 +331,17 @@ export function nextPrompt({ name, next, redo }: { name: string; next: "design.m
 				: [
 						`The person approved the design of the spec "${name}": ${dir}design.md, on ${dir}requirements.md.`,
 						"",
-						"Write its tasks, and stop. In order:",
-						"1. Read the requirements and the design.",
+						TASKS_CHARGE,
+						"",
+						"Write them, and stop. In order:",
+						"1. Read the requirements and the design, and how this repository tests and writes its commits.",
 						[
-							`2. Write ${dir}tasks.md with write — it is not a note, so not note_write — in the language they are written in. ${TASKS_CHARGE}`,
-							"Make it a numbered checkbox list at most two levels deep, sub-tasks numbered 1.1, 1.2, 2.1, in this form:",
+							`2. Write ${dir}tasks.md with write — it is not a note, so not note_write — as a numbered checkbox list at most two levels deep, sub-tasks numbered 1.1, 1.2, 2.1, in this shape — the task lines and the two keys are read by the app, so they are exactly so; a title and a line of what the plan is for are yours. ${THEIR_LANGUAGE}`,
 							"",
 							TASKS_FORM,
 							"",
-							'Each task has a clear objective that is writing, modifying or testing code; what it involves, as sub-bullets; and the requirements it is for, by the numbers of their acceptance criteria ("_Requirements: 1.2, 3.3_"). Every requirement is covered by some task, and each task builds on the ones before it. Leave out what a coding agent cannot do: user testing, deployment, gathering metrics, running the app by hand to check it (an automated test that does is a task), documentation, and anything else that is not writing, modifying or testing code.',
+							"What goes in it:",
+							...TASKS_RULES.map((rule) => `- ${rule}`),
 						].join("\n"),
 						"3. If writing them shows that the design or the requirements miss something, do not change them: say what, and offer to go back.",
 						`4. ${stop("wrote", "Do not start on the tasks.")}`,
@@ -341,7 +404,7 @@ export function taskPrompt({ spec, task, title }: TaskMark): string {
 	const steps = [
 		`Read all three of ${dir}requirements.md, ${dir}design.md and ${dir}tasks.md before you change anything. A task done without the requirements or the design is done wrong.`,
 		`Do task ${task} of ${dir}tasks.md — "${title}" — and only it. Do not build any part of another task, even one you can see it will need.`,
-		"Check what you built against the acceptance criteria the task names on its `_Requirements: …_` line, by their numbers in the requirements.",
+		"Check what you built: run what the task names on its `_Done when: …_` line, if it has one, and read the acceptance criteria it names on its `_Requirements: …_` line, by their numbers in the requirements, against what you built.",
 		"Then stop. Say in a line or two what you did and anything the person should look at, and end with one line beginning `Checks:` — the checks you ran and what they said (`Checks: npm test — 923 passed`), or `Checks: none` if you ran none. That line goes into the task's commit. Do not go on to the next task.",
 	];
 	return [

@@ -62,14 +62,19 @@ export function withWorkspace(projects, root, worktree = null) {
 	return [...projects, next];
 }
 
+/** The projects without the workspace at `path`; its repository stays, with the rest of its workspaces. */
+export function withoutWorkspace(projects, path) {
+	return projects.map((project) => (project.worktrees.some((w) => w.path === path) ? { ...project, worktrees: project.worktrees.filter((w) => w.path !== path) } : project));
+}
+
 /**
- * The workspace to open on starting: the one in front last time if it is
- * still on the list, else the first on it, else none — and with none, the
- * app starts on the screen that adds a repository. A folder in front that is
- * not a listed workspace — a repository's own clone, a folder of notes from
- * before — is not opened: work happens in a workspace.
+ * The workspace to open on starting: the one in front last time, if it is
+ * still on the list — the person opened it, and it is put back. Else none,
+ * and the app starts on its first screen: a workspace is opened by the person
+ * and not for them, so another is not opened in its place. A folder in front
+ * that is not a listed workspace — a repository's own clone, a folder of
+ * notes from before — is not opened: work happens in a workspace.
  */
 export function firstWorkspace(projects, workdir) {
-	const all = projects.flatMap((project) => project.worktrees);
-	return (all.find((worktree) => worktree.path === workdir) ?? all[0])?.path ?? null;
+	return projects.flatMap((project) => project.worktrees).find((worktree) => worktree.path === workdir)?.path ?? null;
 }

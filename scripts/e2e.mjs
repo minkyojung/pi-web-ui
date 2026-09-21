@@ -3565,6 +3565,197 @@ check("tasks a selection covers are offered as one run over the list, by their n
 });
 
 // What a task changed is its commit, and the commit is read here.
+// The new spec dialog, from the sidebar's +. The shell is stood in for: what
+// it is asked to make is written down, and it refuses the first time.
+check("the + beside a repository opens the new spec dialog: a line, the model and effort, and ⌘↵ asks for the workspace", async ({ app, api }) => {
+	const models = await (await fetch(`http://localhost:${api}/api/models`)).json();
+	const stopStanding = await app.onNewDocument(`
+		if (sessionStorage.getItem("stand-in-for-the-list") === "1") {
+		window.__created = [];
+		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
+			repositories: { issues: async (root) => (root === "/r/other" ? [{ number: 12, title: "Sign in with email", body: "A link, not a password." }, { number: 9, title: "No body", body: "" }] : null) },
+			onNewSpec: (listen) => { window.__newSpec = listen; return () => {}; },
+			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/other", name: "other", worktrees: [] }, { path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }] }] }),
+				create: async (root, first, from) => { window.__created.push({ root, first, from }); return window.__created.length === 1 ? { error: "The remote said no." } : {}; },
+				branches: async (root) => (root === "/r/other" ? { branches: ["me/email-auth", "main"], base: "main" } : null),
+				open: async () => {}, onChange: () => () => {}, first: async () => null } };
+		}`);
+	// A menu shutting hands the focus back to what opened it, a moment after it
+	// is gone: the box is seen to have the focus, and then the words.
+	const typeLine = async (text) => {
+		await until("the focus in the box", async () => {
+			await app.click("#new-spec-line");
+			return app.evaluate("document.activeElement?.id === 'new-spec-line'");
+		});
+		await app.keys(text);
+		await until("the words in the box", () => app.evaluate(`document.getElementById('new-spec-line').value === ${JSON.stringify(text)}`));
+	};
+	try {
+		await app.evaluate(`sessionStorage.setItem("stand-in-for-the-list", "1"); location.reload()`);
+		await until("the repository in the sidebar", () => app.evaluate("!!document.querySelector('[data-new-workspace=\"/r/demo\"]')"));
+		await app.click('[data-new-workspace="/r/demo"]');
+		await until("the dialog", () => app.evaluate("!!document.getElementById('new-spec')"));
+		assert.equal(await app.evaluate("document.getElementById('new-spec-repository').textContent"), "demo", "the repository over the top");
+		assert.equal(await app.evaluate("document.getElementById('new-spec-create').disabled"), true, "nothing to build, nothing to create");
+		// What the picker shows before anything is chosen is the session's own.
+		const sessionModel = await until("the session's model", () => app.evaluate("document.getElementById('model')?.textContent ?? ''"));
+		await until("the same on the dialog", async () => (await app.evaluate("document.getElementById('specOn')?.textContent ?? ''")) === sessionModel);
+		// Another chosen here is the dialog's, and the message box keeps its own.
+		await app.click("#specOn");
+		await until("the menu", () => app.evaluate("document.querySelectorAll('[role=menuitemradio]').length > 0"));
+		const named = (text) => models.filter((m) => text.startsWith(m.name)).sort((a, b) => b.name.length - a.name.length)[0];
+		const offered = await app.evaluate("[...document.querySelectorAll('[role=menuitemradio]')].map((i) => i.textContent)");
+		const other = offered.map(named).find((m) => m && !sessionModel.startsWith(m.name));
+		assert.ok(other, `a second model to choose among ${offered.join(", ")}`);
+		await app.evaluate(`[...document.querySelectorAll('[role=menuitemradio]')].find((i) => i.textContent.startsWith(${JSON.stringify(other.name)})).click()`);
+		await until("the choice on the dialog", async () => (await app.evaluate("document.getElementById('specOn')?.textContent ?? ''")).startsWith(other.name));
+		assert.equal(await app.evaluate("document.getElementById('model')?.textContent ?? ''"), sessionModel, "the session's model is not touched");
+		await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+		await typeLine("add a greeting");
+		await app.shot("new-spec");
+		await app.press("Enter", { meta: true });
+		// Refused: said in the dialog, with the line still there to try again.
+		await until("why not", () => app.evaluate("document.getElementById('new-spec-error')?.textContent === 'The remote said no.'"));
+		assert.equal(await app.evaluate("document.getElementById('new-spec-line').value"), "add a greeting");
+		await app.click("#new-spec-create");
+		await until("the dialog gone", async () => !(await app.evaluate("!!document.getElementById('new-spec')")));
+		const created = JSON.parse(await app.evaluate("JSON.stringify(window.__created)"));
+		assert.deepEqual(created.at(-1), { root: "/r/demo", first: { line: "add a greeting", model: other.key, effort: other.level }, from: null });
+		assert.equal(created.length, 2);
+		// From the menu (⌘⇧N) it opens over the repository the window is in, not
+		// the first on the list; another is chosen in it, and what was typed stays.
+		await app.evaluate("window.__newSpec()");
+		await until("the dialog, over the repository in front", async () => (await app.evaluate("document.getElementById('new-spec-repository')?.textContent ?? ''")) === "demo");
+		await typeLine("typed first");
+		await app.click("#new-spec-repository");
+		await until("the repositories", () => app.evaluate("document.querySelectorAll('[role=menuitemradio]').length === 2"));
+		await app.evaluate("[...document.querySelectorAll('[role=menuitemradio]')].find((i) => i.textContent === 'other').click()");
+		await until("the other repository", async () => (await app.evaluate("document.getElementById('new-spec-repository')?.textContent ?? ''")) === "other");
+		assert.equal(await app.evaluate("document.getElementById('new-spec-line').value"), "typed first");
+		await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+		// From an issue: gh's open issues of this repository, and the one chosen
+		// goes into the box under what was typed, to be read before Create.
+		await app.click("#new-spec-issue");
+		await until("the issues", () => app.evaluate("document.querySelectorAll('#from-issue [cmdk-item]').length === 2"));
+		await app.evaluate("[...document.querySelectorAll('#from-issue [cmdk-item]')].find((i) => i.textContent.includes('Sign in with email')).click()");
+		await until("the issue in the box", async () => (await app.evaluate("document.getElementById('new-spec-line').value")) === "typed first\n\n#12 Sign in with email\n\nA link, not a password.");
+		// Behind the ⋯: another of the remote's branches to start from, said
+		// beside it once chosen. The default one chosen is nothing chosen.
+		await app.click("#new-spec-more");
+		await until("the branches", () => app.evaluate("document.querySelectorAll('#target-branch [cmdk-item]').length === 2"));
+		assert.match(await app.evaluate("document.querySelector('#target-branch p').textContent"), /origin\/main$/);
+		await app.evaluate("[...document.querySelectorAll('#target-branch [cmdk-item]')].find((i) => i.textContent === 'me/email-auth').click()");
+		await until("the branch said", async () => (await app.evaluate("document.getElementById('new-spec-from')?.textContent ?? ''")) === "from origin/me/email-auth");
+		await app.click("#new-spec-create");
+		await until("the dialog gone", async () => !(await app.evaluate("!!document.getElementById('new-spec')")));
+		const last = JSON.parse(await app.evaluate("JSON.stringify(window.__created.at(-1))"));
+		assert.equal(last.root, "/r/other");
+		assert.equal(last.from, "me/email-auth");
+	} finally {
+		await app.press("Escape");
+		await stopStanding();
+		await app.evaluate(`sessionStorage.removeItem("stand-in-for-the-list"); location.reload()`);
+		await until("the page back", () => app.evaluate("!window.__created && !!document.getElementById('chat')"));
+	}
+});
+
+// Removing a workspace, from its row. The shell is stood in for: it says how
+// many changes the folder holds, and holds one more by the time it is asked.
+check("a workspace's row removes it from a right click: what stays is said, the changes that would be lost are counted, and a count that moved is asked about again", async ({ app }) => {
+	const stopStanding = await app.onNewDocument(`
+		if (sessionStorage.getItem("stand-in-for-removing") === "1") {
+		window.__removes = [];
+		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
+			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }, { path: "/w/lima", name: "lima", branch: "me/email-auth" }] }] }),
+				create: async () => ({}), open: async () => {}, onChange: () => () => {}, first: async () => null,
+				changes: async () => 1,
+				remove: async (path, seen) => { window.__removes.push({ path, seen }); return seen === 2 ? {} : { changes: 2 }; } } };
+		}`);
+	try {
+		await app.evaluate(`sessionStorage.setItem("stand-in-for-removing", "1"); location.reload()`);
+		await until("the rows", () => app.evaluate("document.querySelectorAll('[data-workspace]').length === 2"));
+		await app.evaluate(`(() => { const row = document.querySelector('[data-workspace="/w/lima"]'); const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: r.x + 8, clientY: r.y + 8 })); })()`);
+		await until("the menu", () => app.evaluate("[...document.querySelectorAll('[role=menuitem]')].some((i) => i.textContent.includes('Remove workspace'))"));
+		await app.evaluate("[...document.querySelectorAll('[role=menuitem]')].find((i) => i.textContent.includes('Remove workspace')).click()");
+		await until("the count", () => app.evaluate("document.getElementById('remove-workspace-changes')?.textContent === '1 uncommitted change in it will be lost.'"));
+		const said = await app.evaluate("document.getElementById('remove-workspace').innerText");
+		assert.match(said, /^Remove email-auth\?/, "by the name its row has");
+		assert.match(said, /The branch and its commits stay/);
+		await app.shot("remove-workspace");
+		await app.click("#remove-workspace-confirm");
+		await until("the count that moved", () => app.evaluate("document.getElementById('remove-workspace-changes')?.textContent === '2 uncommitted changes in it will be lost.'"));
+		await app.click("#remove-workspace-confirm");
+		await until("the dialog gone", async () => !(await app.evaluate("!!document.getElementById('remove-workspace')")));
+		assert.deepEqual(JSON.parse(await app.evaluate("JSON.stringify(window.__removes)")), [{ path: "/w/lima", seen: 1 }, { path: "/w/lima", seen: 2 }]);
+	} finally {
+		await app.press("Escape");
+		await stopStanding();
+		await app.evaluate(`sessionStorage.removeItem("stand-in-for-removing"); location.reload()`);
+		await until("the page back", () => app.evaluate("!window.__removes && !!document.getElementById('chat')"));
+	}
+});
+
+// The other end of the new spec dialog: the page of the workspace it made.
+// The shell is stood in for, and says what it kept; the wire is watched for
+// what the page does about it. The line itself is stopped at the wire — the
+// key here is not a key, and a turn that fails would be in every check after.
+check("a workspace made for a spec starts it: the session is put on the model, then at the effort, and only then is the line sent", async ({ app, api }) => {
+	const models = await (await fetch(`http://localhost:${api}/api/models`)).json();
+	// Waited for: the page may have only just been loaded again, by the check before.
+	const sessionModel = await until("the session's model", () => app.evaluate("document.getElementById('model')?.textContent ?? ''"));
+	// The longest name that fits: "GPT-5.5" holds "GPT-5" too.
+	const named = (text) => models.filter((m) => text.startsWith(m.name)).sort((a, b) => b.name.length - a.name.length)[0];
+	const was = named(sessionModel);
+	assert.ok(was, `the session's model among pi's, from ${sessionModel}`);
+	await app.click("#model");
+	await until("the menu", () => app.evaluate("document.querySelectorAll('[role=menuitemradio]').length > 0"));
+	const offered = await app.evaluate("[...document.querySelectorAll('[role=menuitemradio]')].map((i) => i.textContent)");
+	await app.press("Escape");
+	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+	const other = offered.map(named).find((m) => m && m.key !== was.key && m.levels.some((l) => l !== m.level));
+	assert.ok(other, `a second model to choose among ${offered.join(", ")}`);
+	const level = other.levels.find((l) => l !== other.level);
+	const first = { line: "add a greeting", model: other.key, effort: level };
+	const stopStanding = await app.onNewDocument(`
+		if (sessionStorage.getItem("stand-in-for-a-new-workspace") === "1") {
+		window.__sent = [];
+		const send = WebSocket.prototype.send;
+		WebSocket.prototype.send = function (data) {
+			// The app's socket, not the dev server's own, which goes this way too.
+			if (!this.url.endsWith("/ws")) return send.call(this, data);
+			const msg = JSON.parse(String(data));
+			window.__socket = this;
+			window.__send = send;
+			if (["set_model", "set_thinking", "prompt"].includes(msg.type)) window.__sent.push(msg);
+			if (msg.type === "prompt") return;
+			return send.call(this, data);
+		};
+		let given = false;
+		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
+			workspaces: { list: async () => null, create: async () => null, open: async () => {}, onChange: () => () => {},
+				first: async () => { if (given) return null; given = true; return ${JSON.stringify(first)}; } } };
+		}`);
+	try {
+		await app.evaluate(`sessionStorage.setItem("stand-in-for-a-new-workspace", "1"); location.reload()`);
+		await until("the line sent", () => app.evaluate("(window.__sent ?? []).some((m) => m.type === 'prompt')"));
+		assert.deepEqual(JSON.parse(await app.evaluate("JSON.stringify(window.__sent)")), [
+			{ type: "set_model", model: other.key },
+			{ type: "set_thinking", level },
+			{ type: "prompt", text: "/spec add a greeting", command: true, behavior: "followUp" },
+		]);
+		// Each was seen to have happened before the next: the box is on it by now.
+		const now = await app.evaluate("document.getElementById('model')?.textContent ?? ''");
+		assert.ok(now.includes(other.name) && now.toLowerCase().includes(level), `the message box on ${other.name} at ${level}, from ${now}`);
+	} finally {
+		// The session as it was, for the checks after this one.
+		await app.evaluate(`(() => { for (const msg of [{ type: "set_model", model: ${JSON.stringify(was.key)} }, { type: "set_thinking", level: ${JSON.stringify(was.level)} }]) window.__send?.call(window.__socket, JSON.stringify(msg)); })()`);
+		await until("the session's model back", async () => (await app.evaluate("document.getElementById('model')?.textContent ?? ''")) === sessionModel);
+		await stopStanding();
+		await app.evaluate(`sessionStorage.removeItem("stand-in-for-a-new-workspace"); location.reload()`);
+		await until("the page back", () => app.evaluate("!window.__sent && !!document.getElementById('chat')"));
+	}
+});
+
 check("a commit opens as a page: what it says of itself, then each file it changed, the unmodified lines folded", async ({ app, cwd }) => {
 	const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
 	const long = Array.from({ length: 60 }, (_, i) => `export const value${i} = ${i};`).join("\n") + "\n";

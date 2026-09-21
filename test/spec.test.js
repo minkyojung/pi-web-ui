@@ -18,7 +18,7 @@ test("아직 도시 이름인 브랜치만 이름을 바꿀 자리다 — main�
   assert.equal(unnamed(null), null, "브랜치가 없는 곳(분리된 HEAD, git 아님)");
 });
 
-test("지시문은 한 줄을 인용하고, Kiro의 requirements 형식과 우리 단계(이름·폴더·작성·멈춤)를 말한다 — 브랜치는 코드의 일", () => {
+test("지시문은 한 줄을 인용하고, 문서가 무엇을 위한 것인지와 우리 단계(읽기·이름·폴더·작성·멈춤)를 말한다 — 브랜치는 코드의 일", () => {
   const said = specPrompt({ line: "이메일 인증 추가", prefix: "minkyojung/", branch: "minkyojung/tokyo", taken: [] });
   assert.ok(said.includes('"이메일 인증 추가"'), "그 사람의 말 그대로");
   assert.match(said, /kebab-case/);
@@ -28,12 +28,23 @@ test("지시문은 한 줄을 인용하고, Kiro의 requirements 형식과 우�
   assert.match(said, /named after the spec for you/);
   assert.ok(said.includes(".octave/specs/{name}/requirements.md"), "문서");
   assert.match(said, /with write/, "노트가 아니라 write로");
-  for (const form of ["# Requirements Document", "## Introduction", "### Requirement 1", "**User Story:** As a [role], I want [feature], so that [benefit]", "#### Acceptance Criteria", "1. WHEN [event] THEN [system] SHALL [response]", "2. IF [precondition] THEN [system] SHALL [response]"]) {
-    assert.ok(said.includes(form), `Kiro의 형식: ${form}`);
+  // 무엇을 위한 문서인지가 양식보다 먼저다: 결과를 판정하는 기준.
+  assert.match(said, /someone given only this document could look at a finished result and say whether it passes/);
+  assert.ok(said.indexOf("Find out what is there now") < said.indexOf("Name it"), "코드를 먼저 읽는다 — 설계가 아니라 지금의 사실을");
+  // 뼈대: Kiro의 번호 구조는 남고(작업이 1.2로 가리킨다), 빈칸 양식은 없다.
+  for (const shape of ["### Requirement 1", "#### Acceptance Criteria", "## Out of Scope", "## Decisions for You"]) {
+    assert.ok(said.includes(shape), `뼈대: ${shape}`);
   }
-  assert.match(said, /without asking questions first/i, "초안을 먼저, 묻는 것은 나중에");
-  assert.match(said, /SHALL stay as they are, where the form puts them/, "키워드는 영어로, 양식의 자리에 — SHALL이 한국어 어순을 따라 문장 끝으로 가지 않게");
-  assert.match(said, /edge cases/);
+  // 읽기 위한 구조는 모델의 것이다: 제목도 소개라는 칸도 주지 않는다.
+  for (const given of ["# Requirements Document", "## Introduction"]) assert.equal(said.includes(given), false, `주지 않는다: ${given}`);
+  assert.match(said, /the title, the opening and any section that helps someone judge a result are yours to shape/);
+  assert.match(said, /Three parts are not, because the design, the tasks and the person's approval stand on them/);
+  for (const slot of ["**User Story:**", "WHEN [event]", "[system] SHALL"]) assert.equal(said.includes(slot), false, `빈칸 양식은 없다: ${slot}`);
+  assert.match(said, /Every acceptance criterion can fail/, "틀릴 수 있는 문장만 기준이다");
+  assert.match(said, /Say what, never how/);
+  assert.match(said, /no formula keywords \(WHEN, THEN, SHALL\)/, "쓰지 말라고 이름으로 말한다");
+  assert.match(said, /do not stop to ask/i, "멈춰 묻지 않고 문서의 '정해 주실 것'에 쓴다");
+  assert.match(said, /the tasks will point at them as 1\.2, 3\.1/, "번호는 지킨다");
   assert.match(said, /Do not go on to a design/, "쓰고 나면 멈춘다");
   assert.match(said, /Do not ask them to approve it/, "묻지 않는다 — 사람이 준비됐을 때 승인한다");
 });
@@ -454,31 +465,54 @@ test("/spec-approve는 기다리는 문서를 승인하고, 같은 턴에 다음
   assert.deepEqual(pi.notes, [{ text: "The spec email-auth is ready: its requirements, design and tasks are approved.", type: "info" }]);
 });
 
-test("설계와 작업 목록의 지시문은 Kiro의 형식이고, 묻지 않고 멈추라고 한다", () => {
+test("언어에 대한 말은 한 문장뿐이고 어느 언어에나 같다 — 영어를 시키지도, 다른 언어를 지켜 주지도 않는다", () => {
+  const SAID = "Write the document in the language the person is writing to you in.";
+  const written = [specPrompt({ line: "x", prefix: "me/", branch: "me/tokyo", taken: [] }), ...["design.md", "tasks.md"].map((next) => nextPrompt({ name: "x", next, redo: false }))];
+  for (const prompt of written) assert.ok(prompt.includes(SAID), "새로 쓰는 문서마다 그 한 문장");
+  const all = [...written, ...["design.md", "tasks.md"].map((next) => nextPrompt({ name: "x", next, redo: true }))].join("\n").replaceAll(SAID, "");
+  assert.equal(/\blanguage\b|in English|Korean/i.test(all), false, "그 밖에는 언어를 말하지 않는다");
+});
+
+test("설계와 작업 목록의 지시문은 문서가 무엇을 위한 것인지를 말하고, 묻지 않고 멈추라고 한다", () => {
   const design = nextPrompt({ name: "email-auth", next: "design.md", redo: false });
   assert.ok(design.includes(".octave/specs/email-auth/requirements.md"), "무엇이 승인됐는지");
   assert.ok(design.includes(".octave/specs/email-auth/design.md"));
-  for (const section of ["# Design Document", "## Overview", "## Architecture", "## Components and Interfaces", "## Data Models", "## Error Handling", "## Testing Strategy"]) {
-    assert.ok(design.includes(section), section);
-  }
+  // 무엇을 위한 문서인지가 먼저다: 결정의 기록, 그리고 기준마다 어디서 충족되는지.
+  assert.match(design, /It is a record of decisions/);
+  for (const section of ["## Decisions", "## Requirements Met"]) assert.ok(design.includes(section), section);
+  // 읽기 위한 구조는 모델의 것이다.
+  for (const given of ["# Design Document", "## Overview", "## Changes", "## Testing"]) assert.equal(design.includes(given), false, `주지 않는다: ${given}`);
+  assert.match(design, /Its title, its sections and their order are yours to shape/);
+  assert.match(design, /Code that no test of this repository can reach is said to be so/, "닿지 않는 테스트를 이름만 대지 않는다");
+  for (const slot of ["## Architecture", "## Components and Interfaces", "## Data Models", "## Error Handling"]) assert.equal(design.includes(slot), false, `늘 채우는 칸은 없다: ${slot}`);
   assert.match(design, /read the code/i, "설계 단계에서 조사한다");
-  assert.match(design, /Mermaid/);
+  assert.match(design, /what it was chosen over/, "결정은 버린 길과 함께");
+  assert.match(design, /real paths and real names/, "이 코드 위에 선다");
+  assert.match(design, /Every acceptance criterion is under Requirements Met, by its number/);
+  assert.match(design, /Decisions for You is settled/, "요구사항이 남긴 결정을 받는다");
+  assert.match(design, /Mermaid/, "필요할 때만");
   assert.match(design, /offer to go back/, "빈 곳을 찾으면 고치지 말고 되돌아가자고");
   assert.match(design, /Do not ask them to approve it/);
   assert.match(design, /with write, not note_write|with write — it is not a note/, "노트가 아니다");
 
   const tasks = nextPrompt({ name: "email-auth", next: "tasks.md", redo: false });
   assert.ok(tasks.includes(".octave/specs/email-auth/tasks.md"));
-  assert.ok(
-    tasks.includes("Convert the feature design into a series of prompts for a code-generation LLM that will implement each step in a test-driven manner."),
-    "Kiro의 지시 그대로",
-  );
-  for (const form of ["# Implementation Plan", "- [ ] 2.1 Create core data model interfaces and types", "_Requirements: 2.1, 3.3, 1.2_"]) {
-    assert.ok(tasks.includes(form), form);
+  // 누가 읽는가가 먼저다: 이 대화를 모르는, 작업마다 새로 여는 세션.
+  assert.match(tasks, /a coding agent that starts each one in a session of its own/);
+  // 뼈대: 코드가 읽는 것은 작업 줄이고, 두 키는 이름으로 읽힌다. 예시의 내용은 없다 — 모델은 예시를 따라 쓴다.
+  for (const shape of ["- [ ] 1. [The objective, as a commit's subject]", "- [ ] 2.1 [The first part]", "_Requirements: 1.2, 2.1_", "_Done when: ["]) {
+    assert.ok(tasks.includes(shape), shape);
   }
+  for (const copied of ["Set up project structure", "User model", "test-driven manner"]) assert.equal(tasks.includes(copied), false, `새 프로젝트의 예시는 없다: ${copied}`);
+  assert.equal(tasks.includes("# Implementation Plan"), false, "제목은 모델의 것이다");
+  assert.match(tasks, /the task lines and the two keys are read by the app, so they are exactly so/);
   assert.match(tasks, /at most two levels/);
+  assert.match(tasks, /one commit's worth/, "작업 하나 = 커밋 하나");
+  assert.match(tasks, /_Done when: …_/, "끝났다는 증거가 작업 안에");
+  assert.match(tasks, /Those two keys are written exactly so: they are read by name/);
+  assert.match(tasks, /Test the way this repository tests/);
   assert.match(tasks, /deployment/, "코딩이 아닌 작업은 넣지 않는다");
-  assert.match(tasks, /Every requirement/);
+  assert.match(tasks, /Every acceptance criterion is covered by some task/);
   assert.match(tasks, /Do not ask them to approve it/);
   assert.match(tasks, /Do not start on the tasks/);
 });
@@ -809,14 +843,14 @@ test("실제 pi 세션에서 사슬 한 바퀴: 세 문서가 차례로, 승인 
   const told = notes.length;
 
   await send("/spec-approve");
-  assert.ok(toldLast().includes("# Design Document"), "설계 지시문은 그 턴에 모델에게");
+  assert.ok(toldLast().includes("It is a record of decisions"), "설계 지시문은 그 턴에 모델에게");
   assert.equal(toldLast().includes("was waiting for the person"), false, "승인된 뒤에는 기다리는 것이 없다");
   assert.deepEqual(state(), { approved: 1, waiting: "design.md" });
   assert.equal(notes.length, told + 1);
   assert.match(notes.at(-1), /design\.md is waiting for you/);
 
   await send("/spec-approve");
-  assert.ok(toldLast().includes("# Implementation Plan"));
+  assert.ok(toldLast().includes("The tasks are the order of the work"), "작업 지시문은 그 턴에 모델에게");
   assert.deepEqual(state(), { approved: 2, waiting: "tasks.md" });
 
   const calls = sent.length;

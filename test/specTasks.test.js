@@ -140,3 +140,11 @@ test("번호 여럿은 겹쳐도 한 번씩, 문서의 순서로", () => {
   assert.deepEqual(numbers(["2.2", "2.2"]), ["2.2"]);
   assert.deepEqual(runsOf(tasks, ["1", "9", "2"]), { runs: [], missing: "9" }, "없는 번호가 있으면 아무것도 없고 그 번호를 말한다");
 });
+
+test("끝났다는 기준의 줄(_Done when:_)은 작업이 아니다 — 작업은 번호가 있는 줄뿐", () => {
+  const plan = "# 구현 계획\n\n- [ ] 1. 인사 함수를 더한다\n  - greet.js\n  - _Requirements: 1.1_\n  - _Done when: `npm test -- greet` passes_\n\n- [ ] 2. 화면에 잇는다\n- [x] 2.1 버튼\n  - _Done when: 버튼을 누르면 인사가 보인다_\n";
+  assert.deepEqual(
+    parseTasks(plan).map((task) => `${task.number}${task.done ? "x" : ""}`),
+    ["1", "2", "2.1x"],
+  );
+});

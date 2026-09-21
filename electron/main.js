@@ -20,10 +20,11 @@ import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
 import { createServers, idle } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
-import { branchOf, git, makeWorkspace, repositoryOf } from "./git.js";
-import { clone, login, repositories, repositoryName } from "./github.js";
+import { branchOf, changesIn, git, makeWorkspace, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
+import { clone, issues, login, repositories, repositoryName } from "./github.js";
 import { editorsOn, openingOf } from "./editors.js";
-import { firstWorkspace, projectsOf, withWorkspace } from "./workspaces.js";
+import { firstFrom, firsts } from "./firstSpec.js";
+import { firstWorkspace, projectsOf, withWorkspace, withoutWorkspace } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
@@ -389,13 +390,15 @@ async function show(workdir) {
 		if (mine === asked) wanted = null;
 		if (quitting) return;
 		dialog.showErrorBox("The server did not start", err.message);
-		if (!front) app.quit();
+		// Nothing to fall back to only while starting: once the window is up it
+		// is on a workspace or on the first screen, and stays there.
+		if (!window.isVisible()) app.quit();
 		return;
 	}
 	if (!(await waitForServer(url, closing.signal))) {
 		if (mine === asked) wanted = null;
 		if (!closing.signal.aborted) dialog.showErrorBox("The server did not answer", `${url} did not come up within 30 seconds.`);
-		if (!front) app.quit();
+		if (!window.isVisible()) app.quit();
 		return;
 	}
 	if (mine !== asked) return;
@@ -453,25 +456,81 @@ async function workspaces() {
 /** One workspace made at a time, so two asked for at once cannot both pick the same city. */
 let making = Promise.resolve();
 
-/** A new workspace of a repository in the list, and the window put on it. */
-function newWorkspace(root) {
+/** What each new workspace is to be told first, until its page takes it — see firstSpec.js. */
+const waiting = firsts();
+
+/**
+ * A new workspace of a repository in the list, for the spec `first` starts,
+ * and the window put on it. Only for one: a workspace is made by the new spec
+ * dialog and by nothing else (spec-mode.md 6절), so there is no way here to
+ * make an empty one. `from` is the remote's branch to start it from, when it
+ * is not to be the default one — git.js looks for it, and refuses what is not
+ * there. Says why not, for the dialog to say it beside the line typed, which
+ * is still there.
+ */
+function newWorkspace(root, first, from) {
+	const told = firstFrom(first);
+	if (!told) return Promise.resolve({ error: "Say what to build, in a line." });
 	const made = making.then(async () => {
-		if (!projectsOf(readSettings(), isCheckout).some((project) => project.path === root)) return null;
+		if (!projectsOf(readSettings(), isCheckout).some((project) => project.path === root)) return { error: "That repository is no longer on the list." };
 		try {
-			const worktree = await makeWorkspace(root, { into: join(home(), "workspaces", basename(root)), owner: await login() });
+			const worktree = await makeWorkspace(root, { into: join(home(), "workspaces", basename(root)), owner: await login(), start: typeof from === "string" && from ? from : null });
 			writeSettings({ ...readSettings(), projects: withWorkspace(projectsOf(readSettings(), isCheckout), root, worktree) });
+			waiting.keep(worktree.path, told);
 			workspacesChanged();
-			return worktree;
+			return { worktree };
 		} catch (err) {
-			dialog.showErrorBox("The workspace could not be made", err.message);
-			return null;
+			return { error: err.message };
 		}
 	});
 	making = made.then(() => {});
-	return made.then((worktree) => {
+	return made.then(({ worktree, error }) => {
 		if (worktree) void show(worktree.path);
-		return worktree?.path ?? null;
+		return error ? { error } : {};
 	});
+}
+
+/** The repository a listed workspace is of, or null for a folder that is not one: the page does not name folders of its own. */
+const repositoryOfWorkspace = (path) => projectsOf(readSettings(), isCheckout).find((project) => project.worktrees.some((worktree) => worktree.path === path))?.path ?? null;
+
+/** How many uncommitted changes a listed workspace holds, for the person to be told before it is removed; null when git cannot say. */
+async function workspaceChanges(path) {
+	if (!repositoryOfWorkspace(path)) return null;
+	return changesIn(path).catch(() => null);
+}
+
+/**
+ * A workspace removed: its server stopped, its folder and worktree taken
+ * away, and its row off the list. The branch stays, and so does what was
+ * said in it — pi keeps a conversation by its folder's path (spec-mode.md
+ * 6절). `seen` is how many uncommitted changes the person was told would go
+ * with it: when the folder holds another number by now, nothing is removed
+ * and the number is answered instead, to be asked about again. Not while the
+ * agent is working there. One at a time with making, which reads the same
+ * folders. The window, if it was on this one, goes to the first screen.
+ */
+function removeWorkspace(path, seen) {
+	const done = making.then(async () => {
+		const root = repositoryOfWorkspace(path);
+		if (!root) return { error: "That workspace is no longer on the list." };
+		if (busy.get(path)) return { error: "The agent is working there. Remove it when it has finished." };
+		try {
+			const changes = await changesIn(path);
+			if (changes !== seen) return { changes };
+			if (path === front || path === wanted) await showStart();
+			await servers.stop(path);
+			await removeWorktree(root, path);
+			writeSettings({ ...readSettings(), projects: withoutWorkspace(projectsOf(readSettings(), isCheckout), path) });
+			waiting.take(path);
+			for (const kept of [ports, busy, since]) kept.delete(path);
+			workspacesChanged();
+			return {};
+		} catch (err) {
+			return { error: err.message };
+		}
+	});
+	making = done.then(() => {});
+	return done;
 }
 
 /** A workspace from the list put in front. Only one on the list: the page does not name folders of its own. */
@@ -491,29 +550,27 @@ async function showStart() {
 }
 
 /**
- * A repository chosen in the Finder, added to the list, and a workspace of it
- * put in front — its first, or one made now if it has none, as Conductor
- * makes one on adding a repository. A folder anywhere inside a repository
- * adds that repository. Says why not when the folder is in none; a choice
- * cancelled says nothing.
+ * A repository chosen in the Finder and added to the list. A folder anywhere
+ * inside a repository adds that repository. Says why not when the folder is
+ * in none; a choice cancelled says nothing.
  */
 async function openLocalRepository() {
 	const picked = await askForRepository();
 	if (!picked) return null;
 	const root = await repositoryOf(picked);
 	if (!root) return { error: `${basename(picked)} is not in a git repository.` };
-	await addRepository(root);
+	addRepository(root);
 	return {};
 }
 
-/** A repository's clone added to the list, and its first workspace put in front — made now if it has none. */
-async function addRepository(root) {
-	const projects = withWorkspace(projectsOf(readSettings(), isCheckout), root);
-	writeSettings({ ...readSettings(), projects });
+/**
+ * A repository's clone added to the list, and nothing more: no workspace is
+ * made of it and the window stays where it is. A workspace is made, and
+ * opened, when the person asks for one — spec-mode.md 6절.
+ */
+function addRepository(root) {
+	writeSettings({ ...readSettings(), projects: withWorkspace(projectsOf(readSettings(), isCheckout), root) });
 	workspacesChanged();
-	const first = projects.find((project) => project.path === root)?.worktrees[0];
-	if (first) void show(first.path);
-	else await newWorkspace(root);
 }
 
 /**
@@ -540,7 +597,7 @@ async function cloneRepository(source) {
 			return { error: err.message };
 		}
 	}
-	await addRepository(into);
+	addRepository(into);
 	return {};
 }
 
@@ -560,11 +617,21 @@ function serveFolders() {
 	ipcMain.handle("repository:clone", (_event, source) => (devUrl ? null : cloneRepository(source)));
 	// What the clone dialog offers, or null when gh cannot say.
 	ipcMain.handle("github:repositories", () => (devUrl ? null : repositories()));
+	// The open issues of a repository on the list, for a spec to start from one.
+	ipcMain.handle("github:issues", (_event, root) => (devUrl || !projectsOf(readSettings(), isCheckout).some((project) => project.path === root) ? null : issues(root)));
 	// The list, and the two things done to it. In a dev run the dev server owns
 	// the folder, so there is no list to switch in.
 	ipcMain.handle("workspaces", () => (devUrl ? null : workspaces()));
-	ipcMain.handle("workspace:new", (_event, root) => (devUrl ? null : newWorkspace(root)));
+	ipcMain.handle("workspace:new", (_event, root, first, from) => (devUrl ? null : newWorkspace(root, first, from)));
+	// The branches of a repository on the list that a workspace can start from.
+	ipcMain.handle("workspace:branches", (_event, root) =>
+		devUrl || !projectsOf(readSettings(), isCheckout).some((project) => project.path === root) ? null : remoteBranches(root).catch(() => null),
+	);
+	// Asked by the page of the workspace in front, which is the one it is for.
+	ipcMain.handle("workspace:first", () => (front ? waiting.take(front) : null));
 	ipcMain.handle("workspace:open", (_event, path) => (devUrl ? null : openWorkspace(path)));
+	ipcMain.handle("workspace:changes", (_event, path) => (devUrl ? null : workspaceChanges(path)));
+	ipcMain.handle("workspace:remove", (_event, path, seen) => (devUrl ? null : removeWorkspace(path, seen)));
 	// A note in the Finder. The page is told the folder in full by the server
 	// (ConfigMsg.folder) and joins the note's path onto it, which is a better
 	// source than this process has: in a dev run the settings hold no workdir
@@ -641,6 +708,10 @@ function buildMenu(workdir) {
 			{
 				label: "Folder",
 				submenu: [
+					// The page's to open, since the dialog is the page's: over whichever
+					// repository is in front, and changed there. With Shift, as Conductor
+					// has it — ⌘N alone is the page's own, for a note.
+					{ label: "New Spec…", accelerator: "CmdOrCtrl+Shift+N", click: () => window && !window.isDestroyed() && window.webContents.send("new-spec") },
 					{ label: "Open Repository…", accelerator: "CmdOrCtrl+O", click: openRepositoryFromMenu },
 					// Nothing is in front on the start screen, and nothing is revealed.
 					{ label: "Reveal in Finder", click: () => (front ?? workdir) && shell.openPath(front ?? workdir) },

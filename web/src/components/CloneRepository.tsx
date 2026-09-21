@@ -29,9 +29,9 @@ const namesRepository = (text: string) => /^[\w.-]+\/[\w.-]+$/.test(text) || /^(
 /**
  * Clone a repository from GitHub: the person's own, as gh lists them, to
  * search among, or any repository by owner/name or address, typed or pasted.
- * Cloning adds it and moves the window into its first workspace, so the
- * dialog is not seen closing — it closes itself only on success, and says
- * what went wrong otherwise.
+ * Cloning adds it to the list and nothing more — the window stays where it
+ * is — so the dialog closes itself on success, and says what went wrong
+ * otherwise.
  *
  * Dialog around Command, as QuickOpen is: the list narrows as it is typed
  * into, and Enter takes the item in front.
@@ -72,7 +72,7 @@ export function CloneRepository({ open, onOpenChange }: { open: boolean; onOpenC
 
 	return (
 		// A clone under way is not walked away from by Escape or a click outside:
-		// it goes on either way, and the window moves when it is done.
+		// it goes on either way, and what it ended in would have nowhere to be said.
 		<Dialog open={open} onOpenChange={(next) => cloning === null && onOpenChange(next)}>
 			<DialogContent id="clone" className="overflow-hidden p-0 sm:max-w-lg" showCloseButton={false}>
 				<DialogTitle className="sr-only">Clone from GitHub</DialogTitle>

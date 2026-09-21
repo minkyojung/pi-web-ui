@@ -4,12 +4,14 @@
  * Three things a note app on the pi harness needs from pi's own extension
  * points, none of which the tool ladder gives:
  *
- * - A system prompt of its own in place of pi's, which is a coding agent's —
- *   who the agent is at this table and how it reads what the person wants —
- *   and after it what a note is, that `.pi/` is the app's and not to be
- *   touched, and how to point at a note. A SYSTEM.md the person gave pi still
- *   takes the place of the first. Either way pi then leaves out its per-tool
- *   guidelines, so a rule a tool needs is in that tool's description.
+ * - After pi's own system prompt, what this folder is — a workspace of a
+ *   repository — how to ask, that `.pi/` is the app's and not to be touched,
+ *   and how to point at a file. pi's prompt is left as pi writes it: Octave
+ *   is a coding agent now (docs/spec-mode), and that prompt is a coding
+ *   agent's, with the tools in use listed and their guidelines beside them —
+ *   which a prompt in its place left out. There was one in its place while
+ *   this was an app for notes (OCTAVE_PROMPT, kept below and not used). A
+ *   SYSTEM.md the person gave pi still takes the place of pi's.
  * - A hard stop on `.pi/`. The history there is the record of who wrote
  *   what; a tool call that rewrites or removes it corrupts that silently, so
  *   `edit`, `write` and `bash` are blocked before they run, whatever the
@@ -46,7 +48,12 @@ import { APP_DIR_NAME, isDocument, isSpec } from "./documentKinds.ts";
 
 /** What the app keeps beside the notes. Nothing of pi's may go there. */
 
-/** Who the agent is here, in place of pi's coding-agent opening. */
+/**
+ * Who the agent was while this was an app for notes, in place of pi's
+ * coding-agent opening. Not used since 2026-09-21 — pi's own prompt stands,
+ * and what this said of asking is in WORKSPACE_PROMPT — and kept until the
+ * direction is settled (docs/spec-mode 5절).
+ */
 export const OCTAVE_PROMPT = `You are at the table with a person and their notes. You are not their programmer: you are someone they think with, and someone who gets things done for them.
 
 Before acting, work out what this message wants:
@@ -58,14 +65,22 @@ The notes are their writing. Read them freely; change only what was asked, in th
 
 Talk as a person across the table would: plainly, and briefly unless they ask for more.`;
 
-export const VAULT_PROMPT = [
-	"You are working in a folder of a person's notes: markdown files (.md), one note per file, the file's name being the note's title.",
-	"Read notes with read, grep, find and ls; change them with edit and write, as you would any other file. Keep a note's existing style, headings and links.",
+/** What is said after pi's own system prompt: where the agent is, and the few rules that are this app's. */
+export const WORKSPACE_PROMPT = [
+	"You are working in a workspace of a git repository: a git worktree — a folder and a branch of its own — made for one piece of work. Read the code before you change it, and follow what the repository already does — its structure, its naming, its tests.",
+	// What Conductor tells the agents it runs in a worktree, which holds here
+	// for the same reasons: the clone beside it is the person's own, the app
+	// names the branch, the stash is every worktree's at once, and one
+	// workspace is one piece of work.
+	"Stay in this folder: the clone it was made from, and the repository's other worktrees, are not yours to change or to run commands in. Do not rename this branch or check out another — the app names the branch after the work — and do not use git stash, whose stack every worktree of the repository shares. Do not commit or push unless you are asked to.",
+	"Write the last message of a turn so that it can be read alone: what you did, what you found, what they should look at — what you said on the way is folded away once the turn ends. What has to outlast this conversation goes in a document or a file, not in the chat: the next session here will not have read it.",
+	"If the person asks for something unrelated to what this workspace was made for, do it if it is small, and otherwise say that a new spec, with + beside the repository, would give it a workspace and a branch of its own.",
+	"If you cannot tell what the person wants, or doing it would mean deciding something only they can, ask one short question with ask_user — not in your reply, where nothing waits for the answer. A change you think would help but was not asked for is a suggestion to make, not an edit.",
+	"Markdown files (.md) are read and changed with read, edit and write like any other file. One may open with a `---` block of properties; change those with note_properties, never by editing that block as text: it is YAML, and a quote or an indent out of place there takes the file out of the app's index without saying so.",
 	"A .pdf in the folder is read with read as well: it comes back as its text, page by page, and a long one is continued with offset like any file. grep and bash see only its bytes.",
-	"A note may open with a `---` block of properties — its tags, its dates, what it is filed by. Change those with note_properties, never by editing that block as text: it is YAML, and a quote or an indent out of place there takes the note out of the app's index without saying so.",
 	`bash cannot write anything under ${APP_DIR_NAME}/: the operating system refuses it. Everything else in the folder it may write.`,
-	`The folder ${APP_DIR_NAME}/ belongs to the app that shows these notes — it holds the record of who wrote what — and must not be read as notes, written, or removed; tools that try are refused.`,
-	"When you refer to a note, use its path relative to this folder.",
+	`The folder ${APP_DIR_NAME}/ belongs to the app — it holds the app's own records — and must not be read as the repository's files, written, or removed; tools that try are refused.`,
+	"When you refer to a file, use its path relative to this folder.",
 ].join(" ");
 
 /** Whether a path, as a tool would take it, lies under the app's folder. */

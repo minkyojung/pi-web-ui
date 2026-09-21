@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { CITIES, pickCity } from "../electron/cities.js";
-import { branchOf, fetchOrigin, makeWorkspace, repositoryOf, startOf } from "../electron/git.js";
+import { branchOf, changesIn, fetchOrigin, makeWorkspace, remoteBranches, removeWorktree, repositoryOf, startOf } from "../electron/git.js";
 import { login } from "../electron/github.js";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
@@ -135,4 +135,64 @@ test("a clone is asked for by owner/name or by a GitHub address, and nothing els
 	for (const source of ["", "pi-web-ui", "a/b/c", "a/..", "a/.", "https://gitlab.com/a/b", "http://github.com/a/b", "https://github.com/a/b/tree/main", "--upload-pack=x/y", "a/b; rm -rf ~", "file:///etc/passwd", null]) {
 		assert.equal(repositoryName(source), null, String(source));
 	}
+});
+
+test("a workspace's changes are the person's — changed, added, untracked — and never the app's own folder", async () => {
+	const repo = cloned();
+	const made = await makeWorkspace(repo.root, { into: join(repo.dir, "ws"), owner: "me" });
+	assert.equal(await changesIn(made.path), 0);
+	mkdirSync(join(made.path, ".pi", "history"), { recursive: true });
+	writeFileSync(join(made.path, ".pi", ".gitignore"), "trash/\n");
+	writeFileSync(join(made.path, ".pi", "history", "a.jsonl"), "{}\n");
+	assert.equal(await changesIn(made.path), 0, "Octave writes .pi/ into every folder it opens");
+	writeFileSync(join(made.path, "a.txt"), "changed\n");
+	mkdirSync(join(made.path, "new"));
+	writeFileSync(join(made.path, "new", "b.txt"), "x\n");
+	writeFileSync(join(made.path, "new", "c.txt"), "x\n");
+	assert.equal(await changesIn(made.path), 3, "each untracked file, not its folder once");
+});
+
+test("removing a workspace takes the folder and leaves the branch, whatever was in the folder", async () => {
+	const repo = cloned();
+	const made = await makeWorkspace(repo.root, { into: join(repo.dir, "ws"), owner: "me" });
+	writeFileSync(join(made.path, "work.txt"), "kept on the branch\n");
+	run(made.path, "add", ".");
+	run(made.path, "commit", "-q", "-m", "work");
+	mkdirSync(join(made.path, ".pi"));
+	writeFileSync(join(made.path, ".pi", ".gitignore"), "trash/\n");
+	writeFileSync(join(made.path, "loose.txt"), "never committed\n");
+	await removeWorktree(repo.root, made.path);
+	assert.equal(existsSync(made.path), false);
+	assert.equal(run(repo.root, "worktree", "list").includes(made.path), false, "git has forgotten the worktree");
+	assert.equal(run(repo.root, "log", "-1", "--format=%s", made.branch), "work", "the branch and its commit are still there");
+});
+
+test("a workspace can be started from another of the remote's branches, fetched first, and not from one it does not have", async () => {
+	const repo = cloned();
+	// A branch made on the remote after the clone: only a fetch would know it.
+	run(repo.seed, "checkout", "-q", "-b", "me/email-auth");
+	writeFileSync(join(repo.seed, "auth.txt"), "sign in\n");
+	run(repo.seed, "add", ".");
+	// Dated after the first, which was made within the same second: the order is by when.
+	execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "auth"], { cwd: repo.seed, env: { ...process.env, GIT_COMMITTER_DATE: new Date(Date.now() + 60_000).toISOString() } });
+	run(repo.seed, "push", "-q", repo.origin, "me/email-auth");
+	const listed = await remoteBranches(repo.root);
+	assert.deepEqual(listed, { branches: ["me/email-auth", "main"], base: "main" }, "the latest worked on first, and origin/HEAD is not a branch");
+	const made = await makeWorkspace(repo.root, { into: join(repo.dir, "ws"), owner: "me", start: "me/email-auth" });
+	assert.equal(existsSync(join(made.path, "auth.txt")), true, "it stands on that branch's commit");
+	assert.notEqual(made.branch, "me/email-auth", "on a branch of its own, as any workspace is");
+	assert.throws(() => run(made.path, "rev-parse", "--abbrev-ref", "@{u}"), /no upstream/, "and does not track the one it started from: a push would go there");
+	await assert.rejects(makeWorkspace(repo.root, { into: join(repo.dir, "ws"), owner: "me", start: "nobody/none" }), /no branch called nobody\/none/);
+	await assert.rejects(makeWorkspace(repo.root, { into: join(repo.dir, "ws"), owner: "me", start: "--upload-pack=x" }), /no branch called/);
+});
+
+test("gh's issues are read strictly: a number and a title, a body or none, and nothing else passed on", async () => {
+	const { issuesFrom } = await import("../electron/github.js");
+	assert.deepEqual(issuesFrom('[{"number":12,"title":"Sign in","body":"with email"},{"number":13,"title":"No body","body":null,"url":"x"}]'), [
+		{ number: 12, title: "Sign in", body: "with email" },
+		{ number: 13, title: "No body", body: "" },
+	]);
+	assert.deepEqual(issuesFrom("[]"), []);
+	assert.deepEqual(issuesFrom('[{"number":"12","title":"x"},{"title":"x"},null,{"number":1,"title":2}]'), []);
+	for (const out of ["", "not json", '{"number":1}']) assert.equal(issuesFrom(out), null);
 });
