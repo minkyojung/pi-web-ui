@@ -39,6 +39,12 @@ export interface Task {
 const TASK = /^(\s*- \[)([ xX])(\] (\d+(?:\.\d+)?)\.?[ \t]+(\S.*))$/;
 const TASKS = new RegExp(TASK.source, "gm");
 
+/** The task a single line is, or null for a line that is not one — the same reading parseTasks makes of every line. */
+export function taskAt(line: string): Task | null {
+	const found = TASK.exec(line.replace(/\r$/, ""));
+	return found ? { number: found[4]!, title: found[5]!.replace(/\s+$/, ""), done: found[2] !== " " } : null;
+}
+
 export function parseTasks(text: string): Task[] {
 	return [...text.matchAll(TASKS)].map((found) => ({
 		number: found[4]!,
