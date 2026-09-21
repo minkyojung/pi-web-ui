@@ -23,6 +23,7 @@ import { shellEnv } from "./shellEnv.js";
 import { branchOf, git, makeWorkspace, repositoryOf } from "./git.js";
 import { clone, login, repositories, repositoryName } from "./github.js";
 import { editorsOn, openingOf } from "./editors.js";
+import { firstFrom, firsts } from "./firstSpec.js";
 import { firstWorkspace, projectsOf, withWorkspace } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
@@ -455,24 +456,34 @@ async function workspaces() {
 /** One workspace made at a time, so two asked for at once cannot both pick the same city. */
 let making = Promise.resolve();
 
-/** A new workspace of a repository in the list, and the window put on it. */
-function newWorkspace(root) {
+/** What each new workspace is to be told first, until its page takes it — see firstSpec.js. */
+const waiting = firsts();
+
+/**
+ * A new workspace of a repository in the list, for the spec `first` starts,
+ * and the window put on it. Says why not, for the page to say it beside the
+ * line typed, which is still there. With no `first` it is an empty one — the
+ * sidebar's +, until the new spec dialog takes its place.
+ */
+function newWorkspace(root, first) {
+	const told = first === undefined ? null : firstFrom(first);
+	if (first !== undefined && !told) return Promise.resolve({ error: "Say what to build, in a line." });
 	const made = making.then(async () => {
-		if (!projectsOf(readSettings(), isCheckout).some((project) => project.path === root)) return null;
+		if (!projectsOf(readSettings(), isCheckout).some((project) => project.path === root)) return { error: "That repository is no longer on the list." };
 		try {
 			const worktree = await makeWorkspace(root, { into: join(home(), "workspaces", basename(root)), owner: await login() });
 			writeSettings({ ...readSettings(), projects: withWorkspace(projectsOf(readSettings(), isCheckout), root, worktree) });
+			if (told) waiting.keep(worktree.path, told);
 			workspacesChanged();
-			return worktree;
+			return { worktree };
 		} catch (err) {
-			dialog.showErrorBox("The workspace could not be made", err.message);
-			return null;
+			return { error: err.message };
 		}
 	});
 	making = made.then(() => {});
-	return made.then((worktree) => {
+	return made.then(({ worktree, error }) => {
 		if (worktree) void show(worktree.path);
-		return worktree?.path ?? null;
+		return error ? { error } : {};
 	});
 }
 
@@ -563,7 +574,9 @@ function serveFolders() {
 	// The list, and the two things done to it. In a dev run the dev server owns
 	// the folder, so there is no list to switch in.
 	ipcMain.handle("workspaces", () => (devUrl ? null : workspaces()));
-	ipcMain.handle("workspace:new", (_event, root) => (devUrl ? null : newWorkspace(root)));
+	ipcMain.handle("workspace:new", (_event, root, first) => (devUrl ? null : newWorkspace(root, first)));
+	// Asked by the page of the workspace in front, which is the one it is for.
+	ipcMain.handle("workspace:first", () => (front ? waiting.take(front) : null));
 	ipcMain.handle("workspace:open", (_event, path) => (devUrl ? null : openWorkspace(path)));
 	// A note in the Finder. The page is told the folder in full by the server
 	// (ConfigMsg.folder) and joins the note's path onto it, which is a better

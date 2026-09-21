@@ -25,7 +25,7 @@ const workspaceShell = (
 		pi?: {
 			workspaces?: {
 				list(): Promise<WorkspaceList | null>;
-				create(root: string): Promise<string | null>;
+				create(root: string, first?: { line: string; model: string | null; effort: string | null }): Promise<{ error?: string } | null>;
 				open(path: string): Promise<void>;
 				onChange(listen: () => void): () => void;
 			};
@@ -114,7 +114,13 @@ export function Repositories({ list }: { list: WorkspaceList }) {
 
 	const make = (root: string) => {
 		setMaking(root);
-		shell.create(root).finally(() => setMaking(null));
+		shell
+			.create(root)
+			.then(
+				(result) => result?.error && toast.error(result.error),
+				(err: Error) => toast.error(err.message),
+			)
+			.finally(() => setMaking(null));
 	};
 	const fold = (root: string) =>
 		setFolded((was) => {

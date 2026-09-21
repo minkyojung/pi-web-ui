@@ -38,13 +38,17 @@ contextBridge.exposeInMainWorld("pi", {
 	},
 	/**
 	 * The repositories and their workspaces, which the shell keeps: the list,
-	 * a new workspace of a repository, and one put in front. `onChange` says
+	 * a new workspace of a repository for the spec `first` starts — `{ line,
+	 * model, effort }`, answered with `{ error }` when it could not be made —
+	 * what this page's workspace was made to be told first, given once, and a
+	 * workspace put in front. `onChange` says
 	 * the list is to be asked for again, and returns the way to stop listening.
 	 * The list is null in a dev run, where the dev server owns the folder.
 	 */
 	workspaces: {
 		list: () => ipcRenderer.invoke("workspaces"),
-		create: (root) => ipcRenderer.invoke("workspace:new", root),
+		create: (root, first) => ipcRenderer.invoke("workspace:new", root, first),
+		first: () => ipcRenderer.invoke("workspace:first"),
 		open: (path) => ipcRenderer.invoke("workspace:open", path),
 		onChange: (listen) => {
 			const handler = () => listen();
