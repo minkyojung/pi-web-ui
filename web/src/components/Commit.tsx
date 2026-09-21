@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { LanguageDescription, syntaxHighlighting } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { unifiedMergeView } from "@codemirror/merge";
-import { Compartment, EditorState } from "@codemirror/state";
+import { EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, lineNumbers } from "@codemirror/view";
 import { ChevronRightIcon } from "lucide-react";
 
@@ -211,57 +211,63 @@ const theme = EditorView.theme({
 
 /**
  * The difference itself: the text after, with the text before as the merge
- * view's original. Made once for the file — a commit does not change — and
- * its grammar loaded for the one language the name says.
+ * view's original. Made once for the file — a commit does not change.
+ *
+ * Its grammar first, and the view after. The merge view draws the lines
+ * taken out as the view is made and not again, so a grammar that arrives
+ * later — as one does for a file open to read (Code.tsx), where that is
+ * fine — colours the lines put in and leaves the ones taken out white: the
+ * half of the difference that is gone reading as the half that matters
+ * less. Waiting the few milliseconds a grammar takes also means the file
+ * arrives coloured, rather than plain and then coloured. A name with no
+ * grammar, or one that will not load, is drawn plain at once.
  */
 function Difference({ file }: { file: CommitFile }) {
 	const host = useRef<HTMLDivElement>(null);
 	useEffect(() => {
-		if (!host.current) return;
-		const language = new Compartment();
-		const view = new EditorView({
-			parent: host.current,
-			state: EditorState.create({
-				doc: file.after ?? "",
-				extensions: [
-					EditorState.readOnly.of(true),
-					EditorView.editable.of(false),
-					lineNumbers(),
-					language.of([]),
-					syntaxHighlighting(code),
-					drawSelection(),
-					// "unmodified" as people say it of a diff; the merge view's own
-					// word is "unchanged".
-					EditorState.phrases.of({ "$ unchanged lines": "$ unmodified lines" }),
-					unifiedMergeView({
-						original: file.before ?? "",
-						mergeControls: false,
-						gutter: false,
-						// The words that changed within a line, where a line changed. In
-						// a file that is all new or all gone every word is, and marking
-						// each one says nothing the line's own colour has not.
-						highlightChanges: file.before !== null && file.after !== null,
-						syntaxHighlightDeletions: true,
-						// git's context, and GitHub's: three lines either side of a
-						// change. Fewer than four unchanged lines are not worth a fold.
-						collapseUnchanged: { margin: 3, minSize: 4 },
-					}),
-					EditorView.contentAttributes.of({ "aria-label": `${file.path}, what changed`, "aria-readonly": "true" }),
-					theme,
-				],
-			}),
-		});
 		let live = true;
+		let view: EditorView | null = null;
+		const draw = (language: Extension) => {
+			if (!live || !host.current) return;
+			view = new EditorView({
+				parent: host.current,
+				state: EditorState.create({
+					doc: file.after ?? "",
+					extensions: [
+						EditorState.readOnly.of(true),
+						EditorView.editable.of(false),
+						lineNumbers(),
+						language,
+						syntaxHighlighting(code),
+						drawSelection(),
+						// "unmodified" as people say it of a diff; the merge view's own
+						// word is "unchanged".
+						EditorState.phrases.of({ "$ unchanged lines": "$ unmodified lines" }),
+						unifiedMergeView({
+							original: file.before ?? "",
+							mergeControls: false,
+							gutter: false,
+							// The words that changed within a line, where a line changed. In
+							// a file that is all new or all gone every word is, and marking
+							// each one says nothing the line's own colour has not.
+							highlightChanges: file.before !== null && file.after !== null,
+							syntaxHighlightDeletions: true,
+							// git's context, and GitHub's: three lines either side of a
+							// change. Fewer than four unchanged lines are not worth a fold.
+							collapseUnchanged: { margin: 3, minSize: 4 },
+						}),
+						EditorView.contentAttributes.of({ "aria-label": `${file.path}, what changed`, "aria-readonly": "true" }),
+						theme,
+					],
+				}),
+			});
+		};
 		const found = LanguageDescription.matchFilename(languages, file.path.slice(file.path.lastIndexOf("/") + 1));
-		void found?.load().then(
-			(support) => {
-				if (live) view.dispatch({ effects: language.reconfigure(support) });
-			},
-			() => {},
-		);
+		if (found) found.load().then(draw, () => draw([]));
+		else draw([]);
 		return () => {
 			live = false;
-			view.destroy();
+			view?.destroy();
 		};
 	}, [file]);
 	return <div ref={host} />;

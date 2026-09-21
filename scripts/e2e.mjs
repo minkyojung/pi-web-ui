@@ -3598,6 +3598,12 @@ check("a commit opens as a page: what it says of itself, then each file it chang
 	assert.equal(await files(), "src/greeting.test.ts,src/greeting.ts,src/logo.png,src/values.ts", "one after another, the spec's own file not among them");
 	await until("the differences drawn", () => app.evaluate("document.querySelectorAll('#page .cm-editor').length === 3"));
 	assert.match(await app.evaluate("document.querySelector('#page [data-file=\"src/logo.png\"]').innerText"), /Binary file/, "what cannot be drawn truly says so");
+	// The lines taken out are coloured by what each word is, as the lines put
+	// in are: the grammar is there before the view is, since the merge view
+	// draws what is gone once and not again.
+	const hues = (selector) => app.evaluate(`new Set([...document.querySelectorAll('#page [data-file="src/greeting.ts"] ${selector} span')].map((s) => getComputedStyle(s).color)).size`);
+	await until("the taken-out line in more than one colour", async () => (await hues(".cm-deletedChunk")) > 1);
+	assert.ok((await hues(".cm-changedLine")) > 1, "and the put-in line, as before");
 	// The long file: one line changed of sixty, and the rest folded either side of it.
 	const folds = () => app.evaluate("[...document.querySelectorAll('#page [data-file=\"src/values.ts\"] .cm-collapsedLines')].map((e) => e.textContent).join('|')");
 	// Line 31 of sixty: 28–30 and 32–34 are kept, and what is folded is 1–27
