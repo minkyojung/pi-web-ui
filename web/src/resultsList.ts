@@ -14,6 +14,7 @@
  *
  * Pure. The stores are read where it is drawn.
  */
+import type { SpecInfo } from "../../protocol.ts";
 import type { TaskResult } from "../../specResults.ts";
 
 /** One line of the list: a task's last run, and how many runs it has had. */
@@ -65,3 +66,19 @@ export function listOf(results: readonly TaskResult[], seen: string | null): Res
 /** The button's words: `5 tasks`, and `2 new` beside it when there are. */
 export const tasksWords = (list: Pick<ResultsList, "tasks">): string => `${list.tasks} ${list.tasks === 1 ? "task" : "tasks"}`;
 export const freshWords = (list: Pick<ResultsList, "fresh">): string | null => (list.fresh > 0 ? `${list.fresh} new` : null);
+
+/**
+ * The task a commit is the result of, among the results the window already
+ * has — by the hash whole or short, as an address may give either — or null
+ * for a commit that is no task's: somebody's own, or one on another branch.
+ */
+export function taskOfCommit(specs: readonly SpecInfo[] | null, commit: string): { spec: string; task: string; title: string; short: string } | null {
+	for (const spec of specs ?? []) {
+		const found = spec.results.find((result) => result.commit.startsWith(commit));
+		if (found) return { spec: spec.name, task: found.task, title: found.title, short: found.short };
+	}
+	return null;
+}
+
+/** What a commit's tab is called: the task and its line, which is a name a person reads; a hash is not. */
+export const commitTabTitle = (of: { task: string; title: string }): string => `Task ${of.task} · ${of.title}`;

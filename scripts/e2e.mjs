@@ -3692,6 +3692,15 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	assert.equal(await app.evaluate("!!document.querySelector('[data-result]')"), false);
 	// Looked at: nothing is new, from whatever is in front — a commit's page here.
 	await until("nothing new", async () => (await button()) === "2 tasks");
+	// The commit's tab is called by its task, not by its hash — read off the
+	// results the window already has — and every tab is one width, so a long
+	// name is cut rather than the row going ragged.
+	const tabs = await app.evaluate("[...document.querySelectorAll('[role=tab][data-path]')].map((t) => ({ path: t.dataset.path, text: t.innerText.trim(), width: Math.round(t.getBoundingClientRect().width) }))");
+	const commitTab = tabs.find((tab) => tab.path.startsWith("octave://commit/"));
+	assert.equal(commitTab.text, "Task 1 · Add the door", JSON.stringify(tabs));
+	assert.equal(new Set(tabs.map((tab) => tab.width)).size, 1, `one width for every tab: ${JSON.stringify(tabs.map((tab) => tab.width))}`);
+	assert.equal(commitTab.width, 192, "twelve rem");
+	await app.shot("tab-widths");
 	// And it stays looked at when the window is opened again.
 	assert.equal(await app.evaluate("JSON.parse(localStorage.getItem('seen-results')).came"), again);
 	// The chip is the other way to the same page: from the plan, at the line.

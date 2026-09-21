@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { freshWords, listOf, tasksWords } from "../web/src/resultsList.ts";
+import { commitTabTitle, freshWords, listOf, taskOfCommit, tasksWords } from "../web/src/resultsList.ts";
 
 const run = (task, commit, over = {}) => ({ task, commit, short: commit.slice(0, 7), title: `Task ${task}`, at: 0, checks: null, files: [], added: 1, deleted: 0, ...over });
 const RESULTS = [run("1", "aaaaaaa1"), run("2", "bbbbbbb2", { added: 8 }), run("3", "ccccccc3", { added: 41, deleted: 2 })];
@@ -41,4 +41,16 @@ test("버튼의 말", () => {
   assert.equal(tasksWords({ tasks: 5 }), "5 tasks");
   assert.equal(freshWords({ fresh: 0 }), null, "새것이 없으면 조용하다");
   assert.equal(freshWords({ fresh: 2 }), "2 new");
+});
+
+test("커밋이 어느 작업의 것인지는 이미 받은 결과에서 찾는다 — 짧은 해시로도, 없으면 null", () => {
+  const specs = [
+    { name: "greeting", results: [run("1", "aaaaaaa1111"), run("2", "bbbbbbb2222", { title: "Test the greeting" })] },
+    { name: "email-auth", results: [run("1", "ccccccc3333", { title: "Add sign-in" })] },
+  ];
+  assert.deepEqual(taskOfCommit(specs, "bbbbbbb2222"), { spec: "greeting", task: "2", title: "Test the greeting", short: "bbbbbbb" });
+  assert.equal(taskOfCommit(specs, "ccccccc").spec, "email-auth", "주소는 짧은 해시일 수도 있다");
+  assert.equal(taskOfCommit(specs, "deadbee"), null, "작업의 커밋이 아니다");
+  assert.equal(taskOfCommit(null, "aaaaaaa"), null, "결과가 아직 안 왔다");
+  assert.equal(commitTabTitle({ task: "2", title: "Test the greeting" }), "Task 2 · Test the greeting");
 });
