@@ -6,7 +6,6 @@ import { type ResultLine, freshWords, listOf, tasksWords } from "../resultsList.
 import { sawResults, seenStore } from "../seenResults.ts";
 import { specsStore } from "../serverState";
 import { docPath, speaksFor } from "../specStanding.ts";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "./ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -91,7 +90,7 @@ export function TaskResults({ open: inFront, onOpen }: { open: string | null; on
 									value={`${line.task} ${line.title} ${line.short}`}
 									data-result={line.task}
 									data-fresh={line.fresh || undefined}
-									title={`${line.short} · ${new Date(line.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`}
+									title={`${line.short} · ${new Date(line.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}${line.runs > 1 ? ` · run ${line.runs} times, this is the last` : ""}`}
 									onSelect={() => go(commitPath(line.commit))}
 									className="gap-2"
 								>
@@ -117,7 +116,10 @@ export function TaskResults({ open: inFront, onOpen }: { open: string | null; on
  * One task's result, in one line: how it was checked, which task, and how
  * much it changed — what choosing which to open takes, and no more. The
  * commit and the time are reference, and are on the page the line opens;
- * here they are the line's title.
+ * here they are the line's title — with how many times the task was run,
+ * when it was more than once. The line is its last run, and how many tries
+ * it took is not what anybody opens the list to find out: a mark for it was
+ * one more thing to learn, explained and still not understood.
  *
  * The mark at the left is the checks. A filled circle: the run said it
  * checked its work, and says what in its title. A hollow one: it checked
@@ -145,11 +147,6 @@ function Line({ line }: { line: ResultLine }) {
 			<span className="w-7 shrink-0 text-muted-foreground tabular-nums">{line.task}</span>
 			<span className={`min-w-0 truncate ${line.fresh ? "font-semibold text-foreground" : ""}`}>{line.title}</span>
 			{line.fresh && <span className="sr-only">new</span>}
-			{line.runs > 1 && (
-				<Badge variant="outline" className="h-4 shrink-0 px-1 text-[10px] font-normal text-muted-foreground tabular-nums" title={`Run ${line.runs} times; this is the last`}>
-					×{line.runs}
-				</Badge>
-			)}
 			<span className="ml-auto shrink-0 pl-3 text-[11px] tabular-nums">
 				<span style={{ color: "var(--code-string)" }}>+{line.added}</span> <span className="text-destructive">−{line.deleted}</span>
 			</span>
