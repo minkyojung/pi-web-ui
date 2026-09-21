@@ -3575,7 +3575,8 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
 			onNewSpec: (listen) => { window.__newSpec = listen; return () => {}; },
 			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/other", name: "other", worktrees: [] }, { path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }] }] }),
-				create: async (root, first) => { window.__created.push({ root, first }); return window.__created.length === 1 ? { error: "The remote said no." } : {}; },
+				create: async (root, first, from) => { window.__created.push({ root, first, from }); return window.__created.length === 1 ? { error: "The remote said no." } : {}; },
+				branches: async (root) => (root === "/r/other" ? { branches: ["me/email-auth", "main"], base: "main" } : null),
 				open: async () => {}, onChange: () => () => {}, first: async () => null } };
 		}`);
 	// A menu shutting hands the focus back to what opened it, a moment after it
@@ -3618,7 +3619,7 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		await app.click("#new-spec-create");
 		await until("the dialog gone", async () => !(await app.evaluate("!!document.getElementById('new-spec')")));
 		const created = JSON.parse(await app.evaluate("JSON.stringify(window.__created)"));
-		assert.deepEqual(created.at(-1), { root: "/r/demo", first: { line: "add a greeting", model: other.key, effort: other.level } });
+		assert.deepEqual(created.at(-1), { root: "/r/demo", first: { line: "add a greeting", model: other.key, effort: other.level }, from: null });
 		assert.equal(created.length, 2);
 		// From the menu (⌘⇧N) it opens over the repository the window is in, not
 		// the first on the list; another is chosen in it, and what was typed stays.
@@ -3631,9 +3632,18 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		await until("the other repository", async () => (await app.evaluate("document.getElementById('new-spec-repository')?.textContent ?? ''")) === "other");
 		assert.equal(await app.evaluate("document.getElementById('new-spec-line').value"), "typed first");
 		await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+		// Behind the ⋯: another of the remote's branches to start from, said
+		// beside it once chosen. The default one chosen is nothing chosen.
+		await app.click("#new-spec-more");
+		await until("the branches", () => app.evaluate("document.querySelectorAll('#target-branch [cmdk-item]').length === 2"));
+		assert.match(await app.evaluate("document.querySelector('#target-branch p').textContent"), /origin\/main$/);
+		await app.evaluate("[...document.querySelectorAll('#target-branch [cmdk-item]')].find((i) => i.textContent === 'me/email-auth').click()");
+		await until("the branch said", async () => (await app.evaluate("document.getElementById('new-spec-from')?.textContent ?? ''")) === "from origin/me/email-auth");
 		await app.click("#new-spec-create");
 		await until("the dialog gone", async () => !(await app.evaluate("!!document.getElementById('new-spec')")));
-		assert.equal(JSON.parse(await app.evaluate("JSON.stringify(window.__created.at(-1))")).root, "/r/other");
+		const last = JSON.parse(await app.evaluate("JSON.stringify(window.__created.at(-1))"));
+		assert.equal(last.root, "/r/other");
+		assert.equal(last.from, "me/email-auth");
 	} finally {
 		await app.press("Escape");
 		await stopStanding();

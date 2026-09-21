@@ -39,7 +39,8 @@ contextBridge.exposeInMainWorld("pi", {
 	/**
 	 * The repositories and their workspaces, which the shell keeps: the list,
 	 * a new workspace of a repository for the spec `first` starts — `{ line,
-	 * model, effort }`, answered with `{ error }` when it could not be made —
+	 * model, effort }`, started from the remote's branch `from` when one of
+	 * `branches` is chosen, answered with `{ error }` when it could not be made —
 	 * what this page's workspace was made to be told first, given once, a
 	 * workspace put in front, and one removed — `changes` says how many
 	 * uncommitted changes it holds, and `remove` takes the number the person
@@ -49,7 +50,8 @@ contextBridge.exposeInMainWorld("pi", {
 	 */
 	workspaces: {
 		list: () => ipcRenderer.invoke("workspaces"),
-		create: (root, first) => ipcRenderer.invoke("workspace:new", root, first),
+		create: (root, first, from) => ipcRenderer.invoke("workspace:new", root, first, from),
+		branches: (root) => ipcRenderer.invoke("workspace:branches", root),
 		first: () => ipcRenderer.invoke("workspace:first"),
 		open: (path) => ipcRenderer.invoke("workspace:open", path),
 		changes: (path) => ipcRenderer.invoke("workspace:changes", path),

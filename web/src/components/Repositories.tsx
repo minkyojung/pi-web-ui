@@ -27,7 +27,8 @@ const workspaceShell = (
 		pi?: {
 			workspaces?: {
 				list(): Promise<WorkspaceList | null>;
-				create(root: string, first: { line: string; model: string | null; effort: string | null }): Promise<{ error?: string } | null>;
+				create(root: string, first: { line: string; model: string | null; effort: string | null }, from: string | null): Promise<{ error?: string } | null>;
+				branches(root: string): Promise<{ branches: string[]; base: string | null } | null>;
 				open(path: string): Promise<void>;
 				changes(path: string): Promise<number | null>;
 				remove(path: string, seen: number): Promise<{ error?: string; changes?: number } | null>;
@@ -172,7 +173,7 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 			</div>
 			<CloneRepository open={cloning} onOpenChange={setCloning} />
 			<RemoveWorkspace workspace={doomed} onClose={() => setDoomed(null)} shell={shell} />
-			<NewSpec repository={starting} repositories={list.projects} onRepository={setStarting} onClose={() => setStarting(null)} create={shell.create} choices={choices} />
+			<NewSpec repository={starting} repositories={list.projects} onRepository={setStarting} onClose={() => setStarting(null)} create={shell.create} branches={shell.branches} choices={choices} />
 			<ul id="workspaces" className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-1">
 				{list.projects.map((project) => (
 					<li key={project.path}>

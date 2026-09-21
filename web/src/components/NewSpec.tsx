@@ -8,6 +8,7 @@ import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Kbd } from "./ui/kbd";
+import { type Branches, TargetBranch } from "./TargetBranch";
 import { Spinner } from "./ui/spinner";
 import { Textarea } from "./ui/textarea";
 
@@ -32,7 +33,7 @@ export interface SpecOnChoices {
 }
 
 /** A spec asked for: the repository it is of, and what the shell is told. `{ error }` when the workspace could not be made. */
-type Create = (root: string, first: { line: string; model: string | null; effort: string | null }) => Promise<{ error?: string } | null>;
+type Create = (root: string, first: { line: string; model: string | null; effort: string | null }, from: string | null) => Promise<{ error?: string } | null>;
 
 /**
  * The new spec dialog — the one way a workspace is made (spec-mode.md 6절),
@@ -51,6 +52,7 @@ export function NewSpec({
 	onRepository,
 	onClose,
 	create,
+	branches,
 	choices,
 }: {
 	/** The repository the spec is of, or null when the dialog is shut. */
@@ -60,16 +62,24 @@ export function NewSpec({
 	onRepository: (repository: { path: string; name: string }) => void;
 	onClose: () => void;
 	create: Create;
+	/** The branches a repository's workspace can start from — see TargetBranch.tsx. */
+	branches: (root: string) => Promise<Branches | null>;
 	choices?: SpecOnChoices;
 }) {
 	const [line, setLine] = useState("");
 	const [chosen, setChosen] = useState<SpecOn | null>(null);
+	/** The remote's branch to start from, or null for the default one. */
+	const [from, setFrom] = useState<string | null>(null);
 	const [making, setMaking] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	// Each time it is opened it is for a new spec; the model chosen stays, as
 	// it does in the box this one is shaped after. Opened, not pointed at
 	// another repository: what was typed is kept through that.
+	// A branch is one repository's: another repository starts from its own default.
+	const root = repository?.path ?? null;
+	useEffect(() => setFrom(null), [root]);
+
 	const open = repository !== null;
 	useEffect(() => {
 		if (!open) return;
@@ -86,7 +96,7 @@ export function NewSpec({
 		if (!repository || !ready) return;
 		setMaking(true);
 		setError(null);
-		create(repository.path, { line, model: shown?.model ?? null, effort: shown?.level ?? null })
+		create(repository.path, { line, model: shown?.model ?? null, effort: shown?.level ?? null }, from)
 			.then((result) => (result?.error ? setError(result.error) : onClose()))
 			.catch((err: Error) => setError(err.message))
 			.finally(() => setMaking(false));
@@ -116,6 +126,7 @@ export function NewSpec({
 							</DropdownMenuRadioGroup>
 						</DropdownMenuContent>
 					</DropdownMenu>
+					<TargetBranch root={root} value={from} onChange={setFrom} ask={branches} disabled={making} />
 				</div>
 				<DialogDescription className="sr-only">Say what to build. A workspace is made for it, and the agent writes its requirements there.</DialogDescription>
 				<Textarea

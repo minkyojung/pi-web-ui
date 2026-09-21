@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { CITIES, pickCity } from "../electron/cities.js";
-import { branchOf, changesIn, fetchOrigin, makeWorkspace, removeWorktree, repositoryOf, startOf } from "../electron/git.js";
+import { branchOf, changesIn, fetchOrigin, makeWorkspace, remoteBranches, removeWorktree, repositoryOf, startOf } from "../electron/git.js";
 import { login } from "../electron/github.js";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
@@ -165,4 +165,23 @@ test("removing a workspace takes the folder and leaves the branch, whatever was 
 	assert.equal(existsSync(made.path), false);
 	assert.equal(run(repo.root, "worktree", "list").includes(made.path), false, "git has forgotten the worktree");
 	assert.equal(run(repo.root, "log", "-1", "--format=%s", made.branch), "work", "the branch and its commit are still there");
+});
+
+test("a workspace can be started from another of the remote's branches, fetched first, and not from one it does not have", async () => {
+	const repo = cloned();
+	// A branch made on the remote after the clone: only a fetch would know it.
+	run(repo.seed, "checkout", "-q", "-b", "me/email-auth");
+	writeFileSync(join(repo.seed, "auth.txt"), "sign in\n");
+	run(repo.seed, "add", ".");
+	// Dated after the first, which was made within the same second: the order is by when.
+	execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "auth"], { cwd: repo.seed, env: { ...process.env, GIT_COMMITTER_DATE: new Date(Date.now() + 60_000).toISOString() } });
+	run(repo.seed, "push", "-q", repo.origin, "me/email-auth");
+	const listed = await remoteBranches(repo.root);
+	assert.deepEqual(listed, { branches: ["me/email-auth", "main"], base: "main" }, "the latest worked on first, and origin/HEAD is not a branch");
+	const made = await makeWorkspace(repo.root, { into: join(repo.dir, "ws"), owner: "me", start: "me/email-auth" });
+	assert.equal(existsSync(join(made.path, "auth.txt")), true, "it stands on that branch's commit");
+	assert.notEqual(made.branch, "me/email-auth", "on a branch of its own, as any workspace is");
+	assert.throws(() => run(made.path, "rev-parse", "--abbrev-ref", "@{u}"), /no upstream/, "and does not track the one it started from: a push would go there");
+	await assert.rejects(makeWorkspace(repo.root, { into: join(repo.dir, "ws"), owner: "me", start: "nobody/none" }), /no branch called nobody\/none/);
+	await assert.rejects(makeWorkspace(repo.root, { into: join(repo.dir, "ws"), owner: "me", start: "--upload-pack=x" }), /no branch called/);
 });

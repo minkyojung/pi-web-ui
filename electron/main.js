@@ -20,7 +20,7 @@ import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
 import { createServers, idle } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
-import { branchOf, changesIn, git, makeWorkspace, removeWorktree, repositoryOf } from "./git.js";
+import { branchOf, changesIn, git, makeWorkspace, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
 import { clone, login, repositories, repositoryName } from "./github.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
@@ -463,16 +463,18 @@ const waiting = firsts();
  * A new workspace of a repository in the list, for the spec `first` starts,
  * and the window put on it. Only for one: a workspace is made by the new spec
  * dialog and by nothing else (spec-mode.md 6절), so there is no way here to
- * make an empty one. Says why not, for the dialog to say it beside the line
- * typed, which is still there.
+ * make an empty one. `from` is the remote's branch to start it from, when it
+ * is not to be the default one — git.js looks for it, and refuses what is not
+ * there. Says why not, for the dialog to say it beside the line typed, which
+ * is still there.
  */
-function newWorkspace(root, first) {
+function newWorkspace(root, first, from) {
 	const told = firstFrom(first);
 	if (!told) return Promise.resolve({ error: "Say what to build, in a line." });
 	const made = making.then(async () => {
 		if (!projectsOf(readSettings(), isCheckout).some((project) => project.path === root)) return { error: "That repository is no longer on the list." };
 		try {
-			const worktree = await makeWorkspace(root, { into: join(home(), "workspaces", basename(root)), owner: await login() });
+			const worktree = await makeWorkspace(root, { into: join(home(), "workspaces", basename(root)), owner: await login(), start: typeof from === "string" && from ? from : null });
 			writeSettings({ ...readSettings(), projects: withWorkspace(projectsOf(readSettings(), isCheckout), root, worktree) });
 			waiting.keep(worktree.path, told);
 			workspacesChanged();
@@ -618,7 +620,11 @@ function serveFolders() {
 	// The list, and the two things done to it. In a dev run the dev server owns
 	// the folder, so there is no list to switch in.
 	ipcMain.handle("workspaces", () => (devUrl ? null : workspaces()));
-	ipcMain.handle("workspace:new", (_event, root, first) => (devUrl ? null : newWorkspace(root, first)));
+	ipcMain.handle("workspace:new", (_event, root, first, from) => (devUrl ? null : newWorkspace(root, first, from)));
+	// The branches of a repository on the list that a workspace can start from.
+	ipcMain.handle("workspace:branches", (_event, root) =>
+		devUrl || !projectsOf(readSettings(), isCheckout).some((project) => project.path === root) ? null : remoteBranches(root).catch(() => null),
+	);
 	// Asked by the page of the workspace in front, which is the one it is for.
 	ipcMain.handle("workspace:first", () => (front ? waiting.take(front) : null));
 	ipcMain.handle("workspace:open", (_event, path) => (devUrl ? null : openWorkspace(path)));
