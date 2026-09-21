@@ -47,13 +47,13 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { writeAtomic } from "./atomic.ts";
 import { APP_DIR_NAME, APPROVALS, SPEC_DOCS, type SpecDoc, SPECS_DIR } from "./documentKinds.ts";
 import { CITIES } from "./electron/cities.js";
 import { approve, type SpecState, specState } from "./specApproval.ts";
-import { nextTask, parseTasks, taskToRun, withDone, withParents } from "./specTasks.ts";
+import { nextTask, parseTasks, type Task, taskToRun, withDone, withParents } from "./specTasks.ts";
 
 /** A workspace's placeholder name: a city, or a city of a later round (`lisbon-v2`). */
 const PLACEHOLDER = new RegExp(`^(?:${CITIES.join("|")})(?:-v\\d+)?$`);
@@ -300,6 +300,12 @@ export interface TaskMark {
 	title: string;
 	/** The tasks already done when the run began. */
 	done: string[];
+	/**
+	 * The tasks to run after this one, in order — the rest of a `/spec-run 1
+	 * 2.1 2.2`. Each is started when the one before it is checked off, in a
+	 * session of its own like this one; empty for a run of one task.
+	 */
+	then: string[];
 }
 
 /**
@@ -357,7 +363,8 @@ export function taskMark(entries: readonly unknown[]): TaskMark | null {
 		if (!entry || entry.type !== "custom_message" || entry.customType !== TASK_MARK) continue;
 		const details = entry.details as Partial<TaskMark> | undefined;
 		if (!details || typeof details.spec !== "string" || typeof details.task !== "string" || typeof details.title !== "string" || !Array.isArray(details.done)) return null;
-		return { spec: details.spec, task: details.task, title: details.title, done: details.done.filter((number): number is string => typeof number === "string") };
+		const numbers = (given: unknown) => (Array.isArray(given) ? given.filter((number): number is string => typeof number === "string") : []);
+		return { spec: details.spec, task: details.task, title: details.title, done: numbers(details.done), then: numbers(details.then) };
 	}
 	return null;
 }
@@ -401,6 +408,20 @@ async function waitingToCommit(pi: ExtensionAPI, cwd: string): Promise<{ reposit
  * same task is next again.
  */
 export async function finishTask(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark): Promise<void> {
+	ended.set(endedKey(cwd, mark), await finish(pi, { cwd, ui }, mark));
+}
+
+/**
+ * How a task's run ended, for the queue it may be part of (runNext). Kept in
+ * the module rather than the extension instance: the run's end is heard by
+ * the instance made for its session, and the chain that started it runs on
+ * the one before — both are this module, loaded once.
+ */
+type Ended = "committed" | "checked" | "nothing" | "uncommitted";
+const ended = new Map<string, Ended>();
+const endedKey = (cwd: string, { spec, task }: TaskMark) => `${cwd}\0${spec}\0${task}`;
+
+async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark): Promise<Ended> {
 	const git = (args: string[]) => pi.exec("git", args, { cwd, timeout: 30_000 });
 	const where = `${SPECS_DIR}${mark.spec}/tasks.md`;
 	const file = join(cwd, where);
@@ -409,19 +430,19 @@ export async function finishTask(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: 
 	// much is waiting there: the documents were written before it.
 	if (repository && work.length === 0) {
 		ui.notify(`${mark.task} changed nothing, so it is not checked off and there is no commit.`, "warning");
-		return;
+		return "nothing";
 	}
 	let text: string;
 	try {
 		text = readFileSync(file, "utf8");
 	} catch {
 		ui.notify(`${where} is not there, so ${mark.task} could not be checked off.`, "warning");
-		return;
+		return "nothing";
 	}
 	writeAtomic(file, withDone(text, withParents(parseTasks(text), new Set([...mark.done, mark.task]))));
 	if (!repository) {
 		ui.notify(`${mark.task} is done. There is no repository here, so nothing was committed.`, "warning");
-		return;
+		return "checked";
 	}
 	// Everything the run left but the app's own folder, which belongs to no
 	// commit of the person's.
@@ -429,11 +450,100 @@ export async function finishTask(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: 
 	const made = added.code === 0 ? await git(["commit", "-m", mark.title, "-m", `${where} ${mark.task}`]) : added;
 	if (made.code !== 0) {
 		ui.notify(`${mark.task} is done, but git could not commit it: ${(made.stderr || made.stdout).trim()}`, "warning");
-		return;
+		return "uncommitted";
 	}
 	const at = await git(["rev-parse", "--short", "HEAD"]);
 	const next = nextTask(parseTasks(readFileSync(file, "utf8")));
-	ui.notify(`${mark.task} is done${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}. ${next ? `Next is ${next.number} — /spec-run` : "That was the last task."}`, "info");
+	const going = mark.then[0];
+	ui.notify(`${mark.task} is done${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}. ${going ? `${going} starts next.` : next ? `Next is ${next.number} — /spec-run` : "That was the last task."}`, "info");
+	return "committed";
+}
+
+/**
+ * A session is opened for `mark`'s task, told what it is, and sent the line
+ * the person typed; when its turn ends and the task is checked off, the next
+ * of `mark.then` is started the same way, in a session of its own.
+ *
+ * The chain lives on the context the new session hands back and nowhere
+ * else. An event's context cannot open a session — only a command's can —
+ * and the command's own is stale the moment the first session is replaced;
+ * the one `withSession` gives is a command's for the session it made, and pi
+ * resolves sendUserMessage only when that session's turn has ended and every
+ * extension has heard agent_settled, which is when the box and the commit
+ * are made (finishTask). So what is read afterwards is the file: the next
+ * task starts only when this one's box is checked, and a run that changed
+ * nothing, or could not be committed, stops the queue where it is rather
+ * than stepping past what it did not do.
+ *
+ * Started, not waited for: pi's sendUserMessage runs the turn to its end
+ * before it resolves, and newSession does not return until withSession
+ * does — so waiting here would hold the host on the session it just left for
+ * the whole run, and the person would watch nothing happen until the commit
+ * landed.
+ */
+async function startRun(ctx: Pick<ExtensionCommandContext, "newSession">, cwd: string, mark: TaskMark): Promise<void> {
+	await ctx.newSession({
+		withSession: async (session) => {
+			await session.sendMessage({ customType: TASK_MARK, content: taskPrompt(mark), display: false, details: mark }, { deliverAs: "nextTurn" });
+			void session
+				.sendUserMessage(`/spec-run ${mark.task}`)
+				.then(() => runNext(session, cwd, mark))
+				.catch((error: unknown) => {
+					session.ui.notify(`The run of ${mark.task} stopped: ${error instanceof Error ? error.message : String(error)}`, "error");
+				});
+		},
+	});
+}
+
+/** The session a run was opened in, as much of it as the chain uses: pi's ReplacedSessionContext, which the package does not export. */
+type RunSession = Speaking & Pick<ExtensionCommandContext, "newSession">;
+
+/**
+ * After `mark`'s turn: the next task of its queue, if its own was committed.
+ *
+ * Nothing here is asked of git or of the pi this was started from: that pi
+ * is the instance made for the session before, and is stale once the
+ * session was replaced. What the run left is read instead — how it ended,
+ * from the module, and the list, from the file. A committed run leaves the
+ * folder clean, which is what starting the next needs.
+ */
+async function runNext(session: RunSession, cwd: string, mark: TaskMark): Promise<void> {
+	const [number, ...rest] = mark.then;
+	if (!number) return;
+	const left = [number, ...rest].join(", ");
+	const not = `${left} ${rest.length > 0 ? "were" : "was"} not started`;
+	const how = ended.get(endedKey(cwd, mark)) ?? "nothing";
+	ended.delete(endedKey(cwd, mark));
+	if (how === "nothing" || how === "uncommitted") {
+		session.ui.notify(`${mark.task} was not ${how === "nothing" ? "checked off" : "committed"}, so ${not}.`, "warning");
+		return;
+	}
+	let tasks: Task[];
+	try {
+		tasks = parseTasks(readFileSync(join(cwd, SPECS_DIR, mark.spec, "tasks.md"), "utf8"));
+	} catch {
+		session.ui.notify(`${SPECS_DIR}${mark.spec}/tasks.md is not there, so ${not}.`, "warning");
+		return;
+	}
+	const task = taskToRun(tasks, number);
+	if (!task || task.done) {
+		session.ui.notify(`${mark.spec} has no task ${number} left to run, so ${not}.`, "warning");
+		return;
+	}
+	await startRun(session, cwd, { spec: mark.spec, task: task.number, title: task.title, done: tasks.filter((other) => other.done).map((other) => other.number), then: rest });
+}
+
+/**
+ * Whether the folder holds changes of the person's, said to them if so. A
+ * task's commit takes the whole folder, so the folder must hold nothing else
+ * of the person's when a run starts.
+ */
+async function dirty(pi: ExtensionAPI, ctx: Speaking, cwd: string, orElse: string): Promise<boolean> {
+	const { work } = await waitingToCommit(pi, cwd);
+	if (work.length === 0) return false;
+	const some = work.slice(0, 3).join(", ");
+	ctx.ui.notify(`Commit or put back what has changed first — a task's commit takes the whole folder: ${some}${work.length > 3 ? `, and ${work.length - 3} more` : ""}. ${orElse}.`, "warning");
+	return true;
 }
 
 /** What each spec in the folder is waiting on, by name. */
@@ -586,10 +696,11 @@ export default function spec(pi: ExtensionAPI): void {
 				ctx.ui.notify("The agent is working. Run the task when it has finished.", "warning");
 				return;
 			}
-			// A word that is a number is the task; any other word names the spec.
+			// The words that are numbers are the tasks, in the order given; any
+			// other word names the spec.
 			const words = args.trim().split(/\s+/).filter(Boolean);
-			const number = words.find((word) => /^\d+(?:\.\d+)?$/.test(word)) ?? null;
-			const given = words.find((word) => word !== number) ?? null;
+			const numbers = [...new Set(words.filter((word) => /^\d+(?:\.\d+)?$/.test(word)))];
+			const given = words.find((word) => !numbers.includes(word)) ?? null;
 			const specs = takenSpecs(ctx.cwd).map((name) => ({ name, ...specState(ctx.cwd, name) }));
 			const ready = (spec: SpecState) => spec.approved === SPEC_DOCS.length;
 			const run = specs.filter(ready);
@@ -604,7 +715,7 @@ export default function spec(pi: ExtensionAPI): void {
 				return;
 			}
 			if (candidates.length > 1) {
-				ctx.ui.notify(`More than one spec: ${candidates.map((spec) => spec.name).join(", ")}. Say which: /spec-run ${chosen.name}${number ? ` ${number}` : ""}`, "info");
+				ctx.ui.notify(`More than one spec: ${candidates.map((spec) => spec.name).join(", ")}. Say which: /spec-run ${chosen.name}${numbers.length > 0 ? ` ${numbers.join(" ")}` : ""}`, "info");
 				return;
 			}
 			if (!ready(chosen)) {
@@ -618,40 +729,38 @@ export default function spec(pi: ExtensionAPI): void {
 			}
 			const text = readFileSync(join(ctx.cwd, SPECS_DIR, chosen.name, "tasks.md"), "utf8");
 			const tasks = parseTasks(text);
-			const task = number ? taskToRun(tasks, number) : nextTask(tasks);
+			// Every number named is looked at before any is started: a queue with
+			// a task that is not there, or is done, is a question to go back with,
+			// not a run to stop halfway.
+			const named = numbers.map((number) => ({ number, task: taskToRun(tasks, number) }));
+			const missing = named.find((one) => !one.task);
+			if (missing) {
+				ctx.ui.notify(`${chosen.name} has no task ${missing.number}.`, "info");
+				return;
+			}
+			const finished = named.find((one) => one.task?.done);
+			if (finished) {
+				ctx.ui.notify(`${finished.number} is already done. To have it done again, clear its box in ${SPECS_DIR}${chosen.name}/tasks.md first.`, "info");
+				return;
+			}
+			const queue = named.length > 0 ? named.map((one) => one.task as Task) : [nextTask(tasks)].filter((task): task is Task => task !== null);
+			const [task, ...then] = queue;
 			if (!task) {
-				ctx.ui.notify(number ? `${chosen.name} has no task ${number}.` : `Every task of ${chosen.name} is done.`, "info");
+				ctx.ui.notify(`Every task of ${chosen.name} is done.`, "info");
 				return;
 			}
-			if (task.done) {
-				ctx.ui.notify(`${task.number} is already done. To have it done again, clear its box in ${SPECS_DIR}${chosen.name}/tasks.md first.`, "info");
-				return;
-			}
-			// A task's commit takes the whole folder, so the folder must hold
-			// nothing else of the person's when it starts.
-			const { work } = await waitingToCommit(pi, ctx.cwd);
-			if (work.length > 0) {
-				const some = work.slice(0, 3).join(", ");
-				ctx.ui.notify(`Commit or put back what has changed first — a task's commit takes the whole folder: ${some}${work.length > 3 ? `, and ${work.length - 3} more` : ""}.`, "warning");
-				return;
-			}
-			const mark: TaskMark = { spec: chosen.name, task: task.number, title: task.title, done: tasks.filter((other) => other.done).map((other) => other.number) };
+			if (await dirty(pi, ctx, ctx.cwd, "Nothing was started")) return;
 			// A session of its own, as Kiro runs a task: the three documents are
 			// all it needs, and a dozen tasks in one conversation would not fit.
 			// The mark rides on the instructions, which is how the end of the turn
-			// knows what this session was — see taskMark.
-			await ctx.newSession({
-				withSession: async (session) => {
-					await session.sendMessage({ customType: TASK_MARK, content: taskPrompt(mark), display: false, details: mark }, { deliverAs: "nextTurn" });
-					// Started, not waited for. pi's sendUserMessage runs the turn to
-					// its end before it resolves, and newSession does not return until
-					// this does — so waiting here would hold the host on the session it
-					// just left for the whole run, and the person would watch nothing
-					// happen until the commit landed.
-					void session.sendUserMessage(`/spec-run ${task.number}`).catch((error: unknown) => {
-						session.ui.notify(`The run of ${task.number} stopped: ${error instanceof Error ? error.message : String(error)}`, "error");
-					});
-				},
+			// knows what this session was — see taskMark. The rest of the queue
+			// rides with it, and is started task by task as each is checked off.
+			await startRun(ctx, ctx.cwd, {
+				spec: chosen.name,
+				task: task.number,
+				title: task.title,
+				done: tasks.filter((other) => other.done).map((other) => other.number),
+				then: then.map((other) => other.number),
 			});
 		},
 	});
