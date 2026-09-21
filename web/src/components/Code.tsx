@@ -1,40 +1,16 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { HighlightStyle, LanguageDescription, syntaxHighlighting } from "@codemirror/language";
+import { LanguageDescription, syntaxHighlighting } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, lineNumbers } from "@codemirror/view";
-import { tags } from "@lezer/highlight";
 
 import { choose, chosenStore } from "../chosen";
+import { code } from "../codeLook";
 import { say as sayInFront } from "../inFront";
 import { codeStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
-
-/**
- * Code, told apart by colour.
- *
- * The grammar (lezer, picked by the file's name below) names each token;
- * this table is the one place a name becomes a look. The hues are the
- * theme's (styles.css), so a keyword reads in every window, light or dark.
- */
-const code = HighlightStyle.define([
-	{
-		tag: [tags.keyword, tags.moduleKeyword, tags.controlKeyword, tags.operatorKeyword, tags.definitionKeyword, tags.modifier, tags.self],
-		color: "var(--code-keyword)",
-	},
-	{ tag: [tags.typeName, tags.className, tags.namespace, tags.tagName], color: "var(--code-type)" },
-	{ tag: [tags.atom, tags.bool, tags.null, tags.number, tags.literal], color: "var(--code-number)" },
-	{ tag: [tags.string, tags.special(tags.string), tags.regexp, tags.character], color: "var(--code-string)" },
-	{ tag: [tags.function(tags.variableName), tags.function(tags.propertyName), tags.definition(tags.variableName)], color: "var(--code-name)" },
-	{ tag: [tags.attributeName, tags.propertyName], color: "var(--code-type)" },
-	{ tag: [tags.comment, tags.lineComment, tags.blockComment, tags.docComment], color: "var(--muted-foreground)", fontStyle: "italic" },
-	{ tag: [tags.punctuation, tags.separator, tags.bracket, tags.operator], color: "var(--muted-foreground)" },
-	{ tag: [tags.meta, tags.processingInstruction], color: "var(--muted-foreground)" },
-	{ tag: tags.link, textDecoration: "underline" },
-	{ tag: tags.invalid, color: "var(--destructive)" },
-]);
 
 const theme = EditorView.theme({
 	// A height, unlike the note's editor: there is no title and no backlinks

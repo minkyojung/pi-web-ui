@@ -115,7 +115,7 @@ export function parseResults(out: string): Map<string, TaskResult[]> {
 }
 
 /** The numstat entries of one commit, as `-z` writes them. */
-function changedIn(rest: string): ChangedFile[] {
+export function changedIn(rest: string): ChangedFile[] {
 	const parts = rest.split("\0");
 	const files: ChangedFile[] = [];
 	for (let at = 0; at < parts.length; at++) {

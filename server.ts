@@ -56,6 +56,7 @@ import { documentType, SPEC_DOCS, SPECS_DIR } from "./documentKinds.ts";
 import { specState } from "./specApproval.ts";
 import { parseTasks, progressOf, type Progress } from "./specTasks.ts";
 import { type TaskResult, taskResults } from "./specResults.ts";
+import { readCommit } from "./commitRead.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { watchNotes } from "./watcher.ts";
@@ -2230,6 +2231,15 @@ wss.on("connection", async (ws) => {
 				case "close_code":
 					reading.delete(ws);
 					break;
+
+				// A commit, to read what it changed. What is asked for is checked
+				// where it is read (commitRead.ts): a hash and nothing else.
+				case "open_commit": {
+					const asked = typeof msg.commit === "string" ? msg.commit : "";
+					const read = await readCommit(CWD, asked);
+					reply(read ? { type: "commit", asked, ...read } : { type: "commit_gone", asked });
+					break;
+				}
 
 				// The editor's save. Refused rather than merged when the note has
 				// moved on since it was read — see vault.ts — and recorded to the

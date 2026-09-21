@@ -30,6 +30,7 @@ const Pdf = lazy(() => import("./components/Pdf"));
 // Lazy for the reason Pdf is: a repository of one language loads that
 // language's grammar, and a window that opens no file loads none of them.
 const Code = lazy(() => import("./components/Code"));
+const Commit = lazy(() => import("./components/Commit"));
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
 import { SpecBar } from "./components/SpecBar";
@@ -659,6 +660,12 @@ export function App() {
 						<Boundary name="file" hint="The file itself is untouched.">
 							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
 								<Code key={page.path} path={page.path} />
+							</Suspense>
+						</Boundary>
+					) : page?.kind === "commit" ? (
+						<Boundary name="commit" hint="Nothing in the repository was touched.">
+							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
+								<Commit key={page.commit} commit={page.commit} onOpen={setOpen} />
 							</Suspense>
 						</Boundary>
 					) : page ? (

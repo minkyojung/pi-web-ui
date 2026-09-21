@@ -13,6 +13,8 @@ import type {
 	BranchPoint,
 	CodeGoneMsg,
 	CodeMsg,
+	CommitGoneMsg,
+	CommitMsg,
 	ConfigMsg,
 	CommandInfo,
 	ContextSourcesMsg,
@@ -161,6 +163,9 @@ export const repoTruncatedStore = createStore<boolean>(false);
  * looked at. Null before anything has been asked for.
  */
 export const codeStore = createStore<CodeMsg | CodeGoneMsg | null>(null);
+
+/** The commit a tab asked to read, or that there is none — the last answer, whoever asked (Commit.tsx tells its own by `asked`). */
+export const commitStore = createStore<CommitMsg | CommitGoneMsg | null>(null);
 
 /**
  * Where each spec stands — what is approved, what is waiting for the person —

@@ -3564,6 +3564,67 @@ check("tasks a selection covers are offered as one run over the list, by their n
 	assert.equal(await lit(), "3", "only the cursor's line now");
 });
 
+// What a task changed is its commit, and the commit is read here.
+check("a commit opens as a page: what it says of itself, then each file it changed, the unmodified lines folded", async ({ app, cwd }) => {
+	const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
+	const long = Array.from({ length: 60 }, (_, i) => `export const value${i} = ${i};`).join("\n") + "\n";
+	mkdirSync(join(cwd, "src"), { recursive: true });
+	writeFileSync(join(cwd, "src/values.ts"), long);
+	writeFileSync(join(cwd, "src/greeting.ts"), "export function greet(name: string): string {\n\treturn `Hi, ${name}`;\n}\n");
+	// Only these files: the suite's notes stay as uncommitted as they were.
+	git("add", "src");
+	git("commit", "-q", "-m", "base");
+	writeFileSync(join(cwd, "src/values.ts"), long.replace("value30 = 30", "value30 = 3000"));
+	writeFileSync(join(cwd, "src/greeting.ts"), "export function greet(name: string): string {\n\treturn `Hello, ${name}!`;\n}\n");
+	writeFileSync(join(cwd, "src/greeting.test.ts"), 'import test from "node:test";\nimport { greet } from "./greeting.ts";\n\ntest("greets", () => greet("Ada"));\n');
+	writeFileSync(join(cwd, "src/logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]));
+	mkdirSync(join(cwd, ".octave/specs/greeting"), { recursive: true });
+	writeFileSync(join(cwd, ".octave/specs/greeting/tasks.md"), "- [x] 2. Greet properly, and test it\n");
+	git("add", "src", ".octave/specs/greeting");
+	// As spec.ts commits a task: its line for a subject, and whose it is under it.
+	git("commit", "-q", "-m", "Greet properly, and test it", "-m", "Spec: greeting\nTask: 2\nChecks: npm test — 41 passed");
+	const hash = git("rev-parse", "HEAD");
+
+	// By its short name, as a person has it.
+	await app.evaluate(`location.hash = ${JSON.stringify("#octave://commit/" + hash.slice(0, 9))}`);
+	await until("the commit's page", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(hash)}`));
+	const head = await app.evaluate("document.getElementById('commitHead').innerText.replace(/\\s+/g, ' ')");
+	assert.match(head, /Task 2 Greet properly, and test it/, "whose task, and its line");
+	assert.match(head, new RegExp(hash.slice(0, 7)), "the commit");
+	// Four files of work — the box in tasks.md is in the commit and is not counted as the task's.
+	assert.match(head, /4 files \+6 −2/, head);
+	assert.match(head, /agent: npm test — 41 passed/, "the run's own word for its checks, said to be the agent's");
+	const files = () => app.evaluate("[...document.querySelectorAll('#page [data-file]')].filter((f) => f.offsetParent).map((f) => f.dataset.file).join(',')");
+	assert.equal(await files(), "src/greeting.test.ts,src/greeting.ts,src/logo.png,src/values.ts", "one after another, the spec's own file not among them");
+	await until("the differences drawn", () => app.evaluate("document.querySelectorAll('#page .cm-editor').length === 3"));
+	assert.match(await app.evaluate("document.querySelector('#page [data-file=\"src/logo.png\"]').innerText"), /Binary file/, "what cannot be drawn truly says so");
+	// The long file: one line changed of sixty, and the rest folded either side of it.
+	const folds = () => app.evaluate("[...document.querySelectorAll('#page [data-file=\"src/values.ts\"] .cm-collapsedLines')].map((e) => e.textContent).join('|')");
+	// Line 31 of sixty: 28–30 and 32–34 are kept, and what is folded is 1–27
+	// and 35 to the end, the last line's newline being a line to the editor.
+	assert.equal(await folds(), "27 unmodified lines|27 unmodified lines", `three lines kept either side of the change, as git keeps them — ${await folds()}`);
+	const lines = () => app.evaluate("document.querySelectorAll('#page [data-file=\"src/values.ts\"] .cm-line').length");
+	const folded = await lines();
+	await app.shot("commit-page");
+	// Pressed, a fold opens where it is.
+	await app.evaluate("document.querySelector('#page [data-file=\"src/values.ts\"] .cm-collapsedLines').click()");
+	await until("the fold open", async () => (await lines()) > folded);
+	// Read-only: it takes no typing.
+	assert.equal(await app.evaluate("document.querySelector('#page .cm-content').getAttribute('contenteditable')"), "false");
+	// What rode along is there, closed.
+	assert.match(await app.evaluate("document.getElementById('specFiles').innerText"), /Spec files \(1\)/);
+	// At the foot of a long page: pressed where it is rather than by a point on
+	// the screen, which it is below.
+	await app.evaluate("document.getElementById('specFiles').click()");
+	await until("the spec's file", async () => (await files()).includes(".octave/specs/greeting/tasks.md"));
+	// A file's name opens the file as it is now, to read.
+	await app.evaluate("document.querySelector('#page [data-file=\"src/greeting.ts\"] button[title=\"Open this file\"]').click()");
+	await until("the file, to read", () => app.evaluate("document.getElementById('page')?.dataset.code === 'src/greeting.ts'"));
+	// No such commit is said, not drawn as an empty one.
+	await app.evaluate(`location.hash = ${JSON.stringify("#octave://commit/0123456789abcdef")}`);
+	await until("no such commit", async () => ((await app.evaluate("document.getElementById('page')?.innerText")) ?? "").includes("There is no commit 0123456"));
+});
+
 // The other place the answer can be given: over the document being read.
 check("a document waiting for approval says so above itself, and the line goes once it is approved", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/bar");

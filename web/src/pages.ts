@@ -11,6 +11,9 @@ import { isDocument } from "../../documentKinds.ts";
 
 const WHATS_NEW = "octave://whats-new/";
 
+/** A commit, to read what it changed: `octave://commit/<hash>`, the hash whole or short. */
+const COMMIT = "octave://commit/";
+
 /** The scheme no file has, which the app's own pages take their address under. */
 const SCHEME = "octave://";
 
@@ -23,9 +26,14 @@ const SCHEME = "octave://";
 export type Page =
 	| { kind: "whats-new"; version: string; title: string }
 	| { kind: "document"; path: string; title: string }
-	| { kind: "code"; path: string; title: string };
+	| { kind: "code"; path: string; title: string }
+	/** What a commit changed, file by file (Commit.tsx). The title is the hash as people say it; the tab learns the rest. */
+	| { kind: "commit"; commit: string; title: string };
 
 export const whatsNewPath = (version: string): string => `${WHATS_NEW}${version}`;
+
+/** The address of a commit's page. */
+export const commitPath = (commit: string): string => `${COMMIT}${commit}`;
 
 /** A tab says a file by its name whole, extension and all — that is how it says what it is. */
 const nameOf = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
@@ -33,6 +41,13 @@ const nameOf = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 export function pageOf(path: string | null): Page | null {
 	if (!path) return null;
 	if (isDocument(path)) return { kind: "document", path, title: nameOf(path) };
+	if (path.startsWith(COMMIT)) {
+		// A hash and nothing else, as the server will have it (commitRead.ts):
+		// an address is typed and pasted, and what is not a commit's name is
+		// no page rather than a question put to git.
+		const commit = path.slice(COMMIT.length);
+		return /^[0-9a-f]{7,40}$/.test(commit) ? { kind: "commit", commit, title: commit.slice(0, 7) } : null;
+	}
 	if (path.startsWith(SCHEME)) {
 		if (!path.startsWith(WHATS_NEW)) return null;
 		const version = path.slice(WHATS_NEW.length);

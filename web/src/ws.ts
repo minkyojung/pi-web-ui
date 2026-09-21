@@ -15,6 +15,7 @@ import {
 	applySettings,
 	applyLogin,
 	codeStore,
+	commitStore,
 	commandsStore,
 	contextSourcesStore,
 	authorsStore,
@@ -95,6 +96,8 @@ const STATE: Record<StateMsg["type"], true> = {
 	note: true,
 	code: true,
 	code_gone: true,
+	commit: true,
+	commit_gone: true,
 	specs: true,
 	backlinks: true,
 	tagged: true,
@@ -174,6 +177,10 @@ function receive(msg: ServerMsg): void {
 		case "code":
 		case "code_gone":
 			codeStore.set(msg);
+			return;
+		case "commit":
+		case "commit_gone":
+			commitStore.set(msg);
 			return;
 		case "specs":
 			specsStore.set(msg.specs);

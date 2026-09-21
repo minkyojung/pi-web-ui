@@ -21,6 +21,7 @@ import type { NoteFile } from "./vault";
 import type { Backlink, Tagged } from "./linkIndex";
 import type { SearchHit } from "./search";
 import type { Settings } from "./settings.ts";
+import type { CommitRead } from "./commitRead.ts";
 import type { TaskResult } from "./specResults.ts";
 import type { Progress } from "./specTasks.ts";
 
@@ -107,6 +108,13 @@ export type ClientMsg =
 	| { type: "open_code"; path: string }
 	/** The file is no longer open here. Nothing is watched for this tab until it asks again. */
 	| { type: "close_code" }
+	/**
+	 * A commit, to read what it changed (commitRead.ts): its hash, whole or
+	 * short, and nothing else — not a branch, not `HEAD~1`. Answered with a
+	 * `commit`, or a `commit_gone` when there is no such commit here. Asked
+	 * and not watched: a commit does not change.
+	 */
+	| { type: "open_commit"; commit: string }
 	/**
 	 * A note's whole text, on top of the version it was read at — `base` is
 	 * that version's `modified`, or null for a note that did not exist yet.
@@ -816,6 +824,19 @@ export interface NoteGoneMsg {
  * against, no links, no version to save over. `modified` is here so a tab can
  * tell a file it has from the same file written since, and for nothing else.
  */
+/** A commit and each file it changed, before and after — the answer to open_commit. See commitRead.ts. */
+export interface CommitMsg extends CommitRead {
+	type: "commit";
+	/** What was asked for, as it was asked: a short hash is answered with the whole one, and the tab that asked knows itself by this. */
+	asked: string;
+}
+
+/** There is no such commit in this repository, or what was asked for is not a commit's name. */
+export interface CommitGoneMsg {
+	type: "commit_gone";
+	asked: string;
+}
+
 export interface CodeMsg {
 	type: "code";
 	path: string;
@@ -962,6 +983,8 @@ export type StateMsg =
 	| NoteRenameFailedMsg
 	| NoteGoneMsg
 	| CodeMsg
+	| CommitMsg
+	| CommitGoneMsg
 	| CodeGoneMsg
 	| NoteDeletedMsg
 	| NoteConflictMsg
