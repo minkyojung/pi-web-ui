@@ -479,9 +479,11 @@ test("설계와 작업 목록의 지시문은 문서가 무엇을 위한 것인�
   assert.ok(design.includes(".octave/specs/email-auth/design.md"));
   // 무엇을 위한 문서인지가 먼저다: 결정의 기록, 그리고 기준마다 어디서 충족되는지.
   assert.match(design, /It is a record of decisions/);
-  for (const section of ["# Design Document", "## Overview", "## Decisions", "## Changes", "## Requirements Met", "## Testing"]) {
-    assert.ok(design.includes(section), section);
-  }
+  for (const section of ["## Decisions", "## Requirements Met"]) assert.ok(design.includes(section), section);
+  // 읽기 위한 구조는 모델의 것이다.
+  for (const given of ["# Design Document", "## Overview", "## Changes", "## Testing"]) assert.equal(design.includes(given), false, `주지 않는다: ${given}`);
+  assert.match(design, /Its title, its sections and their order are yours to shape/);
+  assert.match(design, /Code that no test of this repository can reach is said to be so/, "닿지 않는 테스트를 이름만 대지 않는다");
   for (const slot of ["## Architecture", "## Components and Interfaces", "## Data Models", "## Error Handling"]) assert.equal(design.includes(slot), false, `늘 채우는 칸은 없다: ${slot}`);
   assert.match(design, /read the code/i, "설계 단계에서 조사한다");
   assert.match(design, /what it was chosen over/, "결정은 버린 길과 함께");
@@ -839,7 +841,7 @@ test("실제 pi 세션에서 사슬 한 바퀴: 세 문서가 차례로, 승인 
   const told = notes.length;
 
   await send("/spec-approve");
-  assert.ok(toldLast().includes("# Design Document"), "설계 지시문은 그 턴에 모델에게");
+  assert.ok(toldLast().includes("It is a record of decisions"), "설계 지시문은 그 턴에 모델에게");
   assert.equal(toldLast().includes("was waiting for the person"), false, "승인된 뒤에는 기다리는 것이 없다");
   assert.deepEqual(state(), { approved: 1, waiting: "design.md" });
   assert.equal(notes.length, told + 1);
