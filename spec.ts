@@ -341,7 +341,7 @@ export function taskPrompt({ spec, task, title }: TaskMark): string {
 	const steps = [
 		`Read all three of ${dir}requirements.md, ${dir}design.md and ${dir}tasks.md before you change anything. A task done without the requirements or the design is done wrong.`,
 		`Do task ${task} of ${dir}tasks.md — "${title}" — and only it. Do not build any part of another task, even one you can see it will need.`,
-		"Check what you built against the acceptance criteria the task names (_Requirements: 1.2, 3.3_), by their numbers in the requirements.",
+		"Check what you built against the acceptance criteria the task names on its `_Requirements: …_` line, by their numbers in the requirements.",
 		"Then stop. Say in a line or two what you did and anything the person should look at, and end with one line beginning `Checks:` — the checks you ran and what they said (`Checks: npm test — 923 passed`), or `Checks: none` if you ran none. That line goes into the task's commit. Do not go on to the next task.",
 	];
 	return [
@@ -528,8 +528,14 @@ async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, c
 		return "checked";
 	}
 	// Everything the run left but the app's own folder, which belongs to no
-	// commit of the person's.
-	const added = await git(["add", "-A", "--", ".", `:(exclude)${APP_DIR_NAME}`]);
+	// commit of the person's. Taken back out after, rather than left out with
+	// an exclude pathspec: a repository that ignores `.pi` — as many will, the
+	// folder being the app's — makes git add exit 1 for a pathspec that names
+	// an ignored path, exclude or not, and no task in it could be committed.
+	// Seen in a real window; taking it back out is right whether it is
+	// ignored, untracked or not there.
+	const staged = await git(["add", "-A"]);
+	const added = staged.code === 0 ? await git(["reset", "-q", "--", APP_DIR_NAME]) : staged;
 	const made = added.code === 0 ? await git(["commit", "-m", mark.title, "-m", trailersOf(mark, checks)]) : added;
 	if (made.code !== 0) {
 		ui.notify(`${mark.task} is done, but git could not commit it: ${(made.stderr || made.stdout).trim()}`, "warning");

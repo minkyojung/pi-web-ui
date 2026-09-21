@@ -104,7 +104,7 @@ function fakePi(branch, branches = []) {
       if (branch === undefined) return answer(128);
       if (args[0] === "branch" && args[1] === "--show-current") return answer(0, `${branch}\n`);
       if (args[0] === "status") return answer(0, dirty.map((entry) => `${entry}\0`).join(""));
-      if (args[0] === "add" || args[0] === "commit") return (gits.push(args), answer(0));
+      if (args[0] === "add" || args[0] === "reset" || args[0] === "commit") return (gits.push(args), answer(0));
       if (args[0] === "rev-parse") return answer(0, "abc1234\n");
       if (args[0] === "show-ref") return answer(heads.has(args.at(-1).replace("refs/heads/", "")) ? 0 : 1);
       if (args[0] === "branch" && args[1] === "-m") {
@@ -1097,12 +1097,12 @@ test("턴이 끝나면 표식을 보고 마무리한다 — 한 세션에 한 �
   ]);
   await pi.settle();
   assert.match(pi.tasks("email-auth"), /- \[x\] 1\. Add the door/);
-  assert.deepEqual(pi.gits.map((args) => args[0]), ["add", "commit"]);
-  assert.equal(pi.gits[1].at(-1), "Spec: email-auth\nTask: 1\nChecks: npm test — 4 passed", "답의 검사 줄이 커밋의 트레일러로");
+  assert.deepEqual(pi.gits.map((args) => args[0]), ["add", "reset", "commit"], "전부 담고, 앱의 폴더를 도로 내리고, 커밋");
+  assert.equal(pi.gits[2].at(-1), "Spec: email-auth\nTask: 1\nChecks: npm test — 4 passed", "답의 검사 줄이 커밋의 트레일러로");
   assert.deepEqual(pi.renamed, [], "작업의 턴은 브랜치를 건드리지 않는다");
 
   await pi.settle();
-  assert.deepEqual(pi.gits.map((args) => args[0]), ["add", "commit"], "같은 세션의 다음 턴은 다시 커밋하지 않는다");
+  assert.deepEqual(pi.gits.map((args) => args[0]), ["add", "reset", "commit"], "같은 세션의 다음 턴은 다시 커밋하지 않는다");
 });
 
 test("실제 pi 세션에서 작업 둘을 이어서: 저마다 자기 세션에서 지시문을 받고, 커밋 둘이 쌓인다", async (t) => {
@@ -1337,6 +1337,22 @@ test("커밋에 .pi/는 들어가지 않는다 — 앱의 것이지 사람의 �
   assert.ok(files.includes("door.js"));
   assert.equal(files.some((file) => file.startsWith(".pi/")), false, files.join(", "));
   assert.equal(run.git("status", "--porcelain", "-uall"), "?? .pi/.gitignore", "앱의 것은 그대로 남는다");
+});
+
+test("저장소가 .pi를 무시하고 있어도 작업은 커밋된다 — 무시된 경로를 이름으로 대면 git add가 실패한다", async (t) => {
+  // Found in a real window: a repository whose .gitignore holds `.pi` — as
+  // many will, the folder being the app's — made `git add -A -- . :(exclude).pi`
+  // exit 1 ("paths are ignored"), so no task in it could ever be committed.
+  const run = ran(t);
+  run.wrote(".gitignore", ".pi\n");
+  run.git("add", ".gitignore");
+  run.git("commit", "-q", "-m", "ignore");
+  run.wrote("door.js", "export const door = true;\n");
+  run.wrote(".pi/.gitignore", "links.json\n");
+  await run.finish({ task: "1", title: "Add the door" });
+  assert.deepEqual(run.subjects(), ["Add the door", "ignore", "app"], `커밋됐다 — ${run.notes.map((note) => note.text).join(" / ")}`);
+  assert.ok(run.git("show", "--name-only", "--format=", "HEAD").split("\n").includes("door.js"));
+  assert.equal(run.git("status", "--porcelain"), "", "남는 것이 없다");
 });
 
 test("앱의 폴더가 커밋을 기다려도 작업은 시작된다 — Octave는 여는 폴더마다 .pi/를 쓴다", async (t) => {
