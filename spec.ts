@@ -113,34 +113,52 @@ export function refusal(cwd: string, given: string): string | null {
 	return `${at.file} comes after ${before}, which the person has not approved as it is now, so it cannot be written yet. They approve ${before} themselves, with /spec-approve, once they have read it. Do not ask them to approve it: stop here, and change ${before} only if they ask.`;
 }
 
-/** The requirements document's form, as Kiro's spec prompt gives it. */
+/**
+ * The requirements document's shape. Kiro's skeleton — an introduction, then
+ * numbered requirements each with numbered acceptance criteria, which is what
+ * the tasks point at as 1.2, 3.1 — without what Kiro fills it with: the user
+ * story and the WHEN/THEN/SHALL sentence. Those are slots, and a model given
+ * slots fills them: from one line it wrote a role nobody has and criteria no
+ * result could fail, and in Korean the borrowed keywords break the sentence
+ * they are put in. What the document is for is said in words instead, below,
+ * and two sections are added for what approving it is about: what is left
+ * out, and what only the person can decide (spec-mode.md 6절).
+ */
 const FORM = `\`\`\`md
 # Requirements Document
 
 ## Introduction
-
-[Introduction text here]
+[What is to be built and why, in a few sentences. Then what is there now, from the code: the files and the behaviour this starts from.]
 
 ## Requirements
 
 ### Requirement 1
-
-**User Story:** As a [role], I want [feature], so that [benefit]
+[One sentence: what can be done, or what holds, once this is met.]
 
 #### Acceptance Criteria
-
-1. WHEN [event] THEN [system] SHALL [response]
-2. IF [precondition] THEN [system] SHALL [response]
+1. [A statement a test or an observation can show to be true or false.]
+2. […]
 
 ### Requirement 2
+[…]
 
-**User Story:** As a [role], I want [feature], so that [benefit]
+## Out of Scope
+- [What someone might expect of this work that it will not do.]
 
-#### Acceptance Criteria
-
-1. WHEN [event] THEN [system] SHALL [response]
-2. WHEN [event] AND [condition] THEN [system] SHALL [response]
+## Decisions for You
+- [What only the person can settle] — [the options, the one you recommend, and why]. Until they say otherwise, the requirements above assume [that one].
 \`\`\``;
+
+/** What makes a requirements document good, which the shape cannot say. */
+const REQUIREMENTS_RULES = [
+	'Every acceptance criterion can fail: a test, or a look at the running thing, shows whether it holds. "Fast", "simple", "clear", "appropriate" say nothing until they are a number, an example or a named behaviour.',
+	"Say what, never how. A library, a data structure, a file to change is the design's to decide; a requirement that names one is a design decision the person has not been asked about.",
+	'Write as the person would: plain statements in their language — "When the password is wrong, the reply does not say whether the account exists." No role-play openings ("As a user, I want…") unless there really are different kinds of user who want different things, and no borrowed keywords. The headings are in their language too: the ones above only say what each part is.',
+	"As many requirements as the work has, and no more: a small piece of work has two or three. A sentence that only says their line again in other words is removed.",
+	"What goes wrong as well as what goes right: bad input, nothing there, twice at once, halfway done.",
+	"Do not invent what you do not know, and do not stop to ask: what only the person can decide goes under Decisions for You, with what you assumed meanwhile. Leave that section out when there is nothing to decide.",
+	"Keep the numbering — requirements 1, 2, 3, and criteria 1, 2, 3 under each — because the tasks will point at them as 1.2, 3.1.",
+];
 
 /**
  * What the model is told, beside the line. `prefix` is unnamed()'s answer
@@ -148,21 +166,25 @@ const FORM = `\`\`\`md
  */
 export function specPrompt({ line, prefix, branch, taken }: { line: string; prefix: string | null; branch: string | null; taken: string[] }): string {
 	const steps = [
-		`Name it: a short kebab-case name for the feature, from their words (e.g. "user-authentication")${taken.length ? `, and not one of these, which are taken: ${taken.join(", ")}` : ""}.`,
+		"Find out what is there now. Read the code this touches — where it would live, what it would change, what already does something like it, how the repository tests such things — and no further: you are finding out what is true today, not designing. If the repository has nothing to do with it yet, that is a finding too.",
+		`Name it: a short kebab-case name for the work, from their words (e.g. "user-authentication")${taken.length ? `, and not one of these, which are taken: ${taken.join(", ")}` : ""}.`,
 		`Make the folder ${SPECS_DIR}{name}/.`,
 		[
-			`Write ${SPECS_DIR}{name}/requirements.md with write — it is not a note, so not note_write. Write it now, from their words, without asking questions first, in the language they wrote in (WHEN, IF, THEN and SHALL stay as they are, where the form puts them), in this form:`,
+			`Write ${SPECS_DIR}{name}/requirements.md with write — it is not a note, so not note_write — in the language they wrote in, in this shape:`,
 			"",
 			FORM,
 			"",
-			"Consider edge cases, user experience, technical constraints and success criteria. Do not explore the code for this: these are requirements, and the design comes after them.",
+			"What goes in it:",
+			...REQUIREMENTS_RULES.map((rule) => `- ${rule}`),
 		].join("\n"),
-		"Then stop. Say in a line or two what you wrote and where, point out what needs their decision, and ask them to read it and change what is not right. Do not ask them to approve it: they approve it themselves, with a command, once they have read it. Do not go on to a design or to code.",
+		"Then stop. Say in a line or two what you wrote and where, and point at Decisions for You if it is there. Do not ask them to approve it: they approve it themselves, with a command, once they have read it. Do not go on to a design or to code.",
 	];
 	return [
 		`The person started a spec with /spec: "${line}"`,
 		"",
-		"Write the first document of a spec for it, its requirements, and stop. In order:",
+		"A spec begins with its requirements: what has to be true for this work to be done. It is what the result will be judged against — by the person when they approve it, by the design and the tasks written on it, and by whoever checks the work at the end. It is good if someone given only this document could look at a finished result and say whether it passes.",
+		"",
+		"Write it, and stop. In order:",
 		...steps.map((step, i) => `${i + 1}. ${step}`),
 		...(prefix !== null
 			? ["", "Do not rename the branch or write anything under .git: once you have written the requirements, the branch is named after the spec for you."]

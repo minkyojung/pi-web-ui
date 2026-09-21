@@ -18,7 +18,7 @@ test("아직 도시 이름인 브랜치만 이름을 바꿀 자리다 — main�
   assert.equal(unnamed(null), null, "브랜치가 없는 곳(분리된 HEAD, git 아님)");
 });
 
-test("지시문은 한 줄을 인용하고, Kiro의 requirements 형식과 우리 단계(이름·폴더·작성·멈춤)를 말한다 — 브랜치는 코드의 일", () => {
+test("지시문은 한 줄을 인용하고, 문서가 무엇을 위한 것인지와 우리 단계(읽기·이름·폴더·작성·멈춤)를 말한다 — 브랜치는 코드의 일", () => {
   const said = specPrompt({ line: "이메일 인증 추가", prefix: "minkyojung/", branch: "minkyojung/tokyo", taken: [] });
   assert.ok(said.includes('"이메일 인증 추가"'), "그 사람의 말 그대로");
   assert.match(said, /kebab-case/);
@@ -28,12 +28,19 @@ test("지시문은 한 줄을 인용하고, Kiro의 requirements 형식과 우�
   assert.match(said, /named after the spec for you/);
   assert.ok(said.includes(".octave/specs/{name}/requirements.md"), "문서");
   assert.match(said, /with write/, "노트가 아니라 write로");
-  for (const form of ["# Requirements Document", "## Introduction", "### Requirement 1", "**User Story:** As a [role], I want [feature], so that [benefit]", "#### Acceptance Criteria", "1. WHEN [event] THEN [system] SHALL [response]", "2. IF [precondition] THEN [system] SHALL [response]"]) {
-    assert.ok(said.includes(form), `Kiro의 형식: ${form}`);
+  // 무엇을 위한 문서인지가 양식보다 먼저다: 결과를 판정하는 기준.
+  assert.match(said, /someone given only this document could look at a finished result and say whether it passes/);
+  assert.ok(said.indexOf("Find out what is there now") < said.indexOf("Name it"), "코드를 먼저 읽는다 — 설계가 아니라 지금의 사실을");
+  // 뼈대: Kiro의 번호 구조는 남고(작업이 1.2로 가리킨다), 빈칸 양식은 없다.
+  for (const shape of ["# Requirements Document", "## Introduction", "### Requirement 1", "#### Acceptance Criteria", "## Out of Scope", "## Decisions for You"]) {
+    assert.ok(said.includes(shape), `뼈대: ${shape}`);
   }
-  assert.match(said, /without asking questions first/i, "초안을 먼저, 묻는 것은 나중에");
-  assert.match(said, /SHALL stay as they are, where the form puts them/, "키워드는 영어로, 양식의 자리에 — SHALL이 한국어 어순을 따라 문장 끝으로 가지 않게");
-  assert.match(said, /edge cases/);
+  for (const slot of ["**User Story:**", "WHEN [event]", "SHALL"]) assert.equal(said.includes(slot), false, `빈칸 양식은 없다: ${slot}`);
+  assert.match(said, /Every acceptance criterion can fail/, "틀릴 수 있는 문장만 기준이다");
+  assert.match(said, /Say what, never how/);
+  assert.match(said, /The headings are in their language too/, "제목도 그 사람의 언어로");
+  assert.match(said, /do not stop to ask/i, "멈춰 묻지 않고 문서의 '정해 주실 것'에 쓴다");
+  assert.match(said, /the tasks will point at them as 1\.2, 3\.1/, "번호는 지킨다");
   assert.match(said, /Do not go on to a design/, "쓰고 나면 멈춘다");
   assert.match(said, /Do not ask them to approve it/, "묻지 않는다 — 사람이 준비됐을 때 승인한다");
 });
