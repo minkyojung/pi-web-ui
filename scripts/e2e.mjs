@@ -3565,6 +3565,66 @@ check("tasks a selection covers are offered as one run over the list, by their n
 });
 
 // What a task changed is its commit, and the commit is read here.
+// The other end of the new spec dialog: the page of the workspace it made.
+// The shell is stood in for, and says what it kept; the wire is watched for
+// what the page does about it. The line itself is stopped at the wire — the
+// key here is not a key, and a turn that fails would be in every check after.
+check("a workspace made for a spec starts it: the session is put on the model, then at the effort, and only then is the line sent", async ({ app, api }) => {
+	const models = await (await fetch(`http://localhost:${api}/api/models`)).json();
+	const sessionModel = await app.evaluate("document.getElementById('model')?.textContent ?? ''");
+	// The longest name that fits: "GPT-5.5" holds "GPT-5" too.
+	const named = (text) => models.filter((m) => text.startsWith(m.name)).sort((a, b) => b.name.length - a.name.length)[0];
+	const was = named(sessionModel);
+	assert.ok(was, `the session's model among pi's, from ${sessionModel}`);
+	await app.click("#model");
+	await until("the menu", () => app.evaluate("document.querySelectorAll('[role=menuitemradio]').length > 0"));
+	const offered = await app.evaluate("[...document.querySelectorAll('[role=menuitemradio]')].map((i) => i.textContent)");
+	await app.press("Escape");
+	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+	const other = offered.map(named).find((m) => m && m.key !== was.key && m.levels.some((l) => l !== m.level));
+	assert.ok(other, `a second model to choose among ${offered.join(", ")}`);
+	const level = other.levels.find((l) => l !== other.level);
+	const first = { line: "add a greeting", model: other.key, effort: level };
+	const stopStanding = await app.onNewDocument(`
+		if (sessionStorage.getItem("stand-in-for-a-new-workspace") === "1") {
+		window.__sent = [];
+		const send = WebSocket.prototype.send;
+		WebSocket.prototype.send = function (data) {
+			// The app's socket, not the dev server's own, which goes this way too.
+			if (!this.url.endsWith("/ws")) return send.call(this, data);
+			const msg = JSON.parse(String(data));
+			window.__socket = this;
+			window.__send = send;
+			if (["set_model", "set_thinking", "prompt"].includes(msg.type)) window.__sent.push(msg);
+			if (msg.type === "prompt") return;
+			return send.call(this, data);
+		};
+		let given = false;
+		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
+			workspaces: { list: async () => null, create: async () => null, open: async () => {}, onChange: () => () => {},
+				first: async () => { if (given) return null; given = true; return ${JSON.stringify(first)}; } } };
+		}`);
+	try {
+		await app.evaluate(`sessionStorage.setItem("stand-in-for-a-new-workspace", "1"); location.reload()`);
+		await until("the line sent", () => app.evaluate("(window.__sent ?? []).some((m) => m.type === 'prompt')"));
+		assert.deepEqual(JSON.parse(await app.evaluate("JSON.stringify(window.__sent)")), [
+			{ type: "set_model", model: other.key },
+			{ type: "set_thinking", level },
+			{ type: "prompt", text: "/spec add a greeting", command: true, behavior: "followUp" },
+		]);
+		// Each was seen to have happened before the next: the box is on it by now.
+		const now = await app.evaluate("document.getElementById('model')?.textContent ?? ''");
+		assert.ok(now.includes(other.name) && now.toLowerCase().includes(level), `the message box on ${other.name} at ${level}, from ${now}`);
+	} finally {
+		// The session as it was, for the checks after this one.
+		await app.evaluate(`(() => { for (const msg of [{ type: "set_model", model: ${JSON.stringify(was.key)} }, { type: "set_thinking", level: ${JSON.stringify(was.level)} }]) window.__send?.call(window.__socket, JSON.stringify(msg)); })()`);
+		await until("the session's model back", async () => (await app.evaluate("document.getElementById('model')?.textContent ?? ''")) === sessionModel);
+		await stopStanding();
+		await app.evaluate(`sessionStorage.removeItem("stand-in-for-a-new-workspace"); location.reload()`);
+		await until("the page back", () => app.evaluate("!window.__sent && !!document.getElementById('chat')"));
+	}
+});
+
 check("a commit opens as a page: what it says of itself, then each file it changed, the unmodified lines folded", async ({ app, cwd }) => {
 	const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
 	const long = Array.from({ length: 60 }, (_, i) => `export const value${i} = ${i};`).join("\n") + "\n";
