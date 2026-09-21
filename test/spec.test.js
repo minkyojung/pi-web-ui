@@ -484,16 +484,20 @@ test("설계와 작업 목록의 지시문은 문서가 무엇을 위한 것인�
 
   const tasks = nextPrompt({ name: "email-auth", next: "tasks.md", redo: false });
   assert.ok(tasks.includes(".octave/specs/email-auth/tasks.md"));
-  assert.ok(
-    tasks.includes("Convert the feature design into a series of prompts for a code-generation LLM that will implement each step in a test-driven manner."),
-    "Kiro의 지시 그대로",
-  );
-  for (const form of ["# Implementation Plan", "- [ ] 2.1 Create core data model interfaces and types", "_Requirements: 2.1, 3.3, 1.2_"]) {
-    assert.ok(tasks.includes(form), form);
+  // 누가 읽는가가 먼저다: 이 대화를 모르는, 작업마다 새로 여는 세션.
+  assert.match(tasks, /a coding agent that starts each one in a session of its own/);
+  // 뼈대: 코드가 읽는 것은 작업 줄이고, 두 키는 이름으로 읽힌다. 예시의 내용은 없다 — 모델은 예시를 따라 쓴다.
+  for (const shape of ["# Implementation Plan", "- [ ] 1. [The objective, as a commit's subject]", "- [ ] 2.1 [The first part]", "_Requirements: 1.2, 2.1_", "_Done when: ["]) {
+    assert.ok(tasks.includes(shape), shape);
   }
+  for (const copied of ["Set up project structure", "User model", "test-driven manner"]) assert.equal(tasks.includes(copied), false, `새 프로젝트의 예시는 없다: ${copied}`);
   assert.match(tasks, /at most two levels/);
+  assert.match(tasks, /one commit's worth/, "작업 하나 = 커밋 하나");
+  assert.match(tasks, /_Done when: …_/, "끝났다는 증거가 작업 안에");
+  assert.match(tasks, /Those two keys stay as they are, in English/);
+  assert.match(tasks, /Test the way this repository tests/);
   assert.match(tasks, /deployment/, "코딩이 아닌 작업은 넣지 않는다");
-  assert.match(tasks, /Every requirement/);
+  assert.match(tasks, /Every acceptance criterion is covered by some task/);
   assert.match(tasks, /Do not ask them to approve it/);
   assert.match(tasks, /Do not start on the tasks/);
 });

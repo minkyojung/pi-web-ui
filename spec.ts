@@ -234,31 +234,46 @@ const DESIGN_RULES = [
 	"More sections only when the work has them — data models, error handling, a migration, a diagram in Mermaid — and none that would be empty or would say the overview again. A small change has a short design.",
 ];
 
-/** What Kiro's spec prompt tells its model the tasks are, word for word. */
+/**
+ * What the tasks are for. Kiro's words were "a series of prompts for a
+ * code-generation LLM" done test-first; what that leaves out is who reads a
+ * task here — a session of its own that has seen none of this conversation
+ * (task-runs.md) — and how it knows it is done.
+ */
 const TASKS_CHARGE =
-	"Convert the feature design into a series of prompts for a code-generation LLM that will implement each step in a test-driven manner. Prioritize best practices, incremental progress, and early testing, ensuring no big jumps in complexity at any stage. Make sure that each prompt builds on the previous prompts, and ends with wiring things together. There should be no hanging or orphaned code that isn't integrated into a previous step. Focus ONLY on tasks that involve writing, modifying, or testing code.";
+	"The tasks are the order of the work, written for a coding agent that starts each one in a session of its own: it has read none of this conversation, only the three documents and the one line of its task. They are good if such an agent could do each task from that, and tell for itself that it is done.";
 
-/** The tasks document's form: Kiro's example, cut short where it cuts it. */
+/** What makes a task good, which the shape cannot say. */
+const TASKS_RULES = [
+	"A task is one commit's worth: when it is done the repository builds and its tests pass, and it could be reverted alone. One that would touch everything is several tasks; one that leaves nothing working on its own is part of another.",
+	"Each task builds on the ones before it, and the last ones wire things together. No code is left that nothing uses.",
+	"The line of a task is its objective and becomes its commit's subject: write it the way this repository writes its commits. Under it, as sub-bullets: what it involves, naming the files from the design's Changes; the acceptance criteria it is for, by their numbers, on a line `_Requirements: 1.2, 3.3_`; and how it is known to be done, on a line `_Done when: …_` — a command to run and what it shows (`npm test -- greet` passes), or what to look at. Those two keys stay as they are, in English: they are read by name.",
+	"Test the way this repository tests: find out how first — its tests, its scripts, its AGENTS.md or CLAUDE.md — and follow it, the test written with the code it tests or before it. If it has no tests for this kind of thing, say so in the task rather than bring a framework of your own.",
+	"Every acceptance criterion is covered by some task. A task that is for none is left out, unless later tasks stand on it, and then it says so.",
+	"Only what a coding agent can do: writing, modifying and testing code. Leave out user testing, deployment, gathering metrics, running the app by hand to check it (an automated test that does is a task), and documentation for its own sake — what the repository asks of every change, a changelog line say, belongs to the task that makes the change.",
+];
+
+/**
+ * The tasks document's shape. Kiro's example was a new project's — "Set up
+ * project structure", "Implement User model" — and an example is what a model
+ * follows: a plan for a change to an existing repository came out scaffolding
+ * one. So the shape is shown with nothing in it. What the code reads is the
+ * task line (specTasks.ts) and, by name, the two keys.
+ */
 const TASKS_FORM = `\`\`\`md
 # Implementation Plan
 
-- [ ] 1. Set up project structure and core interfaces
-  - Create directory structure for models, services, repositories, and API components
-  - Define interfaces that establish system boundaries
+- [ ] 1. [The objective, as a commit's subject]
+  - [What it involves, naming the files]
   - _Requirements: 1.1_
+  - _Done when: [a command and what it shows, or what to look at]_
 
-- [ ] 2. Implement data models and validation
-- [ ] 2.1 Create core data model interfaces and types
-  - Write TypeScript interfaces for all data models
-  - Implement validation functions for data integrity
-  - _Requirements: 2.1, 3.3, 1.2_
-
-- [ ] 2.2 Implement User model with validation
-  - Write User class with validation methods
-  - Create unit tests for User model validation
-  - _Requirements: 1.2_
-
-[Additional coding tasks continue...]
+- [ ] 2. [An objective that has parts]
+- [ ] 2.1 [The first part]
+  - […]
+  - _Requirements: 1.2, 2.1_
+  - _Done when: […]_
+- [ ] 2.2 […]
 \`\`\``;
 
 /** How every document's turn ends: stopped, told, and not asked. */
@@ -316,15 +331,17 @@ export function nextPrompt({ name, next, redo }: { name: string; next: "design.m
 				: [
 						`The person approved the design of the spec "${name}": ${dir}design.md, on ${dir}requirements.md.`,
 						"",
-						"Write its tasks, and stop. In order:",
-						"1. Read the requirements and the design.",
+						TASKS_CHARGE,
+						"",
+						"Write them, and stop. In order:",
+						"1. Read the requirements and the design, and how this repository tests and writes its commits.",
 						[
-							`2. Write ${dir}tasks.md with write — it is not a note, so not note_write — in the language they are written in. ${TASKS_CHARGE}`,
-							"Make it a numbered checkbox list at most two levels deep, sub-tasks numbered 1.1, 1.2, 2.1, in this form:",
+							`2. Write ${dir}tasks.md with write — it is not a note, so not note_write — in the language they are written in, the heading too, as a numbered checkbox list at most two levels deep, sub-tasks numbered 1.1, 1.2, 2.1, in this shape:`,
 							"",
 							TASKS_FORM,
 							"",
-							'Each task has a clear objective that is writing, modifying or testing code; what it involves, as sub-bullets; and the requirements it is for, by the numbers of their acceptance criteria ("_Requirements: 1.2, 3.3_"). Every requirement is covered by some task, and each task builds on the ones before it. Leave out what a coding agent cannot do: user testing, deployment, gathering metrics, running the app by hand to check it (an automated test that does is a task), documentation, and anything else that is not writing, modifying or testing code.',
+							"What goes in it:",
+							...TASKS_RULES.map((rule) => `- ${rule}`),
 						].join("\n"),
 						"3. If writing them shows that the design or the requirements miss something, do not change them: say what, and offer to go back.",
 						`4. ${stop("wrote", "Do not start on the tasks.")}`,
@@ -387,7 +404,7 @@ export function taskPrompt({ spec, task, title }: TaskMark): string {
 	const steps = [
 		`Read all three of ${dir}requirements.md, ${dir}design.md and ${dir}tasks.md before you change anything. A task done without the requirements or the design is done wrong.`,
 		`Do task ${task} of ${dir}tasks.md — "${title}" — and only it. Do not build any part of another task, even one you can see it will need.`,
-		"Check what you built against the acceptance criteria the task names on its `_Requirements: …_` line, by their numbers in the requirements.",
+		"Check what you built: run what the task names on its `_Done when: …_` line, if it has one, and read the acceptance criteria it names on its `_Requirements: …_` line, by their numbers in the requirements, against what you built.",
 		"Then stop. Say in a line or two what you did and anything the person should look at, and end with one line beginning `Checks:` — the checks you ran and what they said (`Checks: npm test — 923 passed`), or `Checks: none` if you ran none. That line goes into the task's commit. Do not go on to the next task.",
 	];
 	return [
