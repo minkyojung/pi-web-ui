@@ -244,8 +244,9 @@ function ReadOnly({ path }: { path: string }) {
 
 	const chip = (
 		<Badge
+			id="readOnly"
 			variant="secondary"
-			className="ml-1 shrink-0 gap-1 font-normal text-muted-foreground"
+			className="shrink-0 gap-1 font-normal text-muted-foreground"
 			title="This file is read-only. The agent changes the code; git moves and removes it."
 		>
 			<LockIcon className="size-3 shrink-0" />
@@ -259,7 +260,7 @@ function ReadOnly({ path }: { path: string }) {
 				<Badge
 					asChild
 					variant="secondary"
-					className="ml-1 shrink-0 gap-1 font-normal text-muted-foreground hover:text-foreground data-[state=open]:text-foreground"
+					className="shrink-0 gap-1 font-normal text-muted-foreground hover:text-foreground data-[state=open]:text-foreground"
 				>
 					<button type="button" id="readOnly" aria-label="Read-only — open this file elsewhere">
 						<LockIcon className="size-3 shrink-0" />
@@ -379,16 +380,13 @@ export function NoteHeader({ path, onOpen, trailing }: { path: string | null; on
 						<span className="min-w-0 truncate">{titleOf(path)}</span>
 					</>
 				)}
-				{/* Said where the path is said, because it is the same kind of fact
-				    about the thing in front — and said at all because the only other
-				    way to learn it is to type into the page and watch nothing
-				    happen. A chip rather than another muted word: this line is all
-				    muted, and a state that reads as part of the path is not read.
-				    Its words are the line's colour all the same — the fill is what
-				    sets it apart, and the brightest thing here should be the name
-				    of the file rather than a fact about it. */}
-				{path && isCode(path) && <ReadOnly path={path} />}
 			</div>
+			{/* Beside the ⋯ rather than after the path, because it is not part of
+			    where the file is: it is a state of the file and a way out of it,
+			    which is what this end of the line is for. A chip rather than a
+			    muted word — the words there are the line's colour, so the fill is
+			    what says this is not more path. */}
+			{path && isCode(path) && <ReadOnly path={path} />}
 			{path && <NoteMenu path={path} />}
 			{trailing}
 		</div>

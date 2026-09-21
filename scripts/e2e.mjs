@@ -1299,11 +1299,12 @@ check("a file says where it is in the line above it, and its ⋯ offers what can
 	await until("the path", async () => (await crumbs()) === "web,web/src/components");
 	assert.match(await app.evaluate("document.getElementById('crumbs')?.textContent ?? ''"), /page\.tsx/, "and the file at the end of it");
 	// And that it is read, not written — the only other way to learn it is to
-	// type into the page and watch nothing happen.
-	assert.match(await app.evaluate("document.getElementById('crumbs')?.textContent ?? ''"), /Read-only/);
-	// And it is a label here, not a way out: a page cannot start an editor, so
-	// the menu that offers one is the shell's and is not drawn in a browser tab.
-	assert.equal(await app.evaluate("!!document.getElementById('readOnly')"), false);
+	// type into the page and watch nothing happen. Beside the ⋯, not in the path.
+	assert.doesNotMatch(await app.evaluate("document.getElementById('crumbs')?.textContent ?? ''"), /Read-only/);
+	assert.match(await app.evaluate("document.getElementById('readOnly')?.textContent ?? ''"), /Read-only/);
+	// A label here and not a way out: a page cannot start an editor, so the menu
+	// that offers one is the shell's and is not drawn in a browser tab.
+	assert.equal(await app.evaluate("document.getElementById('readOnly')?.tagName"), "SPAN");
 	await app.shot("code-header");
 	// A crumb opens what is in that folder — the files, not only the notes,
 	// which down here are none.
@@ -1322,11 +1323,10 @@ check("a file says where it is in the line above it, and its ⋯ offers what can
 	// is not a page's to open (noteActions.ts). What is left is where it is.
 	assert.deepEqual(items.split("|"), ["Copy path"]);
 	await app.press("Escape");
-	// A note is written here, and its line says nothing about being read-only.
+	// A note is written here, and says nothing about being read-only.
 	await pickNote(app, "first.md");
-	const crumbLine = () => app.evaluate("document.getElementById('crumbs')?.textContent ?? ''");
-	await until("the note", async () => (await crumbLine()).includes("first"));
-	assert.doesNotMatch(await crumbLine(), /Read-only/);
+	await until("the note", async () => (await app.evaluate("document.getElementById('crumbs')?.textContent ?? ''")).includes("first"));
+	assert.equal(await app.evaluate("!!document.getElementById('readOnly')"), false);
 });
 
 check("a file open to read follows the disk, and says so when it goes from under the tab", async ({ app, cwd }) => {
