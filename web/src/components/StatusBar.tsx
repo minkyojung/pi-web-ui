@@ -40,6 +40,7 @@ import { showAuthorsStore } from "../features/authors";
 import { inFrontStore, type Saved } from "../inFront";
 import type { Authored } from "../../../protocol.ts";
 import { AgentStatus } from "./AgentStatus";
+import { TaskResults } from "./TaskResults";
 import { Button } from "./ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
 import { Label } from "./ui/label";
@@ -131,7 +132,7 @@ function share(of: Authored): { agent: string | null; other: string | null } | n
 	return { agent, other };
 }
 
-export function StatusBar({ path, piWidth, piFolded, onUnfoldPi }: { path: string | null; piWidth: number | null; piFolded: boolean; onUnfoldPi: () => void }) {
+export function StatusBar({ path, piWidth, piFolded, onUnfoldPi, onOpen }: { path: string | null; piWidth: number | null; piFolded: boolean; onUnfoldPi: () => void; onOpen: (path: string) => void }) {
 	const front = useSyncExternalStore(inFrontStore.subscribe, inFrontStore.get);
 	// Which of the two the count is showing. Not beside the note — it is how you
 	// like to be told, not a fact about any one note — and kept in this browser,
@@ -175,6 +176,10 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi }: { path: strin
 			    told where the divider is. No gap between them for the same reason
 			    — a gap here would be width that belongs to neither. */}
 			<div id="note-status" className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden">
+				{/* First, and whatever is in front: what the spec's tasks have come
+				    to is about the work and not about the page being read, and a
+				    place that moved with the page would not be one to glance at. */}
+				<TaskResults open={path} onOpen={onOpen} />
 				{/* All of it against the left edge, where the note's own text begins.
 				    The count first, because it is always there: the agent's share is
 				    only on the notes it has written in, and coming and going after

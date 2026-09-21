@@ -3625,6 +3625,53 @@ check("a commit opens as a page: what it says of itself, then each file it chang
 	await until("no such commit", async () => ((await app.evaluate("document.getElementById('page')?.innerText")) ?? "").includes("There is no commit 0123456"));
 });
 
+// The record of running a plan, apart from the plan.
+check("what a spec's tasks came to is at the foot of the window: how many, how many are new, and the list that opens each commit", async ({ app, cwd }) => {
+	const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
+	const dir = join(cwd, ".octave/specs/came");
+	mkdirSync(dir, { recursive: true });
+	mkdirSync(join(cwd, "came"), { recursive: true });
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
+	writeFileSync(join(dir, "design.md"), "# Design\n");
+	writeFileSync(join(dir, "tasks.md"), "- [ ] 1. Add the door\n- [ ] 2. Hang the sign\n");
+	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
+	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/came/tasks.md")}`);
+	await until("the plan in front", async () => (await editorText(app)).includes("Hang the sign"));
+	assert.equal(await app.evaluate("!!document.getElementById('results')"), false, "nothing to say before a task has been run");
+
+	// A task's end as spec.ts makes it — the box, then the commit that says
+	// whose it is — three times: one with no checks, and one run again.
+	const task = (number, title, file, text, checks) => {
+		writeFileSync(join(cwd, "came", file), text);
+		writeFileSync(join(dir, "tasks.md"), readFileSync(join(dir, "tasks.md"), "utf8").replace(`- [ ] ${number}.`, `- [x] ${number}.`));
+		git("add", "came", ".octave/specs/came");
+		git("commit", "-q", "-m", title, "-m", `Spec: came\nTask: ${number}\nChecks: ${checks}`);
+		return git("rev-parse", "HEAD");
+	};
+	task("1", "Add the door", "door.js", "export const door = 1;\n", "npm test — 4 passed");
+	const button = () => app.evaluate("document.getElementById('results')?.innerText.replace(/\\s+/g, ' ') ?? ''");
+	await until("the first result", async () => (await button()).includes("1 task · 1 new"));
+	task("2", "Hang the sign", "sign.js", "export const sign = 1;\nexport const hung = true;\n", "none");
+	const again = task("1", "Add the door", "door.js", "export const door = 2;\n", "npm test — 5 passed");
+	await until("three runs, two tasks", async () => (await button()).includes("2 tasks · 2 new"));
+
+	await app.click("#results");
+	await until("the list", () => app.evaluate("document.querySelectorAll('[data-result]').length === 2"));
+	const lines = await app.evaluate("[...document.querySelectorAll('[data-result]')].map((i) => i.innerText.replace(/\\s+/g, ' ')).join(' || ')");
+	// In the order the work was done, the task run again where it was run again.
+	assert.match(lines, /^2 Hang the sign new no checks .*\+2 −0.* \|\| 1 Add the door ×2 new agent: npm test — 5 passed .*\+1 −1/, lines);
+	assert.equal(await app.evaluate("document.querySelectorAll('[data-result][data-fresh]').length"), 2, "both marked new, and still while the list is being read");
+	await app.shot("task-results");
+	// A line opens that task's commit, and the list goes.
+	await app.evaluate("document.querySelector('[data-result=\"1\"]').click()");
+	await until("the commit's page", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(again)}`));
+	assert.equal(await app.evaluate("!!document.querySelector('[data-result]')"), false);
+	// Looked at: nothing is new, from whatever is in front — a commit's page here.
+	await until("nothing new", async () => (await button()) === "2 tasks");
+	// And it stays looked at when the window is opened again.
+	assert.equal(await app.evaluate("JSON.parse(localStorage.getItem('seen-results')).came"), again);
+});
+
 // The other place the answer can be given: over the document being read.
 check("a document waiting for approval says so above itself, and the line goes once it is approved", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/bar");
