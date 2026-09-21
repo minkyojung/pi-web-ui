@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { nextTask, parseTasks, taskToRun, withDone, withParents } from "../specTasks.ts";
+import { nextTask, parseTasks, progressOf, taskToRun, withDone, withParents } from "../specTasks.ts";
 
 /** Kiro's own example, from its spec prompt — the form our agent is told to write. */
 const KIRO = `# Implementation Plan
@@ -108,4 +108,13 @@ test("하위가 전부 끝나면 상위도 끝난 것이다", () => {
   assert.deepEqual(withParents(tasks, new Set(["1"])), new Set(["1"]));
   assert.deepEqual(withParents(tasks, new Set(["1", "2.1"])), new Set(["1", "2.1"]), "아직 2.2가 남았다");
   assert.deepEqual(withParents(tasks, new Set(["1", "2.1", "2.2"])), new Set(["1", "2.1", "2.2", "2"]));
+});
+
+test("진행은 잎만 센다 — 묶음 상위는 돌지 않으니 일이 아니다", () => {
+  assert.deepEqual(progressOf(parseTasks(KIRO)), { total: 3, done: 0, next: "1" }, "1, 2.1, 2.2 — 2는 묶음");
+  const half = KIRO.replace("- [ ] 1.", "- [x] 1.").replace("- [ ] 2.1", "- [x] 2.1");
+  assert.deepEqual(progressOf(parseTasks(half)), { total: 3, done: 2, next: "2.2" });
+  const all = half.replace("- [ ] 2.2", "- [x] 2.2");
+  assert.deepEqual(progressOf(parseTasks(all)), { total: 3, done: 3, next: null }, "상위 2가 열려 있어도 다음은 없다");
+  assert.deepEqual(progressOf([]), { total: 0, done: 0, next: null });
 });

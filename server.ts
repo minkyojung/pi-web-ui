@@ -54,6 +54,7 @@ import { documents } from "./documents.ts";
 import { MAX_BYTES, saveAttachment, type Saved } from "./attach.ts";
 import { documentType, SPEC_DOCS, SPECS_DIR } from "./documentKinds.ts";
 import { specState } from "./specApproval.ts";
+import { parseTasks, progressOf, type Progress } from "./specTasks.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
 import { watchNotes } from "./watcher.ts";
@@ -683,9 +684,19 @@ function specs(): SpecsMsg {
 				waiting,
 				waitingAt: waiting ? writtenAt(join(dir, waiting)) : null,
 				written: SPEC_DOCS.filter((doc) => existsSync(join(dir, doc))),
+				tasks: tasksOf(join(dir, "tasks.md")),
 			};
 		}),
 	};
+}
+
+/** How far a spec's tasks have got, or null while the file is not there. */
+function tasksOf(file: string): Progress | null {
+	try {
+		return progressOf(parseTasks(readFileSync(file, "utf8")));
+	} catch {
+		return null;
+	}
 }
 
 /** When a file was last written, or null where it cannot be asked. */

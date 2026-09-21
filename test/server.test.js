@@ -1212,12 +1212,27 @@ it("스펙이 어디까지 왔는지 탭이 듣는다 — 문서가 써지면 �
   // is the one change the tabs would otherwise never hear.
   approve(cwd, "waiting");
   const after = await want("specs", (m) => m.specs.find((spec) => spec.name === "waiting")?.waiting === null);
-  assert.deepEqual(after.specs.find((spec) => spec.name === "waiting"), { name: "waiting", approved: 1, waiting: null, waitingAt: null, written: ["requirements.md"] });
+  assert.deepEqual(after.specs.find((spec) => spec.name === "waiting"), { name: "waiting", approved: 1, waiting: null, waitingAt: null, written: ["requirements.md"], tasks: null });
   clear();
   // The next document, written on the approved one: waiting in its turn.
   putSpec(".octave/specs/waiting/design.md", "# Design\n");
   const next = await want("specs", (m) => m.specs.find((spec) => spec.name === "waiting")?.waiting === "design.md");
   assert.equal(next.specs.find((spec) => spec.name === "waiting").approved, 1);
+});
+
+it("작업이 어디까지 왔는지도 같은 메시지로 — tasks.md가 없으면 null, 칸이 체크되면 움직인다", async () => {
+  putSpec(".octave/specs/count/requirements.md", "# Requirements\n");
+  const none = await want("specs", (m) => m.specs.some((spec) => spec.name === "count"));
+  assert.equal(none.specs.find((spec) => spec.name === "count").tasks, null, "tasks.md가 아직 없다");
+  clear();
+  putSpec(".octave/specs/count/tasks.md", "- [ ] 1. First\n- [ ] 2. Heading\n- [ ] 2.1 Second\n- [ ] 2.2 Third\n");
+  const fresh = await want("specs", (m) => m.specs.find((spec) => spec.name === "count")?.tasks !== null);
+  assert.deepEqual(fresh.specs.find((spec) => spec.name === "count").tasks, { total: 3, done: 0, next: "1" }, "묶음 2는 세지 않는다");
+  clear();
+  // The box checked as the run's end checks it (spec.ts): the count moves.
+  putSpec(".octave/specs/count/tasks.md", "- [x] 1. First\n- [ ] 2. Heading\n- [ ] 2.1 Second\n- [ ] 2.2 Third\n");
+  const moved = await want("specs", (m) => m.specs.find((spec) => spec.name === "count")?.tasks?.done === 1);
+  assert.deepEqual(moved.specs.find((spec) => spec.name === "count").tasks, { total: 3, done: 1, next: "2.1" });
 });
 
 it("승인이 풀려도 써진 문서는 써진 것이다 — 승인만으로는 알 수 없는 것", async () => {

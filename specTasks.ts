@@ -70,6 +70,27 @@ export function taskToRun(tasks: Task[], number: string): Task | null {
 	return named ? (nextTask(childrenOf(tasks, number)) ?? named) : null;
 }
 
+/**
+ * How far the list has got, as a window says it: how many tasks there are to
+ * run, how many of them are done, and which is next.
+ *
+ * Counted in tasks that are work of their own — the leaves. A heading with
+ * sub-tasks is checked when they are (withParents) and is never run, so
+ * counting it would say a spec has more work than it does, and a person who
+ * has watched 2.1 and 2.2 finish would see the count move by three.
+ */
+export interface Progress {
+	total: number;
+	done: number;
+	/** The number of the task nextTask would run, or null when all are done. */
+	next: string | null;
+}
+
+export function progressOf(tasks: Task[]): Progress {
+	const leaves = tasks.filter((task) => childrenOf(tasks, task.number).length === 0);
+	return { total: leaves.length, done: leaves.filter((task) => task.done).length, next: nextTask(tasks)?.number ?? null };
+}
+
 /** `done` with every heading whose sub-tasks are all in it: the heading is done when they are. */
 export function withParents(tasks: Task[], done: Set<string>): Set<string> {
 	const grown = new Set(done);

@@ -21,6 +21,7 @@ import type { NoteFile } from "./vault";
 import type { Backlink, Tagged } from "./linkIndex";
 import type { SearchHit } from "./search";
 import type { Settings } from "./settings.ts";
+import type { Progress } from "./specTasks.ts";
 
 /** Octave's own settings, for the client, which cannot import settings.ts for anything but its type. */
 export type { Settings };
@@ -597,6 +598,14 @@ export interface SpecInfo {
 	 * has not written yet.
 	 */
 	written: SpecDoc[];
+	/**
+	 * How far the tasks have got, read off tasks.md (specTasks.ts): how many
+	 * tasks there are to run, how many are done, and the number of the next.
+	 * Null while there is no tasks.md. Told here rather than counted in the
+	 * window because a window that is not reading tasks.md — the tab row, a
+	 * spec's menu — still says it, and one parser reads the file for everybody.
+	 */
+	tasks: Progress | null;
 }
 
 export interface SpecsMsg {
