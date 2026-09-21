@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { OCTAVE_PROMPT, VAULT_PROMPT, guard, looking, mentionsAppDir, underAppDir } from "../guard.ts";
+import { WORKSPACE_PROMPT, guard, looking, mentionsAppDir, underAppDir } from "../guard.ts";
 
 test("앱 폴더 아래의 경로는 상대든 절대든 잡힌다", () => {
   assert.equal(underAppDir("/v", ".pi/history/a.md.jsonl"), true);
@@ -28,14 +28,15 @@ test("셸 명령에서 .pi를 건드리는 것은 잡히고, 닮은 것은 안 �
   assert.equal(mentionsAppDir("echo api"), false);
 });
 
-test("에이전트가 누구인지 말하는 프롬프트는 되묻는 도구를 이름으로 부른다", () => {
-  assert.match(OCTAVE_PROMPT, /\bask_user\b/);
+test("pi의 프롬프트 뒤에 붙는 말은 되묻는 도구를 이름으로 부른다", () => {
+  assert.match(WORKSPACE_PROMPT, /\bask_user\b/);
 });
 
-test("프롬프트는 노트 폴더임과 .pi 금지와 경로로 가리키기를 말한다", () => {
-  assert.match(VAULT_PROMPT, /markdown files/);
-  assert.match(VAULT_PROMPT, /\.pi\//);
-  assert.match(VAULT_PROMPT, /relative to this folder/);
+test("그 말은 저장소의 워크스페이스임과 .pi 금지와 경로로 가리키기를 말하고, 누구인지는 pi에게 맡긴다", () => {
+  assert.match(WORKSPACE_PROMPT, /workspace of a git repository/);
+  assert.match(WORKSPACE_PROMPT, /\.pi\//);
+  assert.match(WORKSPACE_PROMPT, /relative to this folder/);
+  assert.equal(/not their programmer|folder of a person's notes/.test(WORKSPACE_PROMPT), false);
 });
 
 test("고른 글이 없으면 열어 둔 노트만 말한다", () => {
@@ -162,7 +163,7 @@ test("앱의 폴더는 여전히 먼저 막히고, 그 이유로 막힌다", asy
 });
 
 test("프롬프트는 노트도 edit·write로 쓴다고 말하고, 막는다는 말은 더 없다", () => {
-  assert.match(VAULT_PROMPT, /edit and write/);
-  assert.equal(/refused on a note/.test(VAULT_PROMPT), false);
-  assert.equal(/cannot write a note/.test(VAULT_PROMPT), false);
+  assert.match(WORKSPACE_PROMPT, /edit and write/);
+  assert.equal(/refused on a note/.test(WORKSPACE_PROMPT), false);
+  assert.equal(/cannot write a note/.test(WORKSPACE_PROMPT), false);
 });
