@@ -35,10 +35,10 @@ test("지시문은 한 줄을 인용하고, 문서가 무엇을 위한 것인지
   for (const shape of ["# Requirements Document", "## Introduction", "### Requirement 1", "#### Acceptance Criteria", "## Out of Scope", "## Decisions for You"]) {
     assert.ok(said.includes(shape), `뼈대: ${shape}`);
   }
-  for (const slot of ["**User Story:**", "WHEN [event]", "SHALL"]) assert.equal(said.includes(slot), false, `빈칸 양식은 없다: ${slot}`);
+  for (const slot of ["**User Story:**", "WHEN [event]", "[system] SHALL"]) assert.equal(said.includes(slot), false, `빈칸 양식은 없다: ${slot}`);
   assert.match(said, /Every acceptance criterion can fail/, "틀릴 수 있는 문장만 기준이다");
   assert.match(said, /Say what, never how/);
-  assert.match(said, /The headings are in their language too/, "제목도 그 사람의 언어로");
+  assert.match(said, /no formula keywords \(WHEN, THEN, SHALL\)/, "쓰지 말라고 이름으로 말한다");
   assert.match(said, /do not stop to ask/i, "멈춰 묻지 않고 문서의 '정해 주실 것'에 쓴다");
   assert.match(said, /the tasks will point at them as 1\.2, 3\.1/, "번호는 지킨다");
   assert.match(said, /Do not go on to a design/, "쓰고 나면 멈춘다");
@@ -461,6 +461,14 @@ test("/spec-approve는 기다리는 문서를 승인하고, 같은 턴에 다음
   assert.deepEqual(pi.notes, [{ text: "The spec email-auth is ready: its requirements, design and tasks are approved.", type: "info" }]);
 });
 
+test("어느 지시문도 무슨 언어로 쓸지 말하지 않는다 — 모델은 대화의 언어를 스스로 따른다", () => {
+  const all = [
+    specPrompt({ line: "x", prefix: "me/", branch: "me/tokyo", taken: [] }),
+    ...["design.md", "tasks.md"].flatMap((next) => [false, true].map((redo) => nextPrompt({ name: "x", next, redo }))),
+  ].join("\n");
+  assert.equal(/\blanguage\b|in English|Korean/i.test(all), false);
+});
+
 test("설계와 작업 목록의 지시문은 문서가 무엇을 위한 것인지를 말하고, 묻지 않고 멈추라고 한다", () => {
   const design = nextPrompt({ name: "email-auth", next: "design.md", redo: false });
   assert.ok(design.includes(".octave/specs/email-auth/requirements.md"), "무엇이 승인됐는지");
@@ -476,7 +484,6 @@ test("설계와 작업 목록의 지시문은 문서가 무엇을 위한 것인�
   assert.match(design, /real paths and real names/, "이 코드 위에 선다");
   assert.match(design, /Every acceptance criterion is under Requirements Met, by its number/);
   assert.match(design, /Decisions for You is settled/, "요구사항이 남긴 결정을 받는다");
-  assert.match(design, /headings too/, "제목도 그 사람의 언어로");
   assert.match(design, /Mermaid/, "필요할 때만");
   assert.match(design, /offer to go back/, "빈 곳을 찾으면 고치지 말고 되돌아가자고");
   assert.match(design, /Do not ask them to approve it/);
@@ -493,9 +500,8 @@ test("설계와 작업 목록의 지시문은 문서가 무엇을 위한 것인�
   for (const copied of ["Set up project structure", "User model", "test-driven manner"]) assert.equal(tasks.includes(copied), false, `새 프로젝트의 예시는 없다: ${copied}`);
   assert.match(tasks, /at most two levels/);
   assert.match(tasks, /one commit's worth/, "작업 하나 = 커밋 하나");
-  assert.match(tasks, /Everything else — the heading, the sub-bullets — is in the language the requirements are written in/, "커밋 제목이 될 한 줄만 저장소의 커밋을 따른다 — 문서가 통째로 영어가 되지 않게");
   assert.match(tasks, /_Done when: …_/, "끝났다는 증거가 작업 안에");
-  assert.match(tasks, /Those two keys stay as they are, in English/);
+  assert.match(tasks, /Those two keys are written exactly so: they are read by name/);
   assert.match(tasks, /Test the way this repository tests/);
   assert.match(tasks, /deployment/, "코딩이 아닌 작업은 넣지 않는다");
   assert.match(tasks, /Every acceptance criterion is covered by some task/);
