@@ -28,6 +28,15 @@ contextBridge.exposeInMainWorld("pi", {
 		github: () => ipcRenderer.invoke("github:repositories"),
 	},
 	/**
+	 * The editors this machine has, and a file opened in one at a line — see
+	 * editors.js. `list` answers `[{ scheme, name, icon }]`, newest question
+	 * each time, and `open` answers `{ error }` when it could not.
+	 */
+	editors: {
+		list: () => ipcRenderer.invoke("editors"),
+		open: (scheme, file, line) => ipcRenderer.invoke("editor:open", { scheme, file, line }),
+	},
+	/**
 	 * The repositories and their workspaces, which the shell keeps: the list,
 	 * a new workspace of a repository, and one put in front. `onChange` says
 	 * the list is to be asked for again, and returns the way to stop listening.

@@ -1,10 +1,13 @@
 import { useState, useSyncExternalStore } from "react";
-import { ChevronLeft, ChevronRight, Ellipsis, FileTextIcon, FolderIcon, LockIcon, MoreHorizontal } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, FileTextIcon, FolderIcon, LockIcon, MoreHorizontal, SquareArrowOutUpRightIcon } from "lucide-react";
 
+import { toast } from "sonner";
+
+import { inFrontStore } from "../inFront";
 import { noteActions } from "../noteActions";
 import { isCode } from "../pages";
-import { titleOf } from "../noteSync";
-import { documentsStore, filesStore, repoStore } from "../serverState";
+import { titleOf, wholePath } from "../noteSync";
+import { configStore, documentsStore, filesStore, repoStore } from "../serverState";
 import { childrenOf, foldersOf, openFoldersStore, setOpenFolders } from "../tree";
 import { getConnection, subscribe } from "../store";
 import { Badge } from "./ui/badge";
@@ -13,6 +16,12 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+
+/** An editor this machine has, as the shell reports it (electron/editors.js). */
+type Editor = { scheme: string; name: string; icon: string | null };
+
+/** The shell's bridge, absent in a browser tab: a page cannot start an app. */
+const shell = (window as { pi?: { editors: { list(): Promise<Editor[] | null>; open(scheme: string, file: string, line: number): Promise<{ error?: string }> }; reveal(path: string): Promise<void> } }).pi;
 
 /** Open a folder in the sidebar and bring it into view, without closing anything. */
 function show(folder: string) {
@@ -198,6 +207,88 @@ function CrumbEllipsis({ folders }: { folders: string[] }) {
  * The items themselves are in noteActions.ts, because the list in the sidebar
  * offers the same ones from a right click and the two must not drift.
  */
+/**
+ * A file is read here, and this is where that is said and what to do about it.
+ *
+ * The chip says the state; its menu answers the question the state raises —
+ * where, then, do I change this? The editors on the machine, asked of macOS
+ * and drawn with the names and icons macOS gave (editors.js), and the file
+ * opened at the line being read. There is nothing to persist and nothing to
+ * choose beforehand: what is installed is the list.
+ *
+ * With no shell there is no menu, and the chip is the plain label it was —
+ * a page cannot start an app, which is the same reason Reveal in Finder is
+ * not offered in a browser tab. With a shell but no editor found, the one
+ * item hands the file to whatever macOS opens it with.
+ */
+function ReadOnly({ path }: { path: string }) {
+	const [editors, setEditors] = useState<Editor[] | null>(null);
+	// Asked when the menu is opened rather than when a file is: an app
+	// installed while the window was up should be on the list, and nothing
+	// should be asked of the shell for a file merely being read.
+	const ask = (open: boolean) => {
+		if (!open || !shell) return;
+		shell.editors.list().then(
+			(found) => setEditors(found ?? []),
+			() => setEditors([]),
+		);
+	};
+	const whole = () => wholePath(configStore.get()?.folder, path);
+	const at = () => {
+		const front = inFrontStore.get();
+		return front?.path === path ? (front.line ?? 1) : 1;
+	};
+	const open = (scheme: string) => {
+		void shell?.editors.open(scheme, whole(), at()).then((result) => result?.error && toast.error(result.error));
+	};
+
+	const chip = (
+		<Badge
+			variant="secondary"
+			className="ml-1 shrink-0 gap-1 font-normal text-muted-foreground"
+			title="This file is read-only. The agent changes the code; git moves and removes it."
+		>
+			<LockIcon className="size-3 shrink-0" />
+			Read-only
+		</Badge>
+	);
+	if (!shell) return chip;
+	return (
+		<DropdownMenu onOpenChange={ask}>
+			<DropdownMenuTrigger asChild>
+				<Badge
+					asChild
+					variant="secondary"
+					className="ml-1 shrink-0 gap-1 font-normal text-muted-foreground hover:text-foreground data-[state=open]:text-foreground"
+				>
+					<button type="button" id="readOnly" aria-label="Read-only — open this file elsewhere">
+						<LockIcon className="size-3 shrink-0" />
+						Read-only
+						<ChevronDown className="size-3 shrink-0" />
+					</button>
+				</Badge>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="start">
+				{editors === null ? (
+					<DropdownMenuItem disabled>Looking…</DropdownMenuItem>
+				) : editors.length === 0 ? (
+					// No editor registered a scheme of its own. The Finder, not
+					// whatever macOS opens a .ts with — that is as often Xcode as
+					// anything the person would have chosen.
+					<DropdownMenuItem onSelect={() => void shell.reveal(whole())}>Reveal in Finder</DropdownMenuItem>
+				) : (
+					editors.map((editor) => (
+						<DropdownMenuItem key={editor.scheme} onSelect={() => open(editor.scheme)}>
+							{editor.icon ? <img src={editor.icon} alt="" className="size-4 rounded-[3px]" /> : <SquareArrowOutUpRightIcon />}
+							Open in {editor.name}
+						</DropdownMenuItem>
+					))
+				)}
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
+
 function NoteMenu({ path }: { path: string }) {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	return (
@@ -296,12 +387,7 @@ export function NoteHeader({ path, onOpen, trailing }: { path: string | null; on
 				    Its words are the line's colour all the same — the fill is what
 				    sets it apart, and the brightest thing here should be the name
 				    of the file rather than a fact about it. */}
-				{isCode(path) && (
-					<Badge variant="secondary" className="ml-1 shrink-0 gap-1 font-normal text-muted-foreground" title="This file is read-only. The agent changes the code; git moves and removes it.">
-						<LockIcon className="size-3 shrink-0" />
-						Read-only
-					</Badge>
-				)}
+				{path && isCode(path) && <ReadOnly path={path} />}
 			</div>
 			{path && <NoteMenu path={path} />}
 			{trailing}

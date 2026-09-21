@@ -1301,6 +1301,9 @@ check("a file says where it is in the line above it, and its ⋯ offers what can
 	// And that it is read, not written — the only other way to learn it is to
 	// type into the page and watch nothing happen.
 	assert.match(await app.evaluate("document.getElementById('crumbs')?.textContent ?? ''"), /Read-only/);
+	// And it is a label here, not a way out: a page cannot start an editor, so
+	// the menu that offers one is the shell's and is not drawn in a browser tab.
+	assert.equal(await app.evaluate("!!document.getElementById('readOnly')"), false);
 	await app.shot("code-header");
 	// A crumb opens what is in that folder — the files, not only the notes,
 	// which down here are none.
