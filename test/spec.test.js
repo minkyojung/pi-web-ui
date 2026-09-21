@@ -91,6 +91,9 @@ function fakePi(branch, branches = []) {
   let turnWork = null;
   const gits = [];
   const sessions = [];
+  const set = [];
+  /** The models this pi can reach, by key. */
+  const models = { "faux/strong": { provider: "faux", id: "strong" }, "faux/cheap": { provider: "faux", id: "cheap" } };
   /** The lines each session was sent and ran a turn on. */
   const turns = [];
   const answer = (code, stdout = "") => ({ code, stdout, stderr: "", killed: false });
@@ -113,6 +116,9 @@ function fakePi(branch, branches = []) {
     },
     sendMessage: (message, options) => done.push({ sendMessage: message, options }),
     sendUserMessage: (content, options) => done.push({ sendUserMessage: content, options }),
+    /** What each session was set to, in order: the model's key, then the level. */
+    setModel: async (model) => (set.push(`${model.provider}/${model.id}`), true),
+    setThinkingLevel: (level) => set.push(level),
   };
   spec(pi);
   const ctx = (idle) => ({
@@ -120,6 +126,8 @@ function fakePi(branch, branches = []) {
     isIdle: () => idle,
     ui: { notify: (text, type) => notes.push({ text, type }) },
     sessionManager: { buildContextEntries: () => entries },
+    model: models["faux/strong"],
+    modelRegistry: { find: (provider, id) => models[`${provider}/${id}`] },
     newSession: async (options) => {
       sessions.push(options);
       // As pi does: the extension is made over for the new session, so what
@@ -127,6 +135,7 @@ function fakePi(branch, branches = []) {
       // the mark instead.
       entries = [];
       spec(pi);
+      await handlers.session_start?.({ type: "session_start", reason: "new" }, ctx(true));
       await options?.withSession?.({
         cwd,
         ui: { notify: (text, type) => notes.push({ text, type }) },
@@ -184,6 +193,7 @@ function fakePi(branch, branches = []) {
     gits,
     sessions,
     turns,
+    set,
     run,
     runTask,
     plan,
@@ -876,7 +886,7 @@ function ran(t, { plan = PLAN, name = "email-auth", repository = true } = {}) {
     },
     tasks: () => readFileSync(join(dir, "tasks.md"), "utf8"),
     setTasks: (text) => writeFileSync(join(dir, "tasks.md"), text),
-    finish: (mark) => finishTask(pi, { cwd, ui: { notify: (text, type) => notes.push({ text, type }) } }, { spec: name, done: [], then: [], ...mark }),
+    finish: (mark) => finishTask(pi, { cwd, ui: { notify: (text, type) => notes.push({ text, type }) } }, { spec: name, done: [], then: [], model: null, effort: null, ...mark }),
     state: () => specState(cwd, name),
     subjects: () => git("log", "--format=%s").split("\n"),
   };
@@ -935,7 +945,7 @@ test("git이 아닌 폴더에서는 체크만 하고, 커밋하지 않았다고 
 // --- which task a session is a run of ---
 
 test("표식은 세션의 숨긴 메시지에서 읽는다 — newSession이 확장을 다시 만들어 기억이 남지 않으므로", () => {
-  const mark = { spec: "email-auth", task: "2.1", title: "Cut the board", done: ["1"], then: ["2.2"] };
+  const mark = { spec: "email-auth", task: "2.1", title: "Cut the board", done: ["1"], then: ["2.2"], model: "faux/cheap", effort: "low" };
   const entries = [
     { type: "message", message: { role: "user" } },
     { type: "custom_message", customType: "spec-waiting", details: undefined },
@@ -946,7 +956,7 @@ test("표식은 세션의 숨긴 메시지에서 읽는다 — newSession이 확
   assert.equal(taskMark(entries.filter((entry) => entry.customType !== "spec-task")), null, "작업의 실행이 아닌 세션");
   assert.equal(taskMark([{ type: "custom_message", customType: "spec-task", details: { spec: "x" } }]), null, "모양이 다른 표식은 없는 것으로");
   const older = { spec: "email-auth", task: "1", title: "Add the door", done: [] };
-  assert.deepEqual(taskMark([{ type: "custom_message", customType: "spec-task", details: older }]), { ...older, then: [] }, "큐가 없던 표식은 하나짜리 큐다");
+  assert.deepEqual(taskMark([{ type: "custom_message", customType: "spec-task", details: older }]), { ...older, then: [], model: null, effort: null }, "큐가 없던 표식은 하나짜리 큐다, 모델은 세션의 것");
 });
 
 // --- /spec-run: one task, in a session of its own ---
@@ -965,12 +975,12 @@ test("/spec-run은 새 세션을 열고, 그 안에 지시문과 표식과 친 �
   assert.equal(hidden.sendMessage.customType, "spec-task");
   assert.equal(hidden.sendMessage.display, false, "화면에는 안 보인다");
   assert.equal(hidden.options.deliverAs, "nextTurn");
-  assert.deepEqual(hidden.sendMessage.details, { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] }, "표식은 세션이 들고 간다");
+  assert.deepEqual(hidden.sendMessage.details, { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [], model: null, effort: null }, "표식은 세션이 들고 간다");
   assert.equal(shown.sendUserMessage, "/spec-run 1", "보이는 것은 친 명령");
 });
 
 test("지시문은 Kiro의 실행 규칙이다 — 세 문서를 먼저, 이 작업만, 요구사항에 비추어, 그리고 멈춤", () => {
-  const said = taskPrompt({ spec: "email-auth", task: "2.1", title: "Cut the board", done: ["1"], then: [] });
+  const said = taskPrompt({ spec: "email-auth", task: "2.1", title: "Cut the board", done: ["1"], then: [], model: null, effort: null });
   assert.ok(said.includes(".octave/specs/email-auth/requirements.md"), said);
   assert.ok(said.includes(".octave/specs/email-auth/design.md"));
   assert.ok(said.includes(".octave/specs/email-auth/tasks.md"));
@@ -1093,7 +1103,9 @@ test("실제 pi 세션에서 작업 둘을 이어서: 저마다 자기 세션에
   while (approve(cwd, "email-auth")) {}
 
   // The model does each task by writing one file, and says so.
-  const faux = fauxProvider();
+  // Two models: the one the session opens on, and a cheaper reasoning one
+  // the tasks are asked to run on.
+  const faux = fauxProvider({ models: [{ id: "strong" }, { id: "cheap", reasoning: true }] });
   const sent = [];
   const reply = (make) => (context) => (sent.push(context.messages), make());
   faux.setResponses([
@@ -1169,8 +1181,12 @@ test("실제 pi 세션에서 작업 둘을 이어서: 저마다 자기 세션에
 
   // The rest as one command: 2.1 and then 2.2, each in a session of its own,
   // the second started by the first's end — no second prompt from anybody.
-  await runtime.session.prompt("/spec-run 2.1 2.2");
+  assert.equal(runtime.session.model.id, "strong", "스펙의 세션은 강한 모델로");
+  await runtime.session.prompt("/spec-run 2.1 2.2 faux/cheap low");
   await until("남은 둘이 차례로 커밋됐다", () => subjects().length === 4);
+
+  assert.equal(runtime.session.model.id, "cheap", "작업의 세션은 청한 모델로 — 큐의 마지막 세션까지");
+  assert.equal(runtime.session.thinkingLevel, "low", "청한 effort로");
 
   assert.deepEqual(subjects(), ["Paint it", "Cut the board", "Add the door", "app"], "2.1 뒤에 2.2, 각각 커밋 하나");
   assert.equal(tasks(), PLAN.replaceAll("- [ ]", "- [x]"), "셋 다, 그리고 하위가 끝난 2도");
@@ -1236,6 +1252,34 @@ test("큐의 번호는 전부 먼저 본다 — 없거나 끝난 번호가 있�
   await pi.chained();
   assert.deepEqual(pi.done.filter((one) => one.sendMessage).map((one) => one.sendMessage.details.task), ["2.2", "2.1"], "준 순서대로, 한 번씩");
   assert.match(pi.notes[2].text, /2\.1 starts next/);
+});
+
+// --- the model and the effort a run is asked for ---
+
+test("모델과 effort는 명령의 낱말로 — 새 세션이 열리자마자 그 인스턴스가 맞추고, 큐를 따라 내려간다", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.plan("email-auth");
+  pi.eachTurnWrites([" M door.js"]);
+  await pi.runTask("faux/cheap 1 low 2.1");
+  await pi.chained();
+  assert.equal(pi.sessions.length, 2);
+  assert.deepEqual(pi.set, ["faux/cheap", "low", "faux/cheap", "low"], "세션마다, 첫 턴 전에");
+  const marks = pi.done.filter((one) => one.sendMessage).map((one) => one.sendMessage.details);
+  assert.deepEqual(marks.map((mark) => [mark.task, mark.model, mark.effort]), [["1", "faux/cheap", "low"], ["2.1", "faux/cheap", "low"]], "표식이 들고 간다");
+  assert.deepEqual(pi.notes.filter((note) => note.type !== "info"), [], "군말 없이");
+});
+
+test("아무 말도 없으면 세션이 여는 대로 — 아무것도 맞추지 않는다; 없는 모델이면 시작하지 않는다", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.plan("email-auth");
+  await pi.runTask("1");
+  assert.deepEqual(pi.set, [], "세션의 모델 그대로");
+  await pi.runTask("2.1 faux/nowhere");
+  assert.equal(pi.sessions.length, 1, "시작하지 않았다");
+  assert.match(pi.notes.at(-1).text, /no model called faux\/nowhere/);
+  assert.match(pi.notes.at(-1).text, /provider\/id/, "어떻게 부르는지");
 });
 
 // --- .pi/, which Octave writes into every folder it opens ---

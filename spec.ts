@@ -306,7 +306,29 @@ export interface TaskMark {
 	 * session of its own like this one; empty for a run of one task.
 	 */
 	then: string[];
+	/**
+	 * The model to run it on, as `provider/id`, and its thinking level — or
+	 * null for whatever the session opens on. A spec is written by a strong
+	 * model and its tasks can be run by a cheaper one (spec-mode.md 3절 5);
+	 * the choice is made once, when the run is asked for, and carries down
+	 * the queue.
+	 */
+	model: string | null;
+	effort: string | null;
 }
+
+/** pi's thinking levels, as words a person may put after /spec-run. */
+const EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+/**
+ * What the session being opened for a run should be set to, handed from the
+ * instance that opens it to the one made for it. The opening instance cannot
+ * set anything on the session: its pi is stale the moment the session is
+ * replaced, and the context it is handed has no setter. The new instance
+ * hears session_start before anything else happens in its session, and its
+ * own pi is the one that can — so the wish is left here, by folder, for it.
+ */
+const wanted = new Map<string, { model: string | null; effort: string | null }>();
 
 /**
  * What the model is told at the start of a task's run — Kiro's task
@@ -364,7 +386,8 @@ export function taskMark(entries: readonly unknown[]): TaskMark | null {
 		const details = entry.details as Partial<TaskMark> | undefined;
 		if (!details || typeof details.spec !== "string" || typeof details.task !== "string" || typeof details.title !== "string" || !Array.isArray(details.done)) return null;
 		const numbers = (given: unknown) => (Array.isArray(given) ? given.filter((number): number is string => typeof number === "string") : []);
-		return { spec: details.spec, task: details.task, title: details.title, done: numbers(details.done), then: numbers(details.then) };
+		const word = (given: unknown) => (typeof given === "string" ? given : null);
+		return { spec: details.spec, task: details.task, title: details.title, done: numbers(details.done), then: numbers(details.then), model: word(details.model), effort: word(details.effort) };
 	}
 	return null;
 }
@@ -482,6 +505,7 @@ async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark): 
  * landed.
  */
 async function startRun(ctx: Pick<ExtensionCommandContext, "newSession">, cwd: string, mark: TaskMark): Promise<void> {
+	if (mark.model || mark.effort) wanted.set(cwd, { model: mark.model, effort: mark.effort });
 	await ctx.newSession({
 		withSession: async (session) => {
 			await session.sendMessage({ customType: TASK_MARK, content: taskPrompt(mark), display: false, details: mark }, { deliverAs: "nextTurn" });
@@ -530,7 +554,7 @@ async function runNext(session: RunSession, cwd: string, mark: TaskMark): Promis
 		session.ui.notify(`${mark.spec} has no task ${number} left to run, so ${not}.`, "warning");
 		return;
 	}
-	await startRun(session, cwd, { spec: mark.spec, task: task.number, title: task.title, done: tasks.filter((other) => other.done).map((other) => other.number), then: rest });
+	await startRun(session, cwd, { spec: mark.spec, task: task.number, title: task.title, done: tasks.filter((other) => other.done).map((other) => other.number), then: rest, model: mark.model, effort: mark.effort });
 }
 
 /**
@@ -696,11 +720,21 @@ export default function spec(pi: ExtensionAPI): void {
 				ctx.ui.notify("The agent is working. Run the task when it has finished.", "warning");
 				return;
 			}
-			// The words that are numbers are the tasks, in the order given; any
-			// other word names the spec.
+			// The words that are numbers are the tasks, in the order given; one
+			// with a slash is a model, `provider/id`; one of pi's levels is the
+			// effort; any other word names the spec.
 			const words = args.trim().split(/\s+/).filter(Boolean);
 			const numbers = [...new Set(words.filter((word) => /^\d+(?:\.\d+)?$/.test(word)))];
-			const given = words.find((word) => !numbers.includes(word)) ?? null;
+			const model = words.find((word) => word.includes("/")) ?? null;
+			const effort = words.find((word) => EFFORTS.includes(word)) ?? null;
+			const given = words.find((word) => !numbers.includes(word) && word !== model && word !== effort) ?? null;
+			if (model) {
+				const [provider, ...id] = model.split("/");
+				if (!ctx.modelRegistry.find(provider ?? "", id.join("/"))) {
+					ctx.ui.notify(`There is no model called ${model}. A model is named as the picker keys it: provider/id.`, "info");
+					return;
+				}
+			}
 			const specs = takenSpecs(ctx.cwd).map((name) => ({ name, ...specState(ctx.cwd, name) }));
 			const ready = (spec: SpecState) => spec.approved === SPEC_DOCS.length;
 			const run = specs.filter(ready);
@@ -761,6 +795,8 @@ export default function spec(pi: ExtensionAPI): void {
 				title: task.title,
 				done: tasks.filter((other) => other.done).map((other) => other.number),
 				then: then.map((other) => other.number),
+				model,
+				effort,
 			});
 		},
 	});
@@ -794,6 +830,22 @@ export default function spec(pi: ExtensionAPI): void {
 	// Once the run is over — retries and all; pi tells anyone else only after
 	// this — the spec /spec wrote names the branch, and a document the run left
 	// waiting is said, once.
+	// A session opened for a run: on the model and at the effort the run was
+	// asked for, before its first turn. Only a wish left for this folder by
+	// startRun, and taken so that the session after this one opens as usual.
+	pi.on("session_start", async (event, ctx) => {
+		if (event.reason !== "new") return;
+		const wish = wanted.get(ctx.cwd);
+		if (!wish) return;
+		wanted.delete(ctx.cwd);
+		if (wish.model) {
+			const [provider, ...id] = wish.model.split("/");
+			const model = ctx.modelRegistry.find(provider ?? "", id.join("/"));
+			if (!model || !(await pi.setModel(model))) ctx.ui.notify(`${wish.model} could not be used for this run — it stays on ${ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "the model it opened on"}.`, "warning");
+		}
+		if (wish.effort) pi.setThinkingLevel(wish.effort as Parameters<typeof pi.setThinkingLevel>[0]);
+	});
+
 	pi.on("agent_settled", async (_event, ctx) => {
 		// A session opened by /spec-run is the run of one task, and this is the
 		// end of it: the box and the commit. Later turns in it are conversation.
