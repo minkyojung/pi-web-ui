@@ -51,11 +51,11 @@ test("what is already there leaves the list as it was", () => {
 	assert.equal(withWorkspace(projects, "/a", tree("/w")), projects);
 });
 
-test("starting opens the workspace in front last time, else the first listed, else none", () => {
+test("starting opens the workspace in front last time, and no other in its place", () => {
 	const projects = [{ path: "/a", worktrees: [tree("/a-1", "one")] }, { path: "/b", worktrees: [tree("/b-1", "two")] }];
 	assert.equal(firstWorkspace(projects, "/b-1"), "/b-1");
-	assert.equal(firstWorkspace(projects, "/gone"), "/a-1");
-	assert.equal(firstWorkspace([{ path: "/a", worktrees: [] }, ...projects.slice(1)], null), "/b-1");
+	assert.equal(firstWorkspace(projects, "/gone"), null, "one the person did not open is not opened for them");
+	assert.equal(firstWorkspace(projects, null), null);
 	assert.equal(firstWorkspace([{ path: "/a", worktrees: [] }], "/a"), null, "a repository's own clone is not a workspace");
 	assert.equal(firstWorkspace([], "/notes"), null);
 });

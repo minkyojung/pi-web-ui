@@ -1,8 +1,9 @@
 /**
  * The page the app opens on when there is no workspace to open: no
- * repository has been added yet. It is served by the shell rather than by a
- * server (electron/appScheme.js), since until there is a repository there is
- * no folder for a server to work in.
+ * repository has been added yet, or none of them has had a workspace asked
+ * for. It is served by the shell rather than by a server
+ * (electron/appScheme.js), since until there is a workspace there is no
+ * folder for a server to work in.
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

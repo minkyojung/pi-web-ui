@@ -389,13 +389,15 @@ async function show(workdir) {
 		if (mine === asked) wanted = null;
 		if (quitting) return;
 		dialog.showErrorBox("The server did not start", err.message);
-		if (!front) app.quit();
+		// Nothing to fall back to only while starting: once the window is up it
+		// is on a workspace or on the first screen, and stays there.
+		if (!window.isVisible()) app.quit();
 		return;
 	}
 	if (!(await waitForServer(url, closing.signal))) {
 		if (mine === asked) wanted = null;
 		if (!closing.signal.aborted) dialog.showErrorBox("The server did not answer", `${url} did not come up within 30 seconds.`);
-		if (!front) app.quit();
+		if (!window.isVisible()) app.quit();
 		return;
 	}
 	if (mine !== asked) return;
@@ -491,29 +493,27 @@ async function showStart() {
 }
 
 /**
- * A repository chosen in the Finder, added to the list, and a workspace of it
- * put in front — its first, or one made now if it has none, as Conductor
- * makes one on adding a repository. A folder anywhere inside a repository
- * adds that repository. Says why not when the folder is in none; a choice
- * cancelled says nothing.
+ * A repository chosen in the Finder and added to the list. A folder anywhere
+ * inside a repository adds that repository. Says why not when the folder is
+ * in none; a choice cancelled says nothing.
  */
 async function openLocalRepository() {
 	const picked = await askForRepository();
 	if (!picked) return null;
 	const root = await repositoryOf(picked);
 	if (!root) return { error: `${basename(picked)} is not in a git repository.` };
-	await addRepository(root);
+	addRepository(root);
 	return {};
 }
 
-/** A repository's clone added to the list, and its first workspace put in front — made now if it has none. */
-async function addRepository(root) {
-	const projects = withWorkspace(projectsOf(readSettings(), isCheckout), root);
-	writeSettings({ ...readSettings(), projects });
+/**
+ * A repository's clone added to the list, and nothing more: no workspace is
+ * made of it and the window stays where it is. A workspace is made, and
+ * opened, when the person asks for one — spec-mode.md 6절.
+ */
+function addRepository(root) {
+	writeSettings({ ...readSettings(), projects: withWorkspace(projectsOf(readSettings(), isCheckout), root) });
 	workspacesChanged();
-	const first = projects.find((project) => project.path === root)?.worktrees[0];
-	if (first) void show(first.path);
-	else await newWorkspace(root);
 }
 
 /**
@@ -540,7 +540,7 @@ async function cloneRepository(source) {
 			return { error: err.message };
 		}
 	}
-	await addRepository(into);
+	addRepository(into);
 	return {};
 }
 
