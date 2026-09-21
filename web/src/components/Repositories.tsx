@@ -37,6 +37,9 @@ const workspaceShell = (
 	}
 ).pi?.workspaces;
 
+/** The shell asking for the new spec dialog, from its menu — see preload.cjs `onNewSpec`. */
+const onNewSpec = (window as { pi?: { onNewSpec?: (listen: () => void) => () => void } }).pi?.onNewSpec;
+
 /** The shell's way to add a repository from the Finder — see preload.cjs `repositories`. */
 const openLocal = (window as { pi?: { repositories?: { openLocal(): Promise<{ error?: string } | null> } } }).pi?.repositories?.openLocal;
 
@@ -112,6 +115,20 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 	const [cloning, setCloning] = useState(false);
 	const shell = workspaceShell!;
 
+	// Asked for from the menu, it opens over the repository the window is in,
+	// or the first there is; which one is changed in the dialog itself.
+	const projects = useRef(list);
+	projects.current = list;
+	useEffect(
+		() =>
+			onNewSpec?.(() => {
+				const { current, projects: all } = projects.current;
+				const project = all.find((p) => p.worktrees.some((w) => w.path === current)) ?? all[0];
+				if (project) setStarting({ path: project.path, name: project.name });
+			}),
+		[],
+	);
+
 	// Adding one moves the window into it; what is left to say here is why not.
 	const addLocal = () => {
 		openLocal?.().then(
@@ -155,7 +172,7 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 			</div>
 			<CloneRepository open={cloning} onOpenChange={setCloning} />
 			<RemoveWorkspace workspace={doomed} onClose={() => setDoomed(null)} shell={shell} />
-			<NewSpec repository={starting} onClose={() => setStarting(null)} create={shell.create} choices={choices} />
+			<NewSpec repository={starting} repositories={list.projects} onRepository={setStarting} onClose={() => setStarting(null)} create={shell.create} choices={choices} />
 			<ul id="workspaces" className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-1">
 				{list.projects.map((project) => (
 					<li key={project.path}>

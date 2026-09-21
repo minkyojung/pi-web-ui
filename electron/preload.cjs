@@ -83,6 +83,12 @@ contextBridge.exposeInMainWorld("pi", {
 		ipcRenderer.on("open-page", handler);
 		return () => ipcRenderer.off("open-page", handler);
 	},
+	/** The shell asking for the new spec dialog — Folder › New Spec…, ⌘⇧N. Returns the way to stop listening. */
+	onNewSpec: (listen) => {
+		const handler = () => listen();
+		ipcRenderer.on("new-spec", handler);
+		return () => ipcRenderer.off("new-spec", handler);
+	},
 	/** The shell asking for a section of Settings to be opened — from a menu item. */
 	onOpenSettings: (listen) => {
 		const handler = (_event, section) => listen(section);

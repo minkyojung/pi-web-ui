@@ -3573,16 +3573,27 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		if (sessionStorage.getItem("stand-in-for-the-list") === "1") {
 		window.__created = [];
 		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
-			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }] }] }),
+			onNewSpec: (listen) => { window.__newSpec = listen; return () => {}; },
+			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/other", name: "other", worktrees: [] }, { path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }] }] }),
 				create: async (root, first) => { window.__created.push({ root, first }); return window.__created.length === 1 ? { error: "The remote said no." } : {}; },
 				open: async () => {}, onChange: () => () => {}, first: async () => null } };
 		}`);
+	// A menu shutting hands the focus back to what opened it, a moment after it
+	// is gone: the box is seen to have the focus, and then the words.
+	const typeLine = async (text) => {
+		await until("the focus in the box", async () => {
+			await app.click("#new-spec-line");
+			return app.evaluate("document.activeElement?.id === 'new-spec-line'");
+		});
+		await app.keys(text);
+		await until("the words in the box", () => app.evaluate(`document.getElementById('new-spec-line').value === ${JSON.stringify(text)}`));
+	};
 	try {
 		await app.evaluate(`sessionStorage.setItem("stand-in-for-the-list", "1"); location.reload()`);
 		await until("the repository in the sidebar", () => app.evaluate("!!document.querySelector('[data-new-workspace=\"/r/demo\"]')"));
 		await app.click('[data-new-workspace="/r/demo"]');
 		await until("the dialog", () => app.evaluate("!!document.getElementById('new-spec')"));
-		assert.match(await app.evaluate("document.getElementById('new-spec').innerText"), /^demo/, "the repository over the top");
+		assert.equal(await app.evaluate("document.getElementById('new-spec-repository').textContent"), "demo", "the repository over the top");
 		assert.equal(await app.evaluate("document.getElementById('new-spec-create').disabled"), true, "nothing to build, nothing to create");
 		// What the picker shows before anything is chosen is the session's own.
 		const sessionModel = await until("the session's model", () => app.evaluate("document.getElementById('model')?.textContent ?? ''"));
@@ -3598,8 +3609,7 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		await until("the choice on the dialog", async () => (await app.evaluate("document.getElementById('specOn')?.textContent ?? ''")).startsWith(other.name));
 		assert.equal(await app.evaluate("document.getElementById('model')?.textContent ?? ''"), sessionModel, "the session's model is not touched");
 		await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
-		await app.click("#new-spec-line");
-		await app.keys("add a greeting");
+		await typeLine("add a greeting");
 		await app.shot("new-spec");
 		await app.press("Enter", { meta: true });
 		// Refused: said in the dialog, with the line still there to try again.
@@ -3610,6 +3620,20 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		const created = JSON.parse(await app.evaluate("JSON.stringify(window.__created)"));
 		assert.deepEqual(created.at(-1), { root: "/r/demo", first: { line: "add a greeting", model: other.key, effort: other.level } });
 		assert.equal(created.length, 2);
+		// From the menu (⌘⇧N) it opens over the repository the window is in, not
+		// the first on the list; another is chosen in it, and what was typed stays.
+		await app.evaluate("window.__newSpec()");
+		await until("the dialog, over the repository in front", async () => (await app.evaluate("document.getElementById('new-spec-repository')?.textContent ?? ''")) === "demo");
+		await typeLine("typed first");
+		await app.click("#new-spec-repository");
+		await until("the repositories", () => app.evaluate("document.querySelectorAll('[role=menuitemradio]').length === 2"));
+		await app.evaluate("[...document.querySelectorAll('[role=menuitemradio]')].find((i) => i.textContent === 'other').click()");
+		await until("the other repository", async () => (await app.evaluate("document.getElementById('new-spec-repository')?.textContent ?? ''")) === "other");
+		assert.equal(await app.evaluate("document.getElementById('new-spec-line').value"), "typed first");
+		await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+		await app.click("#new-spec-create");
+		await until("the dialog gone", async () => !(await app.evaluate("!!document.getElementById('new-spec')")));
+		assert.equal(JSON.parse(await app.evaluate("JSON.stringify(window.__created.at(-1))")).root, "/r/other");
 	} finally {
 		await app.press("Escape");
 		await stopStanding();

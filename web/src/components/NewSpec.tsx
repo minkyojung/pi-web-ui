@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 
-import { FolderGit2Icon } from "lucide-react";
+import { ChevronDownIcon, FolderGit2Icon } from "lucide-react";
 
 import type { ModelInfo } from "../../../protocol.ts";
 import type { ModelPicker } from "./ModelPicker";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Kbd } from "./ui/kbd";
 import { Spinner } from "./ui/spinner";
 import { Textarea } from "./ui/textarea";
@@ -46,12 +47,17 @@ type Create = (root: string, first: { line: string; model: string | null; effort
  */
 export function NewSpec({
 	repository,
+	repositories,
+	onRepository,
 	onClose,
 	create,
 	choices,
 }: {
 	/** The repository the spec is of, or null when the dialog is shut. */
 	repository: { path: string; name: string } | null;
+	/** Every repository on the list, to change to. */
+	repositories: readonly { path: string; name: string }[];
+	onRepository: (repository: { path: string; name: string }) => void;
 	onClose: () => void;
 	create: Create;
 	choices?: SpecOnChoices;
@@ -62,12 +68,14 @@ export function NewSpec({
 	const [error, setError] = useState<string | null>(null);
 
 	// Each time it is opened it is for a new spec; the model chosen stays, as
-	// it does in the box this one is shaped after.
+	// it does in the box this one is shaped after. Opened, not pointed at
+	// another repository: what was typed is kept through that.
+	const open = repository !== null;
 	useEffect(() => {
-		if (!repository) return;
+		if (!open) return;
 		setLine("");
 		setError(null);
-	}, [repository]);
+	}, [open]);
 
 	// What is shown is what is asked for, chosen here or not: the session's
 	// model at its own level until another is.
@@ -85,12 +93,30 @@ export function NewSpec({
 	};
 
 	return (
-		<Dialog open={repository !== null} onOpenChange={(next) => !next && !making && onClose()}>
+		<Dialog open={open} onOpenChange={(next) => !next && !making && onClose()}>
 			<DialogContent id="new-spec" className="gap-0 overflow-hidden p-0 sm:max-w-2xl" showCloseButton={false}>
-				<DialogTitle className="flex h-11 items-center gap-2 border-b px-4 text-sm font-medium">
-					<FolderGit2Icon className="size-4 text-muted-foreground" />
-					<span className="truncate">{repository?.name}</span>
-				</DialogTitle>
+				<div className="flex h-11 items-center border-b px-2">
+					{/* The repository, and the way to another: the dialog may have been
+					    asked for from the menu, over whichever was in front. */}
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button id="new-spec-repository" variant="ghost" size="sm" disabled={making} className="min-w-0 gap-2 px-2">
+								<FolderGit2Icon className="text-muted-foreground" />
+								<DialogTitle className="truncate text-sm font-medium">{repository?.name}</DialogTitle>
+								<ChevronDownIcon className="size-3 opacity-50" />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="start" className="min-w-48">
+							<DropdownMenuRadioGroup value={repository?.path ?? ""} onValueChange={(path) => { const next = repositories.find((r) => r.path === path); if (next) onRepository({ path: next.path, name: next.name }); }}>
+								{repositories.map((r) => (
+									<DropdownMenuRadioItem key={r.path} value={r.path}>
+										<span className="truncate">{r.name}</span>
+									</DropdownMenuRadioItem>
+								))}
+							</DropdownMenuRadioGroup>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</div>
 				<DialogDescription className="sr-only">Say what to build. A workspace is made for it, and the agent writes its requirements there.</DialogDescription>
 				<Textarea
 					id="new-spec-line"

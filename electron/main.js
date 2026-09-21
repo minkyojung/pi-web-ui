@@ -700,6 +700,10 @@ function buildMenu(workdir) {
 			{
 				label: "Folder",
 				submenu: [
+					// The page's to open, since the dialog is the page's: over whichever
+					// repository is in front, and changed there. With Shift, as Conductor
+					// has it — ⌘N alone is the page's own, for a note.
+					{ label: "New Spec…", accelerator: "CmdOrCtrl+Shift+N", click: () => window && !window.isDestroyed() && window.webContents.send("new-spec") },
 					{ label: "Open Repository…", accelerator: "CmdOrCtrl+O", click: openRepositoryFromMenu },
 					// Nothing is in front on the start screen, and nothing is revealed.
 					{ label: "Reveal in Finder", click: () => (front ?? workdir) && shell.openPath(front ?? workdir) },
