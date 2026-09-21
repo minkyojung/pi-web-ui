@@ -10,10 +10,11 @@
  *
  * Which tasks, is read off the document in front: the lines a selection
  * covers, and of those the ones that are tasks, by the same reading of a
- * line the run itself makes (specTasks.ts). A heading with sub-tasks is
- * never work of its own, so a selection over a whole section yields its
- * sub-tasks and not the heading; what is already done is left out, since
- * the command refuses it.
+ * line the run itself makes (specTasks.ts). A heading with sub-tasks means
+ * all of them still to do — Kiro's Start on a heading — so a selection over
+ * a whole section yields the heading and folds its sub-tasks into it; what
+ * is already done, or a heading with nothing left under it, is left out,
+ * since the command refuses it.
  *
  * What may stop it is here too, for the same reason as approving: a
  * command sent while the agent is working is refused, not queued, so a
@@ -23,7 +24,7 @@
  */
 import type { ClientMsg, SpecInfo } from "../../protocol.ts";
 import { SPEC_DOCS } from "../../documentKinds.ts";
-import { type Task, taskAt } from "../../specTasks.ts";
+import { runsUnder, type Task, taskAt } from "../../specTasks.ts";
 
 /** Its name on pi's list of commands (CommandsMsg), which is how the window knows it is there. */
 export const RUN = "spec-run";
@@ -74,27 +75,46 @@ export function tasksBetween(text: string, from: number, to: number): Task[] {
 		.split("\n")
 		.map(taskAt)
 		.filter((task): task is Task => task !== null);
-	const heading = (task: Task) => all.some((other) => other.number.startsWith(`${task.number}.`));
-	return covered.filter((task) => !task.done && !heading(task));
+	return foldRuns(all, covered);
 }
 
 /**
- * The lines a Start belongs on: each task still to do that is work of its
- * own, with where its line begins. A heading with sub-tasks is left out — it
- * is checked when they are and is never run — and so is a task done, which
- * the command refuses. By offset into `text`, which is what a decoration
- * wants; the text is the document's, so a line is what the document says
- * it is, `\r` and all.
+ * Of `chosen`, the ones that are runs: with something left to do, and not
+ * under another chosen one — `2` covered folds `2.2` into it, since the
+ * heading's run is all of its sub-tasks.
+ */
+function foldRuns(all: Task[], chosen: Task[]): Task[] {
+	const runnable = chosen.filter((task) => (runsUnder(all, task.number)?.length ?? 0) > 0);
+	return runnable.filter((task) => !runnable.some((other) => task.number.startsWith(`${other.number}.`)));
+}
+
+/** What a heading's Start would run, for its title: `2.1, 2.2`; empty for a task that is its own run. */
+export function underOf(text: string, number: string): string[] {
+	const all = text
+		.split("\n")
+		.map(taskAt)
+		.filter((task): task is Task => task !== null);
+	const runs = runsUnder(all, number) ?? [];
+	return runs.length === 1 && runs[0]!.number === number ? [] : runs.map((task) => task.number);
+}
+
+/**
+ * The lines a Start belongs on: each task with something left to do, with
+ * where its line begins — a task of its own not done, or a heading with a
+ * sub-task not done, whose Start is all of them (Kiro's). A task done, or a
+ * heading with nothing left under it, has none: the command refuses it. By
+ * offset into `text`, which is what a decoration wants; the text is the
+ * document's, so a line is what the document says it is, `\r` and all.
  */
 export function startLines(text: string): { from: number; task: Task }[] {
 	const lines = text.split("\n");
 	const all = lines.map(taskAt);
-	const heading = (task: Task) => all.some((other) => other !== null && other.number.startsWith(`${task.number}.`));
+	const tasks = all.filter((task): task is Task => task !== null);
 	const out: { from: number; task: Task }[] = [];
 	let from = 0;
 	for (let at = 0; at < lines.length; at++) {
 		const task = all[at];
-		if (task && !task.done && !heading(task)) out.push({ from, task });
+		if (task && (runsUnder(tasks, task.number)?.length ?? 0) > 0) out.push({ from, task });
 		from += lines[at]!.length + 1;
 	}
 	return out;

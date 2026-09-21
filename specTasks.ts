@@ -77,6 +77,37 @@ export function taskToRun(tasks: Task[], number: string): Task | null {
 }
 
 /**
+ * The runs the person means by `number`, in order: the task itself when it
+ * is work of its own, and for a heading every sub-task of it still to do —
+ * Kiro's "Start task" on a heading, which is its sub-tasks first and all of
+ * them. Empty when there is nothing left under it; null when the list has
+ * no such number. Two numbers that overlap (`2` and `2.2`) mean the same
+ * run once, which is the caller's to fold (runsOf).
+ */
+export function runsUnder(tasks: Task[], number: string): Task[] | null {
+	const named = tasks.find((task) => task.number === number);
+	if (!named) return null;
+	const children = childrenOf(tasks, number);
+	if (children.length === 0) return named.done ? [] : [named];
+	return children.filter((child) => !child.done && childrenOf(tasks, child.number).length === 0);
+}
+
+/**
+ * The runs several numbers mean together, each once and in the order the
+ * list stands: `2 2.2` is 2's sub-tasks, and `2.2 1` is 1 then 2.2. Null
+ * names the first number the list does not have.
+ */
+export function runsOf(tasks: Task[], numbers: readonly string[]): { runs: Task[]; missing: string | null } {
+	const wanted = new Set<string>();
+	for (const number of numbers) {
+		const under = runsUnder(tasks, number);
+		if (under === null) return { runs: [], missing: number };
+		for (const task of under) wanted.add(task.number);
+	}
+	return { runs: tasks.filter((task) => wanted.has(task.number)), missing: null };
+}
+
+/**
  * How far the list has got, as a window says it: how many boxes there are,
  * how many are checked, and which task is next.
  *

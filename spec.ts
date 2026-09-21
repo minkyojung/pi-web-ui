@@ -53,7 +53,7 @@ import { writeAtomic } from "./atomic.ts";
 import { APP_DIR_NAME, APPROVALS, SPEC_DOCS, type SpecDoc, SPECS_DIR } from "./documentKinds.ts";
 import { CITIES } from "./electron/cities.js";
 import { approve, type SpecState, specState } from "./specApproval.ts";
-import { nextTask, parseTasks, type Task, taskToRun, withDone, withParents } from "./specTasks.ts";
+import { nextTask, parseTasks, runsOf, runsUnder, type Task, taskToRun, withDone, withParents } from "./specTasks.ts";
 
 /** A workspace's placeholder name: a city, or a city of a later round (`lisbon-v2`). */
 const PLACEHOLDER = new RegExp(`^(?:${CITIES.join("|")})(?:-v\\d+)?$`);
@@ -813,19 +813,21 @@ export default function spec(pi: ExtensionAPI): void {
 			const tasks = parseTasks(text);
 			// Every number named is looked at before any is started: a queue with
 			// a task that is not there, or is done, is a question to go back with,
-			// not a run to stop halfway.
-			const named = numbers.map((number) => ({ number, task: taskToRun(tasks, number) }));
-			const missing = named.find((one) => !one.task);
-			if (missing) {
-				ctx.ui.notify(`${chosen.name} has no task ${missing.number}.`, "info");
+			// not a run to stop halfway. A heading is its sub-tasks still to do,
+			// all of them in order — Kiro's Start on a heading — and numbers that
+			// overlap mean each run once, in the order the list stands: a task
+			// builds on the ones before it (runsOf).
+			const { runs, missing } = runsOf(tasks, numbers);
+			if (missing !== null) {
+				ctx.ui.notify(`${chosen.name} has no task ${missing}.`, "info");
 				return;
 			}
-			const finished = named.find((one) => one.task?.done);
-			if (finished) {
-				ctx.ui.notify(`${finished.number} is already done. To have it done again, clear its box in ${SPECS_DIR}${chosen.name}/tasks.md first.`, "info");
+			const finished = numbers.find((number) => runsUnder(tasks, number)?.length === 0);
+			if (finished !== undefined) {
+				ctx.ui.notify(`${finished} is already done. To have it done again, clear its box in ${SPECS_DIR}${chosen.name}/tasks.md first.`, "info");
 				return;
 			}
-			const queue = named.length > 0 ? named.map((one) => one.task as Task) : [nextTask(tasks)].filter((task): task is Task => task !== null);
+			const queue = numbers.length > 0 ? runs : [nextTask(tasks)].filter((task): task is Task => task !== null);
 			const [task, ...then] = queue;
 			if (!task) {
 				ctx.ui.notify(`Every task of ${chosen.name} is done.`, "info");

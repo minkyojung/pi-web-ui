@@ -1035,7 +1035,8 @@ test("번호를 주면 그 작업, 안 주면 다음 작업, 묶음을 주면 �
   await pi.runTask("2.2");
   assert.equal(pi.done[2].sendMessage.details.task, "2.2");
   await pi.runTask("2");
-  assert.equal(pi.done[4].sendMessage.details.task, "2.1", "묶음은 일이 아니다");
+  assert.equal(pi.done[4].sendMessage.details.task, "2.1", "묶음은 그 하위 전부 — 하위부터");
+  assert.deepEqual(pi.done[4].sendMessage.details.then, ["2.2"], "나머지 하위가 큐로 따라온다 (Kiro의 Start task on a heading)");
 });
 
 test("없는 번호, 이미 끝난 작업, 전부 끝남 — 알리기만 한다", async (t) => {
@@ -1278,11 +1279,15 @@ test("큐의 번호는 전부 먼저 본다 — 없거나 끝난 번호가 있�
   assert.deepEqual(pi.sessions, []);
   assert.match(pi.notes[0].text, /no task 9/i);
   assert.match(pi.notes[1].text, /1 is already done/i);
+  pi.plan("all-of-two", PLAN.replace("- [ ] 2.1", "- [x] 2.1").replace("- [ ] 2.2", "- [x] 2.2"));
+  await pi.runTask("all-of-two 2");
+  assert.match(pi.notes[2].text, /2 is already done/i, "하위가 다 끝난 묶음도 끝난 것이다");
+  pi.notes.length = 2;
   pi.eachTurnWrites([" M paint.js"]);
-  await pi.runTask("2.2 2.2 2.1");
+  await pi.runTask("email-auth 2.2 2.2 2.1");
   await pi.chained();
-  assert.deepEqual(pi.done.filter((one) => one.sendMessage).map((one) => one.sendMessage.details.task), ["2.2", "2.1"], "준 순서대로, 한 번씩");
-  assert.match(pi.notes[2].text, /2\.1 starts next/);
+  assert.deepEqual(pi.done.filter((one) => one.sendMessage).map((one) => one.sendMessage.details.task), ["2.1", "2.2"], "문서의 순서로, 한 번씩 — 작업은 앞 작업 위에 쌓인다");
+  assert.match(pi.notes[2].text, /2\.2 starts next/);
 });
 
 // --- the model and the effort a run is asked for ---

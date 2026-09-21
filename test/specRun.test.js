@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runBlocked, runCommand, runMessage, runWhy, startLines, tasksBetween } from "../web/src/specRun.ts";
+import { runBlocked, runCommand, runMessage, runWhy, startLines, tasksBetween, underOf } from "../web/src/specRun.ts";
 
-const PLAN = "# Implementation Plan\n\n- [ ] 1. Add the door\n  - _Requirements: 1.1_\n- [x] 2. Hang the sign\n- [x] 2.1 Cut the board\n- [ ] 2.2 Paint it\n- [ ] 3. Lock up\n";
+const PLAN = "# Implementation Plan\n\n- [ ] 1. Add the door\n  - _Requirements: 1.1_\n- [ ] 2. Hang the sign\n- [x] 2.1 Cut the board\n- [ ] 2.2 Paint it\n- [ ] 3. Lock up\n";
 const at = (needle) => PLAN.indexOf(needle);
 const numbers = (from, to) => tasksBetween(PLAN, from, to).map((task) => task.number);
 
@@ -16,8 +16,9 @@ test("보내는 것은 사람이 치는 것과 같다 — 스펙 이름, 번호�
 
 test("선택이 덮는 줄의 작업들 — 한 글자만 걸쳐도 그 줄, 빈 선택은 커서의 줄", () => {
   assert.deepEqual(numbers(at("Add the door"), at("Add the door")), ["1"], "빈 선택");
-  assert.deepEqual(numbers(at("door") + 2, at("Paint it") + 1), ["1", "2.2"], "1의 줄 중간에서 2.2의 줄 중간까지 — 둘 다, 사이의 2와 2.1은 아니다");
+  assert.deepEqual(numbers(at("door") + 2, at("Paint it") + 1), ["1", "2"], "1의 줄 중간에서 2.2의 줄 중간까지 — 2가 2.2를 품고, 2.1은 끝났다");
   assert.deepEqual(numbers(at("- [ ] 2.2") - 1, at("- [ ] 2.2") - 1), [], "줄 끝의 개행에 선 커서는 앞 줄(2.1, 끝남)의 것");
+  assert.deepEqual(numbers(at("Paint it"), at("Paint it")), ["2.2"], "하위만 고르면 하위 그대로");
 });
 
 test("끝이 다음 줄 0열이면 그 줄은 빼지 않은 것이다 — 드래그는 개행 하나를 넘치기 쉽다", () => {
@@ -29,9 +30,11 @@ test("끝이 다음 줄 0열이면 그 줄은 빼지 않은 것이다 — 드래
   assert.deepEqual(numbers(0, at("- [ ] 1.")), [], "제목만 선택하고 1의 0열에서 끝나면 아무것도 없다");
 });
 
-test("끝난 작업과 묶음 상위는 뺀다 — 명령이 거절하고, 상위는 일이 아니다", () => {
-  assert.deepEqual(numbers(0, PLAN.length), ["1", "2.2", "3"], "2는 묶음, 2.1은 끝남");
-  assert.deepEqual(numbers(at("Hang the sign"), at("Cut the board")), [], "묶음과 끝난 것만 고르면 아무것도 없다");
+test("끝난 작업은 뺀다; 묶음은 남은 하위 전부를 뜻하고, 덮인 하위는 그 안으로 접힌다", () => {
+  assert.deepEqual(numbers(0, PLAN.length), ["1", "2", "3"], "2가 2.2를 품고, 2.1은 끝남");
+  assert.deepEqual(numbers(at("Hang the sign"), at("Cut the board")), ["2"], "묶음은 남은 하위(2.2)가 있으니 든다; 끝난 2.1은 아니다");
+  const done = PLAN.replace("- [ ] 2.2", "- [x] 2.2");
+  assert.deepEqual(tasksBetween(done, 0, done.length).map((task) => task.number), ["1", "3"], "남은 하위가 없는 묶음은 뺀다");
 });
 
 test("거꾸로 골라도 순서는 문서의 순서", () => {
@@ -69,19 +72,22 @@ test("막을 이유가 없으면 막지 않는다; 이유는 가까운 것부터
   assert.equal(runWhy("sent"), "Starting…");
 });
 
-test("Start가 설 줄은 잎이고 안 끝난 작업의 줄이다 — 줄의 시작 위치로", () => {
+test("Start가 설 줄은 할 것이 남은 작업의 줄이다 — 묶음도, 남은 하위가 있으면; 줄의 시작 위치로", () => {
   assert.deepEqual(
     startLines(PLAN).map(({ from, task }) => [task.number, PLAN.slice(from, from + 9)]),
     [
       ["1", "- [ ] 1. "],
+      ["2", "- [ ] 2. "],
       ["2.2", "- [ ] 2.2"],
       ["3", "- [ ] 3. "],
     ],
-    "2는 묶음, 2.1은 끝남, 그 외 줄은 작업이 아니다",
+    "2.1은 끝남, 그 외 줄은 작업이 아니다",
   );
+  assert.deepEqual(underOf(PLAN, "2"), ["2.2"], "묶음의 Start가 돌릴 것");
+  assert.deepEqual(underOf(PLAN, "1"), [], "잎은 제 것");
   assert.deepEqual(startLines(""), []);
   assert.deepEqual(startLines("# Nothing here\n- just a bullet\n"), []);
   const crlf = PLAN.replaceAll("\n", "\r\n");
-  assert.deepEqual(startLines(crlf).map(({ from }) => crlf.slice(from, from + 5)), ["- [ ]", "- [ ]", "- [ ]"], "CRLF에서도 줄의 시작이다");
+  assert.deepEqual(startLines(crlf).map(({ from }) => crlf.slice(from, from + 5)), ["- [ ]", "- [ ]", "- [ ]", "- [ ]"], "CRLF에서도 줄의 시작이다");
   assert.deepEqual(startLines(PLAN.replaceAll("- [ ]", "- [x]")), [], "전부 끝나면 하나도 없다");
 });

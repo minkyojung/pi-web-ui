@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { nextTask, parseTasks, progressOf, taskToRun, withDone, withParents } from "../specTasks.ts";
+import { nextTask, parseTasks, progressOf, runsOf, runsUnder, taskToRun, withDone, withParents } from "../specTasks.ts";
 
 /** Kiro's own example, from its spec prompt — the form our agent is told to write. */
 const KIRO = `# Implementation Plan
@@ -119,4 +119,24 @@ test("진행은 보이는 칸을 전부 센다 — 묶음 상위의 칸도; 다�
   const all = leaves.replace("- [ ] 2.", "- [x] 2.");
   assert.deepEqual(progressOf(parseTasks(all)), { total: 4, done: 4, next: null });
   assert.deepEqual(progressOf([]), { total: 0, done: 0, next: null });
+});
+
+test("번호 하나가 뜻하는 실행 — 잎은 그것, 묶음은 남은 하위 전부를 차례로, 없으면 null", () => {
+  const tasks = parseTasks(KIRO);
+  const numbers = (found) => found?.map((task) => task.number);
+  assert.deepEqual(numbers(runsUnder(tasks, "1")), ["1"]);
+  assert.deepEqual(numbers(runsUnder(tasks, "2")), ["2.1", "2.2"], "Kiro의 Start task on a heading: 하위부터, 전부");
+  assert.deepEqual(numbers(runsUnder(parseTasks(withDone(KIRO, new Set(["2.1"]))), "2")), ["2.2"], "끝난 하위는 뺀다");
+  assert.deepEqual(numbers(runsUnder(parseTasks(withDone(KIRO, new Set(["2.1", "2.2"]))), "2")), [], "남은 게 없으면 비어 있다");
+  assert.deepEqual(numbers(runsUnder(parseTasks(withDone(KIRO, new Set(["1"]))), "1")), [], "끝난 잎도 비어 있다");
+  assert.equal(runsUnder(tasks, "9"), null);
+});
+
+test("번호 여럿은 겹쳐도 한 번씩, 문서의 순서로", () => {
+  const tasks = parseTasks(KIRO);
+  const numbers = (given) => runsOf(tasks, given).runs.map((task) => task.number);
+  assert.deepEqual(numbers(["2", "2.2"]), ["2.1", "2.2"], "2가 2.2를 품는다");
+  assert.deepEqual(numbers(["2.2", "1"]), ["1", "2.2"], "준 순서가 아니라 문서의 순서");
+  assert.deepEqual(numbers(["2.2", "2.2"]), ["2.2"]);
+  assert.deepEqual(runsOf(tasks, ["1", "9", "2"]), { runs: [], missing: "9" }, "없는 번호가 있으면 아무것도 없고 그 번호를 말한다");
 });

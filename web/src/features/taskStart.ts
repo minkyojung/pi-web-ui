@@ -20,14 +20,14 @@
  * When it shows: on the line under the pointer, and on the line the cursor
  * is on, so that it is reached from the keyboard too. Always in the DOM,
  * only its opacity changes — a control that appears and disappears from
- * the layout would move the words. Only on the leaves: a heading with
- * sub-tasks is checked when they are and is never run, and a task done is
- * one the command refuses.
+ * the layout would move the words. On every task with something left to
+ * do: a heading's Start is all of its sub-tasks still to do, as Kiro's is,
+ * and says so; a task done is one the command refuses, and has none.
  */
 import { type EditorState, type Extension, Facet, RangeSetBuilder, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 
-import { startLines, tasksBetween } from "../specRun.ts";
+import { startLines, tasksBetween, underOf } from "../specRun.ts";
 
 /**
  * What stands in the way of starting, in words for the title, or null when
@@ -71,14 +71,17 @@ class Start extends WidgetType {
 	 */
 	readonly here: boolean;
 	readonly why: string | null;
-	constructor(number: string, here: boolean, why: string | null) {
+	/** For a heading, the sub-tasks its Start runs, in order; empty for a task of its own. */
+	readonly under: string[];
+	constructor(number: string, here: boolean, why: string | null, under: string[]) {
 		super();
 		this.number = number;
 		this.here = here;
 		this.why = why;
+		this.under = under;
 	}
 	eq(other: Start) {
-		return other.number === this.number && other.here === this.here && other.why === this.why;
+		return other.number === this.number && other.here === this.here && other.why === this.why && other.under.join() === this.under.join();
 	}
 	toDOM(view: EditorView) {
 		const button = document.createElement("button");
@@ -87,8 +90,10 @@ class Start extends WidgetType {
 		button.dataset.start = this.number;
 		if (this.here) button.dataset.here = "";
 		button.disabled = this.why !== null;
-		button.title = this.why ?? `Start ${this.number}`;
-		button.setAttribute("aria-label", `Start task ${this.number}`);
+		// A heading's Start says what it runs: all of it, and what that is.
+		const what = this.under.length > 0 ? `Start ${this.number} — ${this.under.join(", ")}` : `Start ${this.number}`;
+		button.title = this.why ?? what;
+		button.setAttribute("aria-label", what);
 		button.append(playIcon());
 		// The press is the button's, not the editor's: the caret stays where it
 		// is and the editor keeps the focus it has.
@@ -121,7 +126,7 @@ function build(state: EditorState): DecorationSet {
 	for (const { from, task } of startLines(text)) {
 		const here = state.doc.lineAt(from).number === cursor || covered.has(task.number);
 		out.add(from, from, hasStart);
-		out.add(from, from, Decoration.widget({ widget: new Start(task.number, here, why), side: -1 }));
+		out.add(from, from, Decoration.widget({ widget: new Start(task.number, here, why, underOf(text, task.number)), side: -1 }));
 	}
 	return out.finish();
 }

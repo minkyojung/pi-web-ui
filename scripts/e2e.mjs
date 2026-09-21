@@ -3451,8 +3451,10 @@ check("a spec's task has a Start beside its line — on the tasks still to do, s
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/start/tasks.md")}`);
 	await until("the plan in front", async () => (await editorText(app)).includes("Heading"));
 	const starts = () => app.evaluate("[...document.querySelectorAll('#editor .cm-start')].map((b) => b.dataset.start).join(',')");
-	// 1 and 2.2: 2 is a heading with sub-tasks and is never run, 2.1 is done.
-	await until("the Starts", async () => (await starts()) === "1,2.2");
+	// 1, 2 and 2.2: 2 is a heading, and its Start is its sub-tasks still to
+	// do — 2.2, since 2.1 is done — and says so.
+	await until("the Starts", async () => (await starts()) === "1,2,2.2");
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-start[data-start=\"2\"]').title"), "Start 2 — 2.2");
 	assert.equal(await app.evaluate("[...document.querySelectorAll('#editor .cm-start')].every((b) => !b.disabled)"), true, "pressable: the spec is approved and the agent is idle");
 	// Out of the flow and left of the words, so the text is where it was.
 	const laid = await app.evaluate("(() => { const b = document.querySelector('#editor .cm-start[data-start=\"2.2\"]').getBoundingClientRect(); const l = document.querySelector('#editor .cm-hasStart:has([data-start=\"2.2\"])').getBoundingClientRect(); return { left: b.right <= l.left, tall: b.height }; })()");
@@ -3475,7 +3477,7 @@ check("a spec's task has a Start beside its line — on the tasks still to do, s
 	await app.moveTo(1, 1);
 	// A box checked on disk, as the run's end checks it: its Start goes.
 	writeFileSync(join(dir, "tasks.md"), plan("x"));
-	await until("the Start gone with the box", async () => (await starts()) === "2.2");
+	await until("the Start gone with the box", async () => (await starts()) === "2,2.2");
 });
 
 // What the tasks run on is chosen once, over the list, and rides with each Start.
@@ -3543,19 +3545,19 @@ check("tasks a selection covers are offered as one run over the list, by their n
 	const select = (from, to) => app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: ${from}, head: ${to} } })`);
 	await select(plan.indexOf("First"), plan.indexOf("- [ ] 3."));
 	const offered = () => app.evaluate("document.getElementById('runPicked')?.textContent ?? ''");
-	await until("the run offered", async () => (await offered()) === "Run 1, 2.2");
+	await until("the run offered", async () => (await offered()) === "Run 1, 2");
 	const lit = () => app.evaluate("[...document.querySelectorAll('#editor .cm-start[data-here]')].map((b) => b.dataset.start).join(',')");
-	assert.equal(await lit(), "1,2.2", "the Starts on the lines taken are lit — 2 is a heading, 2.1 is done, 3 was not touched");
+	assert.equal(await lit(), "1,2", "the Starts on the lines taken are lit — 2 is a heading and its 2.2 folds into it, 2.1 is done, 3 was not touched");
 	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-start[data-start=\"3\"]')).opacity"), "0");
 	// One character into 3, and it is in.
 	await select(plan.indexOf("First"), plan.indexOf("- [ ] 3.") + 1);
-	await until("3 in", async () => (await offered()) === "Run 1, 2.2, 3");
+	await until("3 in", async () => (await offered()) === "Run 1, 2, 3");
 	await app.shot("task-picked");
 	// Pressed: the one command, the numbers on it, as the person would have typed it.
 	await app.evaluate("(() => { const send = WebSocket.prototype.send; window.__sent = []; WebSocket.prototype.send = function (data) { window.__sent.push(String(data)); return send.call(this, data); }; })()");
 	await app.click("#runPicked");
 	await until("the line sent", () => app.evaluate("window.__sent.some((d) => d.includes('/spec-run picked '))"));
-	assert.equal(await app.evaluate("JSON.parse(window.__sent.find((d) => d.includes('/spec-run picked '))).text"), "/spec-run picked 1 2.2 3");
+	assert.equal(await app.evaluate("JSON.parse(window.__sent.find((d) => d.includes('/spec-run picked '))).text"), "/spec-run picked 1 2 3", "2 for all of it; the command unfolds it");
 	// Back to a cursor: nothing is offered, and the lit Starts go dark.
 	await select(plan.indexOf("Fourth"), plan.indexOf("Fourth"));
 	await until("nothing offered", async () => !(await app.evaluate("!!document.getElementById('runPicked')")));
