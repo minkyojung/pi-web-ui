@@ -13,8 +13,16 @@ test.after(() => rmSync(DIR, { recursive: true, force: true }));
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Events a watcher reports over a short window, once it has had time to start. */
-async function report(act, settle = 40) {
+/**
+ * Events a watcher reports over a short window, once it has had time to start.
+ *
+ * A quarter of a second to settle, not the forty milliseconds this began
+ * with: every claim here is "reported once", and on a busy machine the system
+ * hands over the events of one write further apart than forty — on GitHub's
+ * runner three quick writes came back as two reports, and on a laptop running
+ * the whole suite a single new file did, one run in three.
+ */
+async function report(act, settle = 250) {
   const seen = [];
   const stop = watchNotes(DIR, (path) => seen.push(path), settle);
   await wait(150);
@@ -29,11 +37,7 @@ test("노트가 쓰이면 그 경로가 한 번 보고된다", async () => {
     writeFileSync(join(DIR, "a.md"), "one\n");
     writeFileSync(join(DIR, "a.md"), "two\n");
     writeFileSync(join(DIR, "a.md"), "three\n");
-  // A quarter of a second to settle, not the forty milliseconds the others
-  // use: the claim is about writes inside the window, and on a busy machine
-  // the system hands over three quick writes further apart than forty — on
-  // GitHub's runner this came back as two reports, once, and failed the job.
-  }, 250);
+  });
   assert.deepEqual(seen, ["a.md"], "연속된 쓰기는 하나로 접힌다");
 });
 
