@@ -44,6 +44,9 @@ export const blocked = Facet.define<string | null, string | null>({ combine: (va
  */
 export const chrome = Facet.define<string, string>({ combine: (values) => values[values.length - 1] ?? "" });
 
+/** The task this session is running now (ConfigMsg.run), or null: its Start turns rather than offers. */
+export const running = Facet.define<string | null, string | null>({ combine: (values) => values[values.length - 1] ?? null });
+
 /** What pressing does, given the task's number. */
 export const onStart = Facet.define<(number: string) => void, ((number: string) => void) | null>({ combine: (values) => values[values.length - 1] ?? null });
 
@@ -62,6 +65,23 @@ function playIcon(): SVGElement {
 	return svg;
 }
 
+/** lucide's Loader2, the app's spinner (ui/spinner.tsx), turning by the same class. */
+function spinnerIcon(): SVGElement {
+	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	svg.setAttribute("viewBox", "0 0 24 24");
+	svg.setAttribute("fill", "none");
+	svg.setAttribute("stroke", "currentColor");
+	svg.setAttribute("stroke-width", "2");
+	svg.setAttribute("stroke-linecap", "round");
+	svg.setAttribute("stroke-linejoin", "round");
+	svg.setAttribute("aria-hidden", "true");
+	svg.setAttribute("class", "animate-spin");
+	const arc = document.createElementNS("http://www.w3.org/2000/svg", "path");
+	arc.setAttribute("d", "M21 12a9 9 0 1 1-6.219-8.56");
+	svg.append(arc);
+	return svg;
+}
+
 class Start extends WidgetType {
 	readonly number: string;
 	/**
@@ -73,15 +93,18 @@ class Start extends WidgetType {
 	readonly why: string | null;
 	/** For a heading, the sub-tasks its Start runs, in order; empty for a task of its own. */
 	readonly under: string[];
-	constructor(number: string, here: boolean, why: string | null, under: string[]) {
+	/** Whether this is the task being run now — or the heading it is under. */
+	readonly turning: boolean;
+	constructor(number: string, here: boolean, why: string | null, under: string[], turning: boolean) {
 		super();
 		this.number = number;
 		this.here = here;
 		this.why = why;
 		this.under = under;
+		this.turning = turning;
 	}
 	eq(other: Start) {
-		return other.number === this.number && other.here === this.here && other.why === this.why && other.under.join() === this.under.join();
+		return other.number === this.number && other.here === this.here && other.why === this.why && other.under.join() === this.under.join() && other.turning === this.turning;
 	}
 	toDOM(view: EditorView) {
 		const button = document.createElement("button");
@@ -89,12 +112,15 @@ class Start extends WidgetType {
 		button.className = `${view.state.facet(chrome)} cm-start`.trim();
 		button.dataset.start = this.number;
 		if (this.here) button.dataset.here = "";
+		if (this.turning) button.dataset.running = "";
 		button.disabled = this.why !== null;
 		// A heading's Start says what it runs: all of it, and what that is.
 		const what = this.under.length > 0 ? `Start ${this.number} — ${this.under.join(", ")}` : `Start ${this.number}`;
-		button.title = this.why ?? what;
-		button.setAttribute("aria-label", what);
-		button.append(playIcon());
+		// The one being run says so, over why the others cannot be pressed:
+		// that it is running is the reason, said plainly.
+		button.title = this.turning ? `Running ${this.number}` : (this.why ?? what);
+		button.setAttribute("aria-label", this.turning ? `Running task ${this.number}` : what);
+		button.append(this.turning ? spinnerIcon() : playIcon());
 		// The press is the button's, not the editor's: the caret stays where it
 		// is and the editor keeps the focus it has.
 		button.onmousedown = (event) => event.preventDefault();
@@ -114,6 +140,7 @@ const hasStart = Decoration.line({ class: "cm-hasStart" });
 
 function build(state: EditorState): DecorationSet {
 	const why = state.facet(blocked);
+	const now = state.facet(running);
 	const text = state.doc.toString();
 	// The cursor's line, when the selection is a cursor: with words selected
 	// the head is where the drag stopped, which may be the start of a line
@@ -126,7 +153,10 @@ function build(state: EditorState): DecorationSet {
 	for (const { from, task } of startLines(text)) {
 		const here = state.doc.lineAt(from).number === cursor || covered.has(task.number);
 		out.add(from, from, hasStart);
-		out.add(from, from, Decoration.widget({ widget: new Start(task.number, here, why, underOf(text, task.number)), side: -1 }));
+		// The running task's own line, and the heading it is under, which is
+		// running by way of it.
+		const turning = now !== null && (now === task.number || now.startsWith(`${task.number}.`));
+		out.add(from, from, Decoration.widget({ widget: new Start(task.number, here, why, underOf(text, task.number), turning), side: -1 }));
 	}
 	return out.finish();
 }
@@ -135,7 +165,7 @@ function build(state: EditorState): DecorationSet {
 export const starts = StateField.define<DecorationSet>({
 	create: build,
 	update(deco, tr) {
-		if (tr.docChanged || tr.selection !== undefined || tr.startState.facet(blocked) !== tr.state.facet(blocked)) return build(tr.state);
+		if (tr.docChanged || tr.selection !== undefined || tr.startState.facet(blocked) !== tr.state.facet(blocked) || tr.startState.facet(running) !== tr.state.facet(running)) return build(tr.state);
 		return deco;
 	},
 	provide: (field) => EditorView.decorations.from(field),
@@ -153,8 +183,10 @@ const look = EditorView.baseTheme({
 	},
 	".cm-hasStart:hover .cm-start, .cm-start[data-here], .cm-start:focus-visible": { opacity: "1" },
 	".cm-start:disabled": { opacity: "0.4", cursor: "default" },
-	".cm-hasStart:not(:hover) .cm-start:disabled:not([data-here])": { opacity: "0" },
+	".cm-hasStart:not(:hover) .cm-start:disabled:not([data-here]):not([data-running])": { opacity: "0" },
+	// The one running is always shown, and whole: it is the thing happening.
+	".cm-start[data-running]": { opacity: "1" },
 });
 
-/** The feature: what draws the editor adds `chrome.of(...)`, `blocked.of(...)` and `onStart.of(...)` beside it. */
+/** The feature: what draws the editor adds `chrome.of(...)`, `blocked.of(...)`, `running.of(...)` and `onStart.of(...)` beside it. */
 export const taskStart: Extension = [starts, look];

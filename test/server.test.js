@@ -1289,6 +1289,33 @@ it("붙는 탭은 명령 목록에서 /spec을 듣는다 — 메뉴가 그것을
 // own defaults instead, which include the shell — whatever the person had
 // chosen. Asked on Plan, where the difference is plain, and aborted as soon
 // as the tools have been seen.
+it("작업이 도는 동안 탭은 어느 작업인지 듣는다 — 세션의 표식에서; 턴이 끝나면 null", async () => {
+  const name = "running-check";
+  const dir = join(cwd, ".octave/specs", name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "requirements.md"), "# Requirements Document\n");
+  writeFileSync(join(dir, "design.md"), "# Design Document\n");
+  writeFileSync(join(dir, "tasks.md"), "# Implementation Plan\n\n- [ ] 1. Do the one thing\n- [ ] 2. Do the next\n");
+  const { approve } = await import("../specApproval.ts");
+  while (approve(cwd, name)) {}
+  clear();
+  try {
+    // One task, not a queue: this folder is no repository, so an aborted
+    // run still counts as done there and a queue would go on to the next
+    // while the check after this one is asking for a session of its own.
+    send({ type: "prompt", text: `/spec-run ${name} 1`, command: true });
+    const running = await want("config", (m) => m.run !== null, 60_000);
+    assert.deepEqual(running.run, { spec: name, task: "1", title: "Do the one thing", then: [] }, "무엇을 돌리는지, 뒤에 무엇이 남았는지");
+    assert.equal(running.isStreaming, true);
+    send({ type: "abort" });
+    await want("agent_settled", () => true, 60_000);
+    const rested = await want("config", (m) => m.isStreaming === false, 10_000);
+    assert.equal(rested.run, null, "턴이 끝나면 실행이 아니다");
+  } finally {
+    rmSync(join(cwd, ".octave"), { recursive: true, force: true });
+  }
+});
+
 it("명령이 연 세션도 사람이 고른 모드로 열린다 — Plan이면 셸도 쓰기도 없다", async () => {
   const name = "tools-check";
   const dir = join(cwd, ".octave/specs", name);

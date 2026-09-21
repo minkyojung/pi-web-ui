@@ -92,7 +92,7 @@ test("a question of pi's outranks the step it asked it from", () => {
 
 test("a run in flight is the step, with what is queued behind it", () => {
 	const items = [{ kind: "user", text: "go" }, { kind: "tool", name: "read", args: { path: "plan.md" } }];
-	assert.deepEqual(line({ streaming: true, queued: 2, items }), { kind: "step", what: "read", detail: "plan.md", queued: 2 });
+	assert.deepEqual(line({ streaming: true, queued: 2, items }), { kind: "step", what: "read", detail: "plan.md", queued: 2, task: null });
 });
 
 test("at rest it is the last run, and nothing at all before the first one", () => {
@@ -126,4 +126,14 @@ test("a result is seen only when the column is open, at its end, in a window in 
 	assert.equal(resultSeen({ folded: true, atEnd: true, shown: true }), false, "the column is away");
 	assert.equal(resultSeen({ folded: false, atEnd: false, shown: true }), false, "open, but scrolled up past it");
 	assert.equal(resultSeen({ folded: false, atEnd: true, shown: false }), false, "open, behind another window");
+});
+
+test("작업의 실행이면 줄이 어느 작업인지, 뒤에 무엇이 남았는지 들고 간다 — 단계는 그대로", () => {
+  const task = { task: "2.2", title: "Paint it", then: ["3"] };
+  const step = line({ streaming: true, task });
+  assert.equal(step.kind, "step");
+  assert.deepEqual(step.task, task);
+  assert.equal(step.what, "Working", "단계는 항목에서, 작업은 서버에서 — 서로 상관없다");
+  assert.equal(line({ streaming: true }).task, null, "대화의 턴이면 작업이 없다");
+  assert.notEqual(line({ streaming: false, task })?.kind, "step", "쉬는 동안엔 단계가 아니다 — 서버가 null을 보내지만, 보내더라도");
 });

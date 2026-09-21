@@ -37,8 +37,11 @@ import type { Item } from "./types";
 export type Line =
 	/** Something is in the way, and it is drawn in the colour that says so. */
 	| { kind: "trouble"; why: "offline" | "waiting"; text: string }
-	/** A run in flight: the step, and what is waiting behind it. */
-	| { kind: "step"; what: string; detail: string | null; queued: number }
+	/**
+	 * A run in flight: the step, and what is waiting behind it — and, when
+	 * the run is a spec's task, which task and what is queued after it.
+	 */
+	| { kind: "step"; what: string; detail: string | null; queued: number; task: Task | null }
 	/** At rest: what the last run came to. */
 	| { kind: "last"; text: string };
 
@@ -122,6 +125,21 @@ export function lastRun(items: Item[]): string | null {
 	return at("answered", clock);
 }
 
+/**
+ * The task a run is, as the server reads it off the session (ConfigMsg.run):
+ * the number and the objective, and the numbers queued after it. The one
+ * thing the events alone cannot say: a tool call looks the same in a task's
+ * run and in a conversation.
+ */
+export interface Task {
+	task: string;
+	title: string;
+	then: string[];
+}
+
+/** "Task 2.2 · Paint it", for the line and for the title of a control that stands for it. */
+export const taskWords = (task: Pick<Task, "task" | "title">): string => `Task ${task.task} · ${task.title}`;
+
 export function agentLine(state: {
 	connection: Connection;
 	/** Questions of pi's waiting on an answer. */
@@ -130,12 +148,14 @@ export function agentLine(state: {
 	/** Messages written while the run goes, waiting their turn. */
 	queued: number;
 	items: Item[];
+	/** The spec's task the run is, when it is one. */
+	task?: Task | null;
 }): Line | null {
 	if (state.connection !== "open") {
 		return { kind: "trouble", why: "offline", text: state.connection === "connecting" ? "Connecting…" : "Offline — reconnecting" };
 	}
 	if (state.asking > 0) return { kind: "trouble", why: "waiting", text: "Waiting for your answer" };
-	if (state.streaming) return { kind: "step", ...currentStep(state.items), queued: state.queued };
+	if (state.streaming) return { kind: "step", ...currentStep(state.items), queued: state.queued, task: state.task ?? null };
 	const last = lastRun(state.items);
 	return last ? { kind: "last", text: last } : null;
 }

@@ -16,7 +16,7 @@ import { indentListItem, listBackspace, listEnter, outdentListItem } from "../fe
 import { listNumbers } from "../features/listNumbers";
 import { listIndent } from "../features/listIndent";
 import { authors, clearAuthors, paintAuthors, showAuthorsStore } from "../features/authors";
-import { blocked as startBlocked, chrome as startChrome, onStart, taskStart } from "../features/taskStart";
+import { blocked as startBlocked, chrome as startChrome, onStart, running as startRunning, taskStart } from "../features/taskStart";
 import { forget as forgetMoves, observe as observeMoves, take as takeMoves } from "../features/moves";
 import { livePreview, toggleLivePreview, toggleTask } from "../features/livePreview";
 import { leaveTextUp } from "../features/pageMove";
@@ -605,6 +605,8 @@ export function Editor({
 				taskStart,
 				startChrome.of(buttonVariants({ variant: "ghost", size: "icon-xs" })),
 				startBlocked.of(why),
+				// The task being run, when it is this spec's: its Start turns.
+				startRunning.of(config?.run?.spec === spec ? config.run.task : null),
 				onStart.of((number) => {
 					// On what the bar over the tasks chose (TaskBar), if anything.
 					const on = runOnOf(runOn, spec);
@@ -613,7 +615,7 @@ export function Editor({
 				}),
 			]),
 		});
-	}, [path, online, streaming, config?.isCompacting, commands, specs, starting, runOn]);
+	}, [path, online, streaming, config?.isCompacting, config?.run, commands, specs, starting, runOn]);
 	// Gone from the page, the selection covers nothing.
 	useEffect(() => () => pickTasks(null), []);
 

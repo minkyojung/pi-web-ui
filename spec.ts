@@ -380,14 +380,26 @@ interface Speaking {
  * which is also where it still is after a restart.
  */
 export function taskMark(entries: readonly unknown[]): TaskMark | null {
+	return taskMarkEntry(entries)?.mark ?? null;
+}
+
+/**
+ * The same, with the entry's own id: what a host that watches the session
+ * from outside tells one run from the next by, since the mark stays in the
+ * session after its turn and the turns after it are conversation.
+ */
+export function taskMarkEntry(entries: readonly unknown[]): { id: string; mark: TaskMark } | null {
 	for (let at = entries.length - 1; at >= 0; at--) {
-		const entry = entries[at] as SessionEntry | null;
+		const entry = entries[at] as (SessionEntry & { id?: string }) | null;
 		if (!entry || entry.type !== "custom_message" || entry.customType !== TASK_MARK) continue;
 		const details = entry.details as Partial<TaskMark> | undefined;
 		if (!details || typeof details.spec !== "string" || typeof details.task !== "string" || typeof details.title !== "string" || !Array.isArray(details.done)) return null;
 		const numbers = (given: unknown) => (Array.isArray(given) ? given.filter((number): number is string => typeof number === "string") : []);
 		const word = (given: unknown) => (typeof given === "string" ? given : null);
-		return { spec: details.spec, task: details.task, title: details.title, done: numbers(details.done), then: numbers(details.then), model: word(details.model), effort: word(details.effort) };
+		return {
+			id: typeof entry.id === "string" ? entry.id : "",
+			mark: { spec: details.spec, task: details.task, title: details.title, done: numbers(details.done), then: numbers(details.then), model: word(details.model), effort: word(details.effort) },
+		};
 	}
 	return null;
 }

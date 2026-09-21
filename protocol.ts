@@ -268,6 +268,14 @@ export interface ConfigMsg {
 	queued: { steering: string[]; followUp: string[] };
 	sessionId: string;
 	sessionName: string | null;
+	/**
+	 * The task this session is running, while it is: the spec, the task's
+	 * number and objective, and the tasks queued after it. Read off the mark
+	 * the run carries in its session (spec.ts), for the turn that is the run;
+	 * null at rest, and null in the turns after it, which are conversation.
+	 * The one thing the strip's line cannot say from the events alone.
+	 */
+	run: { spec: string; task: string; title: string; then: string[] } | null;
 	/** The folder the agent reads and writes in, in full. See CWD in server.ts. */
 	folder: string;
 	/** Where this server writes down what it says, so that a person can go and read it. See log.ts. */

@@ -34,7 +34,7 @@ import { clampLevel, isUnknownModel, loadoutOf, lostProviders, modelsNotice as m
 import { readSettings, updateSettings, type Settings } from "./settings.ts";
 import { askForName } from "./sessionName.ts";
 import { askUser } from "./askUser.ts";
-import specCommand, { takenSpecs } from "./spec.ts";
+import specCommand, { takenSpecs, taskMarkEntry } from "./spec.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { extensionUI } from "./extensionUI.ts";
 import { deleteSessionFile } from "./sessionDelete.ts";
@@ -369,6 +369,7 @@ function config(): ConfigMsg {
 	// left it out — see availableModels. Without this the picker could show the
 	// session running on nothing.
 	if (model && current) offered.set(current, model);
+	saidRun = JSON.stringify(runOf());
 	return {
 		type: "config",
 		model: current,
@@ -388,9 +389,28 @@ function config(): ConfigMsg {
 		},
 		sessionId: s.sessionId,
 		sessionName: s.sessionName ?? null,
+		run: runOf(),
 		folder: CWD,
 		log: logFile,
 	};
+}
+
+/**
+ * The mark whose turn has ended, by its entry's id. The mark stays in the
+ * session after the run — the box and the commit are made at its end — and
+ * the turns after it are conversation, so "this session is running a task"
+ * is the mark being there and its turn not being over.
+ */
+let runOver: string | null = null;
+
+/** The task this session is running now, or null. */
+function runOf(): ConfigMsg["run"] {
+	const s = session();
+	if (!s.isStreaming) return null;
+	const found = taskMarkEntry(s.sessionManager.buildContextEntries());
+	if (!found || found.id === runOver) return null;
+	const { spec, task, title, then } = found.mark;
+	return { spec, task, title, then };
 }
 
 /**
@@ -1158,8 +1178,20 @@ function toWireEvent(event: AgentSessionEvent): PiEventMsg {
  */
 let rereadWhenSettled = false;
 
+/** What the run was last said to be, so that a message ending mid-run is told only when that changes. */
+let saidRun = "";
+
 function onEvent(event: AgentSessionEvent): void {
 	broadcast(toWireEvent(event));
+	// The run's turn is over: the mark it carried is not a run any more.
+	if (event.type === "agent_settled") runOver = taskMarkEntry(session().sessionManager.buildContextEntries())?.id ?? runOver;
+	// The mark is written into the session as the turn's first messages end,
+	// which may be after agent_start was told: a message ending is looked at
+	// for the run having appeared, and the tabs told only when it has.
+	if (event.type === "message_end") {
+		const now = JSON.stringify(runOf());
+		if (now !== saidRun) broadcast(config());
+	}
 	// isStreaming and the queue drive the stop button and pending count.
 	if (
 		event.type === "agent_start" ||

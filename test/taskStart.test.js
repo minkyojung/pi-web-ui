@@ -3,11 +3,11 @@ import test from "node:test";
 
 import { EditorSelection, EditorState } from "@codemirror/state";
 
-import { blocked, starts, taskStart } from "../web/src/features/taskStart.ts";
+import { blocked, running, starts, taskStart } from "../web/src/features/taskStart.ts";
 
 const PLAN = "# Plan\n\n- [ ] 1. Add the door\n- [ ] 2. Hang the sign\n- [x] 2.1 Cut the board\n- [ ] 2.2 Paint it\n";
-const state = (doc, { cursor = 0, why = null } = {}) =>
-  EditorState.create({ doc, selection: EditorSelection.cursor(cursor), extensions: [taskStart, blocked.of(why)] });
+const state = (doc, { cursor = 0, why = null, now = null } = {}) =>
+  EditorState.create({ doc, selection: EditorSelection.cursor(cursor), extensions: [taskStart, blocked.of(why), running.of(now)] });
 
 /** The Starts drawn, as [line number, task number, here, why]. */
 const drawn = (s) => {
@@ -60,4 +60,12 @@ test("선택이 덮은 작업의 Start는 켜진다 — 막대가 돌릴 것과 
   assert.deepEqual(drawn(s).map(([, number, here]) => [number, here]), [["1", true], ["2", true], ["2.2", false]], "2.2의 0열에서 끝나면 2.2는 안 든다; 2는 덮였다");
   const more = s.update({ selection: EditorSelection.range(from, to + 1) }).state;
   assert.deepEqual(drawn(more).map(([, number, here]) => [number, here]), [["1", true], ["2", true], ["2.2", false]], "2.2는 2 안으로 접힌다 — 켜지는 것은 돌릴 것과 같다");
+});
+
+test("도는 작업의 Start는 돈다 — 그 줄과, 그것을 품은 묶음의 줄", () => {
+  const s = state(PLAN, { why: "The agent is working", now: "2.2" });
+  const it = s.field(starts).iter();
+  const turning = [];
+  for (; it.value; it.next()) if (it.value.spec.widget) turning.push([it.value.spec.widget.number, it.value.spec.widget.turning]);
+  assert.deepEqual(turning, [["1", false], ["2", true], ["2.2", true]], "2.2가 돌면 2도 그것으로 돈다");
 });
