@@ -35,6 +35,16 @@ spec's name. If you are not signed in yet, the line waits in the message box for
 spec to a workspace: for the next one, press + again. `/spec` and a line, typed in a workspace that has no spec
 yet, does the same there.
 
+The dialog opens from anywhere with **Folder › New Spec…** (`⌘⇧N`), over the repository you are in; the name at
+its top changes to another. Behind the ⋯ beside it is the branch the workspace starts from — the remote's default
+unless you choose another, for a spec that stands on work not merged yet. The button at the far end starts from
+one of the repository's open GitHub issues, listed with `gh`: its number, title and words go into the box, for you
+to read and change before Create.
+
+When you are done with a workspace, right-click its row and **Remove workspace…**. Its folder is deleted; the
+branch and its commits stay, and so does the conversation. Changes you have not committed would go with the
+folder, so you are told how many there are first.
+
 When the requirements are right, `/spec-approve` approves them and the agent writes the design; approve that and
 it writes the tasks. Nobody asks you to approve: ask for changes, or make them yourself, as many times as you like
 first. The agent cannot write a document before you approve the one before it, and if you go back and change one
