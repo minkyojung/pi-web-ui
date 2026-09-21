@@ -149,6 +149,14 @@ const FORM = `\`\`\`md
 - [What only the person can settle] — [the options, the one you recommend, and why]. Until they say otherwise, the requirements above assume [that one].
 \`\`\``;
 
+/**
+ * The one thing said about language, the same for every language: the
+ * instructions are English and long, the person's line is short, and a model
+ * left to tell for itself wrote a Korean line's document in English
+ * (spec-mode.md 6절). Nothing asks for English, and nothing guards another.
+ */
+const THEIR_LANGUAGE = "Write the document in the language the person is writing to you in.";
+
 /** What makes a requirements document good, which the shape cannot say. */
 const REQUIREMENTS_RULES = [
 	'Every acceptance criterion can fail: a test, or a look at the running thing, shows whether it holds. "Fast", "simple", "clear", "appropriate" say nothing until they are a number, an example or a named behaviour.',
@@ -170,7 +178,7 @@ export function specPrompt({ line, prefix, branch, taken }: { line: string; pref
 		`Name it: a short kebab-case name for the work, from their words (e.g. "user-authentication")${taken.length ? `, and not one of these, which are taken: ${taken.join(", ")}` : ""}.`,
 		`Make the folder ${SPECS_DIR}{name}/.`,
 		[
-			`Write ${SPECS_DIR}{name}/requirements.md with write — it is not a note, so not note_write — in this shape:`,
+			`Write ${SPECS_DIR}{name}/requirements.md with write — it is not a note, so not note_write — in this shape. ${THEIR_LANGUAGE}`,
 			"",
 			FORM,
 			"",
@@ -308,7 +316,7 @@ export function nextPrompt({ name, next, redo }: { name: string; next: "design.m
 						"Write it, and stop. In order:",
 						"1. Read the requirements. Then read the code the work touches until you could make the change yourself: the files and functions it starts from, the patterns the repository already uses for this kind of thing, and how it tests them. Look up what you do not know. Say briefly in your reply what you found that shapes the design; do not write it to a file of its own.",
 						[
-							`2. Write ${dir}design.md with write — it is not a note, so not note_write — in this shape:`,
+							`2. Write ${dir}design.md with write — it is not a note, so not note_write — in this shape. ${THEIR_LANGUAGE}`,
 							"",
 							DESIGN_FORM,
 							"",
@@ -336,7 +344,7 @@ export function nextPrompt({ name, next, redo }: { name: string; next: "design.m
 						"Write them, and stop. In order:",
 						"1. Read the requirements and the design, and how this repository tests and writes its commits.",
 						[
-							`2. Write ${dir}tasks.md with write — it is not a note, so not note_write — as a numbered checkbox list at most two levels deep, sub-tasks numbered 1.1, 1.2, 2.1, in this shape:`,
+							`2. Write ${dir}tasks.md with write — it is not a note, so not note_write — as a numbered checkbox list at most two levels deep, sub-tasks numbered 1.1, 1.2, 2.1, in this shape. ${THEIR_LANGUAGE}`,
 							"",
 							TASKS_FORM,
 							"",

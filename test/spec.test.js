@@ -461,12 +461,12 @@ test("/spec-approve는 기다리는 문서를 승인하고, 같은 턴에 다음
   assert.deepEqual(pi.notes, [{ text: "The spec email-auth is ready: its requirements, design and tasks are approved.", type: "info" }]);
 });
 
-test("어느 지시문도 무슨 언어로 쓸지 말하지 않는다 — 모델은 대화의 언어를 스스로 따른다", () => {
-  const all = [
-    specPrompt({ line: "x", prefix: "me/", branch: "me/tokyo", taken: [] }),
-    ...["design.md", "tasks.md"].flatMap((next) => [false, true].map((redo) => nextPrompt({ name: "x", next, redo }))),
-  ].join("\n");
-  assert.equal(/\blanguage\b|in English|Korean/i.test(all), false);
+test("언어에 대한 말은 한 문장뿐이고 어느 언어에나 같다 — 영어를 시키지도, 다른 언어를 지켜 주지도 않는다", () => {
+  const SAID = "Write the document in the language the person is writing to you in.";
+  const written = [specPrompt({ line: "x", prefix: "me/", branch: "me/tokyo", taken: [] }), ...["design.md", "tasks.md"].map((next) => nextPrompt({ name: "x", next, redo: false }))];
+  for (const prompt of written) assert.ok(prompt.includes(SAID), "새로 쓰는 문서마다 그 한 문장");
+  const all = [...written, ...["design.md", "tasks.md"].map((next) => nextPrompt({ name: "x", next, redo: true }))].join("\n").replaceAll(SAID, "");
+  assert.equal(/\blanguage\b|in English|Korean/i.test(all), false, "그 밖에는 언어를 말하지 않는다");
 });
 
 test("설계와 작업 목록의 지시문은 문서가 무엇을 위한 것인지를 말하고, 묻지 않고 멈추라고 한다", () => {
