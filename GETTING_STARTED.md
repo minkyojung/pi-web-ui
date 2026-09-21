@@ -48,9 +48,20 @@ the whole folder.
 None of it has to be typed. In `tasks.md`, point at a task and press the ▶ to its left; select across several and
 the line over the list offers to run them as one. That line also chooses the model and effort the tasks run on,
 so a spec written by a strong model can be carried out by a cheaper one. The start of the tab row says how far
-the tasks have got, and the strip at the foot of the window says which one is running. To read what a task
-wrote, ⌘P finds any file in the repository and opens it in a tab, read-only — and from there, in your own
-editor at the line you were reading. When every task is done the branch is the pull request: the code and the three documents
+the tasks have got, and the strip at the foot of the window says which one is running.
+
+What a task came to is read in the window too. Each task ends in a commit of its own, and the foot of the window
+counts them — `✓ 5 tasks`, with `· 2 new` beside it when some have finished since you last looked. Press it for
+the list, a line a task: a filled circle where the agent said it checked its work (point at it for what it said),
+a hollow one where it checked nothing, which is the one to open. A line opens what that task changed — every file
+it touched, one after another, the lines taken out in red and the lines put in in green, everything unmodified
+folded away until you press it. In `tasks.md` itself, a finished task carries its commit at the end of its line,
+and that opens the same page. Nothing about any of this is kept by the app: it is read off the repository's
+history, so it is the same in a fresh clone and for a task you ran from the terminal. The checks are the agent's
+word, not something Octave ran — read the diff.
+
+To read a file as it is now, ⌘P finds any file in the repository and opens it in a tab, read-only — and from
+there, in your own editor at the line you were reading. When every task is done the branch is the pull request: the code and the three documents
 together.
 
 ## 3. Sign in

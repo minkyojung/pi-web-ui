@@ -305,7 +305,8 @@ belong:
   That path was built for `bash` and other editors; the agent is simply one more
   writer on it now.
 - **Undoing the agent's change.** git. A spec's task is a commit, so what a run
-  wrote is one `git revert` away, and there is a diff to read first.
+  wrote is one `git revert` away, and there is a diff to read first — in the
+  window: the commit opens as a page, file by file (docs/spec-mode/task-results.md).
 
 `note_edit`, `note_write` and `note_properties` are still registered — a note's
 YAML block is worth changing through something that understands it — but nothing
