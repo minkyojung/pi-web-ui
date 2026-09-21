@@ -500,10 +500,12 @@ test("설계와 작업 목록의 지시문은 문서가 무엇을 위한 것인�
   // 누가 읽는가가 먼저다: 이 대화를 모르는, 작업마다 새로 여는 세션.
   assert.match(tasks, /a coding agent that starts each one in a session of its own/);
   // 뼈대: 코드가 읽는 것은 작업 줄이고, 두 키는 이름으로 읽힌다. 예시의 내용은 없다 — 모델은 예시를 따라 쓴다.
-  for (const shape of ["# Implementation Plan", "- [ ] 1. [The objective, as a commit's subject]", "- [ ] 2.1 [The first part]", "_Requirements: 1.2, 2.1_", "_Done when: ["]) {
+  for (const shape of ["- [ ] 1. [The objective, as a commit's subject]", "- [ ] 2.1 [The first part]", "_Requirements: 1.2, 2.1_", "_Done when: ["]) {
     assert.ok(tasks.includes(shape), shape);
   }
   for (const copied of ["Set up project structure", "User model", "test-driven manner"]) assert.equal(tasks.includes(copied), false, `새 프로젝트의 예시는 없다: ${copied}`);
+  assert.equal(tasks.includes("# Implementation Plan"), false, "제목은 모델의 것이다");
+  assert.match(tasks, /the task lines and the two keys are read by the app, so they are exactly so/);
   assert.match(tasks, /at most two levels/);
   assert.match(tasks, /one commit's worth/, "작업 하나 = 커밋 하나");
   assert.match(tasks, /_Done when: …_/, "끝났다는 증거가 작업 안에");
@@ -848,7 +850,7 @@ test("실제 pi 세션에서 사슬 한 바퀴: 세 문서가 차례로, 승인 
   assert.match(notes.at(-1), /design\.md is waiting for you/);
 
   await send("/spec-approve");
-  assert.ok(toldLast().includes("# Implementation Plan"));
+  assert.ok(toldLast().includes("The tasks are the order of the work"), "작업 지시문은 그 턴에 모델에게");
   assert.deepEqual(state(), { approved: 2, waiting: "tasks.md" });
 
   const calls = sent.length;

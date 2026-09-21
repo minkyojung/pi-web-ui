@@ -249,7 +249,7 @@ const TASKS_CHARGE =
 const TASKS_RULES = [
 	"A task is one commit's worth: when it is done the repository builds and its tests pass, and it could be reverted alone. One that would touch everything is several tasks; one that leaves nothing working on its own is part of another.",
 	"Each task builds on the ones before it, and the last ones wire things together. No code is left that nothing uses.",
-	"The line of a task is its objective and becomes its commit's subject: write it the way this repository writes its commits. Under it, as sub-bullets: what it involves, naming the files from the design's Changes; the acceptance criteria it is for, by their numbers, on a line `_Requirements: 1.2, 3.3_`; and how it is known to be done, on a line `_Done when: …_` — a command to run and what it shows (`npm test -- greet` passes), or what to look at. Those two keys are written exactly so: they are read by name.",
+	"The line of a task is its objective and becomes its commit's subject: write it the way this repository writes its commits. Under it, as sub-bullets: what it involves, naming the files the design says it changes; the acceptance criteria it is for, by their numbers, on a line `_Requirements: 1.2, 3.3_`; and how it is known to be done, on a line `_Done when: …_` — a command to run and what it shows (`npm test -- greet` passes), or what to look at. Those two keys are written exactly so: they are read by name.",
 	"Test the way this repository tests: find out how first — its tests, its scripts, its AGENTS.md or CLAUDE.md — and follow it, the test written with the code it tests or before it. If it has no tests for this kind of thing, say so in the task rather than bring a framework of your own.",
 	"Every acceptance criterion is covered by some task. A task that is for none is left out, unless later tasks stand on it, and then it says so.",
 	"Only what a coding agent can do: writing, modifying and testing code. Leave out user testing, deployment, gathering metrics, running the app by hand to check it (an automated test that does is a task), and documentation for its own sake — what the repository asks of every change, a changelog line say, belongs to the task that makes the change.",
@@ -263,8 +263,6 @@ const TASKS_RULES = [
  * task line (specTasks.ts) and, by name, the two keys.
  */
 const TASKS_FORM = `\`\`\`md
-# Implementation Plan
-
 - [ ] 1. [The objective, as a commit's subject]
   - [What it involves, naming the files]
   - _Requirements: 1.1_
@@ -338,7 +336,7 @@ export function nextPrompt({ name, next, redo }: { name: string; next: "design.m
 						"Write them, and stop. In order:",
 						"1. Read the requirements and the design, and how this repository tests and writes its commits.",
 						[
-							`2. Write ${dir}tasks.md with write — it is not a note, so not note_write — as a numbered checkbox list at most two levels deep, sub-tasks numbered 1.1, 1.2, 2.1, in this shape. ${THEIR_LANGUAGE}`,
+							`2. Write ${dir}tasks.md with write — it is not a note, so not note_write — as a numbered checkbox list at most two levels deep, sub-tasks numbered 1.1, 1.2, 2.1, in this shape — the task lines and the two keys are read by the app, so they are exactly so; a title and a line of what the plan is for are yours. ${THEIR_LANGUAGE}`,
 							"",
 							TASKS_FORM,
 							"",
