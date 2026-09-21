@@ -33,6 +33,7 @@ const Code = lazy(() => import("./components/Code"));
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
 import { SpecBar } from "./components/SpecBar";
+import { TaskBar } from "./components/TaskBar";
 import { SpecButton } from "./components/SpecButton";
 import { bump, forget, readRecent, writeRecent } from "./recent";
 import { back as stepBack, canBack, canForward, forget as forgetStep, forward as stepForward, go, here, type Left, type Nav, read as readNav, remember, replace, write as writeNav } from "./nav";
@@ -628,6 +629,9 @@ export function App() {
 					    document scrolls — and `note` is null for anything that is not
 					    a note or a spec, which keeps it off a PDF and off a page. */}
 					<SpecBar path={note} />
+					{/* And over a spec's tasks, what they run on — the one setting
+					    the running of them has. */}
+					<TaskBar path={note} />
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}

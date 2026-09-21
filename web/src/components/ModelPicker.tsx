@@ -53,23 +53,49 @@ export const levelLabel = (level: string) => LABELS[level] ?? level.charAt(0).to
  */
 export function ModelPicker({
 	model,
+	level,
 	models,
 	notice,
 	disabled,
+	id = "model",
+	onChoose,
 }: {
 	model: string | null;
+	/** The level to show with the model, when it is not the model's own — a choice made here, not pi's setting. */
+	level?: string | null;
 	models: ModelInfo[];
 	notice?: string;
 	disabled: boolean;
+	id?: string;
+	/**
+	 * Given, the picker reports a choice instead of setting the session: what
+	 * is chosen is the caller's to keep and to use, and nothing is sent to pi.
+	 * The keys that set the session are off in this mode, since they would
+	 * set it. Without it, the picker is the session's, as at the message box.
+	 */
+	onChoose?: (choice: { model: string; level: string }) => void;
 }) {
-	const current = models.find((m) => m.key === model) ?? null;
+	const found = models.find((m) => m.key === model) ?? null;
+	const current = found && level ? { ...found, level } : found;
 	const levels = current?.levels ?? [];
 	// Nothing to reach by key when there is nothing on the list; the button
 	// still opens, since the way to sign in is at the bottom of it.
 	const idle = disabled || models.length === 0;
+	const chooseModel = (key: string) => {
+		if (key === model) return;
+		if (onChoose) {
+			const next = models.find((m) => m.key === key);
+			if (next) onChoose({ model: key, level: next.level });
+		} else send({ type: "set_model", model: key });
+	};
+	const chooseLevel = (next: string) => {
+		if (onChoose) {
+			if (current) onChoose({ model: current.key, level: next });
+		} else send({ type: "set_thinking", level: next });
+	};
 
 	useEffect(() => {
-		if (idle) return;
+		if (idle || onChoose) return;
 		const onKey = (e: KeyboardEvent) => {
 			if (heldForSlot(e) && e.code.startsWith("Digit")) {
 				const slot = models[Number(e.code.slice(5)) - 1];
@@ -87,7 +113,7 @@ export function ModelPicker({
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [idle, models, model, current, levels]);
+	}, [idle, onChoose, models, model, current, levels]);
 
 	return (
 		<span className="inline-flex min-w-0 items-center">
@@ -95,7 +121,7 @@ export function ModelPicker({
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<DropdownMenuTrigger asChild>
-							<Button type="button" variant="ghost" size="sm" id="model" className="h-7 min-w-0 shrink gap-1.5 px-2 text-xs shadow-none" disabled={disabled}>
+							<Button type="button" variant="ghost" size="sm" id={id} className="h-7 min-w-0 shrink gap-1.5 px-2 text-xs shadow-none" disabled={disabled}>
 								{current ? (
 									<>
 										{/* The last thing on the row to give anything up, and it
@@ -116,15 +142,12 @@ export function ModelPicker({
 					<TooltipContent side="top">Model and how hard it thinks</TooltipContent>
 				</Tooltip>
 				<DropdownMenuContent align="start" className="min-w-56">
-					<DropdownMenuRadioGroup
-						value={model ?? ""}
-						onValueChange={(key) => key !== model && send({ type: "set_model", model: key })}
-					>
+					<DropdownMenuRadioGroup value={model ?? ""} onValueChange={chooseModel}>
 						{models.map((m, i) => (
 							<DropdownMenuRadioItem key={m.key} value={m.key} className="gap-3">
 								<span className="min-w-0 truncate">{m.name}</span>
 								<span className="text-muted-foreground">{levelLabel(m.level)}</span>
-								{i < 9 && (
+								{i < 9 && !onChoose && (
 									<DropdownMenuShortcut>
 										{SLOT}
 										{i + 1}
@@ -140,10 +163,7 @@ export function ModelPicker({
 							<span className="ml-auto text-muted-foreground">{current ? levelLabel(current.level) : ""}</span>
 						</DropdownMenuSubTrigger>
 						<DropdownMenuSubContent>
-							<DropdownMenuRadioGroup
-								value={current?.level ?? ""}
-								onValueChange={(level) => send({ type: "set_thinking", level })}
-							>
+							<DropdownMenuRadioGroup value={current?.level ?? ""} onValueChange={chooseLevel}>
 								{THINKING_LEVELS.map((level) => (
 									<DropdownMenuRadioItem key={level} value={level} disabled={!levels.includes(level)}>
 										{levelLabel(level)}
@@ -152,9 +172,11 @@ export function ModelPicker({
 							</DropdownMenuRadioGroup>
 						</DropdownMenuSubContent>
 					</DropdownMenuSub>
-					<div className="px-2 pt-1 text-[10px] text-muted-foreground">
-						Next effort <DropdownMenuShortcut className="ml-1">{CYCLE}</DropdownMenuShortcut>
-					</div>
+					{!onChoose && (
+						<div className="px-2 pt-1 text-[10px] text-muted-foreground">
+							Next effort <DropdownMenuShortcut className="ml-1">{CYCLE}</DropdownMenuShortcut>
+						</div>
+					)}
 					<DropdownMenuSeparator />
 					{/* Always here, not only when the list is empty: the same place
 					    to add a second provider as to add the first. */}

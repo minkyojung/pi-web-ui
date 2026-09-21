@@ -3478,6 +3478,53 @@ check("a spec's task has a Start beside its line — on the tasks still to do, s
 	await until("the Start gone with the box", async () => (await starts()) === "2.2");
 });
 
+// What the tasks run on is chosen once, over the list, and rides with each Start.
+check("a bar over a spec's tasks chooses what they run on, and a Start takes the choice with it", async ({ app, cwd, api }) => {
+	const dir = join(cwd, ".octave/specs/runon");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
+	writeFileSync(join(dir, "design.md"), "# Design\n");
+	writeFileSync(join(dir, "tasks.md"), "# Tasks\n\n- [ ] 1. First\n- [ ] 2. Second\n");
+	// The first two approved, the tasks waiting: the list opens by itself as
+	// the document waiting (specTabs.ts), with the approval's line over it
+	// and not this one — the bar is for running, and nothing runs before the
+	// approvals are done.
+	for (const name of readdirSync(join(cwd, ".octave/specs"))) if (name !== "runon") while (approve(cwd, name)) {}
+	approve(cwd, "runon");
+	approve(cwd, "runon");
+	await until("the plan in front", async () => (await editorText(app)).includes("Second"));
+	await until("the approval's line", () => app.evaluate("!!document.getElementById('specBar')"));
+	assert.equal(await app.evaluate("!!document.getElementById('taskBar')"), false, "no bar before the approvals");
+	approve(cwd, "runon");
+	await until("the bar", () => app.evaluate("!!document.getElementById('taskBar')"));
+	const bar = () => app.evaluate("document.getElementById('taskBar')?.textContent ?? ''");
+	assert.match(await bar(), /the session's model/, "nothing chosen yet: the session's");
+	// Chosen: a model pi offers that is not the session's. The picker reports
+	// it to the bar and sets nothing — the message box's model is as it was.
+	const models = await (await fetch(`http://localhost:${api}/api/models`)).json();
+	const sessionModel = await app.evaluate("document.getElementById('model')?.textContent ?? ''");
+	await app.click("#runOn");
+	await until("the menu", () => app.evaluate("document.querySelectorAll('[role=menuitemradio]').length > 0"));
+	// One the menu offers that is not the session's; its key and level are
+	// what pi says of it.
+	const offered = await app.evaluate("[...document.querySelectorAll('[role=menuitemradio]')].map((i) => i.textContent)");
+	const other = models.find((m) => offered.some((text) => text.includes(m.name)) && !sessionModel.includes(m.name));
+	assert.ok(other, `a second model to choose among ${offered.join(", ")}`);
+	await app.evaluate(`[...document.querySelectorAll('[role=menuitemradio]')].find((i) => i.textContent.includes(${JSON.stringify(other.name)})).click()`);
+	await until("the choice on the bar", async () => (await bar()).includes(other.name) && !(await bar()).includes("session's model"));
+	assert.equal(await app.evaluate("document.getElementById('model')?.textContent ?? ''"), sessionModel, "the session's model is not touched");
+	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+	await app.shot("task-bar");
+	// A Start pressed sends the command with the choice on it, as the person
+	// would have typed it: the wire is watched for the line.
+	await app.evaluate("(() => { const send = WebSocket.prototype.send; window.__sent = []; WebSocket.prototype.send = function (data) { window.__sent.push(String(data)); return send.call(this, data); }; })()");
+	await until("the Starts", () => app.evaluate("document.querySelectorAll('#editor .cm-start').length === 2"));
+	await app.evaluate("document.querySelector('#editor .cm-start[data-start=\"2\"]').click()");
+	await until("the line sent", () => app.evaluate("window.__sent.some((d) => d.includes('\"prompt\"') && d.includes('/spec-run runon 2 '))"));
+	const line = await app.evaluate("JSON.parse(window.__sent.find((d) => d.includes('/spec-run runon 2 '))).text");
+	assert.equal(line, `/spec-run runon 2 ${other.key} ${other.level}`, "the model as the picker keys it, and its own level");
+});
+
 // The other place the answer can be given: over the document being read.
 check("a document waiting for approval says so above itself, and the line goes once it is approved", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/bar");

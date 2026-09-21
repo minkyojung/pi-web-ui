@@ -46,6 +46,7 @@ import type { Edit } from "../types";
 import type { Authored } from "../../../protocol.ts";
 import { authorsStore, commandsStore, configStore, documentsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, specsStore } from "../serverState";
 import { RUN, runBlocked, runMessage, runWhy } from "../specRun.ts";
+import { runOnOf, runOnStore } from "../runOn";
 import { inFrontStore, say as sayInFront } from "../inFront";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { flushSaves, registerSave } from "../saves";
@@ -560,6 +561,7 @@ export function Editor({
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const commands = useSyncExternalStore(commandsStore.subscribe, commandsStore.get);
 	const specs = useSyncExternalStore(specsStore.subscribe, specsStore.get);
+	const runOn = useSyncExternalStore(runOnStore.subscribe, runOnStore.get);
 	const [starting, setStarting] = useState<string | null>(null);
 	const streaming = config?.isStreaming ?? false;
 	useEffect(() => {
@@ -595,12 +597,14 @@ export function Editor({
 				startChrome.of(buttonVariants({ variant: "ghost", size: "icon-xs" })),
 				startBlocked.of(why),
 				onStart.of((number) => {
-					send(runMessage(spec, [number]));
+					// On what the bar over the tasks chose (TaskBar), if anything.
+					const on = runOnOf(runOn, spec);
+					send(runMessage(spec, [number], on ? { model: on.model, effort: on.level } : {}));
 					setStarting(number);
 				}),
 			]),
 		});
-	}, [path, online, streaming, config?.isCompacting, commands, specs, starting]);
+	}, [path, online, streaming, config?.isCompacting, commands, specs, starting, runOn]);
 
 	// A note made or renamed elsewhere may be the one a link here names.
 	const notes = useSyncExternalStore(filesStore.subscribe, filesStore.get);
