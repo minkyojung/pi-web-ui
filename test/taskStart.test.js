@@ -44,3 +44,12 @@ test("칸이 체크되면 그 줄의 Start가 사라진다 — 문서를 따라�
   const done = s.update({ changes: { from: PLAN.indexOf("[ ] 1."), to: PLAN.indexOf("[ ] 1.") + 3, insert: "[x]" } }).state;
   assert.deepEqual(drawn(done).map(([, number]) => number), ["2.2"]);
 });
+
+test("선택이 덮은 작업의 Start는 켜진다 — 막대가 돌릴 것과 같은 규칙으로", () => {
+  const from = PLAN.indexOf("door");
+  const to = PLAN.indexOf("- [ ] 2.2");
+  const s = state(PLAN).update({ selection: EditorSelection.range(from, to) }).state;
+  assert.deepEqual(drawn(s).map(([, number, here]) => [number, here]), [["1", true], ["2.2", false]], "2.2의 0열에서 끝나면 2.2는 안 든다");
+  const more = s.update({ selection: EditorSelection.range(from, to + 1) }).state;
+  assert.deepEqual(drawn(more).map(([, number, here]) => [number, here]), [["1", true], ["2.2", true]]);
+});

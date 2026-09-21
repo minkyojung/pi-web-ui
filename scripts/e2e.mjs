@@ -3525,6 +3525,43 @@ check("a bar over a spec's tasks chooses what they run on, and a Start takes the
 	assert.equal(line, `/spec-run runon 2 ${other.key} ${other.level}`, "the model as the picker keys it, and its own level");
 });
 
+// Several tasks as one run: the selection says which, the bar runs them.
+check("tasks a selection covers are offered as one run over the list, by their numbers, and run in one command", async ({ app, cwd }) => {
+	const dir = join(cwd, ".octave/specs/picked");
+	mkdirSync(dir, { recursive: true });
+	const plan = "# Tasks\n\n- [ ] 1. First\n- [ ] 2. Heading\n- [x] 2.1 Second\n- [ ] 2.2 Third\n- [ ] 3. Fourth\n";
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
+	writeFileSync(join(dir, "design.md"), "# Design\n");
+	writeFileSync(join(dir, "tasks.md"), plan);
+	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
+	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/picked/tasks.md")}`);
+	await until("the plan in front", async () => (await editorText(app)).includes("Fourth"));
+	await until("the bar", () => app.evaluate("!!document.getElementById('taskBar')"));
+	assert.equal(await app.evaluate("!!document.getElementById('runPicked')"), false, "a cursor covers nothing: one task is its Start");
+	// A drag from inside 1 to the start of 3's line: the newline was taken
+	// and nothing of 3 — the rule editors count selected lines by.
+	const select = (from, to) => app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: ${from}, head: ${to} } })`);
+	await select(plan.indexOf("First"), plan.indexOf("- [ ] 3."));
+	const offered = () => app.evaluate("document.getElementById('runPicked')?.textContent ?? ''");
+	await until("the run offered", async () => (await offered()) === "Run 1, 2.2");
+	const lit = () => app.evaluate("[...document.querySelectorAll('#editor .cm-start[data-here]')].map((b) => b.dataset.start).join(',')");
+	assert.equal(await lit(), "1,2.2", "the Starts on the lines taken are lit — 2 is a heading, 2.1 is done, 3 was not touched");
+	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-start[data-start=\"3\"]')).opacity"), "0");
+	// One character into 3, and it is in.
+	await select(plan.indexOf("First"), plan.indexOf("- [ ] 3.") + 1);
+	await until("3 in", async () => (await offered()) === "Run 1, 2.2, 3");
+	await app.shot("task-picked");
+	// Pressed: the one command, the numbers on it, as the person would have typed it.
+	await app.evaluate("(() => { const send = WebSocket.prototype.send; window.__sent = []; WebSocket.prototype.send = function (data) { window.__sent.push(String(data)); return send.call(this, data); }; })()");
+	await app.click("#runPicked");
+	await until("the line sent", () => app.evaluate("window.__sent.some((d) => d.includes('/spec-run picked '))"));
+	assert.equal(await app.evaluate("JSON.parse(window.__sent.find((d) => d.includes('/spec-run picked '))).text"), "/spec-run picked 1 2.2 3");
+	// Back to a cursor: nothing is offered, and the lit Starts go dark.
+	await select(plan.indexOf("Fourth"), plan.indexOf("Fourth"));
+	await until("nothing offered", async () => !(await app.evaluate("!!document.getElementById('runPicked')")));
+	assert.equal(await lit(), "3", "only the cursor's line now");
+});
+
 // The other place the answer can be given: over the document being read.
 check("a document waiting for approval says so above itself, and the line goes once it is approved", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/bar");

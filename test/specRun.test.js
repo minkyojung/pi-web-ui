@@ -20,6 +20,15 @@ test("선택이 덮는 줄의 작업들 — 한 글자만 걸쳐도 그 줄, 빈
   assert.deepEqual(numbers(at("- [ ] 2.2") - 1, at("- [ ] 2.2") - 1), [], "줄 끝의 개행에 선 커서는 앞 줄(2.1, 끝남)의 것");
 });
 
+test("끝이 다음 줄 0열이면 그 줄은 빼지 않은 것이다 — 드래그는 개행 하나를 넘치기 쉽다", () => {
+  const paint = at("- [ ] 2.2");
+  const lock = at("- [ ] 3.");
+  assert.deepEqual(numbers(paint, lock), ["2.2"], "2.2 줄 전체 + 개행: 3은 안 든다");
+  assert.deepEqual(numbers(paint, lock + 1), ["2.2", "3"], "3의 첫 글자에 닿으면 든다");
+  assert.deepEqual(numbers(lock, lock), ["3"], "빈 선택이 0열에 있으면 그 줄이다");
+  assert.deepEqual(numbers(0, at("- [ ] 1.")), [], "제목만 선택하고 1의 0열에서 끝나면 아무것도 없다");
+});
+
 test("끝난 작업과 묶음 상위는 뺀다 — 명령이 거절하고, 상위는 일이 아니다", () => {
   assert.deepEqual(numbers(0, PLAN.length), ["1", "2.2", "3"], "2는 묶음, 2.1은 끝남");
   assert.deepEqual(numbers(at("Hang the sign"), at("Cut the board")), [], "묶음과 끝난 것만 고르면 아무것도 없다");

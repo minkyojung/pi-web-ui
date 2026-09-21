@@ -35,3 +35,27 @@ export function chooseRunOn(spec: string, choice: RunOn | null): void {
 	else next.delete(spec);
 	store.set(next);
 }
+
+/**
+ * The tasks the selection in the editor covers, for the bar over the list
+ * to offer as one run: the spec, and the numbers in the order they stand.
+ * Read off the selection by the editor as it changes (tasksBetween) and
+ * put here, since the bar is not in the editor and the editor does not
+ * draw bars. Empty when the selection is a cursor — a single task is the
+ * Start beside it — or covers no task.
+ */
+export interface Picked {
+	spec: string;
+	numbers: string[];
+}
+
+const picked = createStore<Picked | null>(null);
+
+export const pickedStore = { get: picked.get, subscribe: picked.subscribe };
+
+/** What the selection covers now; null for nothing. Same spec and numbers as before is the same value, so nothing is woken for it. */
+export function pickTasks(next: Picked | null): void {
+	const was = picked.get();
+	if (was === next || (was && next && was.spec === next.spec && was.numbers.join(",") === next.numbers.join(","))) return;
+	picked.set(next);
+}

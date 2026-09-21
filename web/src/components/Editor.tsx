@@ -45,8 +45,8 @@ import type { Left } from "../nav";
 import type { Edit } from "../types";
 import type { Authored } from "../../../protocol.ts";
 import { authorsStore, commandsStore, configStore, documentsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, specsStore } from "../serverState";
-import { RUN, runBlocked, runMessage, runWhy } from "../specRun.ts";
-import { runOnOf, runOnStore } from "../runOn";
+import { RUN, runBlocked, runMessage, runWhy, tasksBetween } from "../specRun.ts";
+import { pickTasks, runOnOf, runOnStore } from "../runOn";
 import { inFrontStore, say as sayInFront } from "../inFront";
 import { applyChanges, changeSetOf, decide, rebase } from "../noteSync";
 import { flushSaves, registerSave } from "../saves";
@@ -472,6 +472,14 @@ export function Editor({
 				theme,
 				EditorView.updateListener.of((u) => {
 					if (held.current.length > 0 && !u.view.composing) releaseHeld();
+					// What the selection covers of a spec's tasks, for the bar over
+					// them (TaskBar): a cursor covers nothing — one task is its Start.
+					if (u.selectionSet || u.docChanged) {
+						const spec = isTasks(at.current) ? specNameOf(at.current) : null;
+						const text = u.state.doc.toString();
+						const numbers = spec === null ? [] : [...new Set(u.state.selection.ranges.filter((range) => !range.empty).flatMap((range) => tasksBetween(text, range.from, range.to).map((task) => task.number)))];
+						pickTasks(spec !== null && numbers.length > 0 ? { spec, numbers } : null);
+					}
 					if (u.state.field(propertiesField) !== u.startState.field(propertiesField)) setRead(u.state.field(propertiesField));
 					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) {
 						// A cut or a paste is seen here, while `local` is still the way
@@ -578,6 +586,7 @@ export function Editor({
 		const spec = isTasks(path) ? specNameOf(path) : null;
 		if (spec === null) {
 			v.dispatch({ effects: startRoom.reconfigure([]) });
+			pickTasks(null);
 			return;
 		}
 		const why = runWhy(
@@ -605,6 +614,8 @@ export function Editor({
 			]),
 		});
 	}, [path, online, streaming, config?.isCompacting, commands, specs, starting, runOn]);
+	// Gone from the page, the selection covers nothing.
+	useEffect(() => () => pickTasks(null), []);
 
 	// A note made or renamed elsewhere may be the one a link here names.
 	const notes = useSyncExternalStore(filesStore.subscribe, filesStore.get);

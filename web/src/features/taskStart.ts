@@ -27,7 +27,7 @@
 import { type EditorState, type Extension, Facet, RangeSetBuilder, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 
-import { startLines } from "../specRun.ts";
+import { startLines, tasksBetween } from "../specRun.ts";
 
 /**
  * What stands in the way of starting, in words for the title, or null when
@@ -64,7 +64,11 @@ function playIcon(): SVGElement {
 
 class Start extends WidgetType {
 	readonly number: string;
-	/** Whether the cursor is on this line, which is when it shows without the pointer. */
+	/**
+	 * Whether the cursor is on this line, or a selection covers it — which is
+	 * when it shows without the pointer, and how a selection that will be run
+	 * as one says which tasks it took (Picked, runOn.ts).
+	 */
 	readonly here: boolean;
 	readonly why: string | null;
 	constructor(number: string, here: boolean, why: string | null) {
@@ -105,10 +109,17 @@ const hasStart = Decoration.line({ class: "cm-hasStart" });
 
 function build(state: EditorState): DecorationSet {
 	const why = state.facet(blocked);
-	const cursor = state.doc.lineAt(state.selection.main.head).number;
+	const text = state.doc.toString();
+	// The cursor's line, when the selection is a cursor: with words selected
+	// the head is where the drag stopped, which may be the start of a line
+	// the selection has not touched.
+	const cursor = state.selection.main.empty ? state.doc.lineAt(state.selection.main.head).number : -1;
+	// The tasks any non-empty selection covers, by the same rule the bar
+	// offers them by, so what lights up is what would run.
+	const covered = new Set(state.selection.ranges.filter((range) => !range.empty).flatMap((range) => tasksBetween(text, range.from, range.to).map((task) => task.number)));
 	const out = new RangeSetBuilder<Decoration>();
-	for (const { from, task } of startLines(state.doc.toString())) {
-		const here = state.doc.lineAt(from).number === cursor;
+	for (const { from, task } of startLines(text)) {
+		const here = state.doc.lineAt(from).number === cursor || covered.has(task.number);
 		out.add(from, from, hasStart);
 		out.add(from, from, Decoration.widget({ widget: new Start(task.number, here, why), side: -1 }));
 	}

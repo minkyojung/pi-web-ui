@@ -52,9 +52,16 @@ export const runMessage = (spec: string, numbers: readonly string[], on: RunOn =
  * they stand: every line the range touches, even by a character, and of
  * those the ones that are tasks still to do and are work of their own. An
  * empty selection is the line the cursor is on.
+ *
+ * One exception, which is the rule editors count selected lines by: a
+ * selection that ends at the very start of a line has not touched that line
+ * — it took the newline before it and nothing of it. A drag is a tool for
+ * words and overshoots by a newline as often as not; without this, the
+ * task after the last one meant would come along.
  */
 export function tasksBetween(text: string, from: number, to: number): Task[] {
-	const [start, end] = from <= to ? [from, to] : [to, from];
+	let [start, end] = from <= to ? [from, to] : [to, from];
+	if (end > start && text[end - 1] === "\n") end -= 1;
 	const lineStart = text.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
 	let lineEnd = text.indexOf("\n", end);
 	if (lineEnd === -1) lineEnd = text.length;
