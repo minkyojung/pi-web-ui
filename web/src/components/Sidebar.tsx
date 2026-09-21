@@ -5,10 +5,11 @@ import { ChevronLeftIcon, ChevronRightIcon, FileIcon, FileTextIcon, FolderIcon }
 
 import { titleOf } from "../noteSync";
 import { isDocument } from "../../../documentKinds.ts";
-import { documentsStore, filesStore, filesTruncatedStore } from "../serverState";
+import { configStore, documentsStore, filesStore, filesTruncatedStore } from "../serverState";
 import { type Node, openFoldersStore, reveal, setOpenFolders, toggle, treeOf } from "../tree";
 import { noteActions } from "../noteActions";
 import { getConnection, subscribe } from "../store";
+import { ModelPicker } from "./ModelPicker";
 import { Repositories, useWorkspaceList } from "./Repositories";
 import { Settings } from "./Settings";
 import { Button } from "./ui/button";
@@ -62,6 +63,8 @@ export function Sidebar({
 	const truncated = useSyncExternalStore(filesTruncatedStore.subscribe, filesTruncatedStore.get);
 	const openFolders = useSyncExternalStore(openFoldersStore.subscribe, openFoldersStore.get);
 	const workspaces = useWorkspaceList();
+	// What a new spec may be started on: the session's picker, and its list.
+	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 
 	// The open note is in view: its folders open as it is opened, or as it is
 	// renamed into one. They stay open until closed by hand.
@@ -77,7 +80,7 @@ export function Sidebar({
 			    no shell to keep that list, the notes are what there is to show. */}
 			{workspaces !== null ? (
 				// Until the shell answers, the room it will take, so the foot stays put.
-				workspaces ? <Repositories list={workspaces} /> : <div className="flex-1" />
+				workspaces ? <Repositories list={workspaces} choices={config ? { Picker: ModelPicker, model: config.model, models: config.models } : undefined} /> : <div className="flex-1" />
 			) : files.length === 0 ? (
 				<div className="flex flex-1 items-center justify-center p-4 text-center text-sm text-muted-foreground">
 					No notes in this folder yet

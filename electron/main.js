@@ -461,19 +461,20 @@ const waiting = firsts();
 
 /**
  * A new workspace of a repository in the list, for the spec `first` starts,
- * and the window put on it. Says why not, for the page to say it beside the
- * line typed, which is still there. With no `first` it is an empty one — the
- * sidebar's +, until the new spec dialog takes its place.
+ * and the window put on it. Only for one: a workspace is made by the new spec
+ * dialog and by nothing else (spec-mode.md 6절), so there is no way here to
+ * make an empty one. Says why not, for the dialog to say it beside the line
+ * typed, which is still there.
  */
 function newWorkspace(root, first) {
-	const told = first === undefined ? null : firstFrom(first);
-	if (first !== undefined && !told) return Promise.resolve({ error: "Say what to build, in a line." });
+	const told = firstFrom(first);
+	if (!told) return Promise.resolve({ error: "Say what to build, in a line." });
 	const made = making.then(async () => {
 		if (!projectsOf(readSettings(), isCheckout).some((project) => project.path === root)) return { error: "That repository is no longer on the list." };
 		try {
 			const worktree = await makeWorkspace(root, { into: join(home(), "workspaces", basename(root)), owner: await login() });
 			writeSettings({ ...readSettings(), projects: withWorkspace(projectsOf(readSettings(), isCheckout), root, worktree) });
-			if (told) waiting.keep(worktree.path, told);
+			waiting.keep(worktree.path, told);
 			workspacesChanged();
 			return { worktree };
 		} catch (err) {

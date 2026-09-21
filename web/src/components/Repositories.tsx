@@ -6,11 +6,11 @@ import { toast } from "sonner";
 
 import { configStore } from "../serverState";
 import { CloneRepository } from "./CloneRepository";
+import { NewSpec, type SpecOnChoices } from "./NewSpec";
 import { row } from "./sidebarRow";
 import { Button } from "./ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
-import { Spinner } from "./ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** The list the shell keeps — see electron/workspaces.js and preload.cjs. */
@@ -25,7 +25,7 @@ const workspaceShell = (
 		pi?: {
 			workspaces?: {
 				list(): Promise<WorkspaceList | null>;
-				create(root: string, first?: { line: string; model: string | null; effort: string | null }): Promise<{ error?: string } | null>;
+				create(root: string, first: { line: string; model: string | null; effort: string | null }): Promise<{ error?: string } | null>;
 				open(path: string): Promise<void>;
 				onChange(listen: () => void): () => void;
 			};
@@ -45,7 +45,8 @@ const branchName = (branch: string) => branch.slice(branch.indexOf("/") + 1);
 
 /**
  * The repositories and their workspaces, as Conductor lists them: a row for
- * the repository that folds, a + on it for a new workspace, and under it a
+ * the repository that folds, a + on it that starts a spec — the one way a
+ * workspace is made, see NewSpec.tsx — and under it a
  * row for each workspace, named by its branch. The shell keeps the list and
  * does the moving — the page asks, and the window is put on the workspace
  * chosen. In a browser tab, or a dev run, there is no shell to ask, and
@@ -98,8 +99,9 @@ export function useWorkspaceList(): WorkspaceList | null | undefined {
 	return list;
 }
 
-export function Repositories({ list }: { list: WorkspaceList }) {
-	const [making, setMaking] = useState<string | null>(null);
+export function Repositories({ list, choices }: { list: WorkspaceList; choices?: SpecOnChoices }) {
+	/** The repository a spec is being started in, while the dialog for it is open. */
+	const [starting, setStarting] = useState<{ path: string; name: string } | null>(null);
 	const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
 	const [cloning, setCloning] = useState(false);
 	const shell = workspaceShell!;
@@ -112,16 +114,6 @@ export function Repositories({ list }: { list: WorkspaceList }) {
 		);
 	};
 
-	const make = (root: string) => {
-		setMaking(root);
-		shell
-			.create(root)
-			.then(
-				(result) => result?.error && toast.error(result.error),
-				(err: Error) => toast.error(err.message),
-			)
-			.finally(() => setMaking(null));
-	};
 	const fold = (root: string) =>
 		setFolded((was) => {
 			const next = new Set(was);
@@ -156,6 +148,7 @@ export function Repositories({ list }: { list: WorkspaceList }) {
 				</DropdownMenu>
 			</div>
 			<CloneRepository open={cloning} onOpenChange={setCloning} />
+			<NewSpec repository={starting} onClose={() => setStarting(null)} create={shell.create} choices={choices} />
 			<ul id="workspaces" className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-1">
 				{list.projects.map((project) => (
 					<li key={project.path}>
@@ -173,15 +166,14 @@ export function Repositories({ list }: { list: WorkspaceList }) {
 											variant="ghost"
 											size="icon-sm"
 											data-new-workspace={project.path}
-											aria-label={`New workspace in ${project.name}`}
-											disabled={making !== null}
-											onClick={() => make(project.path)}
+											aria-label={`New spec in ${project.name}`}
+											onClick={() => setStarting({ path: project.path, name: project.name })}
 											className="shrink-0 text-muted-foreground"
 										>
-											{making === project.path ? <Spinner /> : <PlusIcon />}
+											<PlusIcon />
 										</Button>
 									</TooltipTrigger>
-									<TooltipContent side="right">New workspace</TooltipContent>
+									<TooltipContent side="right">New spec</TooltipContent>
 								</Tooltip>
 							</div>
 							<CollapsibleContent asChild>

@@ -69,7 +69,7 @@ export function Start() {
 									<GitBranchIcon />
 								</EmptyMedia>
 								<EmptyTitle>No workspace open</EmptyTitle>
-								<EmptyDescription>Open a workspace from the list, or make one with + beside its repository.</EmptyDescription>
+								<EmptyDescription>Open a workspace from the list, or start a spec with + beside its repository: say what to build, and a workspace is made for it.</EmptyDescription>
 							</EmptyHeader>
 						</Empty>
 					) : (

@@ -3565,13 +3565,67 @@ check("tasks a selection covers are offered as one run over the list, by their n
 });
 
 // What a task changed is its commit, and the commit is read here.
+// The new spec dialog, from the sidebar's +. The shell is stood in for: what
+// it is asked to make is written down, and it refuses the first time.
+check("the + beside a repository opens the new spec dialog: a line, the model and effort, and ⌘↵ asks for the workspace", async ({ app, api }) => {
+	const models = await (await fetch(`http://localhost:${api}/api/models`)).json();
+	const stopStanding = await app.onNewDocument(`
+		if (sessionStorage.getItem("stand-in-for-the-list") === "1") {
+		window.__created = [];
+		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
+			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }] }] }),
+				create: async (root, first) => { window.__created.push({ root, first }); return window.__created.length === 1 ? { error: "The remote said no." } : {}; },
+				open: async () => {}, onChange: () => () => {}, first: async () => null } };
+		}`);
+	try {
+		await app.evaluate(`sessionStorage.setItem("stand-in-for-the-list", "1"); location.reload()`);
+		await until("the repository in the sidebar", () => app.evaluate("!!document.querySelector('[data-new-workspace=\"/r/demo\"]')"));
+		await app.click('[data-new-workspace="/r/demo"]');
+		await until("the dialog", () => app.evaluate("!!document.getElementById('new-spec')"));
+		assert.match(await app.evaluate("document.getElementById('new-spec').innerText"), /^demo/, "the repository over the top");
+		assert.equal(await app.evaluate("document.getElementById('new-spec-create').disabled"), true, "nothing to build, nothing to create");
+		// What the picker shows before anything is chosen is the session's own.
+		const sessionModel = await until("the session's model", () => app.evaluate("document.getElementById('model')?.textContent ?? ''"));
+		await until("the same on the dialog", async () => (await app.evaluate("document.getElementById('specOn')?.textContent ?? ''")) === sessionModel);
+		// Another chosen here is the dialog's, and the message box keeps its own.
+		await app.click("#specOn");
+		await until("the menu", () => app.evaluate("document.querySelectorAll('[role=menuitemradio]').length > 0"));
+		const named = (text) => models.filter((m) => text.startsWith(m.name)).sort((a, b) => b.name.length - a.name.length)[0];
+		const offered = await app.evaluate("[...document.querySelectorAll('[role=menuitemradio]')].map((i) => i.textContent)");
+		const other = offered.map(named).find((m) => m && !sessionModel.startsWith(m.name));
+		assert.ok(other, `a second model to choose among ${offered.join(", ")}`);
+		await app.evaluate(`[...document.querySelectorAll('[role=menuitemradio]')].find((i) => i.textContent.startsWith(${JSON.stringify(other.name)})).click()`);
+		await until("the choice on the dialog", async () => (await app.evaluate("document.getElementById('specOn')?.textContent ?? ''")).startsWith(other.name));
+		assert.equal(await app.evaluate("document.getElementById('model')?.textContent ?? ''"), sessionModel, "the session's model is not touched");
+		await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+		await app.click("#new-spec-line");
+		await app.keys("add a greeting");
+		await app.shot("new-spec");
+		await app.press("Enter", { meta: true });
+		// Refused: said in the dialog, with the line still there to try again.
+		await until("why not", () => app.evaluate("document.getElementById('new-spec-error')?.textContent === 'The remote said no.'"));
+		assert.equal(await app.evaluate("document.getElementById('new-spec-line').value"), "add a greeting");
+		await app.click("#new-spec-create");
+		await until("the dialog gone", async () => !(await app.evaluate("!!document.getElementById('new-spec')")));
+		const created = JSON.parse(await app.evaluate("JSON.stringify(window.__created)"));
+		assert.deepEqual(created.at(-1), { root: "/r/demo", first: { line: "add a greeting", model: other.key, effort: other.level } });
+		assert.equal(created.length, 2);
+	} finally {
+		await app.press("Escape");
+		await stopStanding();
+		await app.evaluate(`sessionStorage.removeItem("stand-in-for-the-list"); location.reload()`);
+		await until("the page back", () => app.evaluate("!window.__created && !!document.getElementById('chat')"));
+	}
+});
+
 // The other end of the new spec dialog: the page of the workspace it made.
 // The shell is stood in for, and says what it kept; the wire is watched for
 // what the page does about it. The line itself is stopped at the wire — the
 // key here is not a key, and a turn that fails would be in every check after.
 check("a workspace made for a spec starts it: the session is put on the model, then at the effort, and only then is the line sent", async ({ app, api }) => {
 	const models = await (await fetch(`http://localhost:${api}/api/models`)).json();
-	const sessionModel = await app.evaluate("document.getElementById('model')?.textContent ?? ''");
+	// Waited for: the page may have only just been loaded again, by the check before.
+	const sessionModel = await until("the session's model", () => app.evaluate("document.getElementById('model')?.textContent ?? ''"));
 	// The longest name that fits: "GPT-5.5" holds "GPT-5" too.
 	const named = (text) => models.filter((m) => text.startsWith(m.name)).sort((a, b) => b.name.length - a.name.length)[0];
 	const was = named(sessionModel);
