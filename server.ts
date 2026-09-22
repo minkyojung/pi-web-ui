@@ -56,7 +56,7 @@ import { documentType, SPEC_DOCS, SPECS_DIR } from "./documentKinds.ts";
 import { specState } from "./specApproval.ts";
 import { parseTasks, progressOf, type Progress } from "./specTasks.ts";
 import { type TaskResult, taskResults } from "./specResults.ts";
-import { standingIn } from "./standing.ts";
+import { baseLine, baseOf, standingIn } from "./standing.ts";
 import { readCommit } from "./commitRead.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
@@ -215,6 +215,10 @@ function projectTrusted(cwd: string): boolean {
 
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
 	const trusted = projectTrusted(cwd);
+	// Once, as the session opens: the base does not move under a session, and
+	// a line in the system prompt is cached with it where a message each turn
+	// would not be.
+	const base = baseLine(await baseOf(cwd));
 	const services = await createAgentSessionServices({
 		cwd,
 		modelRuntime,
@@ -224,7 +228,7 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 			// pi's own system prompt stands — a coding agent's, which is what
 			// this is — and after it, where the agent is and the few rules that
 			// are this app's: see guard.ts.
-			appendSystemPrompt: [WORKSPACE_PROMPT],
+			appendSystemPrompt: base ? [WORKSPACE_PROMPT, base] : [WORKSPACE_PROMPT],
 			extensionFactories: [
 				// The guard first: a blocked call never reaches anything after it.
 				{ name: "guard", factory: guard(CWD, () => openNote) },

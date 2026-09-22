@@ -26,7 +26,7 @@ function git(cwd: string, args: string[]): Promise<string | null> {
 }
 
 /** The remote's default branch as `origin/main`, or null: no remote, or one whose HEAD git does not know. */
-async function baseOf(cwd: string): Promise<string | null> {
+export async function baseOf(cwd: string): Promise<string | null> {
 	const head = await git(cwd, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
 	if (head) return head;
 	for (const name of ["origin/main", "origin/master"]) if ((await git(cwd, ["rev-parse", "--verify", "--quiet", `refs/remotes/${name}`])) !== null) return name;
@@ -44,3 +44,12 @@ export async function standingIn(cwd: string): Promise<GitStanding | null> {
 	const [behind, ahead] = (counts ?? "0\t0").split(/\s+/).map((n) => Number(n) || 0);
 	return { branch, base: base.replace(/^origin\//, ""), changes, ahead: ahead ?? 0, behind: behind ?? 0 };
 }
+
+/**
+ * What the agent is told of the base, after pi's system prompt: which branch
+ * this one was started from, and so what a diff, a rebase or a pull request
+ * is against — Conductor tells its agents the same. Nothing where there is
+ * no base: a folder with no remote has nothing to be against.
+ */
+export const baseLine = (base: string | null): string | null =>
+	base ? `This branch was started from ${base}, the repository's target branch: a diff, a rebase or a pull request is against it, not against whatever branch happens to be checked out elsewhere.` : null;

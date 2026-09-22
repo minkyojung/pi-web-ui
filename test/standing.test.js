@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { standingIn } from "../standing.ts";
+import { baseLine, baseOf, standingIn } from "../standing.ts";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
 
@@ -65,4 +65,11 @@ test("with no remote there is no base, and ahead and behind are nothing", async 
 	run(dir, "add", ".");
 	run(dir, "commit", "-q", "-m", "one");
 	assert.deepEqual(await standingIn(dir), { branch: "main", base: null, changes: 0, ahead: null, behind: null });
+});
+
+test("the base is told to the agent as what a diff or a pull request is against, and not at all without one", async () => {
+	const { root } = cloned();
+	assert.equal(await baseOf(root), "origin/main");
+	assert.match(baseLine("origin/main"), /^This branch was started from origin\/main, .*pull request is against it/);
+	assert.equal(baseLine(null), null);
 });
