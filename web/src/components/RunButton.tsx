@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { configStore } from "../serverState";
 import { send } from "../ws";
-import { useWorkspaceList } from "./Repositories";
+import { usePageFolder } from "./Repositories";
 import { Button } from "./ui/button";
 
 /** How the workspace's run stands, as the shell says it — electron/runs.js `stateOf`, under the run's id. */
@@ -55,8 +55,7 @@ const shell = (
  * are checked by nothing but the agent's word.
  */
 export function RunButton() {
-	const list = useWorkspaceList();
-	const path = list?.current ?? null;
+	const path = usePageFolder();
 	const [state, setState] = useState<Scripts | null>(null);
 	// Asked again when the agent's turn ends and when the window comes back:
 	// the file is written by the agent, or by hand in an editor, and neither

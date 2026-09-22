@@ -7,7 +7,7 @@ import { standingOf } from "../branchStanding";
 import { standingStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
-import { useWorkspaceList } from "./Repositories";
+import { usePageFolder, useWorkspaceList } from "./Repositories";
 import { Button } from "./ui/button";
 
 /**
@@ -33,7 +33,8 @@ export function BranchStanding() {
 		window.addEventListener("focus", ask);
 		return () => window.removeEventListener("focus", ask);
 	}, [online]);
-	const row = list?.projects.flatMap((project) => project.worktrees).find((worktree) => worktree.path === list.current);
+	const here = usePageFolder();
+	const row = list?.projects.flatMap((project) => project.worktrees).find((worktree) => worktree.path === here);
 	const standing = standingOf(git, row?.status);
 	if (!standing) return null;
 	const chip = standing.chip;

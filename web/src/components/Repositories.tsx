@@ -38,7 +38,6 @@ export function statusDot(status: BranchStatus | undefined): { className: string
 
 /** The list the shell keeps — see electron/workspaces.js and preload.cjs. */
 export interface WorkspaceList {
-	current: string | null;
 	projects: { path: string; name: string; worktrees: { path: string; name: string; branch: string; status?: BranchStatus }[] }[];
 }
 
@@ -86,6 +85,16 @@ const branchName = (branch: string) => branch.slice(branch.indexOf("/") + 1);
  * chosen. In a browser tab, or a dev run, there is no shell to ask, and
  * nothing is drawn.
  */
+/**
+ * The workspace this page is a window on: the folder its server works in,
+ * which is the one thing that says which row is this one. Not asked of the
+ * shell — the shell knows which workspace the window is going to, and a page
+ * still up while it goes there would be told that one.
+ */
+export function usePageFolder(): string | null {
+	return useSyncExternalStore(configStore.subscribe, () => configStore.get()?.folder ?? null);
+}
+
 /**
  * The shell's list, kept up: `undefined` until the shell has answered, then
  * the list, or null where there is none — a browser tab, a dev run.
@@ -141,6 +150,9 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 	const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
 	const [cloning, setCloning] = useState(false);
 	const shell = workspaceShell!;
+	const here = usePageFolder();
+	const folder = useRef(here);
+	folder.current = here;
 
 	// Asked for from the menu, it opens over the repository the window is in,
 	// or the first there is; which one is changed in the dialog itself.
@@ -149,8 +161,8 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 	useEffect(
 		() =>
 			onNewSpec?.(() => {
-				const { current, projects: all } = projects.current;
-				const project = all.find((p) => p.worktrees.some((w) => w.path === current)) ?? all[0];
+				const { projects: all } = projects.current;
+				const project = all.find((p) => p.worktrees.some((w) => w.path === folder.current)) ?? all[0];
 				if (project) setStarting({ path: project.path, name: project.name });
 			}),
 		[],
@@ -241,7 +253,7 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 							<CollapsibleContent asChild>
 								<ul className="flex flex-col pl-3">
 									{project.worktrees.map((worktree) => {
-										const active = worktree.path === list.current;
+										const active = worktree.path === here;
 										return (
 											<li key={worktree.path}>
 												{/* The menu wraps the tooltip, as the notes' rows do: both

@@ -3563,7 +3563,7 @@ check("tasks a selection covers are offered as one run over the list, by their n
 // What a task changed is its commit, and the commit is read here.
 // The new spec dialog, from the sidebar's +. The shell is stood in for: what
 // it is asked to make is written down, and it refuses the first time.
-check("the + beside a repository opens the new spec dialog: a line, the model and effort, and ⌘↵ asks for the workspace", async ({ app, api }) => {
+check("the + beside a repository opens the new spec dialog: a line, the model and effort, and ⌘↵ asks for the workspace", async ({ app, api, cwd }) => {
 	const models = await (await fetch(`http://localhost:${api}/api/models`)).json();
 	const stopStanding = await app.onNewDocument(`
 		if (sessionStorage.getItem("stand-in-for-the-list") === "1") {
@@ -3571,7 +3571,7 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
 			repositories: { issues: async (root) => (root === "/r/other" ? [{ number: 12, title: "Sign in with email", body: "A link, not a password." }, { number: 9, title: "No body", body: "" }] : null) },
 			onNewSpec: (listen) => { window.__newSpec = listen; return () => {}; },
-			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/other", name: "other", worktrees: [] }, { path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo", status: { state: "open", number: 12, url: "https://github.com/o/r/pull/12", review: "", checks: { total: 2, pending: 0, failed: 0 } } }, { path: "/w/lima", name: "lima", branch: "me/done", status: { state: "merged", number: 9 } }, { path: "/w/oslo", name: "oslo", branch: "me/oslo", status: { state: "local" } }] }] }),
+			workspaces: { list: async () => ({ projects: [{ path: "/r/other", name: "other", worktrees: [] }, { path: "/r/demo", name: "demo", worktrees: [{ path: ${JSON.stringify(cwd)}, name: "tokyo", branch: "me/tokyo", status: { state: "open", number: 12, url: "https://github.com/o/r/pull/12", review: "", checks: { total: 2, pending: 0, failed: 0 } } }, { path: "/w/lima", name: "lima", branch: "me/done", status: { state: "merged", number: 9 } }, { path: "/w/oslo", name: "oslo", branch: "me/oslo", status: { state: "local" } }] }] }),
 				create: async (root, first, from) => { window.__created.push({ root, first, from }); return window.__created.length === 1 ? { error: "The remote said no." } : {}; },
 				branches: async (root) => (root === "/r/other" ? { branches: ["me/email-auth", "main"], base: "main" } : null),
 				open: async () => {}, onChange: () => () => {}, first: async () => null } };
@@ -3595,7 +3595,7 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		// for a merged one, nothing for a branch that is only here.
 		await until("the rows' dots", () => app.evaluate("[...document.querySelectorAll('[data-workspace]')].map((r) => r.querySelector('[data-status]')?.dataset.status ?? '-').join(',') === 'open,merged,-'"));
 		assert.equal(await app.evaluate("document.querySelector('[data-workspace=\"/w/lima\"] [data-status]').getAttribute('aria-label')"), "Pull request #9 was merged");
-		// And at the foot of the window, for the workspace in front (tokyo, #12):
+		// And at the foot of the window, for this page's workspace (tokyo, whose folder is the suite's, #12):
 		// the chip, and what its checks came to. The folder is the suite's,
 		// which is a repository with notes uncommitted in it, so git's side is
 		// changes — but a pull request outranks that: the item is the pull
@@ -3675,7 +3675,7 @@ check("a workspace's row removes it from a right click: what stays is said, the 
 		if (sessionStorage.getItem("stand-in-for-removing") === "1") {
 		window.__removes = [];
 		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
-			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }, { path: "/w/lima", name: "lima", branch: "me/email-auth" }] }] }),
+			workspaces: { list: async () => ({ projects: [{ path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }, { path: "/w/lima", name: "lima", branch: "me/email-auth" }] }] }),
 				create: async () => ({}), open: async () => {}, onChange: () => () => {}, first: async () => null,
 				changes: async () => 1,
 				remove: async (path, seen) => { window.__removes.push({ path, seen }); return seen === 2 ? {} : { changes: 2 }; } } };

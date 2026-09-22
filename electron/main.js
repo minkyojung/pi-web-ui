@@ -449,8 +449,10 @@ function workspacesChanged() {
  */
 async function workspaces() {
 	const projects = projectsOf(readSettings(), isCheckout);
+	// Which of these a page is on is not said here: the page knows its own
+	// folder from its server, and the one in front is where the window is
+	// going, which a page still up while it goes there is not.
 	return {
-		current: front,
 		projects: await Promise.all(
 			projects.map(async (project) => {
 				const prs = await pullRequestsOf(project.path);
@@ -783,8 +785,10 @@ function serveFolders() {
 	ipcMain.handle("workspace:branches", (_event, root) =>
 		devUrl || !projectsOf(readSettings(), isCheckout).some((project) => project.path === root) ? null : remoteBranches(root).catch(() => null),
 	);
-	// Asked by the page of the workspace in front, which is the one it is for.
-	ipcMain.handle("workspace:first", () => (front ? waiting.take(front) : null));
+	// Asked by a page for its own workspace, which it names: the one in front
+	// is where the window is going, and a page still up while it goes there
+	// would be given the wrong workspace's line.
+	ipcMain.handle("workspace:first", (_event, folder) => (typeof folder === "string" ? waiting.take(folder) : null));
 	ipcMain.handle("workspace:open", (_event, path) => (devUrl ? null : openWorkspace(path)));
 	ipcMain.handle("workspace:changes", (_event, path) => (devUrl ? null : workspaceChanges(path)));
 	ipcMain.handle("workspace:remove", (_event, path, seen) => (devUrl ? null : removeWorkspace(path, seen)));

@@ -29,3 +29,10 @@ test("a first message is taken once, by the workspace it was kept for", () => {
 	assert.deepEqual(waiting.take("/w/tokyo"), first);
 	assert.equal(waiting.take("/w/tokyo"), null, "a page loaded again does not start the spec twice");
 });
+
+test("a page asks for its own workspace by its folder, so one still up while the window moves on cannot take the next workspace's line", () => {
+	const waiting = firsts();
+	waiting.keep("/w/lima", firstFrom({ line: "y" }));
+	assert.equal(waiting.take("/w/tokyo"), null, "the page of tokyo, asking while lima is where the window is going, gets nothing");
+	assert.deepEqual(waiting.take("/w/lima"), { line: "y", model: null, effort: null });
+});

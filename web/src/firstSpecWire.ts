@@ -16,7 +16,7 @@ import { send } from "./ws";
 /** How long a thing asked of the server is waited for before it is given up. */
 const PATIENCE_MS = 10_000;
 
-const shell = (window as { pi?: { workspaces?: { first?: () => Promise<First | null> } } }).pi?.workspaces;
+const shell = (window as { pi?: { workspaces?: { first?: (folder: string) => Promise<First | null> } } }).pi?.workspaces;
 
 function seen(): Seen {
 	const providers = providersStore.get();
@@ -63,7 +63,8 @@ export function wireFirstSpec(): void {
 			const now = seen();
 			if (asking || !now.online || !now.config || now.signedIn === null) return;
 			asking = true;
-			shell!.first!().then(
+			// For this page's own workspace, by name: the server said which.
+			shell!.first!(configStore.get()!.folder).then(
 				(taken) => {
 					if (!taken) return end();
 					first = taken;
