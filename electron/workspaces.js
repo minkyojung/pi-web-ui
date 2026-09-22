@@ -69,6 +69,22 @@ export function withWorkspace(projects, root, worktree = null) {
 	return [...projects, next];
 }
 
+/**
+ * The projects in the order `paths` names, which is the person's: the ones it
+ * names, in its order, and then the ones it does not, in theirs. A repository
+ * added while the list was on screen is not in an order dropped on the list
+ * before it arrived — it is not dropped either, and keeps its place at the
+ * end, where a new one goes. A path that is no project is nothing.
+ */
+export function reordered(projects, paths) {
+	const named = [];
+	for (const path of Array.isArray(paths) ? paths : []) {
+		const project = projects.find((p) => p.path === path);
+		if (project && !named.includes(project)) named.push(project);
+	}
+	return [...named, ...projects.filter((project) => !named.includes(project))];
+}
+
 /** The projects without the workspace at `path`; its repository stays, with the rest of its workspaces, and the name is retired. */
 export function withoutWorkspace(projects, path) {
 	return projects.map((project) => {

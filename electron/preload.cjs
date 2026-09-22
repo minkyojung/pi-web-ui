@@ -39,11 +39,13 @@ contextBridge.exposeInMainWorld("pi", {
 	 * answers `{ error }` when it cannot be done, and a Finder choice
 	 * cancelled answers null. `github` is the signed-in person's repositories
 	 * and `issues` the open issues of one on the list — `[{ number, title,
-	 * body }]` — each null when gh cannot say.
+	 * body }]` — each null when gh cannot say. `reorder` puts the list in the
+	 * order `paths` names, which is the one the person dragged them into.
 	 */
 	repositories: {
 		openLocal: () => ipcRenderer.invoke("repository:open"),
 		clone: (source) => ipcRenderer.invoke("repository:clone", source),
+		reorder: (paths) => ipcRenderer.invoke("repositories:reorder", paths),
 		github: () => ipcRenderer.invoke("github:repositories"),
 		issues: (root) => ipcRenderer.invoke("github:issues", root),
 	},

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { firstWorkspace, projectsOf, statusOf, withWorkspace, withoutWorkspace } from "../electron/workspaces.js";
+import { firstWorkspace, projectsOf, reordered, statusOf, withWorkspace, withoutWorkspace } from "../electron/workspaces.js";
 
 const everywhere = () => true;
 const tree = (path, name = "trenton") => ({ path, branch: `me/${name}`, name });
@@ -87,4 +87,23 @@ test("a workspace removed retires its name, so the repository never makes anothe
 	assert.deepEqual(after[0].retired, ["tokyo", "lima"]);
 	assert.deepEqual(withoutWorkspace(after, "/w/nowhere"), after);
 	assert.deepEqual(withWorkspace([], "/b")[0].retired, [], "a repository new to the list has retired none");
+});
+
+test("the repositories go in the order they were dragged into", () => {
+	const a = { path: "/a", worktrees: [tree("/a-1", "one")], retired: [] };
+	const b = { path: "/b", worktrees: [], retired: [] };
+	const c = { path: "/c", worktrees: [], retired: [] };
+	assert.deepEqual(reordered([a, b, c], ["/c", "/a", "/b"]), [c, a, b]);
+	assert.deepEqual(reordered([a, b, c], ["/a", "/b", "/c"]), [a, b, c]);
+	assert.deepEqual(reordered([a, b, c], []), [a, b, c], "no order named, the order it was in");
+});
+
+test("an order dropped on a list that has since grown moves what it names and keeps the rest", () => {
+	const a = { path: "/a", worktrees: [], retired: [] };
+	const b = { path: "/b", worktrees: [], retired: [] };
+	const added = { path: "/new", worktrees: [], retired: [] };
+	assert.deepEqual(reordered([a, b, added], ["/b", "/a"]), [b, a, added], "the one it did not name keeps its place at the end");
+	assert.deepEqual(reordered([a, b], ["/b", "/gone", "/a"]), [b, a], "a path that is no repository is nothing");
+	assert.deepEqual(reordered([a, b], ["/b", "/b", "/a"]), [b, a], "and one named twice is one repository");
+	assert.deepEqual(reordered([a, b], null), [a, b], "what is not a list of paths leaves the order alone");
 });

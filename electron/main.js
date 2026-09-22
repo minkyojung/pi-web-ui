@@ -31,7 +31,7 @@ import { clone, issues, login, pullRequests, repositories, repositoryName, signI
 import { KEYS, forget, gitEnv } from "./credentials.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
-import { firstWorkspace, projectsOf, statusOf, withWorkspace, withoutWorkspace } from "./workspaces.js";
+import { firstWorkspace, projectsOf, reordered, statusOf, withWorkspace, withoutWorkspace } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
@@ -774,6 +774,18 @@ function addRepository(root) {
 }
 
 /**
+ * The repositories put in the order the person dragged them into. The list is
+ * theirs and always was — a new one goes at the end (workspaces.js
+ * `withWorkspace`) — and this is the way to say so afterwards. Which is first
+ * is not only a look: a new spec asked for from the menu, with the window on
+ * no repository, opens over it.
+ */
+function reorderRepositories(paths) {
+	writeSettings({ ...readSettings(), projects: reordered(projectsOf(readSettings(), isCheckout), paths) });
+	workspacesChanged();
+}
+
+/**
  * A GitHub repository cloned into `~/octave/repos/{name}` and added, as a
  * folder chosen in the Finder is. A clone of the same repository already
  * there is used rather than cloned again; any other folder there is not
@@ -815,6 +827,7 @@ async function openRepositoryFromMenu() {
 function serveFolders() {
 	ipcMain.handle("repository:open", () => (devUrl ? null : openLocalRepository()));
 	ipcMain.handle("repository:clone", (_event, source) => (devUrl ? null : cloneRepository(source)));
+	ipcMain.handle("repositories:reorder", (_event, paths) => (devUrl ? null : reorderRepositories(paths)));
 	// What the clone dialog offers, or null when gh cannot say.
 	ipcMain.handle("github:repositories", () => (devUrl ? null : repositories()));
 	// The open issues of a repository on the list, for a spec to start from one.
