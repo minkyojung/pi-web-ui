@@ -14,7 +14,7 @@
  * no window.
  */
 import { spawn } from "node:child_process";
-import { createWriteStream, mkdirSync } from "node:fs";
+import { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export function createRuns({ onChange, graceMs = 3000 }) {
@@ -45,10 +45,12 @@ export function createRuns({ onChange, graceMs = 3000 }) {
 		ended.delete(workdir);
 		const dir = join(workdir, ".pi", "runs");
 		mkdirSync(dir, { recursive: true });
-		const log = createWriteStream(join(dir, `${id}.log`));
+		// The file is there, with its first line, before anyone is told the run
+		// is: the menu lists what is in the folder the moment it hears.
+		writeFileSync(join(dir, `${id}.log`), `$ ${command}\n`);
+		const log = createWriteStream(join(dir, `${id}.log`), { flags: "a" });
 		/** The log written through, which a stop waits for: a log read right after a stop is one that says how it ended. */
 		const logged = new Promise((resolve) => log.once("finish", resolve));
-		log.write(`$ ${command}\n`);
 		const child = spawn("/bin/bash", ["-lc", command], { cwd: workdir, env: { ...env, OCTAVE_PORT: String(port) }, stdio: ["ignore", "pipe", "pipe"], detached: true });
 		const run = { id, port, child, stopped: false, logged };
 		running.set(workdir, run);

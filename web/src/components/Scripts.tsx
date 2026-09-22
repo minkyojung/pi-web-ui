@@ -105,7 +105,11 @@ export function Scripts({ onOpen }: { onOpen: (path: string) => void }) {
 	const toggle = () => {
 		if (!run) return;
 		if (run.running) void shell.runs!.stop(path);
-		else shell.runs!.start(path).then((result) => result?.error && toast.error(result.error));
+		else
+			shell.runs!.start(path).then((result) => {
+				if (result?.error) toast.error(result.error);
+				else if (result?.state) setState(result.state);
+			});
 	};
 	const setUpAgain = () =>
 		toast.promise(
