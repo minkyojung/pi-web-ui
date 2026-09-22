@@ -3926,7 +3926,7 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	assert.equal(lines, "2 Hang the sign new +2 −0 || 1 Add the door new +1 −1", lines);
 	// The mark at the left is the checks: said, or none — with the run's words behind the one that has them.
 	const marks = await app.evaluate("[...document.querySelectorAll('[data-result] [data-checks]')].map((m) => m.dataset.checks + ':' + m.title).join(' || ')");
-	assert.equal(marks, "failed:npm test -- sign — exit 1 || said:agent: npm test — 5 passed", "what the app ran outranks what the run said");
+	assert.equal(marks, "failed:npm test -- sign — exit 1 · click for what it printed || said:agent: npm test — 5 passed", "what the app ran outranks what the run said");
 	// Not yet looked at is the line in bold, and still while the list is being read.
 	assert.equal(await app.evaluate("document.querySelectorAll('[data-result][data-fresh]').length"), 2);
 	assert.equal(await app.evaluate("[...document.querySelectorAll('[data-result][data-fresh] .font-semibold')].length"), 2);
@@ -3934,6 +3934,18 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	assert.match(await app.evaluate("document.querySelector('[data-result=\"1\"]').title"), /^[0-9a-f]{7} · .* · run 2 times, this is the last$/, "and that it was run again, which is not a mark on the line");
 	assert.doesNotMatch(await app.evaluate("document.querySelector('[data-result=\"2\"]').title"), /run \d+ times/);
 	await app.shot("task-results");
+	// The cross opens what the check printed, in a tab, and not the commit; the circle opens nothing of its own.
+	mkdirSync(join(cwd, ".pi", "runs", "2"), { recursive: true });
+	writeFileSync(join(cwd, ".pi", "runs", "2", "npm_test_--_sign.log"), "$ npm test -- sign\nnot ok 1 - sign\n(exit 1)\n");
+	assert.equal(await app.evaluate("document.querySelector('[data-result=\"2\"] [data-checks]').dataset.log"), ".pi/runs/2/npm_test_--_sign.log");
+	assert.equal(await app.evaluate("document.querySelector('[data-result=\"1\"] [data-checks]').dataset.log ?? null"), null, "the circle has no log");
+	await app.evaluate("document.querySelector('[data-result=\"2\"] [data-checks]').click()");
+	await until("the check's log in a tab", () => app.evaluate(`document.querySelector('#page[data-code=".pi/runs/2/npm_test_--_sign.log"]') !== null`));
+	await until("its words", () => app.evaluate("document.querySelector('#page .cm-content')?.textContent.includes('not ok 1 - sign')"));
+	assert.equal(await app.evaluate("!!document.querySelector('[data-result]')"), false, "the list goes with it");
+	await app.shot("check-log");
+	await app.click("#results");
+	await until("the list again", () => app.evaluate("document.querySelectorAll('[data-result]').length === 2"));
 	// A line opens that task's commit, and the list goes.
 	await app.evaluate("document.querySelector('[data-result=\"1\"]').click()");
 	await until("the commit's page", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(again)}`));
