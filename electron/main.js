@@ -722,10 +722,16 @@ function removeWorkspace(path, seen) {
 	return done;
 }
 
-/** A workspace from the list put in front. Only one on the list: the page does not name folders of its own. */
-function openWorkspace(path) {
+/**
+ * A workspace from the list put in front. Only one on the list: the page does
+ * not name folders of its own. Answered when the window is there or the
+ * switch has failed, not when it is asked for — the page marks the row it
+ * chose until then, and a switch that fails is a row to unmark, since the
+ * page is still the one looking.
+ */
+async function openWorkspace(path) {
 	const known = projectsOf(readSettings(), isCheckout).some((project) => project.worktrees.some((worktree) => worktree.path === path));
-	if (known) void show(path);
+	if (known) await show(path);
 }
 
 /** The screen that adds a repository, when there is no workspace to put in front. */

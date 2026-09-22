@@ -14,6 +14,7 @@ import { Button } from "./ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { Spinner } from "./ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
@@ -149,6 +150,17 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 	const [doomed, setDoomed] = useState<{ path: string; branch: string } | null>(null);
 	const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
 	const [cloning, setCloning] = useState(false);
+	/**
+	 * The workspace the window is on its way to, marked from the click until
+	 * the shell answers: the page is replaced when the switch lands, so the
+	 * mark is cleared only by a switch that does not — its server would not
+	 * start, and the shell has said so in a dialog of its own.
+	 */
+	const [going, setGoing] = useState<string | null>(null);
+	const go = (path: string) => {
+		setGoing(path);
+		shell.open(path).finally(() => setGoing((was) => (was === path ? null : was)));
+	};
 	const shell = workspaceShell!;
 	const here = usePageFolder();
 	const folder = useRef(here);
@@ -256,19 +268,27 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 															size="sm"
 															data-workspace={worktree.path}
 															data-active={active}
+															data-going={worktree.path === going}
 															aria-current={active ? "page" : undefined}
-															onClick={() => !active && shell.open(worktree.path)}
+															aria-busy={worktree.path === going || undefined}
+															onClick={() => !active && go(worktree.path)}
 															className={cn(
 																row,
 																"data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground",
+																"data-[going=true]:bg-sidebar-accent data-[going=true]:text-sidebar-accent-foreground",
 															)}
 														>
 															<GitBranchIcon />
 															<span className="truncate">{branchName(worktree.branch)}</span>
-															{(() => {
-																const dot = statusDot(worktree.status);
-																return dot ? <span data-status={worktree.status?.state} aria-label={dot.long} className={cn("ml-auto size-1.5 shrink-0 rounded-full", dot.className)} /> : null;
-															})()}
+															{/* Turning where the dot goes while the window is on its way there. */}
+															{worktree.path === going ? (
+																<Spinner className="ml-auto size-3 shrink-0" />
+															) : (
+																(() => {
+																	const dot = statusDot(worktree.status);
+																	return dot ? <span data-status={worktree.status?.state} aria-label={dot.long} className={cn("ml-auto size-1.5 shrink-0 rounded-full", dot.className)} /> : null;
+																})()
+															)}
 														</Button>
 														</ContextMenuTrigger>
 													</TooltipTrigger>
