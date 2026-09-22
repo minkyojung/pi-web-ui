@@ -180,10 +180,11 @@ void open(CWD);
 /** A folder let go of — its watcher, its session, its tabs — because the shell is removing it. The next ask would make it anew. */
 async function letGo(full: string): Promise<void> {
 	const had = folders.get(full);
-	if (!had) return;
 	folders.delete(full);
 	made.delete(full);
-	await (await had.catch(() => null))?.dispose();
+	if (had) await (await had.catch(() => null))?.dispose();
+	// Said either way: the shell waits on this before removing the folder.
+	if (process.connected) process.send?.({ disposed: full });
 }
 
 const server = createServer(async (req, res) => {
