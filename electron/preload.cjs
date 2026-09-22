@@ -53,7 +53,7 @@ contextBridge.exposeInMainWorld("pi", {
 	 * (no gh), `signed-out`, or `signed-in` with `login` — and `signIn` runs
 	 * until GitHub says yes, saying the one-time code through `onCode` as
 	 * `{ userCode, verificationUri }` on the way; it and `signOut` answer
-	 * `{ ok }` or `{ error }`. `cancel` gives a sign-in up.
+	 * `{ ok }` or `{ error }`, and a sign-in `cancel` gave up, `{ cancelled }`.
 	 */
 	github: {
 		standing: () => ipcRenderer.invoke("github:standing"),

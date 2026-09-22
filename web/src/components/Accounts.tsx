@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { ExternalLinkIcon, KeyRoundIcon, UserRoundIcon } from "lucide-react";
 
+import { bridge as githubBridge, githubStore, refresh as refreshGitHub, type Code, type GitHubBridge, type GitHubStanding } from "../github";
 import { loginStore, providersStore, type LoginState } from "../serverState";
 import type { LoginEvent, LoginPrompt, ProviderInfo } from "../types";
 import { send } from "../ws";
@@ -26,6 +27,10 @@ import { Spinner } from "./ui/spinner";
  * providers that take an account, which are few and the way most people
  * start. Then the ones that take only a key — the long tail, behind a line
  * after the first few, since forty is a list to search, not read.
+ *
+ * Then GitHub, which is not a provider but is an account, and the other
+ * thing the agent signs in to: where the code is. It is the shell's — gh's,
+ * so the terminal is signed in too — and so is there only in the app.
  */
 const FEATURED = ["openai"];
 
@@ -85,8 +90,108 @@ export function Accounts() {
 				</Group>
 			)}
 
+			{githubBridge && <GitHub bridge={githubBridge} />}
+
 			{login && <SignIn login={login} name={providers.find((p) => p.id === login.provider)?.name ?? login.provider} />}
 		</>
+	);
+}
+
+/**
+ * The GitHub row, and the sign-in behind it. Where the person stands is the
+ * store's (github.ts), asked again after anything done here. A sign-in is
+ * gh's: the shell runs it and says the one-time code as gh gets it, shown
+ * here the way a provider's is (Event), and it ends when GitHub says yes or
+ * the person gives up.
+ */
+function GitHub({ bridge }: { bridge: GitHubBridge }) {
+	const standing: GitHubStanding | null = useSyncExternalStore(githubStore.subscribe, githubStore.get);
+	const [signing, setSigning] = useState<{ code: Code | null; error: string | null } | null>(null);
+	const [busy, setBusy] = useState(false);
+
+	const signIn = async () => {
+		setBusy(true);
+		setSigning({ code: null, error: null });
+		const stop = bridge.onCode((code) => setSigning((was) => ({ code, error: was?.error ?? null })));
+		const out = await bridge.signIn();
+		stop();
+		await refreshGitHub();
+		setSigning(out.error ? { code: null, error: out.error } : null);
+		setBusy(false);
+	};
+	const signOut = async () => {
+		setBusy(true);
+		await bridge.signOut();
+		await refreshGitHub();
+		setBusy(false);
+	};
+	const b = "h-7 text-xs";
+
+	let status: React.ReactNode = null;
+	let actions: React.ReactNode = null;
+	if (standing?.state === "signed-in") {
+		status = (
+			<Badge variant="secondary" className="gap-1 text-[11px]">
+				<UserRoundIcon className="size-3" /> {standing.login}
+			</Badge>
+		);
+		actions = (
+			<Button type="button" variant="outline" size="sm" className={b} disabled={busy} onClick={signOut}>
+				Sign out
+			</Button>
+		);
+	} else if (standing?.state === "signed-out") {
+		actions = (
+			<Button type="button" variant="outline" size="sm" className={`${b} gap-1.5`} disabled={busy} onClick={signIn}>
+				<UserRoundIcon className="size-3" /> Sign in with GitHub
+			</Button>
+		);
+	} else if (standing?.state === "missing") {
+		status = <span className="text-xs text-muted-foreground">GitHub CLI isn't installed</span>;
+		actions = (
+			<a href="https://cli.github.com" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline">
+				Get gh <ExternalLinkIcon className="size-3" />
+			</a>
+		);
+	}
+
+	return (
+		<Group title="Where the code is">
+			<li className={`flex min-h-10 items-center gap-3 rounded-md border px-3 py-1.5 ${standing?.state === "signed-in" ? "border-transparent bg-muted" : ""}`} title="Kept by gh, so the terminal is signed in too.">
+				<span className="min-w-0 flex-1 truncate text-sm">GitHub</span>
+				{status}
+				<span className="flex shrink-0 gap-1">{actions}</span>
+			</li>
+			{signing && (
+				<Dialog open onOpenChange={(open) => !open && (busy ? void bridge.cancel() : setSigning(null))}>
+					<DialogContent className="max-w-md" showCloseButton={false}>
+						<DialogHeader>
+							<DialogTitle className="text-sm">GitHub</DialogTitle>
+							<DialogDescription className="sr-only">Signing in to GitHub.</DialogDescription>
+						</DialogHeader>
+						<div className="flex flex-col gap-3 text-xs">
+							{signing.code && <Event event={{ type: "device_code", ...signing.code }} />}
+							{signing.code && !signing.error && <p className="text-muted-foreground">Then come back here: this closes by itself once GitHub says yes.</p>}
+							{signing.error && (
+								<p role="alert" className="text-destructive">
+									{signing.error}
+								</p>
+							)}
+							{!signing.code && !signing.error && (
+								<p className="flex items-center gap-2 text-muted-foreground">
+									<Spinner className="size-3" /> Asking GitHub for a code…
+								</p>
+							)}
+						</div>
+						<DialogFooter>
+							<Button type="button" variant="ghost" size="sm" className="text-xs" onClick={() => (busy ? void bridge.cancel() : setSigning(null))}>
+								{busy ? "Cancel" : "Close"}
+							</Button>
+						</DialogFooter>
+					</DialogContent>
+				</Dialog>
+			)}
+		</Group>
 	);
 }
 

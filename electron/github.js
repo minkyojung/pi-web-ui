@@ -56,15 +56,16 @@ export function deviceCodeFrom(text) {
  * the person enters it in their browser, and gh waits for GitHub to say so
  * and keeps the token in its own keyring — where `credentials.js` finds it
  * from then on, for the app and for the terminal alike. Resolves `{ ok }`
- * when gh ends well, `{ error }` with gh's own words when not; `signal`
- * gives up, which is an error too.
+ * when gh ends well, `{ error }` with gh's own words when not, and
+ * `{ cancelled }` when `signal` gave up — the person's own doing, not news.
  */
 export function signIn({ onCode, signal }) {
 	return new Promise((resolve) => {
 		const args = ["auth", "login", "--web", "--hostname", "github.com", "--git-protocol", "https", "--skip-ssh-key"];
 		const child = execFile("gh", args, { env: { ...process.env, GH_PROMPT_DISABLED: "1" }, timeout: 15 * 60_000, signal }, (err, _stdout, stderr) => {
 			if (!err) resolve({ ok: true });
-			else resolve({ error: err.name === "AbortError" ? "Sign-in cancelled." : String(stderr).replace(/^[!✓]\s*/gm, "").trim() || err.message });
+			else if (err.name === "AbortError") resolve({ cancelled: true });
+			else resolve({ error: String(stderr).replace(/^[!✓]\s*/gm, "").trim() || err.message });
 		});
 		child.stdin?.end();
 		let said = "";

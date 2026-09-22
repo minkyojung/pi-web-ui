@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { DownloadIcon, LockIcon } from "lucide-react";
 
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/command";
+import { SignInToGitHub } from "./SignInToGitHub";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { Spinner } from "./ui/spinner";
 
@@ -111,7 +112,7 @@ export function CloneRepository({ open, onOpenChange }: { open: boolean; onOpenC
 					</CommandList>
 					{list === null && cloning === null && (
 						<p className="border-t px-3 py-2 text-xs text-muted-foreground">
-							Sign in with <code>gh auth login</code> to see your repositories here and clone private ones.
+							<SignInToGitHub before="Sign in to GitHub" after=" to see your repositories here and clone private ones." onGo={() => onOpenChange(false)} />
 						</p>
 					)}
 					{error && (

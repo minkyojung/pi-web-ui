@@ -24,14 +24,42 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { atEndStore } from "../atEnd";
-import { configStore, promptsStore } from "../serverState";
+import { bridge as githubBridge, githubStore } from "../github";
+import { configStore, promptsStore, standingStore } from "../serverState";
+import { openSettings } from "../settingsOpen";
 import { getConnection, getItems, subscribe } from "../store";
 import { agentLine, glyphOf, moreWords, nextUnseen, resultSeen, taskLabel, taskTitle } from "../working";
 import { send } from "../ws";
 import { ContextCard } from "./ContextCard";
 import { ToolModes } from "./ToolModes";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import { Spinner } from "./ui/spinner";
+
+/**
+ * A word at the foot when the agent has nothing to push with: the workspace
+ * has a remote and the shell has no GitHub sign-in to hand down. Only in the
+ * app, and only then — signed in, or with no remote to reach, there is
+ * nothing to say. It goes to Settings › Accounts, where the sign-in is.
+ */
+function NoGitHub() {
+	const github = useSyncExternalStore(githubStore.subscribe, githubStore.get);
+	const git = useSyncExternalStore(standingStore.subscribe, standingStore.get);
+	if (!githubBridge || !github || github.state === "signed-in" || !git?.base) return null;
+	return (
+		<Button
+			id="noGitHub"
+			type="button"
+			variant="ghost"
+			size="sm"
+			className="h-5 shrink-0 px-1.5 text-[11px] font-normal text-amber-600 dark:text-amber-500"
+			title="The agent has no GitHub sign-in to push with. Sign in under Settings › Accounts."
+			onClick={() => openSettings("Accounts")}
+		>
+			GitHub: not signed in
+		</Button>
+	);
+}
 
 /**
  * The one line pi has down here: what is in the way, what it is doing, or what
@@ -226,6 +254,7 @@ export function AgentStatus({ width, folded, onUnfold }: { width: number | null;
 			>
 				<Line bare={folded} />
 				<div className="flex-1" />
+				{!folded && <NoGitHub />}
 				{config && (
 					<ToolModes
 						tools={config.tools}

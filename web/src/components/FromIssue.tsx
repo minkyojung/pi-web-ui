@@ -4,6 +4,7 @@ import { CircleDotIcon } from "lucide-react";
 
 import { Button } from "./ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/command";
+import { SignInToGitHub } from "./SignInToGitHub";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -85,7 +86,7 @@ export function FromIssue({ root, onPick, ask, disabled }: { root: string | null
 					</CommandList>
 					{list === null && (
 						<p className="border-t px-3 py-2 text-xs text-muted-foreground">
-							Sign in with <code>gh auth login</code> to start from an issue. The repository has to be one on GitHub.
+							<SignInToGitHub before="Sign in to GitHub" after=" to start from an issue. The repository has to be one on GitHub." onGo={() => setOpen(false)} />
 						</p>
 					)}
 				</Command>

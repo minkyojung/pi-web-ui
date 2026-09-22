@@ -152,6 +152,10 @@ test("signing in shows gh's code as gh says it, and ends as gh ends — well, or
 	assert.deepEqual(said, [{ userCode: "AB12-CD34", verificationUri: "https://github.com/login/device" }]);
 	const bad = await withGh('echo "error connecting to github.com" >&2; exit 1', () => signIn({ onCode: () => assert.fail("no code was said") }));
 	assert.deepEqual(bad, { error: "error connecting to github.com" });
+	const giving = new AbortController();
+	const gone = withGh("sleep 30", () => signIn({ onCode: () => {}, signal: giving.signal }));
+	giving.abort();
+	assert.deepEqual(await gone, { cancelled: true });
 	const standings = await withGh('case "$*" in *--version*) echo "gh version 0";; *"api user"*) echo "someone";; esac', async () => [await standing()]);
 	assert.deepEqual(standings, [{ state: "signed-in", login: "someone" }]);
 	const out = await withGh('case "$*" in *--version*) echo "gh version 0";; *) exit 1;; esac', () => standing());
