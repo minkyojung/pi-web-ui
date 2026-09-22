@@ -747,6 +747,15 @@ async function rename(pi: ExtensionAPI, cwd: string, prefix: string, name: strin
 	return null;
 }
 
+/** The branch pushed to origin under its own name and set to track it. False when it could not be — no remote, offline, refused. */
+async function push(pi: ExtensionAPI, cwd: string, branch: string): Promise<boolean> {
+	try {
+		return (await pi.exec("git", ["push", "-u", "origin", branch], { cwd, timeout: 120_000 })).code === 0;
+	} catch {
+		return false;
+	}
+}
+
 /** The branch the folder has checked out, or null: detached, or not a repository. */
 async function branchIn(pi: ExtensionAPI, cwd: string): Promise<string | null> {
 	try {
@@ -1018,7 +1027,18 @@ export default function spec(pi: ExtensionAPI): void {
 		const prefix = unnamed(branch);
 		if (prefix === null) return;
 		const now = await rename(pi, cwd, prefix, made[0]!);
-		if (now) ui.notify(`The branch is ${now} now.`, "info");
-		else ui.notify(`The branch could not be named after ${made[0]}; it is still ${branch}.`, "warning");
+		if (!now) {
+			ui.notify(`The branch could not be named after ${made[0]}; it is still ${branch}.`, "warning");
+			return;
+		}
+		// And put on the remote under that name, tracking it: the workspace was
+		// made tracking nothing (git.js), so that a push from a city's name
+		// could not go to main, and this is the first moment it has a name of
+		// its own — pushed now, the remote never sees the city's, and a later
+		// `git push` from the person or the agent needs no `-u`. Offline, or a
+		// repository with no remote, is not the end of anything: said, and the
+		// branch stays local until someone pushes it.
+		const pushed = await push(pi, cwd, now);
+		ui.notify(pushed ? `The branch is ${now} now, and on the remote.` : `The branch is ${now} now. It could not be pushed; push it when you can.`, "info");
 	}
 }
