@@ -86,3 +86,18 @@ test("부모의 진행은 자식 칸의 수다", () => {
   assert.deepEqual(progressUnder(tasks, "2"), { done: 1, total: 2 });
   assert.deepEqual(progressUnder(tasks, "1"), { done: 0, total: 0 });
 });
+
+test("행마다 자기 줄 번호를 안다 — 편집기가 세는 대로, 1부터", () => {
+  const rows = treeOf(PLAN).rows;
+  assert.deepEqual(rows.map((row) => [row.kind === "task" ? row.number : row.text, row.line]), [
+    ["1", 5],
+    ["Sessions", 10],
+    ["2", 12],
+    ["2.1", 13],
+    ["2.2", 16],
+    ["3", 21],
+  ]);
+  const one = rows[0];
+  assert.deepEqual([one.requirementsLine, one.doneWhenLine], [7, 8]);
+  assert.deepEqual([rows[2].requirementsLine, rows[2].doneWhenLine], [null, null], "a heading has neither");
+});

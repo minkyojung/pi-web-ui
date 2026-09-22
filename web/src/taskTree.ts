@@ -24,6 +24,11 @@ import { type Task, taskAt } from "../../specTasks.ts";
 
 export interface TaskRow extends Task {
 	kind: "task";
+	/** The line the task is on, 1-based as the editor counts, for what is drawn over it. */
+	line: number;
+	/** The lines of its two keys, when they are there — drawn in their own way. */
+	requirementsLine: number | null;
+	doneWhenLine: number | null;
 	/** 0 for `2`, 1 for `2.1`: how many dots the number has. */
 	depth: number;
 	/** The sub-tasks' numbers, in the order they stand; empty for a task that is work of its own. */
@@ -39,6 +44,7 @@ export interface TaskRow extends Task {
 /** A line between tasks that is not one and not a task's bullet — a heading over a group of them, or a sentence. Its text, marks off. */
 export interface SectionRow {
 	kind: "section";
+	line: number;
 	text: string;
 }
 
@@ -65,11 +71,15 @@ export function treeOf(text: string): Tree {
 	const rows: Row[] = [];
 	const head: string[] = [];
 	let current: TaskRow | null = null;
-	for (const line of lines) {
+	lines.forEach((line, index) => {
+		const number = index + 1;
 		const task = taskAt(line);
 		if (task) {
 			current = {
 				kind: "task",
+				line: number,
+				requirementsLine: null,
+				doneWhenLine: null,
 				...task,
 				depth: task.number.split(".").length - 1,
 				children: tasks.filter((other) => other.number.startsWith(`${task.number}.`)).map((other) => other.number),
@@ -78,16 +88,16 @@ export function treeOf(text: string): Tree {
 				doneWhen: null,
 			};
 			rows.push(current);
-			continue;
+			return;
 		}
 		// Before the first task the document is its own: the title, a line on
 		// what the plan is for. Kept whole, blank lines and all, since it is
 		// drawn as markdown.
 		if (rows.length === 0) {
 			head.push(line);
-			continue;
+			return;
 		}
-		if (line.trim() === "") continue;
+		if (line.trim() === "") return;
 		const bullet = BULLET.exec(line);
 		// A box with no number is a task the form missed, not a bullet of the
 		// task above: shown as a line of its own, where it can be seen and fixed.
@@ -96,21 +106,25 @@ export function treeOf(text: string): Tree {
 			const item = bullet[1]!.trim();
 			const requirements = REQUIREMENTS.exec(item);
 			const doneWhen = DONE_WHEN.exec(item);
-			if (requirements) current.requirements = requirements[1]!.split(",").map((s) => s.trim()).filter((s) => s !== "");
-			else if (doneWhen) current.doneWhen = doneWhen[1]!.trim();
-			else current.involves.push(item);
-			continue;
+			if (requirements) {
+				current.requirements = requirements[1]!.split(",").map((s) => s.trim()).filter((s) => s !== "");
+				current.requirementsLine = number;
+			} else if (doneWhen) {
+				current.doneWhen = doneWhen[1]!.trim();
+				current.doneWhenLine = number;
+			} else current.involves.push(item);
+			return;
 		}
 		// A wrapped bullet: the line goes on under the one before it.
 		if (/^\s/.test(line) && current && current.involves.length > 0 && !bullet) {
 			current.involves[current.involves.length - 1] += ` ${line.trim()}`;
-			continue;
+			return;
 		}
 		const heading = HEADING.exec(line);
-		rows.push({ kind: "section", text: heading ? heading[1]! : boxed ? bullet![1]!.replace(/^\[[ xX]\]\s+/, "") : line.trim() });
+		rows.push({ kind: "section", line: number, text: heading ? heading[1]! : boxed ? bullet![1]!.replace(/^\[[ xX]\]\s+/, "") : line.trim() });
 		// A section closes the task before it: a bullet after a heading is the heading's, not the task's.
 		current = null;
-	}
+	});
 	return { head: head.join("\n").trim(), rows, tasks };
 }
 
