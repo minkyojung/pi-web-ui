@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { nextTask, parseTasks, progressOf, runsOf, runsUnder, taskToRun, withDone, withParents } from "../specTasks.ts";
+import { doneWhenOf, nextTask, parseTasks, progressOf, runsOf, runsUnder, taskToRun, withDone, withParents } from "../specTasks.ts";
 
 /** Kiro's own example, from its spec prompt — the form our agent is told to write. */
 const KIRO = `# Implementation Plan
@@ -147,4 +147,13 @@ test("끝났다는 기준의 줄(_Done when:_)은 작업이 아니다 — 작업
     parseTasks(plan).map((task) => `${task.number}${task.done ? "x" : ""}`),
     ["1", "2", "2.1x"],
   );
+});
+
+test("a task's _Done when:_ command is what is in its first backticks, on its own lines only; no backticks is no command", () => {
+  const plan = "# Plan\n\n- [ ] 1. First\n  - greet.js\n  - _Done when: `npm test -- greet` passes and the file is there_\n- [ ] 2. Second\n  - _Done when: look at the page_\n- [ ] 3. Third\n- [ ] 3.1 Part\n  - _Requirements: 1.1_\n  - _Done when: `npm run typecheck`_\n";
+  assert.equal(doneWhenOf(plan, "1"), "npm test -- greet");
+  assert.equal(doneWhenOf(plan, "2"), null, "what to look at is for a person");
+  assert.equal(doneWhenOf(plan, "3"), null, "the heading has none of its own — 3.1's is 3.1's");
+  assert.equal(doneWhenOf(plan, "3.1"), "npm run typecheck");
+  assert.equal(doneWhenOf(plan, "9"), null);
 });

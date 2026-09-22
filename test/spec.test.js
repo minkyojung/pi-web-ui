@@ -85,6 +85,7 @@ function fakePi(branch, branches = [], { remote = true } = {}) {
   const notes = [];
   const renamed = [];
   const pushed = [];
+  const ran = [];
   const handlers = {};
   const heads = new Set(branches);
   const cwd = mkdtempSync(join(tmpdir(), "spec-fake-"));
@@ -112,7 +113,8 @@ function fakePi(branch, branches = [], { remote = true } = {}) {
   const pi = {
     registerCommand: (name, options) => (commands[name] = { name, ...options }),
     on: (event, fn) => (handlers[event] = fn),
-    exec: async (_git, args) => {
+    exec: async (command, args) => {
+      if (command === "/bin/bash") return (ran.push(args[1]), answer(args[1].includes("fail") ? 1 : 0));
       if (branch === undefined) return answer(128);
       if (args[0] === "branch" && args[1] === "--show-current") return answer(0, `${branch}\n`);
       if (args[0] === "status") return answer(0, dirty.map((entry) => `${entry}\0`).join(""));
@@ -204,6 +206,7 @@ function fakePi(branch, branches = [], { remote = true } = {}) {
     notes,
     renamed,
     pushed,
+    ran,
     gits,
     sessions,
     turns,
@@ -1027,6 +1030,7 @@ test("검사 한 줄은 마지막 답의 `Checks:` 줄에서 — 없으면 none,
   assert.equal(checksIn([]), null);
   assert.equal(trailersOf({ spec: "email-auth", task: "2.1" }, null), "Spec: email-auth\nTask: 2.1\nChecks: none");
   assert.equal(trailersOf({ spec: "email-auth", task: "2.1" }, "npm test — 9 passed"), "Spec: email-auth\nTask: 2.1\nChecks: npm test — 9 passed");
+  assert.equal(trailersOf({ spec: "email-auth", task: "2.1" }, null, { command: "npm test", exit: 1 }), "Spec: email-auth\nTask: 2.1\nChecks: none\nVerified: npm test — exit 1", "앱이 돌린 것은 제 이름으로");
 });
 
 // --- /spec-run: one task, in a session of its own ---
@@ -1136,6 +1140,47 @@ test("커밋 안 한 변경이 있으면 시작하지 않는다 — 스펙 폴�
   assert.equal(pi.notes.length, 1);
   assert.equal(pi.notes[0].type, "warning");
   assert.match(pi.notes[0].text, /server\.ts/);
+});
+
+test("작업의 _Done when:_ 명령은 앱이 커밋 전에 돌리고, 어떻게 끝났든 커밋하며 Verified 트레일러로 남긴다", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.plan("email-auth", "# Plan\n\n- [ ] 1. Add the door\n  - _Done when: `npm test -- door` passes_\n- [ ] 2. Hang the sign\n  - _Done when: `npm run fail-check`_\n- [ ] 3. Paint it\n");
+  pi.setDirty([" M door.js"]);
+  pi.setEntries([
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] } },
+    { type: "message", message: { role: "assistant", content: [{ type: "text", text: "Done.\nChecks: none" }] } },
+  ]);
+  await pi.settle();
+  assert.deepEqual(pi.ran, ["npm test -- door"], "그 작업의 명령을 돌린다");
+  assert.equal(pi.gits.at(-1).at(-1), "Spec: email-auth\nTask: 1\nChecks: none\nVerified: npm test -- door — exit 0");
+  assert.match(pi.notes.at(-1).text, /`npm test -- door` passed/);
+  // A check that fails: committed all the same, said so, and marked so.
+  const again = fakePi("minkyojung/email-auth");
+  t.after(again.cleanup);
+  again.plan("email-auth", "# Plan\n\n- [x] 1. Add the door\n- [ ] 2. Hang the sign\n  - _Done when: `npm run fail-check`_\n- [ ] 3. Paint it\n");
+  again.setDirty([" M sign.js"]);
+  again.setEntries([
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "2", title: "Hang the sign", done: ["1"], then: [] } },
+    { type: "message", message: { role: "assistant", content: [{ type: "text", text: "Done.\nChecks: npm run fail-check — passed" }] } },
+  ]);
+  await again.settle();
+  assert.deepEqual(again.gits.map((args) => args[0]), ["add", "reset", "commit"], "실패해도 커밋한다 — 되돌리는 단위가 커밋이다");
+  assert.equal(again.gits.at(-1).at(-1), "Spec: email-auth\nTask: 2\nChecks: npm run fail-check — passed\nVerified: npm run fail-check — exit 1", "에이전트의 말과 앱의 결과가 나란히");
+  assert.match(again.notes.at(-1).text, /failed \(exit 1\)/);
+  assert.match(again.tasks("email-auth"), /- \[x\] 2\. Hang the sign/, "칸은 체크된다");
+  // A task with no command runs nothing and says nothing of it.
+  const none = fakePi("minkyojung/email-auth");
+  t.after(none.cleanup);
+  none.plan("email-auth");
+  none.setDirty([" M x.js"]);
+  none.setEntries([
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] } },
+    { type: "message", message: { role: "assistant", content: [{ type: "text", text: "Done.\nChecks: none" }] } },
+  ]);
+  await none.settle();
+  assert.deepEqual(none.ran, []);
+  assert.equal(none.gits.at(-1).at(-1), "Spec: email-auth\nTask: 1\nChecks: none");
 });
 
 test("턴이 끝나면 표식을 보고 마무리한다 — 한 세션에 한 번뿐", async (t) => {

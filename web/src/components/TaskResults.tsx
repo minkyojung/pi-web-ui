@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
-import { CheckIcon, FileTextIcon } from "lucide-react";
+import { CheckIcon, FileTextIcon, XIcon } from "lucide-react";
 
 import { commitPath } from "../pages";
 import { type ResultLine, freshWords, listOf, tasksWords } from "../resultsList.ts";
@@ -133,16 +133,29 @@ export function TaskResults({ open: inFront, onOpen }: { open: string | null; on
  */
 function Line({ line }: { line: ResultLine }) {
 	const checked = line.checks !== null;
+	// What the app ran outranks what the run said: a tick or a cross where
+	// there is a Verified trailer, the circle for the agent's word otherwise.
+	const ran = line.verified;
+	const mark = ran ? (ran.exit === 0 ? "passed" : "failed") : checked ? "said" : "none";
+	const title = ran ? `${ran.command} — ${ran.exit === 0 ? "passed" : `exit ${ran.exit}`}${checked ? ` · agent: ${line.checks}` : ""}` : checked ? `agent: ${line.checks}` : "The run checked nothing";
 	return (
 		<>
 			<span
 				className="flex w-3 shrink-0 justify-center"
-				data-checks={checked ? "said" : "none"}
-				title={checked ? `agent: ${line.checks}` : "The run checked nothing"}
+				data-checks={mark}
+				title={title}
 				role="img"
-				aria-label={checked ? `The agent said it checked: ${line.checks}` : "No checks"}
+				aria-label={ran ? `The app ran ${ran.command}: ${ran.exit === 0 ? "passed" : `failed, exit ${ran.exit}`}` : checked ? `The agent said it checked: ${line.checks}` : "No checks"}
 			>
-				{checked ? <span className="size-2 rounded-full bg-muted-foreground/70" /> : <span className="size-2 rounded-full border border-amber-600 dark:border-amber-500" />}
+				{mark === "passed" ? (
+					<CheckIcon className="size-3" style={{ color: "var(--code-string)" }} />
+				) : mark === "failed" ? (
+					<XIcon className="size-3 text-destructive" />
+				) : checked ? (
+					<span className="size-2 rounded-full bg-muted-foreground/70" />
+				) : (
+					<span className="size-2 rounded-full border border-amber-600 dark:border-amber-500" />
+				)}
 			</span>
 			<span className="w-7 shrink-0 text-muted-foreground tabular-nums">{line.task}</span>
 			<span className={`min-w-0 truncate ${line.fresh ? "font-semibold text-foreground" : ""}`}>{line.title}</span>

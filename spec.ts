@@ -53,7 +53,7 @@ import { writeAtomic } from "./atomic.ts";
 import { APP_DIR_NAME, APPROVALS, SPEC_DOCS, type SpecDoc, SPECS_DIR } from "./documentKinds.ts";
 import { CITIES } from "./electron/cities.js";
 import { approve, type SpecState, specState } from "./specApproval.ts";
-import { nextTask, parseTasks, runsOf, runsUnder, type Task, taskToRun, withDone, withParents } from "./specTasks.ts";
+import { doneWhenOf, nextTask, parseTasks, runsOf, runsUnder, type Task, taskToRun, withDone, withParents } from "./specTasks.ts";
 
 /** A workspace's placeholder name: a city, or a city of a later round (`lisbon-v2`). */
 const PLACEHOLDER = new RegExp(`^(?:${CITIES.join("|")})(?:-v\\d+)?$`);
@@ -554,8 +554,37 @@ export async function finishTask(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: 
  * confirm the work is in the commit that is the work — in the clone and on
  * the PR, read with `git log` and nothing else (task-runs.md "결과는 커밋에").
  */
-export function trailersOf({ spec, task }: Pick<TaskMark, "spec" | "task">, checks: string | null): string {
-	return [`Spec: ${spec}`, `Task: ${task}`, `Checks: ${checks ?? "none"}`].join("\n");
+export function trailersOf({ spec, task }: Pick<TaskMark, "spec" | "task">, checks: string | null, verified: Verified | null = null): string {
+	return [`Spec: ${spec}`, `Task: ${task}`, `Checks: ${checks ?? "none"}`, ...(verified ? [`Verified: ${verified.command} — exit ${verified.exit}`] : [])].join("\n");
+}
+
+/** What the app ran for a task, and how it ended — the `Verified:` trailer, beside the run's own `Checks:`. */
+export interface Verified {
+	command: string;
+	exit: number;
+}
+
+/**
+ * The task's `_Done when:` command, run by the app in the workspace: the
+ * one check that is not the agent's word (task-results.md). Ten minutes,
+ * as a test suite may take; what it printed is not kept — the commit says
+ * how it ended, and a person who wants the output runs it. A task with no
+ * command, or a plan that cannot be read, is verified by nothing.
+ */
+async function verify(pi: ExtensionAPI, cwd: string, file: string, task: string): Promise<Verified | null> {
+	let command: string | null;
+	try {
+		command = doneWhenOf(readFileSync(file, "utf8"), task);
+	} catch {
+		return null;
+	}
+	if (!command) return null;
+	try {
+		const ran = await pi.exec("/bin/bash", ["-lc", command], { cwd, timeout: 600_000 });
+		return { command, exit: ran.killed ? 124 : ran.code };
+	} catch {
+		return { command, exit: 127 };
+	}
 }
 
 /**
@@ -586,6 +615,8 @@ async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, c
 		ui.notify(`${where} is not there, so ${mark.task} could not be checked off.`, "warning");
 		return "nothing";
 	}
+	// Before the box and the commit: the plan as approved names the check.
+	const verified = await verify(pi, cwd, file, mark.task);
 	writeAtomic(file, withDone(text, withParents(parseTasks(text), new Set([...mark.done, mark.task]))));
 	if (!repository) {
 		ui.notify(`${mark.task} is done. There is no repository here, so nothing was committed.`, "warning");
@@ -600,7 +631,10 @@ async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, c
 	// ignored, untracked or not there.
 	const staged = await git(["add", "-A"]);
 	const added = staged.code === 0 ? await git(["reset", "-q", "--", APP_DIR_NAME]) : staged;
-	const made = added.code === 0 ? await git(["commit", "-m", mark.title, "-m", trailersOf(mark, checks)]) : added;
+	// Committed whether the check passed or not: the commit is the unit that
+	// is read and reverted, and a failed try is a record too — the list at
+	// the foot of the window marks it (TaskResults).
+	const made = added.code === 0 ? await git(["commit", "-m", mark.title, "-m", trailersOf(mark, checks, verified)]) : added;
 	if (made.code !== 0) {
 		ui.notify(`${mark.task} is done, but git could not commit it: ${(made.stderr || made.stdout).trim()}`, "warning");
 		return "uncommitted";
@@ -608,7 +642,8 @@ async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, c
 	const at = await git(["rev-parse", "--short", "HEAD"]);
 	const next = nextTask(parseTasks(readFileSync(file, "utf8")));
 	const going = mark.then[0];
-	ui.notify(`${mark.task} is done${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}. ${going ? `${going} starts next.` : next ? `Next is ${next.number} — /spec-run` : "That was the last task."}`, "info");
+	const said = verified ? (verified.exit === 0 ? ` \`${verified.command}\` passed.` : ` \`${verified.command}\` failed (exit ${verified.exit}).`) : "";
+	ui.notify(`${mark.task} is done${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}.${said} ${going ? `${going} starts next.` : next ? `Next is ${next.number} — /spec-run` : "That was the last task."}`, "info");
 	return "committed";
 }
 

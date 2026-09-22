@@ -150,3 +150,24 @@ export function withParents(tasks: Task[], done: Set<string>): Set<string> {
 export function withDone(text: string, done: Set<string>): string {
 	return text.replace(TASKS, (_line, open: string, _box: string, rest: string, number: string) => `${open}${done.has(number) ? "x" : " "}${rest}`);
 }
+
+/**
+ * The command a task's `_Done when:` line names, or null: none, or a line
+ * that names no command — "what to look at" is for a person. The command is
+ * what is in the line's first backticks, which is how the plan is told to
+ * write one (spec.ts TASKS_RULES). Read off the task's own lines: from its
+ * line down to the next task's, wherever they begin.
+ */
+export function doneWhenOf(text: string, number: string): string | null {
+	const lines = text.split("\n");
+	const start = lines.findIndex((line) => taskAt(line)?.number === number);
+	if (start === -1) return null;
+	for (const line of lines.slice(start + 1)) {
+		if (taskAt(line)) break;
+		const found = /_Done when:\s*([^_]*)_/.exec(line);
+		if (!found) continue;
+		const command = /`([^`]+)`/.exec(found[1]!);
+		return command ? command[1]!.trim() || null : null;
+	}
+	return null;
+}

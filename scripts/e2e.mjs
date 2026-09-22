@@ -3868,17 +3868,18 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 
 	// A task's end as spec.ts makes it — the box, then the commit that says
 	// whose it is — three times: one with no checks, and one run again.
-	const task = (number, title, file, text, checks) => {
+	const task = (number, title, file, text, checks, verified = null) => {
 		writeFileSync(join(cwd, "came", file), text);
 		writeFileSync(join(dir, "tasks.md"), readFileSync(join(dir, "tasks.md"), "utf8").replace(`- [ ] ${number}.`, `- [x] ${number}.`));
 		git("add", "came", ".octave/specs/came");
-		git("commit", "-q", "-m", title, "-m", `Spec: came\nTask: ${number}\nChecks: ${checks}`);
+		git("commit", "-q", "-m", title, "-m", `Spec: came\nTask: ${number}\nChecks: ${checks}${verified ? `\nVerified: ${verified}` : ""}`);
 		return git("rev-parse", "HEAD");
 	};
 	task("1", "Add the door", "door.js", "export const door = 1;\n", "npm test — 4 passed");
 	const button = () => app.evaluate("document.getElementById('results')?.innerText.replace(/\\s+/g, ' ') ?? ''");
 	await until("the first result", async () => (await button()).includes("1 task · 1 new"));
-	const second = task("2", "Hang the sign", "sign.js", "export const sign = 1;\nexport const hung = true;\n", "none");
+	// The second's check the app ran, and it failed: the one cross in the list.
+	const second = task("2", "Hang the sign", "sign.js", "export const sign = 1;\nexport const hung = true;\n", "none", "npm test -- sign — exit 1");
 	const again = task("1", "Add the door", "door.js", "export const door = 2;\n", "npm test — 5 passed");
 	await until("three runs, two tasks", async () => (await button()).includes("2 tasks · 2 new"));
 
@@ -3899,7 +3900,7 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	assert.equal(lines, "2 Hang the sign new +2 −0 || 1 Add the door new +1 −1", lines);
 	// The mark at the left is the checks: said, or none — with the run's words behind the one that has them.
 	const marks = await app.evaluate("[...document.querySelectorAll('[data-result] [data-checks]')].map((m) => m.dataset.checks + ':' + m.title).join(' || ')");
-	assert.equal(marks, "none:The run checked nothing || said:agent: npm test — 5 passed");
+	assert.equal(marks, "failed:npm test -- sign — exit 1 || said:agent: npm test — 5 passed", "what the app ran outranks what the run said");
 	// Not yet looked at is the line in bold, and still while the list is being read.
 	assert.equal(await app.evaluate("document.querySelectorAll('[data-result][data-fresh]').length"), 2);
 	assert.equal(await app.evaluate("[...document.querySelectorAll('[data-result][data-fresh] .font-semibold')].length"), 2);
