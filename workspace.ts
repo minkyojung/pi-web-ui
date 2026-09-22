@@ -20,6 +20,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { bytes } from "./request.ts";
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import { type WebSocket } from "ws";
 import {
@@ -191,40 +192,15 @@ const modelKey = (m: { provider: string; id: string }) => `${m.provider}/${m.id}
  */
 const availableModels = () => modelRuntime.getAvailableSnapshot();
 
-/** A small request body, whole. Capped: the one endpoint that takes one takes a few fields. */
-function text(req: IncomingMessage): Promise<string> {
-	return new Promise((resolve, reject) => {
-		let out = "";
-		req.on("data", (chunk) => {
-			out += chunk;
-			if (out.length > 4096) reject(new Error("too large"));
-		});
-		req.on("end", () => resolve(out));
-		req.on("error", reject);
-	});
-}
-
-/** A file's bytes, whole, or a refusal once they pass the cap — the connection is dropped there, not read to its end. */
-function bytes(req: IncomingMessage, max: number): Promise<Buffer> {
-	return new Promise((resolve, reject) => {
-		const chunks: Buffer[] = [];
-		let size = 0;
-		req.on("data", (chunk: Buffer) => {
-			size += chunk.length;
-			if (size > max) {
-				reject(new Error("too large"));
-				req.destroy();
-			} else chunks.push(chunk);
-		});
-		req.on("end", () => resolve(Buffer.concat(chunks)));
-		req.on("error", reject);
-	});
-}
 
 /** This run of the server, and how many times it has written the settings. See SettingsMsg's revision. */
 const SETTINGS_BOOT = randomUUID();
 let settingsWrites = 0;
 const settingsMsg = (settings: Settings, n: number): SettingsMsg => ({ type: "settings", settings, revision: { boot: SETTINGS_BOOT, n } });
+/** The settings as they stand, at the revision they stand at — what a tab is told as it connects. */
+export const settingsNow = (): SettingsMsg => settingsMsg(readSettings(), settingsWrites);
+/** The settings with `patch` written into them, at the next revision — every folder's tabs are then told (settingsChanged). Throws as updateSettings does. */
+export const writeSettings = (patch: Record<string, unknown>): SettingsMsg => settingsMsg(updateSettings(patch), ++settingsWrites);
 
 /** The trash the folder's deleted notes go to: the machine's, through the shell, where there is one — see trash.ts. */
 const systemTrash = shellTrash();
@@ -1335,7 +1311,7 @@ export async function createWorkspace(cwd: string) {
 		}
 		// The desktop shell stops a server nobody has looked at for a while, and must
 		// not stop one in the middle of a run (electron/servers.js). Only it listens.
-		if ((event.type === "agent_start" || event.type === "agent_settled") && process.connected) process.send?.({ busy: event.type === "agent_start" });
+		if ((event.type === "agent_start" || event.type === "agent_settled") && process.connected) process.send?.({ busy: event.type === "agent_start", folder: CWD });
 		// Cost only moves when a message completes.
 		if (event.type === "message_end" || event.type === "agent_settled") broadcast(usage());
 		if (event.type === "agent_settled" && rereadWhenSettled) {
@@ -1636,37 +1612,6 @@ export async function createWorkspace(cwd: string) {
 			// A change to the settings: the fields named, laid over what is on disk
 			// (see updateSettings). What was asked wrongly and what could not be
 			// written are told apart, since only one of them is worth asking again.
-			if (pathname === "/api/settings" && req.method === "POST") {
-				let patch: unknown;
-				try {
-					patch = JSON.parse(await text(req));
-				} catch {
-					return json(400, { error: "invalid JSON" });
-				}
-				if (typeof patch !== "object" || patch === null || Array.isArray(patch)) {
-					return json(400, { error: "expected an object" });
-				}
-				let written: SettingsMsg;
-				try {
-					written = settingsMsg(updateSettings(patch as Record<string, unknown>), ++settingsWrites);
-				} catch (err) {
-					console.error("could not write settings:", err instanceof Error ? err.message : err);
-					return json(500, { error: "could not write settings" });
-				}
-				json(200, written);
-				// Every tab hears of it, the one that asked too: a settings screen open
-				// in another window would otherwise build its next edit on the old
-				// value, and the loadout is drawn on the composer, which hears about it
-				// on the socket rather than by asking.
-				broadcast(written);
-				broadcast(config());
-				return;
-			}
-			// A file dropped on the app, into the folder — see attach.ts. This writes
-			// a file because a request said so, so it answers only a page of its own:
-			// the body must be declared as bytes, which a page from elsewhere cannot
-			// send without asking first (and this server grants nobody), and an
-			// Origin, where the browser sends one, must be the host that was asked.
 			if (pathname === "/api/attachment" && req.method === "POST") {
 				const origin = req.headers.origin;
 				if (origin && URL.parse(origin)?.host !== req.headers.host) return json(403, { error: "not from this app" });
@@ -1695,7 +1640,6 @@ export async function createWorkspace(cwd: string) {
 				return json(201, { path: saved.path });
 			}
 			if (req.method !== "GET") return json(405, { error: "read only" });
-			if (pathname === "/api/settings") return json(200, readSettings());
 			if (pathname === "/api/models") return json(200, catalog());
 			// A note's text as it is on disk, for an embed of it in another note.
 			// Read only, and only a note in the folder (readNote → noteAt).
@@ -1775,7 +1719,7 @@ export async function createWorkspace(cwd: string) {
 		const reply = (msg: ServerMsg) => ws.send(safeStringify(msg));
 		reply(config());
 		reply(providers());
-		reply(settingsMsg(readSettings(), settingsWrites));
+		reply(settingsNow());
 		reply(usage());
 		reply(contextSources());
 		reply(commands());
@@ -2616,6 +2560,11 @@ export async function createWorkspace(cwd: string) {
 		attach,
 		broadcast,
 		dispose,
+		/** The settings were written (server.ts): every tab of this folder hears them, and the config drawn from them. */
+		settingsChanged: (written: SettingsMsg) => {
+			broadcast(written);
+			broadcast(config());
+		},
 		/** For the line printed as the server comes up. */
 		status: () => ({ model: currentModel()?.id ?? "none", thinking: session().thinkingLevel, sessionFile: session().sessionFile }),
 	};

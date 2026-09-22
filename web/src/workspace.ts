@@ -30,3 +30,16 @@ export function folderOf(): string | null {
 
 /** The key `name` is kept under in this page's browser storage. */
 export const keyFor = (name: string): string => keyed(name, folderOf());
+
+/**
+ * `url` with this page's folder on it, for what the server answers per
+ * folder — the socket, a note's text, a picture, an attachment. One server
+ * serves every workspace, and which folder a request means is the page's
+ * to say; a page with no folder written in asks as it always did, and the
+ * server answers for the folder it was started in.
+ */
+export function forFolder(url: string): string {
+	const folder = folderOf();
+	if (!folder) return url;
+	return `${url}${url.includes("?") ? "&" : "?"}folder=${encodeURIComponent(folder)}`;
+}

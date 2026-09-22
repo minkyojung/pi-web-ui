@@ -13,6 +13,7 @@ import { levelLabel } from "./ModelPicker";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { forFolder } from "../workspace";
 
 /**
  * Which models the composer's picker offers, and in what order.
@@ -39,7 +40,7 @@ export function Loadout({ chosen, onChange }: { chosen: string[]; onChange: (nex
 	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
 	useEffect(() => {
-		fetch("/api/models")
+		fetch(forFolder("/api/models"))
 			.then((r) => (r.ok ? r.json() : Promise.reject()))
 			.then(setCatalogue)
 			.catch(() => setFailed(true));

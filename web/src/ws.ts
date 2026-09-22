@@ -47,6 +47,7 @@ import {
 	usageStore,
 } from "./serverState";
 import { socketOpened, stateLanded } from "./landing";
+import { forFolder } from "./workspace";
 import { clearedText } from "./queue";
 import { applyServerEvent, replaceConversation, setConnection } from "./store";
 import type { ClientMsg, ServerMsg, StateMsg } from "./types";
@@ -285,7 +286,8 @@ function connect(): void {
 	const gen = ++generation;
 	setConnection(attempt === 0 ? "connecting" : "reconnecting");
 
-	const ws = new WebSocket(`ws://${location.host}/ws`);
+	// Which folder this page is a window on goes on the address: one server serves every workspace.
+	const ws = new WebSocket(forFolder(`ws://${location.host}/ws`));
 	socket = ws;
 
 	ws.onopen = () => {

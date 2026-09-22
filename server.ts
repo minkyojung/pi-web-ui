@@ -9,11 +9,14 @@
 
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { createServer, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { folderMeta } from "./folderMeta.ts";
 import { startLogging } from "./log.ts";
+import { text } from "./request.ts";
+import { readSettings } from "./settings.ts";
 import { takeCredentials } from "./standing.ts";
 
 /**
@@ -38,11 +41,26 @@ const HOST = process.env.HOST ?? "127.0.0.1";
  * from a terminal, which is what you want there; the desktop app has no useful
  * working directory of its own, so it asks and passes the answer in.
  */
-const CWD = process.env.WORKDIR ?? process.cwd();
+const CWD = resolve(process.env.WORKDIR ?? process.cwd());
 if (!existsSync(CWD)) {
 	console.error(`working folder does not exist: ${CWD}`);
 	process.exit(1);
 }
+
+/**
+ * The folders this process may work in: the one it was started for, and
+ * any the shell names over the channel afterwards (`{ workspace }`) — one
+ * process serves every workspace now, and which folders those are is the
+ * shell's to say, as it was when it started a process for each. A folder
+ * asked for by a page and not on this list is refused. With no shell there
+ * is only the one.
+ */
+const allowed = new Set<string>([CWD]);
+const permitted = (folder: string | null | undefined): string | null => {
+	if (!folder) return CWD;
+	const full = resolve(folder);
+	return allowed.has(full) ? full : null;
+};
 
 const CLIENT_DIR = process.env.CLIENT_DIR
 	? pathToFileURL(process.env.CLIENT_DIR.replace(/\/?$/, "/"))
@@ -65,6 +83,14 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 process.on("message", takeCredentials);
+process.on("message", (message: unknown) => {
+	if (typeof message !== "object" || message === null) return;
+	const { workspace, warm, dispose } = message as { workspace?: unknown; warm?: unknown; dispose?: unknown };
+	if (typeof workspace === "string") allowed.add(resolve(workspace));
+	// Made ahead of being looked at, as the pointer rests on its row (main.js).
+	if (typeof warm === "string") void open(warm)?.catch(() => {});
+	if (typeof dispose === "string") void letGo(resolve(dispose));
+});
 
 /**
  * The built page, served by the process rather than the folder: it is the
@@ -72,7 +98,7 @@ process.on("message", takeCredentials);
  * the window is pointed here the moment the port answers, and the page is
  * what it draws while the workspace below is still being made.
  */
-async function page(pathname: string, res: ServerResponse): Promise<void> {
+async function page(pathname: string, res: ServerResponse, folder: string): Promise<void> {
 	// The build hashes its asset names, so the set of files cannot be listed
 	// ahead of time the way the two hand-written ones could be.
 	const file = new URL(pathname === "/" ? "index.html" : pathname.slice(1), CLIENT_DIR);
@@ -94,7 +120,7 @@ async function page(pathname: string, res: ServerResponse): Promise<void> {
 	res.writeHead(200, { "content-type": CONTENT_TYPES[ext] ?? "application/octet-stream" });
 	// The page is told which folder it is a window on before any of it runs —
 	// see web/src/workspace.ts for why a page cannot go by its address.
-	res.end(pathname === "/" ? folderMeta(body.toString("utf8"), CWD) : body);
+	res.end(pathname === "/" ? folderMeta(body.toString("utf8"), folder) : body);
 }
 
 /**
@@ -108,46 +134,133 @@ async function page(pathname: string, res: ServerResponse): Promise<void> {
  * did, with the reason as its last words.
  */
 type Workspace = Awaited<ReturnType<typeof import("./workspace.ts").createWorkspace>>;
-let workspace: Workspace | null = null;
-const ready: Promise<Workspace> = import("./workspace.ts")
-	.then((m) => m.createWorkspace(CWD))
-	.then((made) => {
-		workspace = made;
-		const { model, thinking, sessionFile } = made.status();
-		console.log(`model: ${model}  thinking: ${thinking}`);
-		console.log(`session: ${sessionFile ?? "(not persisted)"}`);
-		return made;
+/** The folder's module, loaded once and after the port is open — see `open`. */
+const module = import("./workspace.ts");
+/** Each permitted folder's workspace, from the moment one is asked for. */
+const folders = new Map<string, Promise<Workspace>>();
+/** The ones that are there, for what every folder is told at once. */
+const made = new Map<string, Workspace>();
+
+/**
+ * The folder's workspace, made the first time it is asked for and kept:
+ * one process serves every workspace, and a folder's is made behind the
+ * page rather than before it. Most of a second went by between this
+ * process starting and its first folder being ready — the agent's code
+ * alone takes that long to load, once — and a window that waited for it
+ * saw nothing meanwhile; now it sees the page, and the state arrives when
+ * there is state. Null for a folder this process may not work in. A folder
+ * that cannot be made is not kept, and the next ask tries again; the first
+ * folder failing ends the process the way it always did, with the reason
+ * as its last words.
+ */
+function open(folder: string | null | undefined): Promise<Workspace> | null {
+	const full = permitted(folder);
+	if (full === null) return null;
+	const had = folders.get(full);
+	if (had) return had;
+	const making = module
+		.then((m) => m.createWorkspace(full))
+		.then((workspace) => {
+			made.set(full, workspace);
+			const { model, thinking, sessionFile } = workspace.status();
+			console.log(`${full}: model: ${model}  thinking: ${thinking}`);
+			console.log(`${full}: session: ${sessionFile ?? "(not persisted)"}`);
+			return workspace;
+		});
+	folders.set(full, making);
+	making.catch((err) => {
+		folders.delete(full);
+		console.error(err instanceof Error ? (err.stack ?? err.message) : err);
+		if (full === CWD) process.exit(1);
 	});
-ready.catch((err) => {
-	console.error(err instanceof Error ? (err.stack ?? err.message) : err);
-	process.exit(1);
-});
+	return making;
+}
+void open(CWD);
+
+/** A folder let go of — its watcher, its session, its tabs — because the shell is removing it. The next ask would make it anew. */
+async function letGo(full: string): Promise<void> {
+	const had = folders.get(full);
+	if (!had) return;
+	folders.delete(full);
+	made.delete(full);
+	await (await had.catch(() => null))?.dispose();
+}
 
 const server = createServer(async (req, res) => {
-	const { pathname } = new URL(req.url ?? "/", "http://localhost");
-	if (pathname.startsWith("/api/") || pathname.startsWith("/vault/")) return (workspace ?? (await ready)).handle(req, res);
-	return page(pathname, res);
+	const url = new URL(req.url ?? "/", "http://localhost");
+	const { pathname } = url;
+	const json = (code: number, body: unknown) => {
+		res.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+		res.end(JSON.stringify(body));
+	};
+	// The settings are the process's, and every folder's tabs hear a change.
+	if (pathname === "/api/settings") {
+		if (req.method === "GET") return json(200, readSettings());
+		if (req.method !== "POST") return json(405, { error: "read only" });
+		let patch: unknown;
+		try {
+			patch = JSON.parse(await text(req));
+		} catch {
+			return json(400, { error: "invalid JSON" });
+		}
+		if (typeof patch !== "object" || patch === null || Array.isArray(patch)) return json(400, { error: "expected an object" });
+		const { writeSettings } = await module;
+		let written;
+		try {
+			written = writeSettings(patch as Record<string, unknown>);
+		} catch (err) {
+			console.error("could not write settings:", err instanceof Error ? err.message : err);
+			return json(500, { error: "could not write settings" });
+		}
+		json(200, written);
+		// Every tab hears of it, the one that asked too: a settings screen open
+		// in another window would otherwise build its next edit on the old
+		// value, and the loadout is drawn on the composer, which hears about it
+		// on the socket rather than by asking.
+		for (const workspace of made.values()) workspace.settingsChanged(written);
+		return;
+	}
+	// A folder's: which one, the page says (`?folder`), or it is the first.
+	const folder = url.searchParams.get("folder");
+	if (pathname.startsWith("/api/") || pathname.startsWith("/vault/")) {
+		const workspace = open(folder);
+		if (!workspace) return json(404, { error: "no such workspace" });
+		return (await workspace).handle(req, res);
+	}
+	const full = permitted(folder);
+	if (full === null) {
+		res.writeHead(404).end("No such workspace");
+		return;
+	}
+	return page(pathname, res, full);
 });
 
 const wss = new WebSocketServer({ server });
 
 /**
- * A tab attached to the folder once there is one. What it sends meanwhile —
- * the note its editor has open, typing on the way out — is kept in order
- * and given to the folder's own listener the moment that is registered,
- * which attach() does before its first await.
+ * A tab attached to its folder — named on the socket's address, or the
+ * first — once there is one. What it sends meanwhile — the note its editor
+ * has open, typing on the way out — is kept in order and given to the
+ * folder's own listener the moment that is registered, which attach() does
+ * before its first await. A folder this process may not work in is closed
+ * on, with the code for it.
  */
-function attachWhenReady(ws: WebSocket): void {
-	if (workspace) return void workspace.attach(ws);
-	const early: Parameters<(data: unknown, isBinary: boolean) => void>[] = [];
+function attachWhenReady(ws: WebSocket, req: IncomingMessage): void {
+	const folder = new URL(req.url ?? "/", "http://localhost").searchParams.get("folder");
+	const workspace = open(folder);
+	if (!workspace) return ws.close(1008, "no such workspace");
+	const early: [unknown, boolean][] = [];
 	const hold = (data: unknown, isBinary: boolean) => early.push([data, isBinary]);
 	ws.on("message", hold);
-	void ready.then((made) => {
-		if (ws.readyState !== ws.OPEN) return;
-		void made.attach(ws);
-		ws.off("message", hold);
-		for (const [data, isBinary] of early) ws.emit("message", data, isBinary);
-	});
+	void workspace.then(
+		(ready) => {
+			if (ws.readyState !== ws.OPEN) return;
+			void ready.attach(ws);
+			ws.off("message", hold);
+			for (const [data, isBinary] of early) ws.emit("message", data, isBinary);
+		},
+		() => ws.close(1011, "the workspace could not be made"),
+	);
 }
 wss.on("connection", attachWhenReady);
 
@@ -161,9 +274,11 @@ let shuttingDown = false;
 async function shutdown(): Promise<void> {
 	if (shuttingDown) return;
 	shuttingDown = true;
-	// A folder still being made is waited for, then let go; one that never
-	// will be has already ended the process.
-	await (workspace ?? (await ready.catch(() => null)))?.dispose();
+	// The folders there are, let go of; one still being made is not waited
+	// for — nothing of it is on disk yet that its disposal would settle, and
+	// a stop that waited on the agent's code loading would be a slow stop
+	// for nothing.
+	await Promise.all([...made.values()].map((workspace) => workspace.dispose()));
 	server.close(() => process.exit(0));
 }
 
@@ -196,7 +311,7 @@ function unhandled(what: string, err: unknown): void {
 	if (shuttingDown) return;
 	// The report must not become the next uncaught error.
 	try {
-		workspace?.broadcast({ type: "error", message: `${what}: ${err instanceof Error ? err.message : String(err)}` });
+		for (const workspace of made.values()) workspace.broadcast({ type: "error", message: `${what}: ${err instanceof Error ? err.message : String(err)}` });
 	} catch {
 		// A socket that cannot be written to is not news at this point.
 	}

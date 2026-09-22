@@ -8,6 +8,7 @@
  * as a file asks pageOf first. VS Code's untitled: is the same move.
  */
 import { isDocument } from "../../documentKinds.ts";
+import { forFolder } from "./workspace.ts";
 
 const WHATS_NEW = "octave://whats-new/";
 
@@ -69,7 +70,7 @@ export const isPage = (path: string | null): boolean => pageOf(path) !== null;
 export const isCode = (path: string | null): boolean => pageOf(path)?.kind === "code";
 
 /** Where the server gives a file in the folder out, by its path (the /vault route). */
-export const vaultUrl = (path: string): string => `/vault/${path.split("/").map(encodeURIComponent).join("/")}`;
+export const vaultUrl = (path: string): string => forFolder(`/vault/${path.split("/").map(encodeURIComponent).join("/")}`);
 
 /**
  * A changelog section as blocks to draw: the only marks it uses are a
