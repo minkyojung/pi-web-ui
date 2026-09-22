@@ -98,6 +98,8 @@ contextBridge.exposeInMainWorld("pi", {
 		branches: (root) => ipcRenderer.invoke("workspace:branches", root),
 		first: (folder) => ipcRenderer.invoke("workspace:first", folder),
 		open: (path) => ipcRenderer.invoke("workspace:open", path),
+		// Its server started ahead of `open`, while the pointer rests on its row.
+		warm: (path) => ipcRenderer.invoke("workspace:warm", path),
 		changes: (path) => ipcRenderer.invoke("workspace:changes", path),
 		remove: (path, seen) => ipcRenderer.invoke("workspace:remove", path, seen),
 		setup: (path) => ipcRenderer.invoke("workspace:setup", path),

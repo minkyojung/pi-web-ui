@@ -51,6 +51,7 @@ const workspaceShell = (
 				create(root: string, first: { line: string; model: string | null; effort: string | null }, from: string | null): Promise<{ error?: string } | null>;
 				branches(root: string): Promise<{ branches: string[]; base: string | null } | null>;
 				open(path: string): Promise<void>;
+				warm(path: string): Promise<void>;
 				changes(path: string): Promise<number | null>;
 				remove(path: string, seen: number): Promise<{ error?: string; changes?: number; warning?: string } | null>;
 				setup(path: string): Promise<{ error?: string; ran?: boolean } | null>;
@@ -161,6 +162,22 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 		setGoing(path);
 		shell.open(path).finally(() => setGoing((was) => (was === path ? null : was)));
 	};
+	/**
+	 * A row the pointer has settled on for a moment is one about to be
+	 * clicked, more often than not, and its server takes most of a second to
+	 * start: it is started now, so the click finds it up. Settled, not
+	 * crossed — a pointer on its way down the list starts nothing.
+	 */
+	const settling = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const settle = (path: string) => {
+		unsettle();
+		settling.current = setTimeout(() => void shell.warm(path).catch(() => {}), 120);
+	};
+	const unsettle = () => {
+		if (settling.current !== null) clearTimeout(settling.current);
+		settling.current = null;
+	};
+	useEffect(() => unsettle, []);
 	const shell = workspaceShell!;
 	const here = usePageFolder();
 	const folder = useRef(here);
@@ -272,6 +289,8 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 															aria-current={active ? "page" : undefined}
 															aria-busy={worktree.path === going || undefined}
 															onClick={() => !active && go(worktree.path)}
+															onPointerEnter={() => !active && settle(worktree.path)}
+															onPointerLeave={unsettle}
 															className={cn(
 																row,
 																"data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground",

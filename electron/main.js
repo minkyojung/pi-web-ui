@@ -734,6 +734,20 @@ async function openWorkspace(path) {
 	if (known) await show(path);
 }
 
+/**
+ * A listed workspace's server started now, before anyone asks for the window
+ * to go there: the page asks as the pointer settles on the row, and the
+ * click comes a few hundred milliseconds later, which is most of what a
+ * server takes to start. One started for a row not chosen is not kept:
+ * nothing marks it as in use, so the next pass of stopIdle stops it.
+ */
+function warmWorkspace(path) {
+	if (path === front) return;
+	const known = projectsOf(readSettings(), isCheckout).some((project) => project.worktrees.some((worktree) => worktree.path === path));
+	// A server that will not start is the click's to report, not the hover's.
+	if (known) servers.get(path).catch(() => {});
+}
+
 /** The screen that adds a repository, when there is no workspace to put in front. */
 async function showStart() {
 	++asked;
@@ -840,6 +854,7 @@ function serveFolders() {
 	// would be given the wrong workspace's line.
 	ipcMain.handle("workspace:first", (_event, folder) => (typeof folder === "string" ? waiting.take(folder) : null));
 	ipcMain.handle("workspace:open", (_event, path) => (devUrl ? null : openWorkspace(path)));
+	ipcMain.handle("workspace:warm", (_event, path) => (devUrl ? null : warmWorkspace(path)));
 	ipcMain.handle("workspace:changes", (_event, path) => (devUrl ? null : workspaceChanges(path)));
 	ipcMain.handle("workspace:remove", (_event, path, seen) => (devUrl ? null : removeWorkspace(path, seen)));
 	ipcMain.handle("workspace:setup", (_event, path) => (devUrl ? null : setUpAgain(path)));
