@@ -88,7 +88,8 @@ README. Read it and fix it; it is a short file, and yours. What goes in it:
   Each ends up under the commit as `Verified: unit — exit 0`, and the list at the foot of the window shows a
   tick or a red cross for it, beside the circle that stands for the agent's own word; press the tick or the
   cross and what the check printed opens in a tab. A check that exits 2 stops the commit altogether; any
-  other failure is committed and marked, so a failed try is still a record.
+  other failure is committed and marked, so a failed try is still a record. They run one after another, so
+  put the quick ones first and leave the slow ones — a browser suite, say — to your CI on the pull request.
 - `[scripts.run.dev]`, a dev server or a watcher: the ▶ at the foot of the window, on a port of the
   workspace's own in `OCTAVE_PORT`. Press it for the menu — run or stop, open what it serves, read what it
   printed. A run that ends by itself gets a red dot, and its exit code is in the menu.

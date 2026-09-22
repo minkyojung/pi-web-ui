@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ExternalLinkIcon, FileTextIcon, PlayIcon, RotateCwIcon, SquareIcon, WrenchIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -51,6 +51,17 @@ const shell = (
 	}
 ).pi;
 
+/** The repository's setup run in a workspace, with what it said as a toast — the row has no room for it. */
+function runSetup(path: string): void {
+	toast.promise(
+		shell!.workspaces!.setup(path).then((result) => {
+			if (result?.error) throw new Error(result.error);
+			return result?.ran ? "Setup finished." : "This repository names no setup command in .octave/config.toml.";
+		}),
+		{ loading: "Setting up…", success: (said: string) => said, error: (err: Error) => err.message },
+	);
+}
+
 /**
  * The repository's own commands, at the foot of the window: one button whose
  * face says how the run stands — ▶ and the run's name; ■ and the port it was
@@ -66,6 +77,8 @@ const shell = (
 export function Scripts({ onOpen }: { onOpen: (path: string) => void }) {
 	const path = usePageFolder();
 	const [state, setState] = useState<Scripts | null>(null);
+	/** Whether the repository had its file when this page last looked: the file appearing is what is offered on. */
+	const had = useRef<boolean | null>(null);
 	// Asked again when the agent's turn ends and when the window comes back:
 	// the file is written by the agent, or by hand in an editor, and neither
 	// is heard here.
@@ -83,6 +96,22 @@ export function Scripts({ onOpen }: { onOpen: (path: string) => void }) {
 			off();
 		};
 	}, [path, working]);
+	// The file appearing under this page — the agent drafted it, or it was
+	// written by hand — is an offer, once: setup runs on its own only in a
+	// workspace being made, and this one is already made. Not run unasked,
+	// since what is here may have been installed by hand already.
+	useEffect(() => {
+		if (!state) return;
+		const was = had.current;
+		had.current = state.configured;
+		if (was === false && state.configured && path) {
+			toast("The repository's commands are written down.", {
+				id: "set-up-now",
+				description: "Commit the file and every new workspace runs its setup. This one can run it now.",
+				action: { label: "Run setup", onClick: () => runSetup(path) },
+			});
+		}
+	}, [state, path]);
 	if (!shell?.runs || !path || !state) return null;
 	const face = "ml-auto cursor-default gap-1 px-1.5 text-xs font-normal";
 	if (!state.configured) {
@@ -111,14 +140,7 @@ export function Scripts({ onOpen }: { onOpen: (path: string) => void }) {
 				else if (result?.state) setState(result.state);
 			});
 	};
-	const setUpAgain = () =>
-		toast.promise(
-			shell.workspaces!.setup(path).then((result) => {
-				if (result?.error) throw new Error(result.error);
-				return result?.ran ? "Setup finished." : "This repository names no setup command in .octave/config.toml.";
-			}),
-			{ loading: "Setting up…", success: (said: string) => said, error: (err: Error) => err.message },
-		);
+	const setUpAgain = () => runSetup(path);
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>

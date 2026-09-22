@@ -877,7 +877,7 @@ export function setupPrompt({ existing }: { existing: boolean }): string {
 		"",
 		"Find out, do not guess: package.json and its lockfile (which says npm, pnpm, yarn or bun), pyproject.toml and uv.lock, Cargo.toml, go.mod, the Makefile, the CI workflows, README, CONTRIBUTING and AGENTS.md. Name only commands that exist there; invent none. Read; run nothing that installs or changes anything — the person will, by making a workspace.",
 		"",
-		`Write ${CONFIG_FILE} with write — it is not a note, so not note_write. Then stop, and say in a line or two what you wrote and what you were unsure of. Do not ask them to approve it: the file is theirs, and they will read it and fix it.`,
+		`Write ${CONFIG_FILE} with write — it is not a note, so not note_write. Then stop, and say in a line or two what you wrote and what you were unsure of, and end with this, as it is: "Commit it and every new workspace runs it. For this one, use Run setup again in the ▶ menu at the foot of the window." Do not ask them to approve it: the file is theirs, and they will read it and fix it.`,
 	].join("\n");
 }
 
