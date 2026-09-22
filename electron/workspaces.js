@@ -14,7 +14,7 @@
 
 /**
  * @typedef {{ path: string, branch: string, name: string, state?: "archiving" | "archived", commit?: string, at?: string }} Worktree
- * @typedef {{ path: string, worktrees: Worktree[], retired: string[] }} Project
+ * @typedef {{ path: string, worktrees: Worktree[], retired: string[], hidden?: true }} Project
  *
  * A workspace with no `state` is one you can open: its folder is there. An
  * archived one has given its folder back and kept everything else — its
@@ -52,6 +52,12 @@ function worktreeFrom(value) {
  * checkout left out — a clone that was deleted, a worktree removed outside the
  * app. A list that offers a folder which is not there is worse than a short
  * list.
+ *
+ * A repository the person took off the list is `hidden` and still here:
+ * everything written back goes through this, so a project dropped here would
+ * be forgotten by the next write, and taking one off the list is meant to be
+ * undone by adding it again — Conductor's `repos.hidden`. Who draws a list
+ * leaves them out (main.js `workspaces`).
  */
 export function projectsOf(settings, exists) {
 	const stored = Array.isArray(settings.projects) ? settings.projects : [];
@@ -67,7 +73,7 @@ export function projectsOf(settings, exists) {
 			.filter((worktree) => worktree && !seen.has(worktree.path) && (worktree.state ? true : exists(worktree.path)));
 		for (const worktree of worktrees) seen.add(worktree.path);
 		const retired = Array.isArray(entry.retired) ? [...new Set(entry.retired.filter(isPath))] : [];
-		projects.push({ path: entry.path, worktrees, retired });
+		projects.push({ path: entry.path, worktrees, retired, ...(entry.hidden === true ? { hidden: true } : {}) });
 	}
 	return projects;
 }
@@ -85,6 +91,20 @@ export function withWorkspace(projects, root, worktree = null) {
 	const next = known ? project : { ...project, worktrees: [...project.worktrees, worktree] };
 	if (had) return next === had ? projects : projects.map((p) => (p === had ? next : p));
 	return [...projects, next];
+}
+
+/**
+ * The projects with the repository at `root` taken off the list, or put back
+ * on it. Nothing of it goes: its workspaces, the names it has used and the
+ * order it sits in are all still here, so adding the repository again is the
+ * whole of the way back. A path that is no project changes nothing.
+ */
+export function hiddenRepository(projects, root, hidden) {
+	return projects.map((project) => {
+		if (project.path !== root) return project;
+		const { hidden: _was, ...rest } = project;
+		return hidden ? { ...rest, hidden: true } : rest;
+	});
 }
 
 /**
@@ -130,7 +150,7 @@ export function workspaceState(projects, path, state, { commit = null, at = null
  * notes from before — is not opened: work happens in a workspace.
  */
 export function firstWorkspace(projects, workdir) {
-	return projects.flatMap((project) => project.worktrees).find((worktree) => worktree.path === workdir && !worktree.state)?.path ?? null;
+	return projects.filter((project) => !project.hidden).flatMap((project) => project.worktrees).find((worktree) => worktree.path === workdir && !worktree.state)?.path ?? null;
 }
 
 /**

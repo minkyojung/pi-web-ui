@@ -31,7 +31,7 @@ import { clone, issues, login, pullRequests, repositories, repositoryName, signI
 import { KEYS, forget, gitEnv } from "./credentials.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
-import { firstWorkspace, projectsOf, reordered, statusOf, withWorkspace, workspaceState } from "./workspaces.js";
+import { firstWorkspace, hiddenRepository, projectsOf, reordered, statusOf, withWorkspace, workspaceState } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
@@ -485,7 +485,9 @@ function workspacesChanged() {
  * what gets renamed once the work has a subject, by the agent or by hand.
  */
 async function workspaces() {
-	const projects = projectsOf(readSettings(), isCheckout);
+	// A repository taken off the list is still in the settings, so that adding
+	// it again brings back its workspaces — it is left out here (workspaces.js).
+	const projects = projectsOf(readSettings(), isCheckout).filter((project) => !project.hidden);
 	// Which of these a page is on is not said here: the page knows its own
 	// folder from its server, and the one in front is where the window is
 	// going, which a page still up while it goes there is not.
@@ -832,11 +834,38 @@ async function openLocalRepository() {
 /**
  * A repository's clone added to the list, and nothing more: no workspace is
  * made of it and the window stays where it is. A workspace is made, and
- * opened, when the person asks for one — spec-mode.md 6절.
+ * opened, when the person asks for one — spec-mode.md 6절. One that was taken
+ * off the list is on it again, with the workspaces and the place it had.
  */
 function addRepository(root) {
-	writeSettings({ ...readSettings(), projects: withWorkspace(projectsOf(readSettings(), isCheckout), root) });
+	const projects = withWorkspace(projectsOf(readSettings(), isCheckout), root);
+	writeSettings({ ...readSettings(), projects: hiddenRepository(projects, root, false) });
 	workspacesChanged();
+}
+
+/**
+ * A repository taken off the list. Nothing on the disk is touched — not the
+ * clone, which is the person's own folder and was theirs before the app saw
+ * it, and not the workspaces made from it: the row is hidden and everything
+ * it holds is kept, so adding the repository again brings all of it back
+ * (workspaces.js `hiddenRepository`), which is what Conductor's hidden
+ * repository does. Its workspaces' servers are stopped, since nothing is
+ * going to ask for them, and the window goes to the first screen if it was
+ * in one of them. Not while the agent is working in one: stopping its server
+ * under it would end the turn, and there is no hurry.
+ */
+async function removeRepository(root) {
+	const project = projectsOf(readSettings(), isCheckout).find((project) => project.path === root && !project.hidden);
+	if (!project) return { error: "That repository is no longer on the list." };
+	if (project.worktrees.some((worktree) => busy.get(worktree.path))) return { error: "The agent is working in one of its workspaces. Take the repository off the list when it has finished." };
+	if (project.worktrees.some((worktree) => worktree.path === front || worktree.path === wanted)) await showStart();
+	for (const worktree of project.worktrees) {
+		await servers.stop(worktree.path);
+		await runs.stop(worktree.path);
+	}
+	writeSettings({ ...readSettings(), projects: hiddenRepository(projectsOf(readSettings(), isCheckout), root, true) });
+	workspacesChanged();
+	return {};
 }
 
 /**
@@ -894,6 +923,7 @@ function serveFolders() {
 	ipcMain.handle("repository:open", () => (devUrl ? null : openLocalRepository()));
 	ipcMain.handle("repository:clone", (_event, source) => (devUrl ? null : cloneRepository(source)));
 	ipcMain.handle("repositories:reorder", (_event, paths) => (devUrl ? null : reorderRepositories(paths)));
+	ipcMain.handle("repository:remove", (_event, root) => (devUrl ? null : removeRepository(root)));
 	// What the clone dialog offers, or null when gh cannot say.
 	ipcMain.handle("github:repositories", () => (devUrl ? null : repositories()));
 	// The open issues of a repository on the list, for a spec to start from one.

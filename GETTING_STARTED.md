@@ -25,7 +25,9 @@ added to your list and nothing else happens: no workspace is made or opened unti
 A workspace is a folder and a branch of its own, made from the latest on the remote, under
 `~/octave/workspaces/`; the agent works there, and your own clone is never touched. The sidebar lists your
 repositories and their workspaces — and so does the first screen, until a workspace is open: click a workspace
-to move into it, + beside **Repositories** adds another repository, and `⌘O` opens a local one.
+to move into it, + beside **Repositories** adds another repository, and `⌘O` opens a local one. Drag a
+repository's row to put the list in the order you want it in. Right-click one and **Take off the list…** when
+you are done with it: nothing on your disk is touched, and adding it again brings its workspaces back with it.
 
 + on a repository starts a spec, and that is how a workspace is made. Say what you want built, choose the model
 and effort for it, and **Create** (`⌘↵`): the workspace is made, the window moves into it, and your line is sent

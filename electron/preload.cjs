@@ -40,12 +40,15 @@ contextBridge.exposeInMainWorld("pi", {
 	 * cancelled answers null. `github` is the signed-in person's repositories
 	 * and `issues` the open issues of one on the list — `[{ number, title,
 	 * body }]` — each null when gh cannot say. `reorder` puts the list in the
-	 * order `paths` names, which is the one the person dragged them into.
+	 * order `paths` names, which is the one the person dragged them into, and
+	 * `remove` takes one off the list without touching anything on the disk,
+	 * answering `{ error }` when it will not just now.
 	 */
 	repositories: {
 		openLocal: () => ipcRenderer.invoke("repository:open"),
 		clone: (source) => ipcRenderer.invoke("repository:clone", source),
 		reorder: (paths) => ipcRenderer.invoke("repositories:reorder", paths),
+		remove: (root) => ipcRenderer.invoke("repository:remove", root),
 		github: () => ipcRenderer.invoke("github:repositories"),
 		issues: (root) => ipcRenderer.invoke("github:issues", root),
 	},

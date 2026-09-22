@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { firstWorkspace, projectsOf, reordered, statusOf, withWorkspace, workspaceState } from "../electron/workspaces.js";
+import { firstWorkspace, hiddenRepository, projectsOf, reordered, statusOf, withWorkspace, workspaceState } from "../electron/workspaces.js";
 
 const everywhere = () => true;
 const tree = (path, name = "trenton") => ({ path, branch: `me/${name}`, name });
@@ -128,4 +128,23 @@ test("an order dropped on a list that has since grown moves what it names and ke
 	assert.deepEqual(reordered([a, b], ["/b", "/gone", "/a"]), [b, a], "a path that is no repository is nothing");
 	assert.deepEqual(reordered([a, b], ["/b", "/b", "/a"]), [b, a], "and one named twice is one repository");
 	assert.deepEqual(reordered([a, b], null), [a, b], "what is not a list of paths leaves the order alone");
+});
+
+test("a repository taken off the list is still in the settings, with everything it had", () => {
+	const projects = [{ path: "/a", worktrees: [tree("/a-1", "one")], retired: ["tokyo"] }, { path: "/b", worktrees: [], retired: [] }];
+	const hidden = hiddenRepository(projects, "/a", true);
+	assert.deepEqual(hidden[0], { path: "/a", worktrees: [tree("/a-1", "one")], retired: ["tokyo"], hidden: true });
+	assert.deepEqual(hidden[1], projects[1]);
+	assert.deepEqual(hiddenRepository(hidden, "/a", false), projects, "adding it again is the whole of the way back");
+	assert.deepEqual(hiddenRepository(projects, "/nowhere", true), projects);
+});
+
+test("a hidden repository is read back as it was written, and the app does not open on one of its workspaces", () => {
+	const settings = { projects: [{ path: "/a", worktrees: [tree("/a-1", "one")], hidden: true }, { path: "/b", worktrees: [tree("/b-1", "two")] }] };
+	const projects = projectsOf(settings, everywhere);
+	assert.equal(projects[0].hidden, true, "still here: everything written back goes through this");
+	assert.equal(projects[1].hidden, undefined);
+	assert.equal(firstWorkspace(projects, "/a-1"), null, "its workspace is not the one in front");
+	assert.equal(firstWorkspace(projects, "/b-1"), "/b-1");
+	assert.equal(projectsOf({ projects: [{ path: "/a", worktrees: [], hidden: "yes" }] }, everywhere)[0].hidden, undefined, "hidden is a yes or nothing");
 });

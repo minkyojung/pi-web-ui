@@ -14,11 +14,12 @@ import { CloneRepository } from "./CloneRepository";
 import type { BranchStatus } from "../branchStanding";
 import { NewSpec, type SpecOnChoices } from "./NewSpec";
 import { ArchiveWorkspace } from "./ArchiveWorkspace";
+import { RemoveRepository } from "./RemoveRepository";
 import { row } from "./sidebarRow";
 import { Button } from "./ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { Spinner } from "./ui/spinner";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -75,6 +76,9 @@ const issuesOf = (window as { pi?: { repositories?: { issues?(root: string): Pro
 
 /** The shell's way to keep the repositories in the order the person put them in — see preload.cjs `repositories`. */
 const reorder = (window as { pi?: { repositories?: { reorder(paths: string[]): Promise<void> } } }).pi?.repositories?.reorder;
+
+/** The shell's way to take a repository off the list, which touches nothing on the disk — see preload.cjs `repositories`. */
+const removeRepository = (window as { pi?: { repositories?: { remove(root: string): Promise<{ error?: string } | null> } } }).pi?.repositories?.remove;
 
 /** The shell's way to add a repository from the Finder — see preload.cjs `repositories`. */
 const openLocal = (window as { pi?: { repositories?: { openLocal(): Promise<{ error?: string } | null> } } }).pi?.repositories?.openLocal;
@@ -155,6 +159,8 @@ export function useWorkspaceList(): WorkspaceList | null | undefined {
 export function Repositories({ list, choices }: { list: WorkspaceList; choices?: SpecOnChoices }) {
 	/** The repository a spec is being started in, while the dialog for it is open. */
 	const [starting, setStarting] = useState<{ path: string; name: string } | null>(null);
+	/** The repository being asked about before it is taken off the list. */
+	const [dropping, setDropping] = useState<{ path: string; name: string; workspaces: number } | null>(null);
 	/** The workspace being asked about before it is archived. */
 	const [doomed, setDoomed] = useState<{ path: string; branch: string } | null>(null);
 	const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
@@ -277,6 +283,7 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 			</div>
 			<CloneRepository open={cloning} onOpenChange={setCloning} />
 			<ArchiveWorkspace workspace={doomed} onClose={() => setDoomed(null)} shell={shell} />
+			<RemoveRepository repository={dropping} onClose={() => setDropping(null)} remove={removeRepository ?? (async () => null)} />
 			<NewSpec repository={starting} repositories={list.projects} onRepository={setStarting} onClose={() => setStarting(null)} create={shell.create} setup={shell.onSetup} branches={shell.branches} issues={issuesOf} choices={choices} />
 			{/* The order of the repositories is the person's: a row is dragged to
 			    where it belongs, and the shell keeps it that way. What is drawn
@@ -294,6 +301,7 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 								shell={shell}
 								onSpec={() => setStarting({ path: project.path, name: project.name })}
 								onArchive={setDoomed}
+								onDrop={() => setDropping({ path: project.path, name: project.name, workspaces: project.worktrees.length })}
 								onRestore={restore}
 								restoring={restoring}
 								onMove={(by) => move(arrayMove(paths, at, at + by))}
@@ -318,7 +326,7 @@ type Project = WorkspaceList["projects"][number];
  * header — so a workspace row is not a handle for the repository above it,
  * and a repository travels with its workspaces.
  */
-function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onRestore, restoring, onMove, first, last }: {
+function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onDrop, onRestore, restoring, onMove, first, last }: {
 	project: Project;
 	open: boolean;
 	onFold: () => void;
@@ -326,6 +334,7 @@ function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onR
 	shell: Shell;
 	onSpec: () => void;
 	onArchive: (workspace: { path: string; branch: string }) => void;
+	onDrop: () => void;
 	onRestore: (path: string) => void;
 	restoring: ReadonlySet<string>;
 	onMove: (by: -1 | 1) => void;
@@ -386,6 +395,11 @@ function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onR
 					<ContextMenuContent>
 						<ContextMenuItem disabled={first} onSelect={() => onMove(-1)}>Move up</ContextMenuItem>
 						<ContextMenuItem disabled={last} onSelect={() => onMove(1)}>Move down</ContextMenuItem>
+						<ContextMenuSeparator />
+						{/* The menu is let go of first, so the dialog is not opened behind it. */}
+						<ContextMenuItem variant="destructive" onSelect={() => queueMicrotask(onDrop)}>
+							Take off the list…
+						</ContextMenuItem>
 					</ContextMenuContent>
 				</ContextMenu>
 				<CollapsibleContent asChild>
