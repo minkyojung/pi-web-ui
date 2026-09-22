@@ -108,8 +108,9 @@ async function askForRepository() {
  * exit code the shell would otherwise have to report.
  */
 async function startServer(workdir) {
-	// The port a folder had before, if it is free: a page keeps its tabs by its
-	// address, so a server started again after going idle is found where it was.
+	// The port a folder had before, if it is free: nothing of the page's is
+	// kept by it (web/src/workspace.ts), but a server started again after
+	// going idle is found where it was.
 	const port = await freePort(ports.get(workdir));
 	ports.set(workdir, port);
 	busy.set(workdir, false);
@@ -382,9 +383,10 @@ let wanted = null;
  *
  * The page is loaded again rather than kept — one page, pointed at whichever
  * server is in front — while the servers behind it keep running, a turn and
- * all. What a page keeps in the browser (its tabs, where it was) is kept by
- * its server's address, which holds for as long as the app runs, so going
- * back finds them. Keeping every folder's page alive side by side would make
+ * all. What a page keeps in the browser about its workspace (its tabs, where
+ * it was) is kept by the workspace's folder (web/src/workspace.ts), and what
+ * it keeps about the window by the shell (prefs.js), so going back finds
+ * them. Keeping every folder's page alive side by side would make
  * the switch instant, at the price of the menu's reload, developer tools and
  * zoom — which act on the window's own page — and of the drag region the page
  * draws; this can become that when the reload is felt.
