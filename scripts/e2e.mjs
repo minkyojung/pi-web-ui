@@ -3439,8 +3439,9 @@ check("the spec at the start of the row says how far its tasks have got once all
 	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
 });
 
-// A task is run from its line: the Start beside it types /spec-run.
-check("a spec's task has a Start beside its line — on the tasks still to do, shown on hover, and pressing it runs the task", async ({ app, cwd }) => {
+// A task is run from the bar over its document: the cursor on its line is
+// enough, and the Start that used to stand beside each line is off.
+check("a spec's task is run from the bar over the document: the cursor's line is the task, a heading is its sub-tasks still to do, and pressing runs it", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/start");
 	mkdirSync(dir, { recursive: true });
 	const plan = (first) => `# Tasks\n\n- [${first}] 1. First\n- [ ] 2. Heading\n- [x] 2.1 Second\n- [ ] 2.2 Third\n`;
@@ -3450,34 +3451,28 @@ check("a spec's task has a Start beside its line — on the tasks still to do, s
 	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/start/tasks.md")}`);
 	await until("the plan in front", async () => (await editorText(app)).includes("Heading"));
-	const starts = () => app.evaluate("[...document.querySelectorAll('#editor .cm-start')].map((b) => b.dataset.start).join(',')");
-	// 1, 2 and 2.2: 2 is a heading, and its Start is its sub-tasks still to
-	// do — 2.2, since 2.1 is done — and says so.
-	await until("the Starts", async () => (await starts()) === "1,2,2.2");
-	assert.equal(await app.evaluate("document.querySelector('#editor .cm-start[data-start=\"2\"]').title"), "Start 2 — 2.2");
-	assert.equal(await app.evaluate("[...document.querySelectorAll('#editor .cm-start')].every((b) => !b.disabled)"), true, "pressable: the spec is approved and the agent is idle");
-	// Out of the flow and left of the words, so the text is where it was.
-	const laid = await app.evaluate("(() => { const b = document.querySelector('#editor .cm-start[data-start=\"2.2\"]').getBoundingClientRect(); const l = document.querySelector('#editor .cm-hasStart:has([data-start=\"2.2\"])').getBoundingClientRect(); return { left: b.right <= l.left, tall: b.height }; })()");
-	assert.equal(laid.left, true, "the Start stands left of its line");
-	assert.equal(laid.tall, 24, "shadcn's icon-xs");
-	// Hidden until the line is pointed at — the cursor is not on this line.
-	const opacity = () => app.evaluate("getComputedStyle(document.querySelector('#editor .cm-start[data-start=\"2.2\"]')).opacity");
-	assert.equal(await opacity(), "0", "not shown while nothing points at its line");
-	const at = await app.evaluate("(() => { const l = document.querySelector('#editor .cm-hasStart:has([data-start=\"2.2\"])').getBoundingClientRect(); return { x: l.left + 40, y: l.top + l.height / 2 }; })()");
-	await app.moveTo(at.x, at.y);
-	await until("shown on hover", async () => (await opacity()) === "1");
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-start').length"), 0, "no Start beside the lines");
+	const cursorOn = (word) => app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf(${JSON.stringify(word)}); v.dispatch({ selection: { anchor: at } }); })()`);
+	const offered = () => app.evaluate("document.getElementById('runPicked')?.textContent ?? ''");
+	// 2 is a heading: its run is its sub-tasks still to do — 2.2, since 2.1 is done.
+	await cursorOn("Heading");
+	await until("the heading's run offered", async () => (await offered()) === "Run 2");
+	await cursorOn("Second");
+	await until("a done task offers nothing", async () => (await offered()) === "");
+	await cursorOn("Third");
+	await until("the task offered", async () => (await offered()) === "Run 2.2");
 	// Pressed: the command goes as typed, and pi's spec extension answers it.
 	// This folder is a repository with the suite's notes uncommitted in it, so
 	// the answer is the refusal a task's commit needs — which is the command
 	// having reached the extension and been read, end to end; the run itself
 	// is the extension's and is proved in test/spec.test.js.
 	await app.shot("task-start");
-	await app.evaluate("document.querySelector('#editor .cm-start[data-start=\"2.2\"]').click()");
+	await app.click("#runPicked");
 	await until("the command answered in the conversation", async () => (await chat(app)).includes("Nothing was started"));
-	await app.moveTo(1, 1);
-	// A box checked on disk, as the run's end checks it: its Start goes.
+	// A box checked on disk, as the run's end checks it: its run goes.
 	writeFileSync(join(dir, "tasks.md"), plan("x"));
-	await until("the Start gone with the box", async () => (await starts()) === "2,2.2");
+	await cursorOn("First");
+	await until("nothing offered for a task done", async () => (await offered()) === "");
 });
 
 // What the tasks run on is chosen once, over the list, and rides with each Start.
@@ -3517,11 +3512,14 @@ check("a bar over a spec's tasks chooses what they run on, and a Start takes the
 	assert.equal(await app.evaluate("document.getElementById('model')?.textContent ?? ''"), sessionModel, "the session's model is not touched");
 	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
 	await app.shot("task-bar");
-	// A Start pressed sends the command with the choice on it, as the person
+	// The run pressed sends the command with the choice on it, as the person
 	// would have typed it: the wire is watched for the line.
 	await app.evaluate("(() => { const send = WebSocket.prototype.send; window.__sent = []; WebSocket.prototype.send = function (data) { window.__sent.push(String(data)); return send.call(this, data); }; })()");
-	await until("the Starts", () => app.evaluate("document.querySelectorAll('#editor .cm-start').length === 2"));
-	await app.evaluate("document.querySelector('#editor .cm-start[data-start=\"2\"]').click()");
+	await app.evaluate("(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.toString().indexOf('Second') } }); })()");
+	// Pressable: the bar keeps its Run off for a few seconds after a press that
+	// started nothing, and the check before this one pressed it.
+	await until("the run offered and pressable", () => app.evaluate("(() => { const b = document.getElementById('runPicked'); return !!b && b.textContent === 'Run 2' && !b.disabled; })()"));
+	await app.click("#runPicked");
 	await until("the line sent", () => app.evaluate("window.__sent.some((d) => d.includes('\"prompt\"') && d.includes('/spec-run runon 2 '))"));
 	const line = await app.evaluate("JSON.parse(window.__sent.find((d) => d.includes('/spec-run runon 2 '))).text");
 	assert.equal(line, `/spec-run runon 2 ${other.key} ${other.level}`, "the model as the picker keys it, and its own level");
@@ -3539,16 +3537,15 @@ check("tasks a selection covers are offered as one run over the list, by their n
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/picked/tasks.md")}`);
 	await until("the plan in front", async () => (await editorText(app)).includes("Fourth"));
 	await until("the bar", () => app.evaluate("!!document.getElementById('taskBar')"));
-	assert.equal(await app.evaluate("!!document.getElementById('runPicked')"), false, "a cursor covers nothing: one task is its Start");
+	const select = (from, to) => app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: ${from}, head: ${to} } })`);
+	// A cursor on the title, which is no task: nothing is offered.
+	await select(0, 0);
+	await until("nothing offered on the title", async () => !(await app.evaluate("!!document.getElementById('runPicked')")));
 	// A drag from inside 1 to the start of 3's line: the newline was taken
 	// and nothing of 3 — the rule editors count selected lines by.
-	const select = (from, to) => app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: ${from}, head: ${to} } })`);
 	await select(plan.indexOf("First"), plan.indexOf("- [ ] 3."));
 	const offered = () => app.evaluate("document.getElementById('runPicked')?.textContent ?? ''");
 	await until("the run offered", async () => (await offered()) === "Run 1, 2");
-	const lit = () => app.evaluate("[...document.querySelectorAll('#editor .cm-start[data-here]')].map((b) => b.dataset.start).join(',')");
-	assert.equal(await lit(), "1,2", "the Starts on the lines taken are lit — 2 is a heading and its 2.2 folds into it, 2.1 is done, 3 was not touched");
-	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-start[data-start=\"3\"]')).opacity"), "0");
 	// One character into 3, and it is in.
 	await select(plan.indexOf("First"), plan.indexOf("- [ ] 3.") + 1);
 	await until("3 in", async () => (await offered()) === "Run 1, 2, 3");
@@ -3558,10 +3555,9 @@ check("tasks a selection covers are offered as one run over the list, by their n
 	await app.click("#runPicked");
 	await until("the line sent", () => app.evaluate("window.__sent.some((d) => d.includes('/spec-run picked '))"));
 	assert.equal(await app.evaluate("JSON.parse(window.__sent.find((d) => d.includes('/spec-run picked '))).text"), "/spec-run picked 1 2 3", "2 for all of it; the command unfolds it");
-	// Back to a cursor: nothing is offered, and the lit Starts go dark.
+	// Back to a cursor: its own line's task, and only that.
 	await select(plan.indexOf("Fourth"), plan.indexOf("Fourth"));
-	await until("nothing offered", async () => !(await app.evaluate("!!document.getElementById('runPicked')")));
-	assert.equal(await lit(), "3", "only the cursor's line now");
+	await until("the cursor's line offered", async () => (await offered()) === "Run 3");
 });
 
 // What a task changed is its commit, and the commit is read here.
@@ -3575,7 +3571,7 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
 			repositories: { issues: async (root) => (root === "/r/other" ? [{ number: 12, title: "Sign in with email", body: "A link, not a password." }, { number: 9, title: "No body", body: "" }] : null) },
 			onNewSpec: (listen) => { window.__newSpec = listen; return () => {}; },
-			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/other", name: "other", worktrees: [] }, { path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }] }] }),
+			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/other", name: "other", worktrees: [] }, { path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo", status: { state: "open", number: 12 } }, { path: "/w/lima", name: "lima", branch: "me/done", status: { state: "merged", number: 9 } }, { path: "/w/oslo", name: "oslo", branch: "me/oslo", status: { state: "local" } }] }] }),
 				create: async (root, first, from) => { window.__created.push({ root, first, from }); return window.__created.length === 1 ? { error: "The remote said no." } : {}; },
 				branches: async (root) => (root === "/r/other" ? { branches: ["me/email-auth", "main"], base: "main" } : null),
 				open: async () => {}, onChange: () => () => {}, first: async () => null } };
@@ -3593,6 +3589,10 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 	try {
 		await app.evaluate(`sessionStorage.setItem("stand-in-for-the-list", "1"); location.reload()`);
 		await until("the repository in the sidebar", () => app.evaluate("!!document.querySelector('[data-new-workspace=\"/r/demo\"]')"));
+		// What each row says of its branch: an open pull request by number, merged
+		// as merged, and nothing for a branch that is only here.
+		await until("the rows' status", () => app.evaluate("[...document.querySelectorAll('[data-workspace]')].map((r) => r.querySelector('[data-status]')?.textContent ?? '-').join(',') === '#12,merged,-'"));
+		assert.equal(await app.evaluate("document.querySelector('[data-workspace=\"/w/lima\"] [data-status]').dataset.status"), "merged");
 		await app.click('[data-new-workspace="/r/demo"]');
 		await until("the dialog", () => app.evaluate("!!document.getElementById('new-spec')"));
 		assert.equal(await app.evaluate("document.getElementById('new-spec-repository').textContent"), "demo", "the repository over the top");

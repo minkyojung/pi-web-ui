@@ -78,3 +78,22 @@ export function withoutWorkspace(projects, path) {
 export function firstWorkspace(projects, workdir) {
 	return projects.flatMap((project) => project.worktrees).find((worktree) => worktree.path === workdir)?.path ?? null;
 }
+
+/**
+ * What a workspace's row says of its branch, from what git and GitHub know:
+ * a pull request's state first, since it is the person's own act — open,
+ * merged, closed without merging — then git's: merged into the base by some
+ * other route, on the remote, or only here. `pr` is null when gh could not
+ * say, in which case git's word stands.
+ *
+ * @returns {{ state: "local" | "pushed" | "open" | "merged" | "closed", number?: number }}
+ */
+export function statusOf({ onRemote, merged, pr }) {
+	if (pr) {
+		if (pr.state === "OPEN") return { state: "open", number: pr.number };
+		if (pr.state === "MERGED") return { state: "merged", number: pr.number };
+		if (pr.state === "CLOSED") return { state: "closed", number: pr.number };
+	}
+	if (merged) return { state: "merged" };
+	return { state: onRemote ? "pushed" : "local" };
+}

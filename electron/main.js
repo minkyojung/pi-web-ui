@@ -20,11 +20,11 @@ import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
 import { createServers, idle } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
-import { branchOf, changesIn, git, makeWorkspace, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
-import { clone, issues, login, repositories, repositoryName } from "./github.js";
+import { branchOf, branchStanding, changesIn, git, makeWorkspace, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
+import { clone, issues, login, pullRequests, repositories, repositoryName } from "./github.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
-import { firstWorkspace, projectsOf, withWorkspace, withoutWorkspace } from "./workspaces.js";
+import { firstWorkspace, projectsOf, statusOf, withWorkspace, withoutWorkspace } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
@@ -442,15 +442,39 @@ async function workspaces() {
 	return {
 		current: front,
 		projects: await Promise.all(
-			projects.map(async (project) => ({
-				path: project.path,
-				name: basename(project.path),
-				worktrees: await Promise.all(
-					project.worktrees.map(async (worktree) => ({ path: worktree.path, name: worktree.name, branch: (await branchOf(worktree.path)) ?? worktree.branch })),
-				),
-			})),
+			projects.map(async (project) => {
+				const prs = await pullRequestsOf(project.path);
+				return {
+					path: project.path,
+					name: basename(project.path),
+					worktrees: await Promise.all(
+						project.worktrees.map(async (worktree) => {
+							const branch = (await branchOf(worktree.path)) ?? worktree.branch;
+							// Where the branch stands, for the row to say: git's word, and
+							// GitHub's when gh can give it. A workspace whose branch git
+							// cannot read is listed as only here.
+							const standing = await branchStanding(project.path, branch).catch(() => ({ onRemote: false, merged: false }));
+							return { path: worktree.path, name: worktree.name, branch, status: statusOf({ ...standing, pr: prs?.get(branch) ?? null }) };
+						}),
+					),
+				};
+			}),
 		),
 	};
+}
+
+/**
+ * A repository's pull requests by branch, asked of gh at most once every
+ * half minute: the list is drawn again at every change and every focus, and
+ * a call to GitHub for each would make the sidebar wait on the network.
+ */
+const prsAsked = new Map();
+function pullRequestsOf(root) {
+	const had = prsAsked.get(root);
+	if (had && Date.now() - had.at < 30_000) return had.answer;
+	const answer = pullRequests(root).catch(() => null);
+	prsAsked.set(root, { at: Date.now(), answer });
+	return answer;
 }
 
 /** One workspace made at a time, so two asked for at once cannot both pick the same city. */
@@ -811,6 +835,23 @@ async function main() {
 	window.on("leave-full-screen", () => markTrafficLights(window));
 
 	window.on("closed", () => closing.abort());
+	// A link on a page — in a note, in the agent's answer, on the sign-in
+	// screen — opens in the Mac's browser. Left to itself the window would
+	// navigate to it, or open a second window of the app on it: the app has
+	// one window, on its own pages and its servers. Anything else is the
+	// browser's. `will-navigate` is a plain link; `setWindowOpenHandler` is
+	// target="_blank" and window.open.
+	const ours = (url) => url.startsWith(`${SCHEME}://`) || url.startsWith("http://127.0.0.1:") || url.startsWith("http://localhost:") || (devUrl ? url.startsWith(devUrl) : false);
+	const outside = (url) => /^https?:$/.test(new URL(url).protocol) && !ours(url);
+	window.webContents.on("will-navigate", (event, url) => {
+		if (!outside(url)) return;
+		event.preventDefault();
+		void shell.openExternal(url);
+	});
+	window.webContents.setWindowOpenHandler(({ url }) => {
+		if (outside(url)) void shell.openExternal(url);
+		return { action: "deny" };
+	});
 	// The page sets its own title, which would replace the folder name.
 	window.on("page-title-updated", (e) => e.preventDefault());
 	if (devUrl) {

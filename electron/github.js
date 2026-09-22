@@ -100,3 +100,30 @@ export async function issues(root) {
 	const out = await gh(["issue", "list", "--state", "open", "--limit", "100", "--json", "number,title,body"], { cwd: root, timeoutMs: 30_000 });
 	return out === null ? null : issuesFrom(out);
 }
+
+/** gh's list of pull requests as the list takes them — by head branch, the newest first — or null for anything that is not such a list. */
+export function pullRequestsFrom(out) {
+	try {
+		const list = JSON.parse(out);
+		if (!Array.isArray(list)) return null;
+		const byHead = new Map();
+		for (const pr of list) {
+			if (!pr || !Number.isInteger(pr.number) || typeof pr.headRefName !== "string" || typeof pr.state !== "string") continue;
+			if (!byHead.has(pr.headRefName)) byHead.set(pr.headRefName, { number: pr.number, state: pr.state });
+		}
+		return byHead;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The repository's pull requests, open and closed, by the branch each is
+ * from — the newest first, so a branch with several is known by its latest
+ * — or null when gh cannot say. One call for every workspace of the
+ * repository, since the list is drawn a row at a time.
+ */
+export async function pullRequests(root) {
+	const out = await gh(["pr", "list", "--state", "all", "--limit", "200", "--json", "number,state,headRefName"], { cwd: root, timeoutMs: 30_000 });
+	return out === null ? null : pullRequestsFrom(out);
+}

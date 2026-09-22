@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { firstWorkspace, projectsOf, withWorkspace, withoutWorkspace } from "../electron/workspaces.js";
+import { firstWorkspace, projectsOf, statusOf, withWorkspace, withoutWorkspace } from "../electron/workspaces.js";
 
 const everywhere = () => true;
 const tree = (path, name = "trenton") => ({ path, branch: `me/${name}`, name });
@@ -65,4 +65,14 @@ test("a workspace removed leaves its repository on the list, with the rest of it
 	assert.deepEqual(withoutWorkspace(projects, "/a-1"), [{ path: "/a", worktrees: [tree("/a-2", "two")] }, projects[1]]);
 	assert.deepEqual(withoutWorkspace(projects, "/b-1"), [projects[0], { path: "/b", worktrees: [] }]);
 	assert.equal(withoutWorkspace(projects, "/nowhere")[0], projects[0], "nothing by that path, nothing changed");
+});
+
+test("a branch's status is its pull request's when it has one, else what git knows: merged, on the remote, or only here", () => {
+	assert.deepEqual(statusOf({ onRemote: true, merged: false, pr: { number: 27, state: "OPEN" } }), { state: "open", number: 27 });
+	assert.deepEqual(statusOf({ onRemote: true, merged: true, pr: { number: 27, state: "MERGED" } }), { state: "merged", number: 27 });
+	assert.deepEqual(statusOf({ onRemote: true, merged: false, pr: { number: 27, state: "CLOSED" } }), { state: "closed", number: 27 });
+	assert.deepEqual(statusOf({ onRemote: true, merged: true, pr: null }), { state: "merged" }, "merged by another route, gh or not");
+	assert.deepEqual(statusOf({ onRemote: true, merged: false, pr: null }), { state: "pushed" });
+	assert.deepEqual(statusOf({ onRemote: false, merged: false, pr: null }), { state: "local" });
+	assert.deepEqual(statusOf({ onRemote: false, merged: false, pr: { number: 1, state: "WHAT" } }), { state: "local" }, "a state gh does not have is no pull request");
 });

@@ -80,10 +80,11 @@ const WAITING = { text: ".octave/specs/email-auth/requirements.md is waiting for
  * branch of our choosing — `undefined` for a folder that is not a repository.
  * git is answered as a repository would: `branches` are the ones there.
  */
-function fakePi(branch, branches = []) {
+function fakePi(branch, branches = [], { remote = true } = {}) {
   const done = [];
   const notes = [];
   const renamed = [];
+  const pushed = [];
   const handlers = {};
   const heads = new Set(branches);
   const cwd = mkdtempSync(join(tmpdir(), "spec-fake-"));
@@ -123,6 +124,7 @@ function fakePi(branch, branches = []) {
         branch = args[2];
         return answer(0);
       }
+      if (args[0] === "push") return (pushed.push(args.slice(1)), answer(remote ? 0 : 128));
       throw new Error(`git ${args.join(" ")} was not expected`);
     },
     sendMessage: (message, options) => done.push({ sendMessage: message, options }),
@@ -201,6 +203,7 @@ function fakePi(branch, branches = []) {
     done,
     notes,
     renamed,
+    pushed,
     gits,
     sessions,
     turns,
@@ -279,11 +282,23 @@ test("스펙이 쓰인 턴이 끝나면 코드가 도시 브랜치를 그 이름
   pi.write("email-auth");
   await pi.settle();
   assert.deepEqual(pi.renamed, ["minkyojung/email-auth"]);
-  assert.deepEqual(pi.notes, [{ text: "The branch is minkyojung/email-auth now.", type: "info" }, WAITING], "브랜치, 그리고 기다리는 문서");
+  assert.deepEqual(pi.pushed, [["-u", "origin", "minkyojung/email-auth"]], "새 이름으로 원격에, 추적하며 — 도시 이름은 원격에 남지 않는다");
+  assert.deepEqual(pi.notes, [{ text: "The branch is minkyojung/email-auth now, and on the remote.", type: "info" }, WAITING], "브랜치, 그리고 기다리는 문서");
   // The next turn, a spec or not, is not this one's.
   pi.write("second");
   await pi.settle();
   assert.deepEqual(pi.renamed, ["minkyojung/email-auth"]);
+});
+
+test("원격이 없거나 밀 수 없으면 브랜치는 이름만 바뀌고, 그렇다고 말한다", async (t) => {
+  const pi = fakePi("minkyojung/tokyo", [], { remote: false });
+  t.after(pi.cleanup);
+  await pi.run("이메일 인증 추가");
+  pi.write("email-auth");
+  await pi.settle();
+  assert.deepEqual(pi.renamed, ["minkyojung/email-auth"]);
+  assert.equal(pi.pushed.length, 1, "밀어는 본다");
+  assert.equal(pi.notes[0].text, "The branch is minkyojung/email-auth now. It could not be pushed; push it when you can.");
 });
 
 test("그 이름의 브랜치가 이미 있으면 git처럼 -2, -3을 붙인다", async (t) => {
