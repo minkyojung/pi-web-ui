@@ -41,6 +41,7 @@ import { inFrontStore, type Saved } from "../inFront";
 import type { Authored } from "../../../protocol.ts";
 import { AgentStatus } from "./AgentStatus";
 import { BranchStanding } from "./BranchStanding";
+import { RunButton } from "./RunButton";
 import { TaskResults } from "./TaskResults";
 import { Button } from "./ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
@@ -238,6 +239,9 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi, onOpen }: { pat
 						{words[note.saved]}
 					</span>
 				)}
+				{/* At the far end of the note's half, under the note's right edge: the
+				    repository's own run, which is about the workspace and not the note. */}
+				<RunButton />
 			</div>
 			<AgentStatus width={piWidth} folded={piFolded} onUnfold={onUnfoldPi} />
 		</div>

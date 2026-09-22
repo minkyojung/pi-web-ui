@@ -19,6 +19,7 @@ import updater from "electron-updater";
 import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
 import { DEFAULT_TIMEOUT, isConfig, readConfig } from "./octaveConfig.js";
+import { createRuns } from "./runs.js";
 import { runScript } from "./scripts.js";
 import { createServers, idle } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
@@ -159,6 +160,8 @@ async function startServer(workdir) {
 
 /** Each folder's port for as long as the app runs. */
 const ports = new Map();
+/** Each folder's port for the repository's own run command — `OCTAVE_PORT`, kept the same for as long as the app runs, as the server's is. */
+const runPorts = new Map();
 /** Whether each folder's server is in the middle of a run. */
 const busy = new Map();
 /** When each folder was last in front or last finished a run. */
@@ -260,10 +263,10 @@ let quitting = false;
  * asked for afterwards finds none and goes through.
  */
 async function stopServers(event) {
-	if (quitting || servers.size === 0) return;
+	if (quitting) return;
 	quitting = true;
 	event?.preventDefault();
-	await servers.stopAll();
+	await Promise.all([servers.stopAll(), runs.stopAll()]);
 	app.quit();
 }
 
@@ -314,7 +317,7 @@ function serveUpdates() {
 	ipcMain.handle("update:check", () => (app.isPackaged ? autoUpdater.checkForUpdates().catch(() => {}) : null));
 	ipcMain.handle("update:restart", async () => {
 		quitting = true;
-		await servers.stopAll();
+		await Promise.all([servers.stopAll(), runs.stopAll()]);
 		autoUpdater.quitAndInstall();
 	});
 	ipcMain.handle("update:seen", () => {
@@ -587,6 +590,40 @@ async function archive(root, path) {
 	return ran.exit === 0 ? null : `The workspace was removed, but its archive command failed (exit ${ran.exit})${ran.last ? `: ${ran.last}` : ""}.`;
 }
 
+/** Tell the page how a workspace's run stands — see runs.js `stateOf`, and RunButton.tsx. */
+function runChanged(path, state) {
+	if (window && !window.isDestroyed()) window.webContents.send("run:changed", path, runState(path, state));
+}
+
+/** The repository's own runs in its workspaces, one each — see runs.js. */
+const runs = createRuns({ onChange: runChanged });
+
+/**
+ * The run the foot of the window is about, in a workspace: the default of
+ * the repository's `[scripts.run.*]` (octaveConfig.js). Null where there is
+ * none — nothing to show — else what runs.js says of it, under the run's
+ * id, which is the button's word when nothing is running.
+ */
+function runState(path, state = runs.stateOf(path)) {
+	const config = readConfig(path);
+	const run = isConfig(config) ? config.run.find((r) => r.default) ?? null : null;
+	if (!run) return null;
+	return { ...state, id: state.id ?? run.id };
+}
+
+/** The default run started in a listed workspace, on the port kept for it. */
+async function startRun(path) {
+	const root = repositoryOfWorkspace(path);
+	if (!root) return { error: "That workspace is no longer on the list." };
+	const config = readConfig(path);
+	if (!isConfig(config)) return { error: config.error };
+	const run = config.run.find((r) => r.default);
+	if (!run) return { error: "This repository names no run command in .octave/config.toml." };
+	const port = await freePort(runPorts.get(path));
+	runPorts.set(path, port);
+	return { state: runState(path, runs.start(path, { id: run.id, command: run.command, port, env: { ...process.env, OCTAVE_REPOSITORY: root } })) };
+}
+
 /** Setup run again in a listed workspace, from its row — after it failed, or after the command was changed. */
 function setUpAgain(path) {
 	const root = repositoryOfWorkspace(path);
@@ -626,11 +663,13 @@ function removeWorkspace(path, seen) {
 			if (changes !== seen) return { changes };
 			if (path === front || path === wanted) await showStart();
 			await servers.stop(path);
+			await runs.stop(path);
 			const warning = await archive(root, path);
 			await removeWorktree(root, path);
 			writeSettings({ ...readSettings(), projects: withoutWorkspace(projectsOf(readSettings(), isCheckout), path) });
 			waiting.take(path);
-			for (const kept of [ports, busy, since]) kept.delete(path);
+			for (const kept of [ports, runPorts, busy, since]) kept.delete(path);
+			runs.forget(path);
 			workspacesChanged();
 			return warning ? { warning } : {};
 		} catch (err) {
@@ -744,6 +783,9 @@ function serveFolders() {
 	ipcMain.handle("workspace:changes", (_event, path) => (devUrl ? null : workspaceChanges(path)));
 	ipcMain.handle("workspace:remove", (_event, path, seen) => (devUrl ? null : removeWorkspace(path, seen)));
 	ipcMain.handle("workspace:setup", (_event, path) => (devUrl ? null : setUpAgain(path)));
+	ipcMain.handle("run:state", (_event, path) => (devUrl ? null : runState(path)));
+	ipcMain.handle("run:start", (_event, path) => (devUrl ? null : startRun(path)));
+	ipcMain.handle("run:stop", (_event, path) => (devUrl ? null : runs.stop(path).then(() => runState(path))));
 	// A note in the Finder. The page is told the folder in full by the server
 	// (ConfigMsg.folder) and joins the note's path onto it, which is a better
 	// source than this process has: in a dev run the settings hold no workdir

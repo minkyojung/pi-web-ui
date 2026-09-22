@@ -82,6 +82,23 @@ contextBridge.exposeInMainWorld("pi", {
 	 * shell says the state as it changes; `onState` returns the way to stop
 	 * listening. The page decides when what is new has been seen.
 	 */
+	/**
+	 * The repository's own run command in this window's workspace — the
+	 * default of its `[scripts.run.*]` — started and stopped from the foot of
+	 * the window (RunButton.tsx). `state` is null where the repository names
+	 * none, else `{ running, id, port, exit }`; `start` answers `{ state }` or
+	 * `{ error }`; `onChange` says when it changed, and returns the way to stop listening.
+	 */
+	runs: {
+		state: (path) => ipcRenderer.invoke("run:state", path),
+		start: (path) => ipcRenderer.invoke("run:start", path),
+		stop: (path) => ipcRenderer.invoke("run:stop", path),
+		onChange: (listen) => {
+			const handler = (_event, path, state) => listen(path, state);
+			ipcRenderer.on("run:changed", handler);
+			return () => ipcRenderer.off("run:changed", handler);
+		},
+	},
 	update: {
 		state: () => ipcRenderer.invoke("update:state"),
 		onState: (listen) => {
