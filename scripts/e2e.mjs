@@ -3474,6 +3474,50 @@ check("the spec at the start of the row names what is waiting, opens its documen
 });
 
 // Approved to the end, the control says how far the tasks have got — read off
+
+
+// The plan, read: the document as the editor draws it, with what it cannot
+// say of itself drawn over its lines — each box the task's standing, a
+// heading's count of what is done under it, the two keys stepped back.
+check("a spec's tasks.md opens read with the plan drawn over it: each box is its task's standing, a heading counts its sub-tasks, and ⌘E is the plain document", async ({ app, cwd }) => {
+	const dir = join(cwd, ".octave/specs/tree");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
+	writeFileSync(join(dir, "design.md"), "# Design\n");
+	writeFileSync(
+		join(dir, "tasks.md"),
+		"# The plan\n\nA line on what it is for.\n\n- [x] 1. First\n  - web/a.ts\n  - _Requirements: 1.1_\n  - _Done when: `npm test -- a` passes_\n\n## Later\n\n- [ ] 2. Heading\n- [x] 2.1 Second\n- [ ] 2.2 Third\n- [ ] 3. Fourth\n",
+	);
+	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
+	// The spec was written a moment ago, and a document that has just started
+	// waiting comes to the front by itself (specTabs.ts): the approvals landed
+	// before the watcher spoke, but if it speaks in two breaths the first opens
+	// the requirements over this. So the address is held to, as a person would
+	// click the tab again.
+	const want = "#.octave/specs/tree/tasks.md";
+	await app.evaluate(`location.hash = ${JSON.stringify(want)}`);
+	const standings = () => app.evaluate("[...document.querySelectorAll('#editor .cm-line.cm-plan-task')].map((l) => l.textContent.trim().split(/\\s+/)[0].replace(/\\.$/, '') + ':' + [...l.classList].find((c) => c.startsWith('cm-standing-')).slice('cm-standing-'.length))");
+	await until("the plan drawn", () => app.evaluate(`(() => { if (decodeURIComponent(location.hash) !== ${JSON.stringify(want)}) { location.hash = ${JSON.stringify(want)}; return false; } return document.querySelectorAll('#editor .cm-line.cm-plan-task').length === 5; })()`));
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-content').getAttribute('aria-readonly')"), "true", "read: the document refuses changes");
+	assert.deepEqual(await standings(), ["1:done", "2:todo", "2.1:done", "2.2:next", "3:todo"]);
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-plan-count')?.textContent"), "1 / 2", "a heading counts its sub-tasks");
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-plan-count').closest('.cm-line').textContent.includes('Heading')"), true, "on the heading's own line");
+	assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#editor .cm-line.cm-plan-key')].map((l) => l.textContent.replace(/^[\\s•]+/, '').split(/\\s+/)[0])"), ["Requirements:", "Done"], "the two keys step back");
+	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-line.cm-plan-key')).fontStyle"), "italic");
+	// The command in its backticks is drawn as code, the backticks hidden with the rest of the marks — inside the emphasis they sit in.
+	assert.equal(await app.evaluate("[...document.querySelectorAll('#editor .cm-line.cm-plan-key')].some((l) => l.textContent.includes('`'))"), false, "no marks shown, nested or not");
+	assert.equal(await app.evaluate("[...document.querySelectorAll('#editor .cm-cursor')].every((c) => getComputedStyle(c).display === 'none')"), true, "no caret while reading");
+	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-standing-done')).textDecorationLine"), "none", "done is the mark, not a strike");
+	assert.ok((await editorText(app)).includes("- [ ] 2.2 Third"), "the document is still the document under it");
+	await app.shot("tasks-plan");
+	// ⌘E: the plain document, boxes and all; ⌘E again, the plan.
+	await app.press("e", { meta: true });
+	await until("the plain document", () => app.evaluate("document.querySelectorAll('#editor .cm-plan-task').length === 0 && document.querySelector('#editor .cm-content').getAttribute('aria-readonly') === null"));
+	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-task').length"), 5, "the boxes are boxes again");
+	await app.press("e", { meta: true });
+	await until("the plan again", () => app.evaluate("document.querySelectorAll('#editor .cm-line.cm-plan-task').length === 5"));
+});
+
 // tasks.md by the server, so a box checked on disk moves it.
 check("the spec at the start of the row says how far its tasks have got once all three documents are approved", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/count");

@@ -128,11 +128,17 @@ const look = EditorView.baseTheme({
 	"@keyframes cm-plan-spin": { to: { transform: "rotate(360deg)" } },
 	// Done is said by the mark now; a strike through the words made them the
 	// hardest lines to read, on the page whose point is reading them.
-	".cm-plan-task.cm-task-done": { textDecoration: "none" },
+	// Three classes to livePreview's two (`.cm-line.cm-task-done`): the same
+	// weight would leave it to whichever rule was written later.
+	".cm-line.cm-plan-task.cm-task-done": { textDecoration: "none" },
 	// The two keys step back so the bullets read first.
 	".cm-line.cm-plan-key": { fontStyle: "italic", color: "var(--muted-foreground)" },
 	".cm-plan-count": {
 		display: "inline-block",
+		// A list line hangs its indent with a negative text-indent, which an
+		// inline-block inherits into its own first line: without this the count
+		// is drawn two ems to the left, over the words.
+		textIndent: "0",
 		marginLeft: "0.6em",
 		fontSize: "0.8em",
 		color: "var(--muted-foreground)",

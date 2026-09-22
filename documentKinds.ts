@@ -67,6 +67,9 @@ function specParts(path: string): string[] | null {
  */
 export const isSpec = (path: string): boolean => specParts(path) !== null && path.endsWith(".md");
 
+/** Whether a path is a spec's tasks document: the one with boxes, which the window can read as a plan (taskTree.ts) and which runs are read off. */
+export const isTasks = (path: string): boolean => isSpec(path) && path.endsWith("/tasks.md");
+
 /** The spec a path belongs to — the folder under SPECS_DIR it is in — or null. */
 export function specNameOf(path: string): string | null {
 	const parts = specParts(path);

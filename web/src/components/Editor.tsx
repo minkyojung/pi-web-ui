@@ -9,7 +9,7 @@ import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/sea
 import { drawSelection, dropCursor, EditorView, keymap, placeholder } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-import { isSpec, specNameOf } from "../../../documentKinds.ts";
+import { isSpec, isTasks, specNameOf } from "../../../documentKinds.ts";
 import { choose, chosenStore } from "../chosen";
 import { linkCompletion } from "../features/linkCompletion";
 import { indentListItem, listBackspace, listEnter, outdentListItem } from "../features/listEdit";
@@ -18,6 +18,7 @@ import { listIndent } from "../features/listIndent";
 import { authors, clearAuthors, paintAuthors, showAuthorsStore } from "../features/authors";
 import { blocked as startBlocked, chrome as startChrome, onStart, running as startRunning } from "../features/taskStart";
 import { chipChrome, commits as taskCommits, onCommit, taskCommit } from "../features/taskCommit";
+import { taskPlan } from "../features/taskPlan";
 import { forget as forgetMoves, observe as observeMoves, take as takeMoves } from "../features/moves";
 import { livePreview, reading, toggleLivePreview, toggleTask } from "../features/livePreview";
 import { leaveTextUp } from "../features/pageMove";
@@ -84,12 +85,12 @@ const READING: Extension = [
 	// No caret: nothing is being written where it would blink. Words can still
 	// be chosen and ⌘F still finds them — a page that could not be quoted from
 	// would be a worse reading view than one that blinks.
-	EditorView.theme({ ".cm-cursor, .cm-dropCursor": { display: "none" } }),
+	// The long way round, as the selection's rule above: CodeMirror shows the
+	// caret through `&.cm-focused > .cm-scroller > .cm-cursorLayer .cm-cursor`,
+	// and a shorter selector loses to it.
+	EditorView.theme({ "&.cm-focused > .cm-scroller > .cm-cursorLayer .cm-cursor, .cm-dropCursor": { display: "none" } }),
 ];
 const roomFor = (mode: Mode): Extension => (mode === "read" ? READING : []);
-
-/** Whether a path is the tasks document of a spec, which is the one with Starts. */
-const isTasks = (path: string): boolean => isSpec(path) && path.endsWith("/tasks.md");
 
 /**
  * How much note there is, for the strip at the foot of the window.
@@ -683,9 +684,13 @@ export function Editor({
 					send(runMessage(spec, [number], on ? { model: on.model, effort: on.level } : {}));
 					setStarting(number);
 				}),
+				// Read, the plan is drawn over the document: each box its task's
+				// standing, each heading its count (taskPlan.ts). Written, the
+				// document is the document.
+				...(mode === "read" ? [taskPlan] : []),
 			]),
 		});
-	}, [path, online, streaming, config?.isCompacting, config?.run, commands, specs, starting, runOn]);
+	}, [path, mode, online, streaming, config?.isCompacting, config?.run, commands, specs, starting, runOn]);
 	// Gone from the page, the selection covers nothing.
 	useEffect(() => () => pickTasks(null), []);
 
