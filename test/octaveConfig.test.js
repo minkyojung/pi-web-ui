@@ -27,7 +27,6 @@ description = "node --test, the repository's own suite"
 
 [[scripts.check]]
 command = "npm run typecheck"
-on = "approve"
 timeout = 120
 `);
 	assert.deepEqual(got, {
@@ -39,8 +38,8 @@ timeout = 120
 			{ id: "storybook", command: "npm run storybook", default: false },
 		],
 		check: [
-			{ name: "unit", command: "npm test", description: "node --test, the repository's own suite", on: "task", timeout: DEFAULT_TIMEOUT },
-			{ name: "npm run typecheck", command: "npm run typecheck", description: "", on: "approve", timeout: 120 },
+			{ name: "unit", command: "npm test", description: "node --test, the repository's own suite", timeout: DEFAULT_TIMEOUT },
+			{ name: "npm run typecheck", command: "npm run typecheck", description: "", timeout: 120 },
 		],
 	});
 });
@@ -69,7 +68,7 @@ test("what is wrong is said by name, and nothing of the file is used", () => {
 		['[scripts.run.dev]\ndefault = true\n', /needs a command/],
 		['[scripts.check]\ncommand = "x"\n', /two brackets/],
 		['[[scripts.check]]\nname = "x"\n', /needs a command/],
-		['[[scripts.check]]\ncommand = "x"\non = "merge"\n', /\.on must be one of task, approve/],
+		['[[scripts.check]]\ncommand = "x"\non = "approve"\n', /\.on is not a setting/],
 		['[[scripts.check]]\ncommand = "x"\ntimeout = "long"\n', /timeout must be a number/],
 		['[[scripts.check]]\ncommand = "x"\ntimeout = 0\n', /timeout must be a number/],
 		["[scripts\nsetup = 1", /config\.toml: /],

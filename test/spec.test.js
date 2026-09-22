@@ -1214,7 +1214,7 @@ test("작업의 _Done when:_ 명령은 앱이 커밋 전에 돌리고, 어떻게
 test("저장소의 검사(config.toml)가 작업의 것보다 먼저, 순서대로 돌고, 검사마다 Verified 한 줄 — exit 2는 커밋을 막고 칸도 두지 않는다", async (t) => {
   const pi = fakePi("minkyojung/email-auth");
   t.after(pi.cleanup);
-  pi.config('[[scripts.check]]\nname = "unit"\ncommand = "npm test"\n[[scripts.check]]\nname = "types"\ncommand = "npm run typecheck"\non = "approve"\n[[scripts.check]]\nname = "lint"\ncommand = "npm run lint-fail"\n');
+  pi.config('[[scripts.check]]\nname = "unit"\ncommand = "npm test"\n[[scripts.check]]\nname = "lint"\ncommand = "npm run lint-fail"\n');
   pi.plan("email-auth", "# Plan\n\n- [ ] 1. Add the door\n  - _Done when: `npm test -- door`_\n- [ ] 2. Hang the sign\n");
   pi.setDirty([" M door.js"]);
   pi.setEntries([
