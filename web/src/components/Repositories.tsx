@@ -461,7 +461,8 @@ function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onD
 										</Button>
 									</CollapsibleTrigger>
 									<CollapsibleContent asChild>
-										<ul className="flex flex-col">
+										{/* A step in from the group's own row, as the workspaces are from the repository's. */}
+										<ul className="flex flex-col pl-3">
 											{archived.map((worktree) => (
 												<li key={worktree.path}>
 													<Tooltip>
