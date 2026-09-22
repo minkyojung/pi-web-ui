@@ -48,6 +48,25 @@ contextBridge.exposeInMainWorld("pi", {
 		issues: (root) => ipcRenderer.invoke("github:issues", root),
 	},
 	/**
+	 * The person's GitHub account, for Settings › Accounts — gh's, so the
+	 * terminal is signed in too. `standing` answers `{ state }` — `missing`
+	 * (no gh), `signed-out`, or `signed-in` with `login` — and `signIn` runs
+	 * until GitHub says yes, saying the one-time code through `onCode` as
+	 * `{ userCode, verificationUri }` on the way; it and `signOut` answer
+	 * `{ ok }` or `{ error }`. `cancel` gives a sign-in up.
+	 */
+	github: {
+		standing: () => ipcRenderer.invoke("github:standing"),
+		signIn: () => ipcRenderer.invoke("github:signIn"),
+		cancel: () => ipcRenderer.invoke("github:cancel"),
+		signOut: () => ipcRenderer.invoke("github:signOut"),
+		onCode: (listen) => {
+			const handler = (_event, code) => listen(code);
+			ipcRenderer.on("github:code", handler);
+			return () => ipcRenderer.off("github:code", handler);
+		},
+	},
+	/**
 	 * The editors this machine has, and a file opened in one at a line — see
 	 * editors.js. `list` answers `[{ scheme, name, icon }]`, newest question
 	 * each time, and `open` answers `{ error }` when it could not.

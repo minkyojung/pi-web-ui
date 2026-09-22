@@ -56,7 +56,7 @@ import { documentType, SPEC_DOCS, SPECS_DIR } from "./documentKinds.ts";
 import { specState } from "./specApproval.ts";
 import { parseTasks, progressOf, type Progress } from "./specTasks.ts";
 import { type TaskResult, taskResults } from "./specResults.ts";
-import { baseLine, baseOf, githubLine, standingIn } from "./standing.ts";
+import { baseLine, baseOf, githubLine, standingIn, takeCredentials } from "./standing.ts";
 import { readCommit } from "./commitRead.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
@@ -1175,6 +1175,10 @@ const logins = createLoginBridge(
 	(provider, method, interaction) => modelRuntime.login(provider, method, interaction),
 	process.send ? (url) => process.send!({ ask: "open", url }) : null,
 );
+
+// The person's GitHub sign-in, changed in Settings while this server runs:
+// what git and gh run with from now on — see standing.ts.
+process.on("message", takeCredentials);
 
 /**
  * After a sign-in: bring the models up to date, and — when the session was on

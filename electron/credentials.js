@@ -22,6 +22,14 @@ import { execFile } from "node:child_process";
 const TTL_MS = 60_000;
 let known = { at: 0, token: null };
 
+/** Forget what gh last said: the person just signed in or out, so it is stale. */
+export function forget() {
+	known = { at: 0, token: null };
+}
+
+/** Every variable `gitEnvFor` can set — what to unset in a server before setting it anew. */
+export const KEYS = ["GIT_TERMINAL_PROMPT", "GH_TOKEN", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_KEY_1", "GIT_CONFIG_VALUE_1"];
+
 /**
  * The person's GitHub token: GH_TOKEN if the shell set it, else what gh is
  * signed in with, else null — gh not installed, not signed in, or its

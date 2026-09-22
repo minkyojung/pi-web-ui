@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { baseLine, baseOf, githubLine, standingIn } from "../standing.ts";
+import { baseLine, baseOf, githubLine, standingIn, takeCredentials } from "../standing.ts";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
 
@@ -75,4 +75,20 @@ test("the base is told to the agent as what a diff or a pull request is against,
 	assert.match(githubLine("origin/main", undefined), /^Octave found no GitHub sign-in .*`gh auth login`, rather than trying again\.$/);
 	assert.equal(githubLine("origin/main", "gho_t"), null);
 	assert.equal(githubLine(null, undefined), null);
+});
+
+test("the shell's word on the sign-in is taken into the environment — unset first, then set — and anything else is left alone", () => {
+	const had = process.env.OCTAVE_T;
+	try {
+		process.env.OCTAVE_T = "old";
+		assert.equal(takeCredentials({ busy: true }), false);
+		assert.equal(takeCredentials({ credentials: { unset: ["OCTAVE_T", "OCTAVE_T2"], set: { OCTAVE_T2: "new", OCTAVE_T3: 3 } } }), true);
+		assert.equal(process.env.OCTAVE_T, undefined);
+		assert.equal(process.env.OCTAVE_T2, "new");
+		assert.equal(process.env.OCTAVE_T3, undefined);
+	} finally {
+		if (had === undefined) delete process.env.OCTAVE_T;
+		else process.env.OCTAVE_T = had;
+		delete process.env.OCTAVE_T2;
+	}
 });

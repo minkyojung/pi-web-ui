@@ -26,8 +26,8 @@ import { runScript } from "./scripts.js";
 import { createServers, idle } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
 import { branchOf, changesIn, git, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
-import { clone, issues, login, pullRequests, repositories, repositoryName } from "./github.js";
-import { gitEnv } from "./credentials.js";
+import { clone, issues, login, pullRequests, repositories, repositoryName, signIn, signOut, standing } from "./github.js";
+import { KEYS, forget, gitEnv } from "./credentials.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
 import { firstWorkspace, projectsOf, statusOf, withWorkspace, withoutWorkspace } from "./workspaces.js";
@@ -220,6 +220,35 @@ const servers = createServers({
  * same door: whatever goes wrong upstream, the shell will not throw away
  * something the person did not point this app at.
  */
+/** The sign-in under way, if one is; a second ask while it goes is the same one. */
+let signingIn = null;
+
+async function signInToGitHub(page) {
+	if (signingIn) return { error: "A sign-in is already under way." };
+	signingIn = new AbortController();
+	try {
+		const out = await signIn({ signal: signingIn.signal, onCode: (code) => !page.isDestroyed() && page.send("github:code", code) });
+		if (out.ok) await tellCredentials();
+		return out;
+	} finally {
+		signingIn = null;
+	}
+}
+
+/**
+ * The person's GitHub sign-in changed: every server running gets what git
+ * and gh are to run with from now on — the same variables it was started
+ * with (startServer), set anew — so the agent's next push has it without the
+ * workspace being reopened. The system prompt's line about it stands until
+ * the session is next made; it says what to do when a push fails, and one
+ * will not now.
+ */
+async function tellCredentials() {
+	forget();
+	const set = await gitEnv();
+	await servers.each((server) => server.child.connected && server.child.send({ credentials: { unset: KEYS, set } }));
+}
+
 function answerTrashAsks(server, workdir) {
 	const root = resolve(workdir) + sep;
 	server.on("message", async (message) => {
@@ -783,6 +812,16 @@ function serveFolders() {
 	ipcMain.handle("github:repositories", () => (devUrl ? null : repositories()));
 	// The open issues of a repository on the list, for a spec to start from one.
 	ipcMain.handle("github:issues", (_event, root) => (devUrl || !projectsOf(readSettings(), isCheckout).some((project) => project.path === root) ? null : issues(root)));
+	// Settings › Accounts: where the person stands with GitHub, and signing in
+	// and out — gh's, with the code gh gets shown on the page (github.js).
+	ipcMain.handle("github:standing", () => standing());
+	ipcMain.handle("github:signIn", (event) => signInToGitHub(event.sender));
+	ipcMain.handle("github:cancel", () => signingIn?.abort());
+	ipcMain.handle("github:signOut", async () => {
+		const out = await signOut();
+		await tellCredentials();
+		return out;
+	});
 	// The list, and the two things done to it. In a dev run the dev server owns
 	// the folder, so there is no list to switch in.
 	ipcMain.handle("workspaces", () => (devUrl ? null : workspaces()));
