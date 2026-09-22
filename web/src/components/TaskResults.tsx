@@ -3,7 +3,7 @@ import { CheckIcon, FileTextIcon, XIcon } from "lucide-react";
 
 import { checkLogPath } from "../checkLog";
 import { commitPath } from "../pages";
-import { type ResultLine, freshWords, listOf, tasksWords } from "../resultsList.ts";
+import { type ResultLine, checkMark, freshWords, listOf, tasksWords } from "../resultsList.ts";
 import { sawResults, seenStore } from "../seenResults.ts";
 import { specsStore } from "../serverState";
 import { docPath, speaksFor } from "../specStanding.ts";
@@ -134,11 +134,11 @@ export function TaskResults({ open: inFront, onOpen }: { open: string | null; on
  */
 function Line({ line, onLog }: { line: ResultLine; onLog: (path: string) => void }) {
 	const checked = line.checks !== null;
-	// What the app ran outranks what the run said: a tick or a cross where
-	// there is a Verified trailer, the circle for the agent's word otherwise.
+	// What the app ran outranks what the run said (checkMark): a tick or a
+	// cross where there is a Verified trailer, the circle for the agent's word otherwise.
 	const ran = line.verified.length > 0 ? line.verified : null;
 	const failed = ran?.filter((v) => v.exit !== 0) ?? [];
-	const mark = ran ? (failed.length === 0 ? "passed" : "failed") : checked ? "said" : "none";
+	const mark = checkMark(line);
 	const title = ran
 		? `${ran.map((v) => `${v.name} — ${v.exit === 0 ? "passed" : `exit ${v.exit}`}`).join(" · ")}${checked ? ` · agent: ${line.checks}` : ""}`
 		: checked

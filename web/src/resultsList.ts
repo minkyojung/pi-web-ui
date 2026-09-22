@@ -68,6 +68,21 @@ export const tasksWords = (list: Pick<ResultsList, "tasks">): string => `${list.
 export const freshWords = (list: Pick<ResultsList, "fresh">): string | null => (list.fresh > 0 ? `${list.fresh} new` : null);
 
 /**
+ * How a result was checked, as one mark: what the app ran outranks what the
+ * run said. `passed` and `failed` are the app's own checks — the repository's
+ * and the task's `_Done when:` (Verified trailer) — `said` is the agent's
+ * word that it checked something, `none` that nobody did. The one rule for
+ * the list at the foot of the window and for the row in the plan, so the two
+ * cannot mark one task two ways.
+ */
+export type CheckMark = "passed" | "failed" | "said" | "none";
+
+export function checkMark(result: Pick<TaskResult, "checks" | "verified">): CheckMark {
+	if (result.verified.length > 0) return result.verified.every((v) => v.exit === 0) ? "passed" : "failed";
+	return result.checks !== null ? "said" : "none";
+}
+
+/**
  * The task a commit is the result of, among the results the window already
  * has — by the hash whole or short, as an address may give either — or null
  * for a commit that is no task's: somebody's own, or one on another branch.

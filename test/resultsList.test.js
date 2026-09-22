@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { commitTabTitle, freshWords, listOf, taskOfCommit, tasksWords } from "../web/src/resultsList.ts";
+import { checkMark, commitTabTitle, freshWords, listOf, taskOfCommit, tasksWords } from "../web/src/resultsList.ts";
 
 const run = (task, commit, over = {}) => ({ task, commit, short: commit.slice(0, 7), title: `Task ${task}`, at: 0, checks: null, files: [], added: 1, deleted: 0, ...over });
 const RESULTS = [run("1", "aaaaaaa1"), run("2", "bbbbbbb2", { added: 8 }), run("3", "ccccccc3", { added: 41, deleted: 2 })];
@@ -53,4 +53,11 @@ test("커밋이 어느 작업의 것인지는 이미 받은 결과에서 찾는�
   assert.equal(taskOfCommit(specs, "deadbee"), null, "작업의 커밋이 아니다");
   assert.equal(taskOfCommit(null, "aaaaaaa"), null, "결과가 아직 안 왔다");
   assert.equal(commitTabTitle({ task: "2", title: "Test the greeting" }), "Task 2 · Test the greeting");
+});
+
+test("검사의 표: 앱이 돌린 것이 에이전트의 말을 이긴다", () => {
+  assert.equal(checkMark({ checks: null, verified: [] }), "none");
+  assert.equal(checkMark({ checks: "npm test — 2 passed", verified: [] }), "said");
+  assert.equal(checkMark({ checks: "npm test — 2 passed", verified: [{ name: "npm test", exit: 0 }] }), "passed");
+  assert.equal(checkMark({ checks: null, verified: [{ name: "npm test", exit: 0 }, { name: "npm run lint", exit: 1 }] }), "failed", "one failure fails the mark");
 });
