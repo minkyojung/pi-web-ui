@@ -18,6 +18,8 @@ import updater from "electron-updater";
 
 import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
+import { DEFAULT_TIMEOUT, isConfig, readConfig } from "./octaveConfig.js";
+import { runScript } from "./scripts.js";
 import { createServers, idle } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
 import { branchOf, changesIn, git, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
@@ -532,10 +534,50 @@ function newWorkspace(root, first, from) {
 		}
 	});
 	making = made.then(() => {});
-	return made.then(({ worktree, error }) => {
-		if (worktree) void show(worktree.path);
-		return error ? { error } : {};
+	// Set up outside the one-at-a-time: an install can take minutes, and the
+	// list need not wait on it. Set up and failed, the workspace stays on the
+	// list with its first message, to be opened as it is or set up again.
+	return made.then(async ({ worktree, error }) => {
+		if (error) return { error };
+		const setup = await setUp(root, worktree.path);
+		if (setup.error) return { error: setup.error };
+		void show(worktree.path);
+		return {};
 	});
+}
+
+/** Tell the page a workspace's setup is running (`"running"`) or has ended (null) — the dialog says so while it waits. */
+function setupChanged(path, stage) {
+	if (window && !window.isDestroyed()) window.webContents.send("workspace:setup", path, stage);
+}
+
+/**
+ * The repository's own setup, run in a workspace: the command its
+ * `.octave/config.toml` names (octaveConfig.js), to its end, with the
+ * repository's folder in `OCTAVE_REPOSITORY` and the output's tail in the
+ * workspace's `.pi/runs/setup.log` (scripts.js). `{ ran: false }` where the
+ * file names none; `{ error }` — a config that could not be read, or a
+ * command that did not exit 0 — says why, with the log's place.
+ */
+async function setUp(root, path) {
+	const config = readConfig(path);
+	if (!isConfig(config)) return { error: config.error };
+	if (!config.setup) return { ran: false };
+	setupChanged(path, "running");
+	try {
+		const ran = await runScript({ name: "setup", command: config.setup, cwd: path, env: { ...process.env, OCTAVE_REPOSITORY: root }, timeout: DEFAULT_TIMEOUT });
+		if (ran.exit !== 0) return { error: `Setup failed (exit ${ran.exit})${ran.last ? `: ${ran.last}` : ""}. The whole of it is in .pi/runs/setup.log in the workspace.` };
+		return { ran: true };
+	} finally {
+		setupChanged(path, null);
+	}
+}
+
+/** Setup run again in a listed workspace, from its row — after it failed, or after the command was changed. */
+function setUpAgain(path) {
+	const root = repositoryOfWorkspace(path);
+	if (!root) return Promise.resolve({ error: "That workspace is no longer on the list." });
+	return setUp(root, path);
 }
 
 /** The repository a listed workspace is of, or null for a folder that is not one: the page does not name folders of its own. */
@@ -683,6 +725,7 @@ function serveFolders() {
 	ipcMain.handle("workspace:open", (_event, path) => (devUrl ? null : openWorkspace(path)));
 	ipcMain.handle("workspace:changes", (_event, path) => (devUrl ? null : workspaceChanges(path)));
 	ipcMain.handle("workspace:remove", (_event, path, seen) => (devUrl ? null : removeWorkspace(path, seen)));
+	ipcMain.handle("workspace:setup", (_event, path) => (devUrl ? null : setUpAgain(path)));
 	// A note in the Finder. The page is told the folder in full by the server
 	// (ConfigMsg.folder) and joins the note's path onto it, which is a better
 	// source than this process has: in a dev run the settings hold no workdir

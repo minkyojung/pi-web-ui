@@ -48,8 +48,11 @@ contextBridge.exposeInMainWorld("pi", {
 	 * what this page's workspace was made to be told first, given once, a
 	 * workspace put in front, and one removed — `changes` says how many
 	 * uncommitted changes it holds, and `remove` takes the number the person
-	 * was told and answers `{ changes }` instead when it no longer holds. `onChange` says
-	 * the list is to be asked for again, and returns the way to stop listening.
+	 * was told and answers `{ changes }` instead when it no longer holds. `setup`
+	 * runs the repository's setup command again in a workspace (`{ ran }`, or
+	 * `{ error }`), and `onSetup` says when one's setup is running (`"running"`)
+	 * or has ended (null). `onChange` says the list is to be asked for again;
+	 * the listeners return the way to stop listening.
 	 * The list is null in a dev run, where the dev server owns the folder.
 	 */
 	workspaces: {
@@ -60,6 +63,12 @@ contextBridge.exposeInMainWorld("pi", {
 		open: (path) => ipcRenderer.invoke("workspace:open", path),
 		changes: (path) => ipcRenderer.invoke("workspace:changes", path),
 		remove: (path, seen) => ipcRenderer.invoke("workspace:remove", path, seen),
+		setup: (path) => ipcRenderer.invoke("workspace:setup", path),
+		onSetup: (listen) => {
+			const handler = (_event, path, stage) => listen(path, stage);
+			ipcRenderer.on("workspace:setup", handler);
+			return () => ipcRenderer.off("workspace:setup", handler);
+		},
 		onChange: (listen) => {
 			const handler = () => listen();
 			ipcRenderer.on("workspaces:changed", handler);
