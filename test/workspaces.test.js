@@ -67,12 +67,11 @@ test("a workspace removed leaves its repository on the list, with the rest of it
 	assert.equal(withoutWorkspace(projects, "/nowhere")[0], projects[0], "nothing by that path, nothing changed");
 });
 
-test("a branch's status is its pull request's when it has one, else what git knows: merged, on the remote, or only here", () => {
-	assert.deepEqual(statusOf({ onRemote: true, merged: false, pr: { number: 27, state: "OPEN" } }), { state: "open", number: 27 });
-	assert.deepEqual(statusOf({ onRemote: true, merged: true, pr: { number: 27, state: "MERGED" } }), { state: "merged", number: 27 });
-	assert.deepEqual(statusOf({ onRemote: true, merged: false, pr: { number: 27, state: "CLOSED" } }), { state: "closed", number: 27 });
-	assert.deepEqual(statusOf({ onRemote: true, merged: true, pr: null }), { state: "merged" }, "merged by another route, gh or not");
-	assert.deepEqual(statusOf({ onRemote: true, merged: false, pr: null }), { state: "pushed" });
-	assert.deepEqual(statusOf({ onRemote: false, merged: false, pr: null }), { state: "local" });
-	assert.deepEqual(statusOf({ onRemote: false, merged: false, pr: { number: 1, state: "WHAT" } }), { state: "local" }, "a state gh does not have is no pull request");
+test("a branch's status is its pull request's when it has one, else only whether the remote has it — never merged by git alone", () => {
+	assert.deepEqual(statusOf({ onRemote: true, pr: { number: 27, state: "OPEN" } }), { state: "open", number: 27 });
+	assert.deepEqual(statusOf({ onRemote: true, pr: { number: 27, state: "MERGED" } }), { state: "merged", number: 27 });
+	assert.deepEqual(statusOf({ onRemote: true, pr: { number: 27, state: "CLOSED" } }), { state: "closed", number: 27 });
+	assert.deepEqual(statusOf({ onRemote: true, pr: null }), { state: "pushed" });
+	assert.deepEqual(statusOf({ onRemote: false, pr: null }), { state: "local" });
+	assert.deepEqual(statusOf({ onRemote: false, pr: { number: 1, state: "WHAT" } }), { state: "local" }, "a state gh does not have is no pull request");
 });

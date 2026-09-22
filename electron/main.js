@@ -20,7 +20,7 @@ import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
 import { createServers, idle } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
-import { branchOf, branchStanding, changesIn, git, makeWorkspace, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
+import { branchOf, changesIn, git, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
 import { clone, issues, login, pullRequests, repositories, repositoryName } from "./github.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
@@ -453,8 +453,8 @@ async function workspaces() {
 							// Where the branch stands, for the row to say: git's word, and
 							// GitHub's when gh can give it. A workspace whose branch git
 							// cannot read is listed as only here.
-							const standing = await branchStanding(project.path, branch).catch(() => ({ onRemote: false, merged: false }));
-							return { path: worktree.path, name: worktree.name, branch, status: statusOf({ ...standing, pr: prs?.get(branch) ?? null }) };
+							const remote = await onRemote(project.path, branch).catch(() => false);
+							return { path: worktree.path, name: worktree.name, branch, status: statusOf({ onRemote: remote, pr: prs?.get(branch) ?? null }) };
 						}),
 					),
 				};

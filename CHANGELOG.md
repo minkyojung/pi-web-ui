@@ -5,6 +5,8 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+### Fixed
+- A workspace made a moment ago no longer says `merged`. A branch with no commit of its own looks, to git, exactly like one whose commits were all taken in, so merged is now said only when the branch's pull request was merged.
 
 ## [0.0.7] - 2026-09-22
 ### Added

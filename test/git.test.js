@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { CITIES, pickCity } from "../electron/cities.js";
-import { branchOf, branchStanding, changesIn, fetchOrigin, makeWorkspace, remoteBranches, removeWorktree, repositoryOf, startOf } from "../electron/git.js";
+import { branchOf, changesIn, fetchOrigin, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf, startOf } from "../electron/git.js";
 import { login } from "../electron/github.js";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
@@ -197,21 +197,14 @@ test("gh's issues are read strictly: a number and a title, a body or none, and n
 	for (const out of ["", "not json", '{"number":1}']) assert.equal(issuesFrom(out), null);
 });
 
-test("a branch's standing: only here, then on the remote once pushed, then merged once the base has its commits", async () => {
+test("a new workspace's branch is not on the remote until pushed — and never read as merged, though its every commit is in the base", async () => {
 	const repo = cloned();
 	const made = await makeWorkspace(repo.root, { into: join(repo.dir, "ws"), owner: "me" });
-	writeFileSync(join(made.path, "w.txt"), "work\n");
-	run(made.path, "add", ".");
-	run(made.path, "commit", "-q", "-m", "work");
-	assert.deepEqual(await branchStanding(repo.root, made.branch), { onRemote: false, merged: false });
+	assert.equal(await onRemote(repo.root, made.branch), false);
+	// What a fresh branch and a merged one have in common — and why git is not asked which is which:
+	run(repo.root, "merge-base", "--is-ancestor", made.branch, "origin/main");
 	run(made.path, "push", "-q", "-u", "origin", made.branch);
-	assert.deepEqual(await branchStanding(repo.root, made.branch), { onRemote: true, merged: false });
-	// Merged on the remote's main, and fetched: what the list reads from.
-	run(repo.seed, "fetch", "-q", repo.origin, made.branch);
-	run(repo.seed, "merge", "-q", "--no-ff", "-m", "merge", "FETCH_HEAD");
-	run(repo.seed, "push", "-q", repo.origin, "HEAD:main");
-	await fetchOrigin(repo.root);
-	assert.deepEqual(await branchStanding(repo.root, made.branch), { onRemote: true, merged: true });
+	assert.equal(await onRemote(repo.root, made.branch), true);
 });
 
 test("gh's pull requests are read by head branch, the newest first, and nothing else passed on", async () => {
