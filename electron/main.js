@@ -650,26 +650,28 @@ const runs = createRuns({ onChange: runChanged });
 /**
  * What the foot of the window shows of the repository's commands, in a
  * workspace: whether the repository has the file at all — without it the
- * word there is `Set up` — the default of its `[scripts.run.*]`
- * (octaveConfig.js), null where there is none, else what runs.js says of
- * it under the run's id, which is the button's word when nothing is running;
+ * word there is `Set up` — the ids of its `[scripts.run.*]` (octaveConfig.js)
+ * for the menu, `run` as what runs.js says of the one running or last
+ * ended, under the default's id when none has run yet — the button's word —
  * and the logs the commands have left there (runLogs.js), for the menu.
  */
 function runState(path, state = runs.stateOf(path)) {
 	const configured = existsSync(join(path, CONFIG_FILE));
 	const config = readConfig(path);
-	const run = isConfig(config) ? config.run.find((r) => r.default) ?? null : null;
-	return { configured, run: run ? { ...state, id: state.id ?? run.id } : null, logs: runLogsIn(path) };
+	const named = isConfig(config) ? config.run : [];
+	const fallback = named.find((r) => r.default) ?? null;
+	return { configured, runs: named.map((r) => r.id), run: fallback ? { ...state, id: state.id ?? fallback.id } : null, logs: runLogsIn(path) };
 }
 
-/** The default run started in a listed workspace, on the port kept for it. */
-async function startRun(path) {
+/** A run started in a listed workspace — the one named, else the default — on the port kept for it. One at a time in a workspace (runs.js). */
+async function startRun(path, id = null) {
 	const root = repositoryOfWorkspace(path);
 	if (!root) return { error: "That workspace is no longer on the list." };
 	const config = readConfig(path);
 	if (!isConfig(config)) return { error: config.error };
-	const run = config.run.find((r) => r.default);
-	if (!run) return { error: "This repository names no run command in .octave/config.toml." };
+	const run = id === null ? config.run.find((r) => r.default) : config.run.find((r) => r.id === id);
+	if (!run) return { error: id === null ? "This repository names no run command in .octave/config.toml." : `This repository names no run "${id}" in .octave/config.toml.` };
+	if (runs.stateOf(path).running) return { error: `${runs.stateOf(path).id} is running here. Stop it first: one run at a time in a workspace.` };
 	const port = await freePort(runPorts.get(path));
 	runPorts.set(path, port);
 	return { state: runState(path, runs.start(path, { id: run.id, command: run.command, port, env: { ...process.env, OCTAVE_REPOSITORY: root } })) };
@@ -847,7 +849,7 @@ function serveFolders() {
 	ipcMain.handle("workspace:remove", (_event, path, seen) => (devUrl ? null : removeWorkspace(path, seen)));
 	ipcMain.handle("workspace:setup", (_event, path) => (devUrl ? null : setUpAgain(path)));
 	ipcMain.handle("run:state", (_event, path) => (devUrl ? null : runState(path)));
-	ipcMain.handle("run:start", (_event, path) => (devUrl ? null : startRun(path)));
+	ipcMain.handle("run:start", (_event, path, id) => (devUrl ? null : startRun(path, typeof id === "string" ? id : null)));
 	ipcMain.handle("run:stop", (_event, path) => (devUrl ? null : runs.stop(path).then(() => runState(path))));
 	// A note in the Finder. The page is told the folder in full by the server
 	// (ConfigMsg.folder) and joins the note's path onto it, which is a better

@@ -121,15 +121,17 @@ contextBridge.exposeInMainWorld("pi", {
 	/**
 	 * The repository's own run command in this window's workspace — the
 	 * default of its `[scripts.run.*]` — started and stopped from the foot of
-	 * the window (RunButton.tsx). `state` is `{ configured, run, logs }` — whether
-	 * the repository has `.octave/config.toml` at all, its default run as
-	 * `{ running, id, port, exit }` or null, and the logs the commands left in
-	 * `.pi/runs/` as `{ name, path, exit, modified }`; `start` answers `{ state }` or
+	 * the window (Scripts.tsx). `state` is `{ configured, runs, run, logs }` —
+	 * whether the repository has `.octave/config.toml` at all, the ids of its
+	 * runs, the one running or last ended as `{ running, id, port, exit }` (the
+	 * default's id when none has), and the logs the commands left in
+	 * `.pi/runs/` as `{ name, path, exit, modified }`; `start(path, id?)` starts
+	 * the run named, else the default, one at a time, and answers `{ state }` or
 	 * `{ error }`; `onChange` says when it changed, and returns the way to stop listening.
 	 */
 	runs: {
 		state: (path) => ipcRenderer.invoke("run:state", path),
-		start: (path) => ipcRenderer.invoke("run:start", path),
+		start: (path, id) => ipcRenderer.invoke("run:start", path, id),
 		stop: (path) => ipcRenderer.invoke("run:stop", path),
 		onChange: (listen) => {
 			const handler = (_event, path, state) => listen(path, state);

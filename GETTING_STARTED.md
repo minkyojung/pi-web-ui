@@ -93,8 +93,9 @@ README. Read it and fix it; it is a short file, and yours. What goes in it:
   other failure is committed and marked, so a failed try is still a record. They run one after another, so
   put the quick ones first and leave the slow ones — a browser suite, say — to your CI on the pull request.
 - `[scripts.run.dev]`, a dev server or a watcher: the ▶ at the foot of the window, on a port of the
-  workspace's own in `OCTAVE_PORT`. Press it for the menu — run or stop, open what it serves, read what it
-  printed. A run that ends by itself gets a red dot, and its exit code is in the menu.
+  workspace's own in `OCTAVE_PORT`. Press it for the menu — every run the file names, to start or stop (one at
+  a time in a workspace), open what it serves, read what it printed. A run that ends by itself gets a red
+  dot, and its exit code is in the menu.
 - `archive`, run just before a workspace is removed.
 
 What each printed is a file in the workspace's `.pi/runs/` folder, and opens in a tab like any file: at its
