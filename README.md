@@ -1,14 +1,21 @@
 # Octave
 
-A folder of notes, with a coding agent at the table.
+A coding agent that works from a spec you approved.
 
 Using it: [Getting started](GETTING_STARTED.md) · [What leaves your Mac](PRIVACY.md). What follows is the design.
 
-Three columns: the notes, the open one, and pi. The notes are markdown files in
-a folder you choose; pi reads and writes the same files with its own tools, and
-who wrote which words is kept beside them. pi is not an assistant off to the
-side — it is the other person at the table, and the column is its seat. It
-collapses with `⌘\` so it can be ignored.
+You say what to build, in a line. The agent reads the repository and writes
+its requirements; you read them and approve. It writes the design; you
+approve. It writes the tasks; you approve. Then it does the tasks one at a
+time, each in a workspace of its own — a folder and a branch — each ending in
+a commit you can read. The direction and its decisions are in
+[`docs/spec-mode/spec-mode.md`](docs/spec-mode/spec-mode.md); what remains
+below from Octave's first life as an app for notes is still how the editor
+and the column work.
+
+Three columns: the repository's files, the open one, and pi. pi is not an
+assistant off to the side — it is the other person at the table, and the
+column is its seat. It collapses with `⌘\` so it can be ignored.
 
 ## The name
 
@@ -16,8 +23,8 @@ The same note, in two voices. An octave is one note sounded at two heights: the
 ratio is exactly two to one, so the ear takes it for a single sound, and yet
 there are still two voices and it is always known which is which. That is the
 page here — it reads as one piece of writing, and every word of it still has
-its author. The lower voice carries the tune: what pi writes stays a suggestion
-until the person keeps it.
+its author. The lower voice carries the tune: what pi writes stays a draft
+until the person approves it.
 
 It is a word from poetry as well. The octave is the first eight lines of a
 sonnet, the part that sets the question; then comes the volta — the turn — and
