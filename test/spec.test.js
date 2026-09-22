@@ -1051,6 +1051,9 @@ test("/spec-run은 새 세션을 열고, 그 안에 지시문과 표식과 친 �
 
 test("지시문은 Kiro의 실행 규칙이다 — 세 문서를 먼저, 이 작업만, 요구사항에 비추어, 그리고 멈춤", () => {
   const said = taskPrompt({ spec: "email-auth", task: "2.1", title: "Cut the board", done: ["1"], then: [], model: null, effort: null });
+  assert.match(said, /Then \.octave\/specs\/email-auth\/notes\.md, if it is there/, "앞 작업들이 남긴 메모를 읽는다");
+  assert.match(said, /append it to \.octave\/specs\/email-auth\/notes\.md/, "뒤 작업이 알아야 할 것만 남긴다");
+  assert.match(said, /If there is nothing, write nothing/);
   assert.ok(said.includes(".octave/specs/email-auth/requirements.md"), said);
   assert.ok(said.includes(".octave/specs/email-auth/design.md"));
   assert.ok(said.includes(".octave/specs/email-auth/tasks.md"));

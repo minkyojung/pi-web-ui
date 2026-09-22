@@ -402,9 +402,10 @@ const wanted = new Map<string, { model: string | null; effort: string | null }>(
 export function taskPrompt({ spec, task, title }: TaskMark): string {
 	const dir = `${SPECS_DIR}${spec}/`;
 	const steps = [
-		`Read all three of ${dir}requirements.md, ${dir}design.md and ${dir}tasks.md before you change anything. A task done without the requirements or the design is done wrong.`,
+		`Read all three of ${dir}requirements.md, ${dir}design.md and ${dir}tasks.md before you change anything. A task done without the requirements or the design is done wrong. Then ${dir}notes.md, if it is there: what the runs of the tasks before this one left for the ones after.`,
 		`Do task ${task} of ${dir}tasks.md — "${title}" — and only it. Do not build any part of another task, even one you can see it will need.`,
 		"Check what you built: run what the task names on its `_Done when: …_` line, if it has one, and read the acceptance criteria it names on its `_Requirements: …_` line, by their numbers in the requirements, against what you built.",
+		`Before you stop: if a task after this one should know something you found — a gotcha, a place the design was silent, a thing you left for it — append it to ${dir}notes.md, a line or two under a heading naming this task. Only what another task needs; nothing that is in your answer or your commit already. If there is nothing, write nothing.`,
 		"Then stop. Say in a line or two what you did and anything the person should look at, and end with one line beginning `Checks:` — the checks you ran and what they said (`Checks: npm test — 923 passed`), or `Checks: none` if you ran none. That line goes into the task's commit. Do not go on to the next task.",
 	];
 	return [
