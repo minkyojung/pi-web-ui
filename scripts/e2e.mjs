@@ -21,7 +21,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1291,6 +1291,32 @@ check("⌘P offers the rest of the repository, and a file that is not a note ope
 	await app.keys("XXX");
 	assert.equal((await text()).includes("XXX"), false, "a file here is read-only");
 	assert.equal(readFileSync(join(cwd, "tool.ts"), "utf8"), "// what it answers\nexport const answer = 42;\n");
+});
+
+check("a log the repository's commands printed opens at its end and follows it as it grows, unless the reader has scrolled up", async ({ app, cwd }) => {
+	mkdirSync(join(cwd, ".pi", "runs"), { recursive: true });
+	const lines = (n, from = 0) => Array.from({ length: n }, (_, i) => `line ${from + i + 1}`).join("\n");
+	writeFileSync(join(cwd, ".pi", "runs", "dev.log"), `$ npm run dev\n${lines(200)}\n`);
+	await app.evaluate("location.hash = '#.pi/runs/dev.log'");
+	await until("the log in front", () => app.evaluate(`!!document.querySelector('#page[data-code=".pi/runs/dev.log"]')`));
+	const text = () => app.evaluate("document.querySelector('#page .cm-content')?.textContent ?? ''");
+	await until("its text", async () => (await text()).includes("line 200"));
+	const scroller = "document.querySelector('#page .cm-scroller')";
+	const atEnd = () => app.evaluate(`(() => { const s = ${scroller}; return s.scrollTop + s.clientHeight >= s.scrollHeight - 4; })()`);
+	await until("opened at its end", atEnd);
+	// It grows: still at the end.
+	appendFileSync(join(cwd, ".pi", "runs", "dev.log"), `${lines(50, 200)}\n`);
+	await until("the new lines", async () => (await text()).includes("line 250"));
+	assert.equal(await atEnd(), true, "reading the end, the new lines are what is wanted");
+	// Scrolled up to read something earlier: it grows, and the page does not jump.
+	// Only the lines in view are drawn, so growth is read off the scroll height.
+	await app.evaluate(`${scroller}.scrollTop = 0`);
+	const height = await app.evaluate(`${scroller}.scrollHeight`);
+	appendFileSync(join(cwd, ".pi", "runs", "dev.log"), `${lines(50, 250)}\n`);
+	await until("the newer lines", async () => (await app.evaluate(`${scroller}.scrollHeight`)) > height);
+	assert.equal(await app.evaluate(`${scroller}.scrollTop`), 0, "scrolled up, it stays");
+	await app.shot("run-log");
+	await app.evaluate("location.hash = ''");
 });
 
 check("a file says where it is in the line above it, and its ⋯ offers what can be done to a file", async ({ app }) => {
