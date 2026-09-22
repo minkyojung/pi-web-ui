@@ -811,6 +811,23 @@ async function main() {
 	window.on("leave-full-screen", () => markTrafficLights(window));
 
 	window.on("closed", () => closing.abort());
+	// A link on a page — in a note, in the agent's answer, on the sign-in
+	// screen — opens in the Mac's browser. Left to itself the window would
+	// navigate to it, or open a second window of the app on it: the app has
+	// one window, on its own pages and its servers. Anything else is the
+	// browser's. `will-navigate` is a plain link; `setWindowOpenHandler` is
+	// target="_blank" and window.open.
+	const ours = (url) => url.startsWith(`${SCHEME}://`) || url.startsWith("http://127.0.0.1:") || url.startsWith("http://localhost:") || (devUrl ? url.startsWith(devUrl) : false);
+	const outside = (url) => /^https?:$/.test(new URL(url).protocol) && !ours(url);
+	window.webContents.on("will-navigate", (event, url) => {
+		if (!outside(url)) return;
+		event.preventDefault();
+		void shell.openExternal(url);
+	});
+	window.webContents.setWindowOpenHandler(({ url }) => {
+		if (outside(url)) void shell.openExternal(url);
+		return { action: "deny" };
+	});
 	// The page sets its own title, which would replace the folder name.
 	window.on("page-title-updated", (e) => e.preventDefault());
 	if (devUrl) {

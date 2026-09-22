@@ -49,6 +49,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - The folder menu at the foot of the sidebar, and its list of folders opened before, are gone: the repositories and their workspaces are the list now.
 
 ### Fixed
+- A link in a note, in the agent's answer or on the sign-in screen opens in your browser. It used to take the window itself to the page, or open a second Octave window on it.
 - A task's work is committed in a repository that ignores `.pi` — which most will, the folder being the app's. It was checked off and then left uncommitted, with git's complaint about ignored paths, and the tasks queued after it never started.
 - Opened from the Dock or the Finder, the agent's commands now find the tools your terminal finds — Homebrew's, nvm's, your `npm`, `node` and `gh` — where before they found only the system's.
 
