@@ -46,8 +46,8 @@ export interface TaskResult {
 	at: number;
 	/** What the run said it checked, in its own words, or null for `none` and for nothing said. */
 	checks: string | null;
-	/** What the app ran for it — the task's `_Done when:` command — and how it ended; null when it ran nothing. */
-	verified: { command: string; exit: number } | null;
+	/** What the app ran for it — the repository's checks, then the task's `_Done when:` — and how each ended; empty when it ran nothing. */
+	verified: { name: string; exit: number }[];
 	/** What it changed outside the spec's folder, and the sums of that. */
 	files: ChangedFile[];
 	added: number;
@@ -69,8 +69,8 @@ const FIELD = "\x1f";
  * each run, and they are all here; which one a window shows is its to say.
  */
 export function taskResults(root: string): Promise<Map<string, TaskResult[]>> {
-	const trailer = (key: string) => `%(trailers:key=${key},valueonly,separator=%x20)`;
-	const format = [RECORD + "%H", "%h", "%s", "%ct", trailer("Spec"), trailer("Task"), trailer("Checks"), trailer("Verified")].join(FIELD) + FIELD;
+	const trailer = (key: string, separator = "%x20") => `%(trailers:key=${key},valueonly,separator=${separator})`;
+	const format = [RECORD + "%H", "%h", "%s", "%ct", trailer("Spec"), trailer("Task"), trailer("Checks"), trailer("Verified", "%x1d")].join(FIELD) + FIELD;
 	return new Promise((resolve) => {
 		execFile(
 			"git",
@@ -137,8 +137,10 @@ export function changedIn(rest: string): ChangedFile[] {
 	return files;
 }
 
-/** The `Verified:` trailer, `command — exit N`, read back; null for none or for one not in that shape. */
-export function verifiedOf(trailer: string): { command: string; exit: number } | null {
-	const found = /^(.*\S)\s+—\s+exit\s+(\d+)\s*$/.exec(trailer.trim());
-	return found ? { command: found[1]!, exit: Number(found[2]) } : null;
+/** The `Verified:` trailers, `name — exit N` each, read back — one a check, in the order they ran; a value not in that shape is left out. */
+export function verifiedOf(trailers: string): { name: string; exit: number }[] {
+	return trailers
+		.split("\x1d")
+		.map((one) => /^(.*\S)\s+—\s+exit\s+(\d+)\s*$/.exec(one.trim()))
+		.flatMap((found) => (found ? [{ name: found[1]!, exit: Number(found[2]) }] : []));
 }

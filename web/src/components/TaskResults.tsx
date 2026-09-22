@@ -135,9 +135,14 @@ function Line({ line }: { line: ResultLine }) {
 	const checked = line.checks !== null;
 	// What the app ran outranks what the run said: a tick or a cross where
 	// there is a Verified trailer, the circle for the agent's word otherwise.
-	const ran = line.verified;
-	const mark = ran ? (ran.exit === 0 ? "passed" : "failed") : checked ? "said" : "none";
-	const title = ran ? `${ran.command} — ${ran.exit === 0 ? "passed" : `exit ${ran.exit}`}${checked ? ` · agent: ${line.checks}` : ""}` : checked ? `agent: ${line.checks}` : "The run checked nothing";
+	const ran = line.verified.length > 0 ? line.verified : null;
+	const failed = ran?.filter((v) => v.exit !== 0) ?? [];
+	const mark = ran ? (failed.length === 0 ? "passed" : "failed") : checked ? "said" : "none";
+	const title = ran
+		? `${ran.map((v) => `${v.name} — ${v.exit === 0 ? "passed" : `exit ${v.exit}`}`).join(" · ")}${checked ? ` · agent: ${line.checks}` : ""}`
+		: checked
+			? `agent: ${line.checks}`
+			: "The run checked nothing";
 	return (
 		<>
 			<span
@@ -145,7 +150,7 @@ function Line({ line }: { line: ResultLine }) {
 				data-checks={mark}
 				title={title}
 				role="img"
-				aria-label={ran ? `The app ran ${ran.command}: ${ran.exit === 0 ? "passed" : `failed, exit ${ran.exit}`}` : checked ? `The agent said it checked: ${line.checks}` : "No checks"}
+				aria-label={ran ? (failed.length === 0 ? `The app ran ${ran.length === 1 ? ran[0]!.name : `${ran.length} checks`}: passed` : `The app ran checks: ${failed.map((v) => v.name).join(", ")} failed`) : checked ? `The agent said it checked: ${line.checks}` : "No checks"}
 			>
 				{mark === "passed" ? (
 					<CheckIcon className="size-3" style={{ color: "var(--code-string)" }} />
