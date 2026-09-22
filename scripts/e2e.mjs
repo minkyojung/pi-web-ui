@@ -3571,7 +3571,7 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
 			repositories: { issues: async (root) => (root === "/r/other" ? [{ number: 12, title: "Sign in with email", body: "A link, not a password." }, { number: 9, title: "No body", body: "" }] : null) },
 			onNewSpec: (listen) => { window.__newSpec = listen; return () => {}; },
-			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/other", name: "other", worktrees: [] }, { path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo", status: { state: "open", number: 12 } }, { path: "/w/lima", name: "lima", branch: "me/done", status: { state: "merged", number: 9 } }, { path: "/w/oslo", name: "oslo", branch: "me/oslo", status: { state: "local" } }] }] }),
+			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/other", name: "other", worktrees: [] }, { path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo", status: { state: "open", number: 12, url: "https://github.com/o/r/pull/12", review: "", checks: { total: 2, pending: 0, failed: 0 } } }, { path: "/w/lima", name: "lima", branch: "me/done", status: { state: "merged", number: 9 } }, { path: "/w/oslo", name: "oslo", branch: "me/oslo", status: { state: "local" } }] }] }),
 				create: async (root, first, from) => { window.__created.push({ root, first, from }); return window.__created.length === 1 ? { error: "The remote said no." } : {}; },
 				branches: async (root) => (root === "/r/other" ? { branches: ["me/email-auth", "main"], base: "main" } : null),
 				open: async () => {}, onChange: () => () => {}, first: async () => null } };
@@ -3591,8 +3591,17 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		await until("the repository in the sidebar", () => app.evaluate("!!document.querySelector('[data-new-workspace=\"/r/demo\"]')"));
 		// What each row says of its branch: an open pull request by number, merged
 		// as merged, and nothing for a branch that is only here.
-		await until("the rows' status", () => app.evaluate("[...document.querySelectorAll('[data-workspace]')].map((r) => r.querySelector('[data-status]')?.textContent ?? '-').join(',') === '#12,merged,-'"));
-		assert.equal(await app.evaluate("document.querySelector('[data-workspace=\"/w/lima\"] [data-status]').dataset.status"), "merged");
+		// What each row says of its branch: a dot for an open pull request and
+		// for a merged one, nothing for a branch that is only here.
+		await until("the rows' dots", () => app.evaluate("[...document.querySelectorAll('[data-workspace]')].map((r) => r.querySelector('[data-status]')?.dataset.status ?? '-').join(',') === 'open,merged,-'"));
+		assert.equal(await app.evaluate("document.querySelector('[data-workspace=\"/w/lima\"] [data-status]').getAttribute('aria-label')"), "Pull request #9 was merged");
+		// And at the foot of the window, for the workspace in front (tokyo, #12):
+		// the chip, and what its checks came to. The folder is the suite's,
+		// which is a repository with notes uncommitted in it, so git's side is
+		// changes — but a pull request outranks that: the item is the pull
+		// request's, and the checks are what is said.
+		await until("the standing at the foot", () => app.evaluate("document.getElementById('branch-standing')?.textContent === '#12checks passed'"));
+		assert.equal(await app.evaluate("document.querySelector('#branch-standing a').href"), "https://github.com/o/r/pull/12");
 		await app.click('[data-new-workspace="/r/demo"]');
 		await until("the dialog", () => app.evaluate("!!document.getElementById('new-spec')"));
 		assert.equal(await app.evaluate("document.getElementById('new-spec-repository').textContent"), "demo", "the repository over the top");
@@ -3693,6 +3702,27 @@ check("a workspace's row removes it from a right click: what stays is said, the 
 		await app.evaluate(`sessionStorage.removeItem("stand-in-for-removing"); location.reload()`);
 		await until("the page back", () => app.evaluate("!window.__removes && !!document.getElementById('chat')"));
 	}
+});
+
+// The foot of the window, with no shell to ask GitHub: git's side alone. The
+// suite's folder is a repository with its notes uncommitted, so the item is
+// the count of changes; committed, and with no remote, there is nothing to
+// be ahead of, so nothing is said.
+check("the foot of the window says how many changes are not committed, from git, and nothing once they are committed with no remote to be ahead of", async ({ app, cwd }) => {
+	const standing = () => app.evaluate("document.getElementById('branch-standing')?.textContent ?? ''");
+	const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
+	if (!existsSync(join(cwd, ".git"))) git("init", "-q", "-b", "main");
+	// The window is asked to ask: a focus is what does it in the app.
+	await app.evaluate("dispatchEvent(new Event('focus'))");
+	await until("changes counted", async () => /^\d+ changes?$/.test(await standing()));
+	const before = Number((await standing()).split(" ")[0]);
+	writeFileSync(join(cwd, "one-more.txt"), "x\n");
+	await app.evaluate("dispatchEvent(new Event('focus'))");
+	await until("one more counted", async () => (await standing()) === `${before + 1} changes`);
+	git("add", "-A", "--", ".");
+	git("commit", "-q", "-m", "everything");
+	await app.evaluate("dispatchEvent(new Event('focus'))");
+	await until("nothing to say", async () => (await standing()) === "");
 });
 
 // The other end of the new spec dialog: the page of the workspace it made.
