@@ -532,9 +532,10 @@ function newWorkspace(root, first, from) {
 	const told = firstFrom(first);
 	if (!told) return Promise.resolve({ error: "Say what to build, in a line." });
 	const made = making.then(async () => {
-		if (!projectsOf(readSettings(), isCheckout).some((project) => project.path === root)) return { error: "That repository is no longer on the list." };
+		const project = projectsOf(readSettings(), isCheckout).find((project) => project.path === root);
+		if (!project) return { error: "That repository is no longer on the list." };
 		try {
-			const worktree = await makeWorkspace(root, { into: join(home(), "workspaces", basename(root)), owner: await login(), start: typeof from === "string" && from ? from : null });
+			const worktree = await makeWorkspace(root, { into: join(home(), "workspaces", basename(root)), owner: await login(), start: typeof from === "string" && from ? from : null, retired: project.retired });
 			writeSettings({ ...readSettings(), projects: withWorkspace(projectsOf(readSettings(), isCheckout), root, worktree) });
 			waiting.keep(worktree.path, told);
 			workspacesChanged();

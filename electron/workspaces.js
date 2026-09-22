@@ -14,7 +14,13 @@
 
 /**
  * @typedef {{ path: string, branch: string, name: string }} Worktree
- * @typedef {{ path: string, worktrees: Worktree[] }} Project
+ * @typedef {{ path: string, worktrees: Worktree[], retired: string[] }} Project
+ *
+ * `retired` is the names of the workspaces the repository has had and
+ * removed. pi keeps a folder's conversations by its path, and a branch is
+ * renamed once the work has a subject — so a name whose folder and branch
+ * are both gone would be picked again, and the new workspace would open on
+ * the old one's conversations. A name once used is not used again.
  */
 
 const isPath = (value) => typeof value === "string" && value.length > 0;
@@ -42,7 +48,8 @@ export function projectsOf(settings, exists) {
 			.map(worktreeFrom)
 			.filter((worktree) => worktree && !seen.has(worktree.path) && exists(worktree.path));
 		for (const worktree of worktrees) seen.add(worktree.path);
-		projects.push({ path: entry.path, worktrees });
+		const retired = Array.isArray(entry.retired) ? [...new Set(entry.retired.filter(isPath))] : [];
+		projects.push({ path: entry.path, worktrees, retired });
 	}
 	return projects;
 }
@@ -55,16 +62,20 @@ export function projectsOf(settings, exists) {
  */
 export function withWorkspace(projects, root, worktree = null) {
 	const had = projects.find((project) => project.path === root);
-	const project = had ?? { path: root, worktrees: [] };
+	const project = had ?? { path: root, worktrees: [], retired: [] };
 	const known = !worktree || project.worktrees.some((w) => w.path === worktree.path);
 	const next = known ? project : { ...project, worktrees: [...project.worktrees, worktree] };
 	if (had) return next === had ? projects : projects.map((p) => (p === had ? next : p));
 	return [...projects, next];
 }
 
-/** The projects without the workspace at `path`; its repository stays, with the rest of its workspaces. */
+/** The projects without the workspace at `path`; its repository stays, with the rest of its workspaces, and the name is retired. */
 export function withoutWorkspace(projects, path) {
-	return projects.map((project) => (project.worktrees.some((w) => w.path === path) ? { ...project, worktrees: project.worktrees.filter((w) => w.path !== path) } : project));
+	return projects.map((project) => {
+		const gone = project.worktrees.find((w) => w.path === path);
+		if (!gone) return project;
+		return { ...project, worktrees: project.worktrees.filter((w) => w !== gone), retired: project.retired.includes(gone.name) ? project.retired : [...project.retired, gone.name] };
+	});
 }
 
 /**

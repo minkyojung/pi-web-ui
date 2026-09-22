@@ -102,10 +102,12 @@ export async function addWorktree(root, { path, branch, start }) {
  * A new workspace of the repository at `root`, in the folder `into` — a
  * city's name, on the branch `{owner}/{city}`, or `{city}` with no owner to
  * name — started from the remote's default branch, or from its branch
- * `start` when one is asked for (spec-mode.md 6절). A city is not reused while its folder is there or a branch still
- * carries its name, so a workspace never lands on another's leftovers.
+ * `start` when one is asked for (spec-mode.md 6절). A city is not reused while its folder is there, a branch still
+ * carries its name, or it is among the `retired` — the names of workspaces
+ * removed before (workspaces.js) — so a workspace never lands on another's
+ * leftovers, nor on its conversations.
  */
-export async function makeWorkspace(root, { into, owner, start: from = null }) {
+export async function makeWorkspace(root, { into, owner, start: from = null, retired = [] }) {
 	let folders = [];
 	try {
 		folders = readdirSync(into);
@@ -113,7 +115,7 @@ export async function makeWorkspace(root, { into, owner, start: from = null }) {
 		// Nothing made here yet.
 	}
 	const branches = (await git(root, ["branch", "--list", "--format=%(refname:short)"]).catch(() => "")).split("\n").filter(Boolean);
-	const name = pickCity([...folders, ...branches.map((branch) => branch.slice(branch.lastIndexOf("/") + 1))]);
+	const name = pickCity([...folders, ...branches.map((branch) => branch.slice(branch.lastIndexOf("/") + 1)), ...retired]);
 	const branch = owner ? `${owner}/${name}` : name;
 	const path = join(into, name);
 	await fetchOrigin(root);
