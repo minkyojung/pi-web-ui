@@ -1197,6 +1197,9 @@ export async function createWorkspace(cwd: string) {
 	}
 
 	const clients = new Set<WebSocket>();
+	/** Whether the agent is in the middle of a turn, and when this folder was last looked at or heard from — for idle.ts. */
+	let working = false;
+	let seen = Date.now();
 
 	/**
 	 * Which file of the repository each tab has open to read — what to send it
@@ -1309,9 +1312,14 @@ export async function createWorkspace(cwd: string) {
 		) {
 			broadcast(config());
 		}
-		// The desktop shell stops a server nobody has looked at for a while, and must
-		// not stop one in the middle of a run (electron/servers.js). Only it listens.
-		if ((event.type === "agent_start" || event.type === "agent_settled") && process.connected) process.send?.({ busy: event.type === "agent_start", folder: CWD });
+		// Whether the agent is in the middle of a turn here: the server does not
+		// let go of a folder mid-turn (idle.ts), and the shell does not remove
+		// one — it is told, and it listens (main.js).
+		if (event.type === "agent_start" || event.type === "agent_settled") {
+			working = event.type === "agent_start";
+			seen = Date.now();
+			if (process.connected) process.send?.({ busy: working, folder: CWD });
+		}
 		// Cost only moves when a message completes.
 		if (event.type === "message_end" || event.type === "agent_settled") broadcast(usage());
 		if (event.type === "agent_settled" && rereadWhenSettled) {
@@ -1601,6 +1609,7 @@ export async function createWorkspace(cwd: string) {
 
 	/** A request for this folder: the app's own API, or a file of the folder's. The built page is the server's (server.ts). */
 	async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+		seen = Date.now();
 		const url = new URL(req.url ?? "/", "http://localhost");
 		const { pathname } = url;
 
@@ -1701,12 +1710,14 @@ export async function createWorkspace(cwd: string) {
 	/** A tab connected: told everything it needs to start, and listened to from then on. */
 	async function attach(ws: WebSocket): Promise<void> {
 		clients.add(ws);
+		seen = Date.now();
 		// Someone is looking: a list that has gone stale since the last pass is
 		// brought up to date, and this tab hears of it like every other.
 		void refreshModels();
 		ws.on("close", () => {
 			clients.delete(ws);
 			reading.delete(ws);
+			seen = Date.now();
 		});
 		// ws emits 'error' for a malformed frame. Node throws on an 'error' event
 		// with no listener, so without this one bad frame takes the process down.
@@ -1743,6 +1754,7 @@ export async function createWorkspace(cwd: string) {
 		if (asking) reply({ type: "login_prompt", prompt: asking });
 
 		ws.on("message", async (data) => {
+			seen = Date.now();
 			// Typed as what the browser sends, which is what lets each case below
 			// read its own fields. Not trusted as that: it came over a socket, so
 			// each case still checks the field it is about to hand to pi.
@@ -2567,5 +2579,7 @@ export async function createWorkspace(cwd: string) {
 		},
 		/** For the line printed as the server comes up. */
 		status: () => ({ model: currentModel()?.id ?? "none", thinking: session().thinkingLevel, sessionFile: session().sessionFile }),
+		/** Whether this folder can be let go of for now — see idle.ts. */
+		idleness: () => ({ busy: working, watched: clients.size, since: seen }),
 	};
 }

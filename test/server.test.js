@@ -64,7 +64,8 @@ test.before(async () => {
   writeFileSync(join(clientDir, "assets", "worker.mjs"), "export {};\n");
   server = spawn(join(root, "node_modules/.bin/tsx"), ["server.ts"], {
     cwd: root,
-    env: { ...process.env, WORKDIR: cwd, PORT: String(port), APP_DIR: appDir, CLIENT_DIR: clientDir },
+    // A folder nobody looks at is let go of after this long here, so the test below need not wait half an hour; the first folder has a tab on it throughout.
+    env: { ...process.env, WORKDIR: cwd, PORT: String(port), APP_DIR: appDir, CLIENT_DIR: clientDir, IDLE_MS: "1500" },
     // With a channel, as the desktop shell opens one: the test names a second folder over it, as the shell does.
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
@@ -1452,6 +1453,38 @@ it("one process serves a second folder the shell names, and each folder's tabs h
     server.send({ dispose: other });
     await b.closed;
     b.tab.close();
+  } finally {
+    rmSync(other, { recursive: true, force: true });
+  }
+});
+
+it("a folder nobody has looked at for a while is let go of — not one a tab is on — and made again when asked for", async () => {
+  const other = mkdtempSync(join(tmpdir(), "server-test-idle-"));
+  writeFileSync(join(other, "b.md"), "# b\n");
+  const connect = (folder) => {
+    const tab = new WebSocket(`ws://127.0.0.1:${port}/ws?folder=${encodeURIComponent(folder)}`);
+    const heard = [];
+    tab.onmessage = (e) => heard.push(JSON.parse(e.data));
+    return { tab, heard };
+  };
+  try {
+    server.send({ workspace: other });
+    const before = log.length;
+    const first = connect(other);
+    const config = await until("the folder's config", () => first.heard.find((m) => m.type === "config"), 30000);
+    assert.equal(config.folder, other);
+    first.tab.close();
+    const gone = await until("let go of", () => log.slice(before).includes(`${other}: let go of`), 10000);
+    assert.ok(gone);
+    assert.equal(log.slice(before).includes(`${cwd}: let go of`), false, "the first folder, with a tab on it, is kept");
+    // Asked for again: made anew, on a session of its own.
+    const again = connect(other);
+    const made = await until("made again", () => again.heard.find((m) => m.type === "config"), 30000);
+    assert.equal(made.folder, other);
+    assert.equal((log.slice(before).match(new RegExp(`${other.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: model: `, "g")) ?? []).length, 2, "made twice: once before, once after");
+    again.tab.close();
+    server.send({ dispose: other });
+    await new Promise((r) => setTimeout(r, 300));
   } finally {
     rmSync(other, { recursive: true, force: true });
   }

@@ -15,6 +15,7 @@ import { pathToFileURL } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { folderMeta } from "./folderMeta.ts";
 import { startLogging } from "./log.ts";
+import { idleFolders } from "./idle.ts";
 import { text } from "./request.ts";
 import { readSettings } from "./settings.ts";
 import { takeCredentials } from "./standing.ts";
@@ -178,14 +179,30 @@ function open(folder: string | null | undefined): Promise<Workspace> | null {
 void open(CWD);
 
 /** A folder let go of — its watcher, its session, its tabs — because the shell is removing it. The next ask would make it anew. */
-async function letGo(full: string): Promise<void> {
+async function letGo(full: string, { asked = true } = {}): Promise<void> {
 	const had = folders.get(full);
 	folders.delete(full);
 	made.delete(full);
 	if (had) await (await had.catch(() => null))?.dispose();
-	// Said either way: the shell waits on this before removing the folder.
-	if (process.connected) process.send?.({ disposed: full });
+	// Said when the shell asked: it waits on this before removing the folder.
+	if (asked && process.connected) process.send?.({ disposed: full });
 }
+
+/**
+ * A folder nobody is using and nothing is doing is let go of after this
+ * long — its session, its watcher, its indexes — and made again the next
+ * time a page asks for it, which takes a few milliseconds and not the
+ * second the process took to start. Every folder opened would otherwise
+ * stay for as long as the app runs, and a day of moving between twenty of
+ * them would keep twenty. The rule is idle.ts's; this is the clock.
+ */
+const IDLE_MS = Number(process.env.IDLE_MS ?? 30 * 60_000);
+setInterval(() => {
+	for (const folder of idleFolders([...made].map(([full, workspace]) => [full, workspace.idleness()]), { now: Date.now(), idleMs: IDLE_MS })) {
+		console.log(`${folder}: let go of, nobody having looked for a while`);
+		void letGo(folder, { asked: false });
+	}
+}, Math.min(60_000, IDLE_MS)).unref();
 
 const server = createServer(async (req, res) => {
 	const url = new URL(req.url ?? "/", "http://localhost");
