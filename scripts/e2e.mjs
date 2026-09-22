@@ -3188,6 +3188,7 @@ check("a version ready to install is offered in the corner, × leaves a dot, Abo
 			check: async () => window.__update.calls.push("check"),
 			restart: async () => window.__update.calls.push("restart"),
 			seen: async () => window.__update.calls.push("seen"),
+			dismiss: async (version) => window.__update.calls.push("dismiss " + version),
 		}, onOpenSettings: (l) => { window.__update.opens.push(l); return () => {}; }, onOpenPage: (l) => { window.__update.pages.push(l); return () => {}; } };
 		}`);
 	try {
