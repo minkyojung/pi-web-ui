@@ -52,7 +52,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@e
 import { writeAtomic } from "./atomic.ts";
 import { APP_DIR_NAME, APPROVALS, SPEC_DOCS, type SpecDoc, SPECS_DIR } from "./documentKinds.ts";
 import { CITIES } from "./electron/cities.js";
-import { DEFAULT_TIMEOUT, isConfig, readConfig } from "./electron/octaveConfig.js";
+import { CONFIG_FILE, DEFAULT_TIMEOUT, isConfig, readConfig } from "./electron/octaveConfig.js";
 import { approve, type SpecState, specState } from "./specApproval.ts";
 import { doneWhenOf, nextTask, parseTasks, runsOf, runsUnder, type Task, taskToRun, withDone, withParents } from "./specTasks.ts";
 
@@ -840,6 +840,47 @@ async function branchIn(pi: ExtensionAPI, cwd: string): Promise<string | null> {
 	}
 }
 
+/**
+ * The hidden message /setup is told by: what the file is for, its shape,
+ * and where to find out what goes in it — the repository's own files, not
+ * a guess. The app runs the commands and understands none of them, so the
+ * draft is the agent's and the file is the person's: they read it and fix it.
+ */
+export function setupPrompt({ existing }: { existing: boolean }): string {
+	return [
+		`The person asked with /setup for this repository's own commands to be written down for Octave, in ${CONFIG_FILE}.${existing ? " The file is there already: read it, and change only what is wrong or missing." : ""}`,
+		"",
+		"Octave runs these commands and understands none of them. Each is a line of bash, run in a workspace of this repository — a git worktree, which has only the committed files — at one of four moments:",
+		"- `setup`, once a workspace is made, before it opens: what a fresh clone needs to be worked in (dependencies installed; an `.env` copied from the repository's own folder, which is `$OCTAVE_REPOSITORY`). Nothing else.",
+		"- `[scripts.run.<id>]`, when the person presses ▶ at the foot of the window: a dev server or a watcher, on the port in `$OCTAVE_PORT` — so two workspaces can run at once — for as long as they leave it. The first one is the ▶.",
+		"- `[[scripts.check]]`, after every task the agent finishes, before its commit: each in order, each with `name`, `command`, and a `description` of what a failure means. Exit 0 passes; exit 2 stops the commit; any other exit is written down as a failure and the commit is made anyway. What CI runs is what goes here, in CI's order, the fast ones first.",
+		"- `archive`, before a workspace is removed: a database dropped, a tunnel closed. Leave it out where there is nothing to undo.",
+		"",
+		"The whole shape:",
+		"```toml",
+		"[scripts]",
+		'setup = "npm ci"',
+		"",
+		"[scripts.run.dev]",
+		'command = "PORT=$OCTAVE_PORT npm run dev"',
+		"",
+		"[[scripts.check]]",
+		'name = "unit"',
+		'command = "npm test"',
+		'description = "A unit test fails: the change broke behaviour a test pins down."',
+		"",
+		"[[scripts.check]]",
+		'name = "types"',
+		'command = "npm run typecheck"',
+		'description = "The types do not hold together."',
+		"```",
+		"",
+		"Find out, do not guess: package.json and its lockfile (which says npm, pnpm, yarn or bun), pyproject.toml and uv.lock, Cargo.toml, go.mod, the Makefile, the CI workflows, README, CONTRIBUTING and AGENTS.md. Name only commands that exist there; invent none. Read; run nothing that installs or changes anything — the person will, by making a workspace.",
+		"",
+		`Write ${CONFIG_FILE} with write — it is not a note, so not note_write. Then stop, and say in a line or two what you wrote and what you were unsure of. Do not ask them to approve it: the file is theirs, and they will read it and fix it.`,
+	].join("\n");
+}
+
 export default function spec(pi: ExtensionAPI): void {
 	/** The specs there were when /spec ran, until its run is over: one made since is the one it wrote. */
 	let before: Set<string> | null = null;
@@ -870,6 +911,18 @@ export default function spec(pi: ExtensionAPI): void {
 			// Queued first: "nextTurn" goes with the next message sent, which is the line below.
 			pi.sendMessage({ customType: "spec", content: specPrompt({ line, prefix: unnamed(branch), branch, taken }), display: false }, { deliverAs: "nextTurn" });
 			pi.sendUserMessage(`/spec ${line}`);
+		},
+	});
+
+	pi.registerCommand("setup", {
+		description: "Have the agent draft this repository's own commands for Octave — setup, run, checks — in .octave/config.toml, for you to read and fix",
+		handler: async (_args, ctx) => {
+			if (!ctx.isIdle()) {
+				ctx.ui.notify("The agent is working. Ask for the setup when it has finished.", "warning");
+				return;
+			}
+			pi.sendMessage({ customType: "spec", content: setupPrompt({ existing: existsSync(join(ctx.cwd, CONFIG_FILE)) }), display: false }, { deliverAs: "nextTurn" });
+			pi.sendUserMessage("/setup");
 		},
 	});
 

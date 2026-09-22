@@ -46,9 +46,11 @@ export function createRuns({ onChange, graceMs = 3000 }) {
 		const dir = join(workdir, ".pi", "runs");
 		mkdirSync(dir, { recursive: true });
 		const log = createWriteStream(join(dir, `${id}.log`));
+		/** The log written through, which a stop waits for: a log read right after a stop is one that says how it ended. */
+		const logged = new Promise((resolve) => log.once("finish", resolve));
 		log.write(`$ ${command}\n`);
 		const child = spawn("/bin/bash", ["-lc", command], { cwd: workdir, env: { ...env, OCTAVE_PORT: String(port) }, stdio: ["ignore", "pipe", "pipe"], detached: true });
-		const run = { id, port, child, stopped: false };
+		const run = { id, port, child, stopped: false, logged };
 		running.set(workdir, run);
 		child.stdout.on("data", (d) => log.write(d));
 		child.stderr.on("data", (d) => log.write(d));
@@ -80,6 +82,7 @@ export function createRuns({ onChange, graceMs = 3000 }) {
 		const hard = setTimeout(() => signal(child, "SIGKILL"), graceMs);
 		await closed;
 		clearTimeout(hard);
+		await run.logged;
 	}
 
 	return {

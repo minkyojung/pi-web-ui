@@ -85,8 +85,9 @@ contextBridge.exposeInMainWorld("pi", {
 	/**
 	 * The repository's own run command in this window's workspace — the
 	 * default of its `[scripts.run.*]` — started and stopped from the foot of
-	 * the window (RunButton.tsx). `state` is null where the repository names
-	 * none, else `{ running, id, port, exit }`; `start` answers `{ state }` or
+	 * the window (RunButton.tsx). `state` is `{ configured, run }` — whether the
+	 * repository has `.octave/config.toml` at all, and its default run as
+	 * `{ running, id, port, exit }` or null; `start` answers `{ state }` or
 	 * `{ error }`; `onChange` says when it changed, and returns the way to stop listening.
 	 */
 	runs: {

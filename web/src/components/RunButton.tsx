@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { PlayIcon, SquareIcon } from "lucide-react";
+import { PlayIcon, SquareIcon, WrenchIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { configStore } from "../serverState";
+import { send } from "../ws";
 import { useWorkspaceList } from "./Repositories";
 import { Button } from "./ui/button";
 
@@ -15,15 +17,23 @@ export interface RunState {
 	exit: number | null;
 }
 
+/** What the shell says of the repository's commands here — electron/main.js `runState`. */
+interface Scripts {
+	/** Whether the repository has `.octave/config.toml` at all. */
+	configured: boolean;
+	/** Its default run, or null where it names none. */
+	run: RunState | null;
+}
+
 /** The shell's side, absent in a browser tab — see preload.cjs `runs`. */
 const shell = (
 	window as {
 		pi?: {
 			runs?: {
-				state(path: string): Promise<RunState | null>;
-				start(path: string): Promise<{ state?: RunState | null; error?: string } | null>;
-				stop(path: string): Promise<RunState | null>;
-				onChange(listen: (path: string, state: RunState | null) => void): () => void;
+				state(path: string): Promise<Scripts | null>;
+				start(path: string): Promise<{ state?: Scripts | null; error?: string } | null>;
+				stop(path: string): Promise<Scripts | null>;
+				onChange(listen: (path: string, state: Scripts | null) => void): () => void;
 			};
 		};
 	}
@@ -38,42 +48,71 @@ const shell = (
  * work with one's own eyes, which is what Conductor's ▶ is for too. A run
  * that ended by itself says its exit code in red — the one thing here that
  * wants doing — until it is started again.
+ *
+ * A repository with no such file has `Set up` in the same place instead,
+ * which asks the agent to draft one (/setup, spec.ts): the file is where
+ * the checks come from too, and a workspace with none is one whose tasks
+ * are checked by nothing but the agent's word.
  */
 export function RunButton() {
 	const list = useWorkspaceList();
 	const path = list?.current ?? null;
-	const [state, setState] = useState<RunState | null>(null);
+	const [state, setState] = useState<Scripts | null>(null);
+	// Asked again when the agent's turn ends and when the window comes back:
+	// the file is written by the agent, or by hand in an editor, and neither
+	// is heard here.
+	const working = useSyncExternalStore(configStore.subscribe, configStore.get)?.isStreaming ?? false;
 	useEffect(() => {
 		if (!shell || !path) return;
 		let live = true;
-		shell.state(path).then((next) => live && setState(next));
+		const ask = () => shell.state(path).then((next) => live && setState(next));
+		ask();
+		window.addEventListener("focus", ask);
 		const off = shell.onChange((at, next) => at === path && live && setState(next));
 		return () => {
 			live = false;
+			window.removeEventListener("focus", ask);
 			off();
 		};
-	}, [path]);
+	}, [path, working]);
 	if (!shell || !path || !state) return null;
+	if (!state.configured) {
+		return (
+			<Button
+				id="set-up"
+				variant="ghost"
+				size="sm"
+				className="ml-auto cursor-default gap-1 px-1.5 text-xs font-normal"
+				title="This repository has no .octave/config.toml — nothing is set up, run or checked for it. Ask the agent to draft one from what is there."
+				onClick={() => send({ type: "prompt", text: "/setup", command: true, behavior: "followUp" })}
+			>
+				<WrenchIcon className="size-3" />
+				<span>Set up</span>
+			</Button>
+		);
+	}
+	const run = state.run;
+	if (!run) return null;
 	const toggle = () => {
-		if (state.running) void shell.stop(path);
+		if (run.running) void shell.stop(path);
 		else shell.start(path).then((result) => result?.error && toast.error(result.error));
 	};
-	const died = !state.running && state.exit !== null && state.exit !== 0;
+	const died = !run.running && run.exit !== null && run.exit !== 0;
 	return (
 		<Button
 			id="run"
 			variant="ghost"
 			size="sm"
 			className="ml-auto cursor-default gap-1 px-1.5 text-xs font-normal"
-			data-running={state.running || undefined}
-			data-exit={state.exit ?? undefined}
-			title={state.running ? `Stop ${state.id}` : died ? `${state.id} ended with exit ${state.exit} — see .pi/runs/${state.id}.log` : `Run ${state.id}`}
+			data-running={run.running || undefined}
+			data-exit={run.exit ?? undefined}
+			title={run.running ? `Stop ${run.id}` : died ? `${run.id} ended with exit ${run.exit} — see .pi/runs/${run.id}.log` : `Run ${run.id}`}
 			onClick={toggle}
 		>
-			{state.running ? <SquareIcon className="size-3" /> : <PlayIcon className="size-3" />}
-			<span>{state.id}</span>
-			{state.running && <span className="font-mono text-muted-foreground">:{state.port}</span>}
-			{died && <span className="text-destructive">exit {state.exit}</span>}
+			{run.running ? <SquareIcon className="size-3" /> : <PlayIcon className="size-3" />}
+			<span>{run.id}</span>
+			{run.running && <span className="font-mono text-muted-foreground">:{run.port}</span>}
+			{died && <span className="text-destructive">exit {run.exit}</span>}
 		</Button>
 	);
 }

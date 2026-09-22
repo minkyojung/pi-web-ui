@@ -206,6 +206,7 @@ function fakePi(branch, branches = [], { remote = true } = {}) {
   return {
     command: () => commands.spec,
     commands,
+    ctx,
     done,
     notes,
     renamed,
@@ -486,6 +487,28 @@ test("/spec-approve는 기다리는 문서를 승인하고, 같은 턴에 다음
   assert.deepEqual(spec.state(), { approved: 3, waiting: null });
   assert.deepEqual(pi.done, [], "마지막 문서 뒤에는 쓸 것이 없다 — 턴을 시작하지 않는다");
   assert.deepEqual(pi.notes, [{ text: "The spec email-auth is ready: its requirements, design and tasks are approved.", type: "info" }]);
+});
+
+test("/setup은 저장소의 명령을 에이전트가 초안하게 한다 — 숨긴 지시문은 파일의 모양과 네 시점을 말하고, 있는 파일은 고치라고 한다", async (t) => {
+  const pi = fakePi("minkyojung/tokyo");
+  t.after(pi.cleanup);
+  assert.ok(pi.commands.setup.description);
+  await pi.commands.setup.handler("", pi.ctx(false));
+  assert.equal(pi.notes[0].type, "warning");
+  assert.deepEqual(pi.done, [], "일하는 중이면 알리기만");
+  await pi.commands.setup.handler("", pi.ctx(true));
+  assert.equal(pi.done.length, 2);
+  const [hidden, sent] = pi.done;
+  assert.equal(hidden.sendMessage.display, false);
+  assert.deepEqual(hidden.options, { deliverAs: "nextTurn" });
+  assert.equal(sent.sendUserMessage, "/setup");
+  const prompt = hidden.sendMessage.content;
+  for (const said of [".octave/config.toml", "setup", "[scripts.run.<id>]", "[[scripts.check]]", "archive", "$OCTAVE_PORT", "$OCTAVE_REPOSITORY", "exit 2", "description", "invent none", "run nothing that installs"]) assert.ok(prompt.includes(said), said);
+  assert.equal(prompt.includes("The file is there already"), false);
+  assert.equal(/\blanguage\b|in English|Korean/i.test(prompt), false, "언어는 말하지 않는다");
+  pi.config("[scripts]\nsetup = 'npm ci'\n");
+  await pi.commands.setup.handler("", pi.ctx(true));
+  assert.ok(pi.done[2].sendMessage.content.includes("The file is there already: read it, and change only what is wrong or missing."));
 });
 
 test("언어에 대한 말은 한 문장뿐이고 어느 언어에나 같다 — 영어를 시키지도, 다른 언어를 지켜 주지도 않는다", () => {
