@@ -372,35 +372,29 @@ function Event({ event }: { event: LoginEvent }) {
 }
 
 /**
- * A code to enter on a page: the code, and one button that copies it and
- * opens the page — the two things the person was about to do by hand, in the
- * order they need them, as VS Code's "Copy & Continue to GitHub" has it.
- * The code stays readable beside it for anyone who would rather type.
+ * A code to enter on a page: the sentence says where, the code sits under
+ * it, and a small copy beside the code is the one thing a hand cannot do
+ * from a screen. Nothing more — the page is a link already.
  */
 function DeviceCode({ userCode, verificationUri }: { userCode: string; verificationUri: string }) {
 	const [copied, setCopied] = useState(false);
-	const go = async () => {
-		try {
-			await navigator.clipboard.writeText(userCode);
-			setCopied(true);
-		} catch {
-			// No clipboard: the code is on screen, and the page still opens.
-		}
-		window.open(verificationUri, "_blank", "noreferrer");
-	};
+	const copy = () =>
+		navigator.clipboard.writeText(userCode).then(
+			() => setCopied(true),
+			() => {},
+		);
 	return (
-		<div className="flex flex-col gap-2">
+		<div className="flex flex-col gap-1">
 			<span>
 				Enter this code at{" "}
 				<a href={verificationUri} target="_blank" rel="noreferrer" className="text-primary underline-offset-2 hover:underline">
 					{verificationUri}
 				</a>
 			</span>
-			<div className="flex items-center gap-2">
+			<div className="flex items-center gap-1">
 				<code className="rounded bg-muted px-2 py-1 text-sm tracking-widest">{userCode}</code>
-				<Button type="button" size="sm" className="h-7 gap-1.5 text-xs" onClick={go}>
-					{copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
-					{copied ? "Copied — open GitHub again" : "Copy code and open GitHub"}
+				<Button type="button" variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={copied ? "Copied" : "Copy the code"} title={copied ? "Copied" : "Copy"} onClick={copy}>
+					{copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
 				</Button>
 			</div>
 		</div>
