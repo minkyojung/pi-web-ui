@@ -253,7 +253,18 @@ export function readCode(root: string, given: string): CodeRead {
 		return { ok: false, reason: "missing" };
 	}
 	if (bytes.subarray(0, 8000).includes(0)) return { ok: false, reason: "binary" };
-	return { ok: true, path: found.path, text: bytes.subarray(0, CODE_MAX).toString("utf8"), modified, truncated: bytes.length > CODE_MAX };
+	// A file is read from its start; a log the commands printed from its end,
+	// where the news is — a run left on for a day is read as `tail` reads it,
+	// from the first whole line that fits.
+	const truncated = bytes.length > CODE_MAX;
+	const kept = !truncated ? bytes : found.path.startsWith(`${RUNS_DIR}/`) ? afterLine(bytes.subarray(bytes.length - CODE_MAX)) : bytes.subarray(0, CODE_MAX);
+	return { ok: true, path: found.path, text: kept.toString("utf8"), modified, truncated };
+}
+
+/** What follows the first newline, so a tail begins on a whole line; all of it when there is none. */
+function afterLine(bytes: Buffer): Buffer {
+	const at = bytes.indexOf(0x0a);
+	return at === -1 ? bytes : bytes.subarray(at + 1);
 }
 
 /**

@@ -863,7 +863,7 @@ export interface CodeMsg {
 	path: string;
 	text: string;
 	modified: number;
-	/** The file is longer than a tab will read, and `text` is its first part (vault.ts's CODE_MAX). */
+	/** The file is longer than a tab will read, and `text` is its first part — its last, for a log under `.pi/runs/` (vault.ts's CODE_MAX). */
 	truncated: boolean;
 }
 

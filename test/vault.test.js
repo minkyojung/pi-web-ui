@@ -413,4 +413,13 @@ test("읽기는 글자와 쓰인 시각을 주고, 글자가 아닌 것은 그�
   assert.equal(long.ok, true);
   assert.equal(long.text.length, CODE_MAX);
   assert.equal(long.truncated, true);
+
+  // A log the commands printed is read from its end, on a whole line.
+  mkdirSync(join(DIR, ".pi", "runs"), { recursive: true });
+  writeFileSync(join(DIR, ".pi", "runs", "dev.log"), `$ npm run dev\n${"early line\n".repeat(100_000)}last line\n(exit 0)\n`);
+  const log = readCode(DIR, ".pi/runs/dev.log");
+  assert.equal(log.truncated, true);
+  assert.ok(log.text.length <= CODE_MAX);
+  assert.match(log.text, /^early line\n/, "begins on a whole line");
+  assert.match(log.text, /last line\n\(exit 0\)\n$/, "and ends with the end");
 });
