@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { ExternalLinkIcon, KeyRoundIcon, UserRoundIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, ExternalLinkIcon, KeyRoundIcon, UserRoundIcon } from "lucide-react";
 
 import { bridge as githubBridge, githubStore, refresh as refreshGitHub, type Code, type GitHubBridge, type GitHubStanding } from "../github";
 import { loginStore, providersStore, type LoginState } from "../serverState";
@@ -354,17 +354,7 @@ function Event({ event }: { event: LoginEvent }) {
 				</p>
 			);
 		case "device_code":
-			return (
-				<p className="flex flex-col gap-1">
-					<span>
-						Enter this code at{" "}
-						<a href={event.verificationUri} target="_blank" rel="noreferrer" className="text-primary underline-offset-2 hover:underline">
-							{event.verificationUri}
-						</a>
-					</span>
-					<code className="self-start rounded bg-muted px-2 py-1 text-sm tracking-widest">{event.userCode}</code>
-				</p>
-			);
+			return <DeviceCode userCode={event.userCode} verificationUri={event.verificationUri} />;
 		case "info":
 			return (
 				<p className="flex flex-col gap-1 text-muted-foreground">
@@ -379,6 +369,42 @@ function Event({ event }: { event: LoginEvent }) {
 		case "progress":
 			return <p className="text-muted-foreground">{event.message}</p>;
 	}
+}
+
+/**
+ * A code to enter on a page: the code, and one button that copies it and
+ * opens the page — the two things the person was about to do by hand, in the
+ * order they need them, as VS Code's "Copy & Continue to GitHub" has it.
+ * The code stays readable beside it for anyone who would rather type.
+ */
+function DeviceCode({ userCode, verificationUri }: { userCode: string; verificationUri: string }) {
+	const [copied, setCopied] = useState(false);
+	const go = async () => {
+		try {
+			await navigator.clipboard.writeText(userCode);
+			setCopied(true);
+		} catch {
+			// No clipboard: the code is on screen, and the page still opens.
+		}
+		window.open(verificationUri, "_blank", "noreferrer");
+	};
+	return (
+		<div className="flex flex-col gap-2">
+			<span>
+				Enter this code at{" "}
+				<a href={verificationUri} target="_blank" rel="noreferrer" className="text-primary underline-offset-2 hover:underline">
+					{verificationUri}
+				</a>
+			</span>
+			<div className="flex items-center gap-2">
+				<code className="rounded bg-muted px-2 py-1 text-sm tracking-widest">{userCode}</code>
+				<Button type="button" size="sm" className="h-7 gap-1.5 text-xs" onClick={go}>
+					{copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+					{copied ? "Copied — open GitHub again" : "Copy code and open GitHub"}
+				</Button>
+			</div>
+		</div>
+	);
 }
 
 /** pi's question, and the answer going back by the question's id. */
