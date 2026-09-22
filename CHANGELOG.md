@@ -6,6 +6,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 ### Fixed
+- The list of workspaces in the sidebar is there the moment a workspace opens. It waited on GitHub first — up to a couple of seconds at every switch, with nothing in the sidebar meanwhile — for the dots that say where each branch stands; those arrive when GitHub answers now.
 - The agent can push, fetch and clone private repositories with your GitHub sign-in, and so can Octave itself when it makes a workspace. Your `gh auth login` reached your terminal but not the app, whose git had nowhere to ask for a password and failed with an error nobody could read; now the app hands the sign-in to every git and gh it runs, for github.com only, without touching your git configuration. With no sign-in the agent is told so, and says so when a push fails instead of trying again.
 - A workspace's name is not given to another workspace of the same repository once it has been removed, even after its branch was renamed: the conversations pi keeps for a folder would otherwise have opened in the new workspace as its own.
 - Moving to another workspace the moment after asking for a new one could send the new spec's line to the wrong workspace, and for a moment the ▶ at the foot and the marked row in the sidebar were the workspace the window was on its way to. Each page now names its own workspace when it asks the shell for anything.

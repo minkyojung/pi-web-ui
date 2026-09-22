@@ -30,7 +30,7 @@ import { clone, issues, login, pullRequests, repositories, repositoryName, signI
 import { KEYS, forget, gitEnv } from "./credentials.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
-import { firstWorkspace, projectsOf, statusOf, withWorkspace, withoutWorkspace } from "./workspaces.js";
+import { firstWorkspace, projectsOf, remembered, statusOf, withWorkspace, withoutWorkspace } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
@@ -491,7 +491,7 @@ async function workspaces() {
 	return {
 		projects: await Promise.all(
 			projects.map(async (project) => {
-				const prs = await pullRequestsOf(project.path);
+				const prs = pullRequestsOf(project.path);
 				return {
 					path: project.path,
 					name: basename(project.path),
@@ -512,18 +512,14 @@ async function workspaces() {
 }
 
 /**
- * A repository's pull requests by branch, asked of gh at most once every
- * half minute: the list is drawn again at every change and every focus, and
- * a call to GitHub for each would make the sidebar wait on the network.
+ * A repository's pull requests by branch, as gh last said — at once, with gh
+ * asked again when that is over half a minute old and the list drawn again
+ * when it answers. The list is drawn at every change and every focus, and at
+ * every switch, since the page is new there; waiting on GitHub for it was two
+ * seconds of an empty sidebar each time. Not known yet is null, which the
+ * rows read as git's word alone until the answer lands.
  */
-const prsAsked = new Map();
-function pullRequestsOf(root) {
-	const had = prsAsked.get(root);
-	if (had && Date.now() - had.at < 30_000) return had.answer;
-	const answer = pullRequests(root).catch(() => null);
-	prsAsked.set(root, { at: Date.now(), answer });
-	return answer;
-}
+const pullRequestsOf = remembered({ ask: pullRequests, onFresh: workspacesChanged, staleMs: 30_000 });
 
 /**
  * What the first screen's dialog offers: pi's answer, from dist-server/models.mjs
