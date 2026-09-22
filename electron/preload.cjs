@@ -15,6 +15,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("pi", {
 	/** Show a file in the Finder. Takes the whole path; the page knows it. */
 	reveal: (path) => ipcRenderer.invoke("file:reveal", path),
+	/** The models a spec can be started on, for the first screen: `{ model, models }` as the server's config has them, or null when pi could not be asked. */
+	models: () => ipcRenderer.invoke("models"),
 	/**
 	 * A repository added to the list, and nothing opened: one chosen in the
 	 * Finder, or one cloned from GitHub by owner/name or address. Each

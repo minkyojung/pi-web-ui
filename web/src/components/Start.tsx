@@ -1,15 +1,20 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { cn } from "cn";
 import { FolderGit2Icon, GitBranchIcon } from "lucide-react";
 
+import type { ModelInfo } from "../types";
 import { CloneRepository } from "./CloneRepository";
+import { ModelMenu } from "./ModelMenu";
 import { Repositories, useWorkspaceList } from "./Repositories";
 import { Button } from "./ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "./ui/empty";
 import { Toaster } from "./ui/sonner";
 import { Spinner } from "./ui/spinner";
 import { TooltipProvider } from "./ui/tooltip";
+
+/** The shell's way to the models a spec can be started on — see preload.cjs `models`. */
+const askModels = (window as { pi?: { models?: () => Promise<{ model: string | null; models: ModelInfo[] } | null> } }).pi?.models;
 
 /** The shell's side: a repository chosen in the Finder and added. See preload.cjs `repositories`. */
 const repositories = (window as { pi?: { repositories?: { openLocal(): Promise<{ error?: string } | null> } } }).pi?.repositories;
@@ -33,6 +38,12 @@ export function Start() {
 	const [error, setError] = useState<string | null>(null);
 	const [cloning, setCloning] = useState(false);
 	const list = useWorkspaceList();
+	// The models, asked of the shell once the screen is up: the dialog on this
+	// screen chooses among them as the app's does among the session's.
+	const [models, setModels] = useState<{ model: string | null; models: ModelInfo[] } | null>(null);
+	useEffect(() => {
+		askModels?.().then((got) => got && setModels(got), () => {});
+	}, []);
 
 	const openLocal = () => {
 		if (!repositories) return;
@@ -57,7 +68,7 @@ export function Start() {
 				{list && some && (
 					<aside id="home-repositories" className="flex w-64 shrink-0 flex-col text-sidebar-foreground">
 						<div className="drag-region h-11 shrink-0" />
-						<Repositories list={list} />
+						<Repositories list={list} choices={models ? { Picker: ModelMenu, model: models.model, models: models.models } : undefined} />
 					</aside>
 				)}
 				<main className={cn("flex min-w-0 flex-1 flex-col bg-background", some && "border-l")}>

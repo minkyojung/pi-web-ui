@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { ChevronDownIcon, FolderGit2Icon } from "lucide-react";
 
 import type { ModelInfo } from "../../../protocol.ts";
-import type { ModelPicker } from "./ModelPicker";
+import type { ModelMenu } from "./ModelMenu";
 import { appendRestored } from "../queue";
 import { FromIssue, type Issue, issueLine } from "./FromIssue";
 import { Button } from "./ui/button";
@@ -24,14 +24,12 @@ export interface SpecOn {
 }
 
 /**
- * The model picker and what it chooses among, from the page that has them.
- * The picker is not imported here, only its type: it is the session's too,
- * and what it is made of opens the socket as it loads — and this dialog is
- * also drawn on the first screen, which has no server (Start.tsx). There the
- * spec starts on the model its workspace opens on, and the dialog says so.
+ * The model menu and what it chooses among, from the page that has them:
+ * the session's list in the app, and on the first screen, which has no
+ * server, the list the shell asked pi for (electron/main.js `models`).
  */
 export interface SpecOnChoices {
-	Picker: typeof ModelPicker;
+	Picker: typeof ModelMenu;
 	/** The session's model, which is what is shown until another is chosen. */
 	model: string | null;
 	models: ModelInfo[];
@@ -168,7 +166,7 @@ export function NewSpec({
 					{choices ? (
 						<choices.Picker id="specOn" model={shown?.model ?? null} level={shown?.level ?? null} models={choices.models} disabled={making} onChoose={setChosen} />
 					) : (
-						<span className="px-2 text-xs text-muted-foreground">Default model</span>
+						<span className="px-2 text-xs text-muted-foreground" title="pi could not be asked for its models here; the spec starts on the model the workspace opens on">Default model</span>
 					)}
 					<Button id="new-spec-create" size="sm" disabled={!ready} onClick={run}>
 						{making && <Spinner />}

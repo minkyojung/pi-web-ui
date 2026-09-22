@@ -6,7 +6,7 @@
  * child process: a crash in the agent then takes down something the shell can
  * report on, rather than the shell itself.
  */
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
@@ -477,6 +477,30 @@ function pullRequestsOf(root) {
 	return answer;
 }
 
+/**
+ * What the first screen's dialog offers: pi's answer, from dist-server/models.mjs
+ * run the way the server is, held for half a minute — sign-ins change it,
+ * and a dialog opened twice in a minute need not ask twice.
+ */
+let modelsAsked = null;
+function modelsForHome() {
+	if (modelsAsked && Date.now() - modelsAsked.at < 30_000) return modelsAsked.answer;
+	const tools = app.isPackaged ? join(process.resourcesPath, "bin") : here("../build/bin");
+	const answer = new Promise((resolve) => {
+		execFile(process.execPath, [here("../dist-server/models.mjs")], { env: { ...process.env, PATH: `${tools}:${process.env.PATH ?? ""}`, ELECTRON_RUN_AS_NODE: "1" }, timeout: 60_000 }, (err, stdout) => {
+			if (err) return resolve(null);
+			try {
+				const parsed = JSON.parse(String(stdout));
+				resolve(parsed && Array.isArray(parsed.models) ? { model: typeof parsed.model === "string" ? parsed.model : null, models: parsed.models } : null);
+			} catch {
+				resolve(null);
+			}
+		});
+	});
+	modelsAsked = { at: Date.now(), answer };
+	return answer;
+}
+
 /** One workspace made at a time, so two asked for at once cannot both pick the same city. */
 let making = Promise.resolve();
 
@@ -646,6 +670,9 @@ function serveFolders() {
 	// The list, and the two things done to it. In a dev run the dev server owns
 	// the folder, so there is no list to switch in.
 	ipcMain.handle("workspaces", () => (devUrl ? null : workspaces()));
+	// The models a spec can be started on, for the first screen: asked of pi
+	// in a process of its own, since there is no server there to ask.
+	ipcMain.handle("models", () => (devUrl ? null : modelsForHome()));
 	ipcMain.handle("workspace:new", (_event, root, first, from) => (devUrl ? null : newWorkspace(root, first, from)));
 	// The branches of a repository on the list that a workspace can start from.
 	ipcMain.handle("workspace:branches", (_event, root) =>

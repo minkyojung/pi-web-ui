@@ -48,6 +48,7 @@ test("작업마다 커밋 하나 — 번호, 제목, 검사, 그리고 스펙 �
   assert.equal(one.short, first.slice(0, one.short.length));
   assert.equal(one.title, "Add the greeting");
   assert.equal(one.checks, "inline check — passed");
+  assert.equal(one.verified, null, "앱이 돌린 것이 없으면 없다");
   assert.equal(typeof one.at, "number");
   assert.deepEqual(one.files, [{ path: "greeting.js", added: 1, deleted: 0 }], "tasks.md와 세 문서는 작업의 일이 아니다");
   assert.deepEqual([one.added, one.deleted], [1, 0]);
@@ -97,4 +98,12 @@ test("저장소가 아니거나 작업이 아직 없으면 빈 것이다", async
   assert.equal((await taskResults(cwd)).size, 0, "저장소가 아니다");
   const repo = repository(t);
   assert.equal((await taskResults(repo.cwd)).size, 0, "작업의 커밋이 없다");
+});
+
+test("the Verified trailer is read back as the command and how it ended, and only in that shape", async () => {
+  const { verifiedOf } = await import("../specResults.ts");
+  assert.deepEqual(verifiedOf("npm test -- greet — exit 0"), { command: "npm test -- greet", exit: 0 });
+  assert.deepEqual(verifiedOf("  npm run typecheck — exit 2 "), { command: "npm run typecheck", exit: 2 });
+  assert.equal(verifiedOf(""), null);
+  assert.equal(verifiedOf("npm test"), null);
 });

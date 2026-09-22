@@ -9,7 +9,7 @@ import { configStore, documentsStore, filesStore, filesTruncatedStore } from "..
 import { type Node, openFoldersStore, reveal, setOpenFolders, toggle, treeOf } from "../tree";
 import { noteActions } from "../noteActions";
 import { getConnection, subscribe } from "../store";
-import { ModelPicker } from "./ModelPicker";
+import { ModelMenu } from "./ModelMenu";
 import { Repositories, useWorkspaceList } from "./Repositories";
 import { Settings } from "./Settings";
 import { Button } from "./ui/button";
@@ -80,7 +80,7 @@ export function Sidebar({
 			    no shell to keep that list, the notes are what there is to show. */}
 			{workspaces !== null ? (
 				// Until the shell answers, the room it will take, so the foot stays put.
-				workspaces ? <Repositories list={workspaces} choices={config ? { Picker: ModelPicker, model: config.model, models: config.models } : undefined} /> : <div className="flex-1" />
+				workspaces ? <Repositories list={workspaces} choices={config ? { Picker: ModelMenu, model: config.model, models: config.models } : undefined} /> : <div className="flex-1" />
 			) : files.length === 0 ? (
 				<div className="flex flex-1 items-center justify-center p-4 text-center text-sm text-muted-foreground">
 					No notes in this folder yet

@@ -5,6 +5,11 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+### Added
+- The new spec dialog on the first screen — with no workspace open — chooses the model and effort too, as the one in a workspace does. Octave asks pi for the list itself there, since there is no server behind that screen; `Default model` is what it says when pi could not be asked.
+- When a task's run ends, Octave runs the check the task names on its `_Done when:` line — the command in its backticks — before making the task's commit, and writes how it ended under the subject as `Verified: npm test -- greet — exit 0`, beside the run's own `Checks:` line. In the list of results the mark at the left is then a tick or a red cross, rather than the circle that stands for what the agent said. A check that fails still ends in a commit: it is the unit you read and revert, and a failed try is a record too.
+- A task's run reads `notes.md` in the spec's folder, if the runs before it left one, and leaves there what the runs after it should know — a gotcha, a place the design was silent — and nothing else.
+- The agent is told which branch this workspace was started from, so a diff, a rebase or a pull request it makes is against that branch.
 
 ## [0.0.8] - 2026-09-22
 ### Added

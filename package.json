@@ -8,7 +8,7 @@
     "dev": "concurrently -k -n server,web -c blue,magenta \"tsx watch server.ts\" \"vite\"",
     "dev:server": "tsx server.ts",
     "build:client": "vite build",
-    "build:server": "esbuild server.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist-server/server.mjs",
+    "build:server": "esbuild server.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist-server/server.mjs && esbuild models-cli.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist-server/models.mjs",
     "build": "npm run tools && npm run notices && npm run build:client && npm run build:server",
     "app": "npm run build && electron .",
     "app:dev": "DEV_URL=http://localhost:5173 electron .",

@@ -46,6 +46,8 @@ export interface TaskResult {
 	at: number;
 	/** What the run said it checked, in its own words, or null for `none` and for nothing said. */
 	checks: string | null;
+	/** What the app ran for it — the task's `_Done when:` command — and how it ended; null when it ran nothing. */
+	verified: { command: string; exit: number } | null;
 	/** What it changed outside the spec's folder, and the sums of that. */
 	files: ChangedFile[];
 	added: number;
@@ -68,7 +70,7 @@ const FIELD = "\x1f";
  */
 export function taskResults(root: string): Promise<Map<string, TaskResult[]>> {
 	const trailer = (key: string) => `%(trailers:key=${key},valueonly,separator=%x20)`;
-	const format = [RECORD + "%H", "%h", "%s", "%ct", trailer("Spec"), trailer("Task"), trailer("Checks")].join(FIELD) + FIELD;
+	const format = [RECORD + "%H", "%h", "%s", "%ct", trailer("Spec"), trailer("Task"), trailer("Checks"), trailer("Verified")].join(FIELD) + FIELD;
 	return new Promise((resolve) => {
 		execFile(
 			"git",
@@ -88,7 +90,7 @@ export function taskResults(root: string): Promise<Map<string, TaskResult[]>> {
 export function parseResults(out: string): Map<string, TaskResult[]> {
 	const bySpec = new Map<string, TaskResult[]>();
 	for (const record of out.split(RECORD).slice(1)) {
-		const [commit = "", short = "", title = "", seconds = "", spec = "", task = "", checks = "", rest = ""] = record.split(FIELD);
+		const [commit = "", short = "", title = "", seconds = "", spec = "", task = "", checks = "", verified = "", rest = ""] = record.split(FIELD);
 		// `--grep` matches anywhere in the message; a result is a commit whose
 		// trailers say so, both of them.
 		if (!spec.trim() || !task.trim()) continue;
@@ -101,6 +103,7 @@ export function parseResults(out: string): Map<string, TaskResult[]> {
 			title,
 			at: Number(seconds) * 1000,
 			checks: said && said.toLowerCase() !== "none" ? said : null,
+			verified: verifiedOf(verified),
 			files,
 			added: files.reduce((sum, file) => sum + (file.added ?? 0), 0),
 			deleted: files.reduce((sum, file) => sum + (file.deleted ?? 0), 0),
@@ -132,4 +135,10 @@ export function changedIn(rest: string): ChangedFile[] {
 		files.push({ path, added: found[1] === "-" ? null : Number(found[1]), deleted: found[2] === "-" ? null : Number(found[2]) });
 	}
 	return files;
+}
+
+/** The `Verified:` trailer, `command — exit N`, read back; null for none or for one not in that shape. */
+export function verifiedOf(trailer: string): { command: string; exit: number } | null {
+	const found = /^(.*\S)\s+—\s+exit\s+(\d+)\s*$/.exec(trailer.trim());
+	return found ? { command: found[1]!, exit: Number(found[2]) } : null;
 }
