@@ -15,10 +15,31 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
+/** Where a workspace's branch stands — see electron/workspaces.js `statusOf`. */
+export interface BranchStatus {
+	state: "local" | "pushed" | "open" | "merged" | "closed";
+	number?: number;
+}
+
+/** What the row says of it, after the branch, and what pointing at it says. Nothing for a branch only here or only pushed: that is the ordinary state of work. */
+export function statusWords(status: BranchStatus | undefined): { short: string; long: string } | null {
+	if (!status) return null;
+	switch (status.state) {
+		case "open":
+			return { short: `#${status.number}`, long: `Pull request #${status.number} is open` };
+		case "merged":
+			return { short: "merged", long: status.number ? `Merged, pull request #${status.number}` : "Merged into the default branch" };
+		case "closed":
+			return { short: "closed", long: `Pull request #${status.number} was closed without merging` };
+		default:
+			return null;
+	}
+}
+
 /** The list the shell keeps — see electron/workspaces.js and preload.cjs. */
 export interface WorkspaceList {
 	current: string | null;
-	projects: { path: string; name: string; worktrees: { path: string; name: string; branch: string }[] }[];
+	projects: { path: string; name: string; worktrees: { path: string; name: string; branch: string; status?: BranchStatus }[] }[];
 }
 
 /** The shell's side of the list, absent in a browser tab. */
@@ -230,10 +251,21 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 														>
 															<GitBranchIcon />
 															<span className="truncate">{branchName(worktree.branch)}</span>
+															{(() => {
+																const said = statusWords(worktree.status);
+																return said ? (
+																	<span data-status={worktree.status?.state} className={cn("ml-auto shrink-0 text-[11px]", worktree.status?.state === "merged" ? "text-muted-foreground line-through" : "text-muted-foreground")}>
+																		{said.short}
+																	</span>
+																) : null;
+															})()}
 														</Button>
 														</ContextMenuTrigger>
 													</TooltipTrigger>
-													<TooltipContent side="right">{worktree.branch}</TooltipContent>
+													<TooltipContent side="right">
+														{worktree.branch}
+														{statusWords(worktree.status) && ` · ${statusWords(worktree.status)!.long}`}
+													</TooltipContent>
 												</Tooltip>
 												<ContextMenuContent>
 													{/* The menu is let go of first, so the dialog is not opened behind it. */}

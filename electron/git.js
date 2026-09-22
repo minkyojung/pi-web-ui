@@ -166,3 +166,16 @@ export async function remoteBranches(root) {
 	const start = await startOf(root);
 	return { branches, base: start.startsWith("origin/") ? start.slice("origin/".length) : null };
 }
+
+/**
+ * Where a workspace's branch stands against the remote: whether the remote
+ * has it, and whether every commit of it is in the remote's default branch
+ * — merged, by whatever route. Read from what was last fetched: the list is
+ * asked for often and a fetch each time would be a network call per row.
+ */
+export async function branchStanding(root, branch) {
+	const onRemote = (await git(root, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`]).catch(() => null)) !== null;
+	const base = await startOf(root);
+	const merged = base.startsWith("origin/") && (await git(root, ["merge-base", "--is-ancestor", branch, base]).then(() => true, () => false));
+	return { onRemote, merged };
+}

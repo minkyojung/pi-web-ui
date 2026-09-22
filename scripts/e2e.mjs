@@ -3569,7 +3569,7 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
 			repositories: { issues: async (root) => (root === "/r/other" ? [{ number: 12, title: "Sign in with email", body: "A link, not a password." }, { number: 9, title: "No body", body: "" }] : null) },
 			onNewSpec: (listen) => { window.__newSpec = listen; return () => {}; },
-			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/other", name: "other", worktrees: [] }, { path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }] }] }),
+			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/other", name: "other", worktrees: [] }, { path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo", status: { state: "open", number: 12 } }, { path: "/w/lima", name: "lima", branch: "me/done", status: { state: "merged", number: 9 } }, { path: "/w/oslo", name: "oslo", branch: "me/oslo", status: { state: "local" } }] }] }),
 				create: async (root, first, from) => { window.__created.push({ root, first, from }); return window.__created.length === 1 ? { error: "The remote said no." } : {}; },
 				branches: async (root) => (root === "/r/other" ? { branches: ["me/email-auth", "main"], base: "main" } : null),
 				open: async () => {}, onChange: () => () => {}, first: async () => null } };
@@ -3587,6 +3587,10 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 	try {
 		await app.evaluate(`sessionStorage.setItem("stand-in-for-the-list", "1"); location.reload()`);
 		await until("the repository in the sidebar", () => app.evaluate("!!document.querySelector('[data-new-workspace=\"/r/demo\"]')"));
+		// What each row says of its branch: an open pull request by number, merged
+		// as merged, and nothing for a branch that is only here.
+		await until("the rows' status", () => app.evaluate("[...document.querySelectorAll('[data-workspace]')].map((r) => r.querySelector('[data-status]')?.textContent ?? '-').join(',') === '#12,merged,-'"));
+		assert.equal(await app.evaluate("document.querySelector('[data-workspace=\"/w/lima\"] [data-status]').dataset.status"), "merged");
 		await app.click('[data-new-workspace="/r/demo"]');
 		await until("the dialog", () => app.evaluate("!!document.getElementById('new-spec')"));
 		assert.equal(await app.evaluate("document.getElementById('new-spec-repository').textContent"), "demo", "the repository over the top");
