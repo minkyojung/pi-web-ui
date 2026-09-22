@@ -83,17 +83,20 @@ the foot of the window, and the agent drafts `.octave/config.toml` from what is 
 README. Read it and fix it; it is a short file, and yours. What goes in it:
 
 - `setup`, run in every new workspace before it opens — `npm ci`, say. Fails, and the workspace stays on the
-  list with what you typed; the dialog says why, and *Run setup again* is in the workspace's right-click menu.
+  list with what you typed; the dialog says why, and *Run setup again* is in the menu at the foot of the window.
 - `[[scripts.check]]`, one per check: run after every task the agent finishes, before its commit, in order.
   Each ends up under the commit as `Verified: unit — exit 0`, and the list at the foot of the window shows a
-  tick or a red cross for it, beside the circle that stands for the agent's own word. A check that exits 2
-  stops the commit altogether; any other failure is committed and marked, so a failed try is still a record.
+  tick or a red cross for it, beside the circle that stands for the agent's own word; press the tick or the
+  cross and what the check printed opens in a tab. A check that exits 2 stops the commit altogether; any
+  other failure is committed and marked, so a failed try is still a record.
 - `[scripts.run.dev]`, a dev server or a watcher: the ▶ at the foot of the window, on a port of the
-  workspace's own in `OCTAVE_PORT`.
+  workspace's own in `OCTAVE_PORT`. Press it for the menu — run or stop, open what it serves, read what it
+  printed. A run that ends by itself gets a red dot, and its exit code is in the menu.
 - `archive`, run just before a workspace is removed.
 
-What each printed is in the workspace's `.pi/runs/` folder. Octave runs these and understands none of them,
-so any language and any tool is fine; it only reads the exit code.
+What each printed is a file in the workspace's `.pi/runs/` folder, and opens in a tab like any file: at its
+end, following it while it runs. Octave runs these commands and understands none of them, so any language
+and any tool is fine; it only reads the exit code.
 
 ## 3. Sign in
 
