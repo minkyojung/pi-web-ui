@@ -7,7 +7,7 @@
  * report on, rather than the shell itself.
  */
 import { execFile, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
@@ -30,6 +30,7 @@ import { clone, issues, login, pullRequests, repositories, repositoryName, signI
 import { KEYS, forget, gitEnv } from "./credentials.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
+import { switchLine } from "./switching.js";
 import { firstWorkspace, projectsOf, remembered, statusOf, withWorkspace, withoutWorkspace } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
@@ -429,9 +430,11 @@ async function show(workdir) {
 	if (workdir === front) return;
 	const mine = ++asked;
 	wanted = workdir;
+	const timing = { from: front, to: workdir, shell: { asked: Date.now() }, page: null };
 	let url;
 	try {
 		({ url } = await servers.get(workdir));
+		timing.shell.server = Date.now();
 	} catch (err) {
 		if (mine === asked) wanted = null;
 		if (quitting) return;
@@ -447,6 +450,7 @@ async function show(workdir) {
 		if (!window.isVisible()) app.quit();
 		return;
 	}
+	timing.shell.answered = Date.now();
 	if (mine !== asked) return;
 	if (front) since.set(front, Date.now());
 	front = workdir;
@@ -457,6 +461,34 @@ async function show(workdir) {
 	window.setTitle(`Octave — ${basename(workdir)}`);
 	// A load cut short by the next switch is that switch's to finish.
 	await window.loadURL(url).catch((err) => console.error(`[window] ${err.message}`));
+	timing.shell.loaded = Date.now();
+	landing(timing);
+}
+
+/**
+ * The switch whose page has yet to say it is ready. One line per switch in
+ * the server's log, with both halves (switching.js): written when the page
+ * reports, or with the shell's half alone if it has not within a while — a
+ * page that never got there is worth knowing about too.
+ */
+let landingSoon = null;
+function landing(timing) {
+	if (landingSoon) landed(null);
+	landingSoon = { timing, later: setTimeout(() => landed(null), 15_000) };
+}
+function landed(page) {
+	if (!landingSoon) return;
+	const { timing, later } = landingSoon;
+	clearTimeout(later);
+	landingSoon = null;
+	const line = switchLine({ ...timing, page });
+	console.log(line);
+	try {
+		mkdirSync(join(logPath(), ".."), { recursive: true });
+		appendFileSync(logPath(), `${new Date().toISOString()} ${line}\n`);
+	} catch {
+		// The console has it; a log that cannot be written is not this line's problem.
+	}
 }
 
 /**
@@ -905,6 +937,9 @@ function serveFolders() {
 function servePrefs() {
 	ipcMain.on("prefs", (event) => {
 		event.returnValue = prefsOf(readSettings());
+	});
+	ipcMain.on("switch:landed", (_event, marks) => {
+		if (marks && typeof marks.origin === "number") landed(marks);
 	});
 	ipcMain.on("prefs:set", (_event, key, value) => {
 		const settings = readSettings();

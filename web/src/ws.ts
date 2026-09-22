@@ -46,6 +46,7 @@ import {
 	standingStore,
 	usageStore,
 } from "./serverState";
+import { socketOpened, stateLanded } from "./landing";
 import { clearedText } from "./queue";
 import { applyServerEvent, replaceConversation, setConnection } from "./store";
 import type { ClientMsg, ServerMsg, StateMsg } from "./types";
@@ -249,6 +250,7 @@ function receive(msg: ServerMsg): void {
 			// them; the replay that follows a snapshot re-adds any still open.
 			promptsStore.set([]);
 			replaceConversation(msg.items);
+			stateLanded();
 			return;
 		// The messages a clear took out of the queue, on their way back to the box.
 		case "queue_cleared": {
@@ -287,6 +289,7 @@ function connect(): void {
 	socket = ws;
 
 	ws.onopen = () => {
+		socketOpened();
 		if (gen !== generation) return;
 		setConnection("open");
 		// Recovery is entirely server-driven: it pushes config, usage, snapshot

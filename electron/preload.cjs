@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld("pi", {
 			ipcRenderer.send("prefs:set", key, value);
 		},
 	},
+	/** When this page was ready — socket, first state, drawn — for the shell's line about the switch; see web/src/landing.ts. */
+	landed: (marks) => ipcRenderer.send("switch:landed", marks),
 	/** Show a file in the Finder. Takes the whole path; the page knows it. */
 	reveal: (path) => ipcRenderer.invoke("file:reveal", path),
 	/** The models a spec can be started on, for the first screen: `{ model, models }` as the server's config has them, or null when pi could not be asked. */
