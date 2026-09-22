@@ -589,7 +589,14 @@ async function workspaces() {
  * seconds of an empty sidebar each time. Not known yet is null, which the
  * rows read as git's word alone until the answer lands.
  */
-const pullRequestsOf = remembered({ ask: pullRequests, onFresh: workspacesChanged, staleMs: 30_000 });
+const pullRequestsOf = remembered({ ask: (root) => branchesOf(root).then((branches) => pullRequests(root, branches)), onFresh: workspacesChanged, staleMs: 30_000 });
+
+/** The branches the repository's workspaces are on now — what GitHub is asked about, and nothing else. */
+async function branchesOf(root) {
+	const project = projectsOf(readSettings(), isCheckout).find((p) => p.path === root);
+	const branches = await Promise.all((project?.worktrees ?? []).map(async (worktree) => (await branchOf(worktree.path)) ?? worktree.branch));
+	return [...new Set(branches)];
+}
 
 /**
  * What the first screen's dialog offers: pi's answer, from dist-server/models.mjs
