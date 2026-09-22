@@ -176,17 +176,6 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 		);
 	};
 
-	// The repository's setup, run again in a workspace (electron/main.js setUp):
-	// what it says is said here, since the row has no room for it.
-	const setUpAgain = (path: string) =>
-		toast.promise(
-			shell.setup(path).then((result) => {
-				if (result?.error) throw new Error(result.error);
-				return result?.ran ? "Setup finished." : "This repository names no setup command in .octave/config.toml.";
-			}),
-			{ loading: "Setting up…", success: (said: string) => said, error: (err: Error) => err.message },
-		);
-
 	const fold = (root: string) =>
 		setFolded((was) => {
 			const next = new Set(was);
@@ -289,7 +278,6 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 													</TooltipContent>
 												</Tooltip>
 												<ContextMenuContent>
-													<ContextMenuItem onSelect={() => setUpAgain(worktree.path)}>Run setup again</ContextMenuItem>
 													{/* The menu is let go of first, so the dialog is not opened behind it. */}
 													<ContextMenuItem variant="destructive" onSelect={() => queueMicrotask(() => setDoomed({ path: worktree.path, branch: branchName(worktree.branch) }))}>
 														Remove workspace…
