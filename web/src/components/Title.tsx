@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { isSpec } from "../../../documentKinds.ts";
 import { step } from "../features/pageMove";
+import type { Mode } from "../readMode";
 import { renameTarget, titleOf } from "../noteSync";
 import { flushSaves } from "../saves";
 import { noteRenameFailedStore } from "../serverState";
@@ -31,9 +32,11 @@ const REASONS = {
  * Obsidian.
  *
  * A spec's is only shown: `requirements.md` is a place in the spec, which the
- * agent reads by that name, not a title anyone gave it.
+ * agent reads by that name, not a title anyone gave it. And a note being read
+ * is only shown too — renaming a file is changing it, and reading changes
+ * nothing.
  */
-export function Title({ path }: { path: string }) {
+export function Title({ path, mode = "edit" }: { path: string; mode?: Mode }) {
 	const box = useRef<HTMLInputElement>(null);
 	const [error, setError] = useState<string | null>(null);
 
@@ -80,7 +83,7 @@ export function Title({ path }: { path: string }) {
 				type="text"
 				defaultValue={titleOf(path)}
 				aria-label="Title"
-				readOnly={isSpec(path)}
+				readOnly={isSpec(path) || mode === "read"}
 				aria-invalid={error ? true : undefined}
 				spellCheck={false}
 				className="min-w-0 flex-1 bg-transparent text-xl font-semibold outline-none placeholder:text-muted-foreground"

@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from "react";
-import { Check, ChevronDown, Ellipsis, PanelLeft, PanelLeftOpen, PanelRight, PanelRightOpen, Pencil, Plus, Trash2 } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Ellipsis, PanelLeft, PanelLeftOpen, PanelRight, PanelRightOpen, Pencil, PencilLine, Plus, Trash2 } from "lucide-react";
 
+import type { Mode } from "../readMode";
 import type { SessionInfo } from "../types";
 import { sessionsStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
@@ -103,6 +104,40 @@ function Sessions({ sessions, children }: { sessions: SessionInfo[]; children: R
 				</Command>
 			</PopoverContent>
 		</Popover>
+	);
+}
+
+/**
+ * Reading or writing, for the markdown in front.
+ *
+ * Beside the ⋯ and the agent's toggle, which is where this header keeps what
+ * is true of the file rather than where the file is. The icon is the way it
+ * will go and not the way it stands — the two states are a book and a pencil,
+ * and a pencil shown while you are writing says nothing you did not know.
+ *
+ * Only over markdown: a PDF and a repository's code are read whatever anyone
+ * says, and the one that already says so says it in its own chip (NoteHeader).
+ */
+export function ModeToggle({ mode, onSwitch }: { mode: Mode; onSwitch: () => void }) {
+	const toWrite = mode === "read";
+	const words = toWrite ? "Write in this file" : "Read this file";
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					id="toggleMode"
+					variant="ghost"
+					size="icon-xs"
+					aria-label={words}
+					aria-pressed={!toWrite}
+					className="shrink-0 text-muted-foreground"
+					onClick={onSwitch}
+				>
+					{toWrite ? <PencilLine /> : <BookOpen />}
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent side="bottom">{words} ⌘E</TooltipContent>
+		</Tooltip>
 	);
 }
 

@@ -634,7 +634,7 @@ check("no drag region covers a control of one drawn before it, with the list of 
 	await folded(false);
 });
 
-check("a heading's marks are hidden until the cursor is on it, and ⌘E shows them all", async ({ app }) => {
+check("a heading's marks are hidden until the cursor is on it, and ⌥⌘E shows them all", async ({ app }) => {
 	// The cursor is on the first line after opening; move it off the heading.
 	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
 	await until("the # to be hidden", async () => !(await shownText(app)).includes("# first") && (await shownText(app)).includes("first"));
@@ -642,10 +642,43 @@ check("a heading's marks are hidden until the cursor is on it, and ⌘E shows th
 	await until("the # to be back under the cursor", async () => (await shownText(app)).includes("# first"));
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
 	await until("hidden again", async () => !(await shownText(app)).includes("# first"));
-	await app.press("e", { meta: true });
+	await app.press("e", { meta: true, alt: true });
 	await until("source mode", async () => (await shownText(app)).includes("# first"));
-	await app.press("e", { meta: true });
+	await app.press("e", { meta: true, alt: true });
 	await until("live preview again", async () => !(await shownText(app)).includes("# first"));
+});
+
+// The other half of ⌘E's old key: the file in front, read rather than written.
+// The same editor — the scroll, the history and the text stay — with its
+// markup answering to nothing and its document refusing every change.
+check("⌘E reads the note instead of writing in it: nothing can be typed, the marks stay hidden, and the name is fixed", async ({ app }) => {
+	const readonly = () => app.evaluate("document.querySelector('#editor .cm-content').getAttribute('aria-readonly')");
+	const cursorHome = () => app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 0 } }); })()`);
+	assert.equal(await readonly(), null, "a note opens ready to be written in");
+	assert.equal(await app.evaluate("document.getElementById('title').readOnly"), false);
+
+	const before = await editorText(app);
+	await app.press("e", { meta: true });
+	await until("the file being read", async () => (await readonly()) === "true");
+	assert.equal(await app.evaluate("document.querySelector('#toggleMode').getAttribute('aria-label')"), "Write in this file");
+	// The cursor on the heading: in writing that shows its marks, and here it does not.
+	await cursorHome();
+	assert.equal((await shownText(app)).includes("# first"), false, "the marks stay hidden under the cursor");
+	assert.equal(await app.evaluate("document.getElementById('title').readOnly"), true, "and the name is not changed here");
+	// Typed at: the browser inserts, the editor throws it away, and the file is as it was.
+	await type(app, "NOTTYPED ");
+	assert.equal(await editorText(app), before, "nothing typed reaches the document");
+
+	// Back, and it is the same editor rather than the file opened again.
+	await app.press("e", { meta: true });
+	await until("the editor again", async () => (await readonly()) === null);
+	assert.equal(await app.evaluate("document.querySelector('#toggleMode').getAttribute('aria-label')"), "Read this file");
+	assert.equal(await type(app, "TYPEDBACK "), true);
+	await until("the typing in the document", async () => (await editorText(app)).includes("TYPEDBACK"));
+	// Put back for the checks after this one, which read this note.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("TYPEDBACK "); v.dispatch({ changes: { from: at, to: at + "TYPEDBACK ".length } }); })()`);
+	await until("the note as it was", async () => (await editorText(app)) === before && (await editorStatus(app)) === "saved");
+	await cursorHome();
 });
 
 check("a selection is drawn as wide as the words, and shows marks only while the editor has focus", async ({ app }) => {
@@ -2231,7 +2264,7 @@ check("==words== are washed with colour, their marks hidden off the cursor", asy
 	await until("the marks back under the cursor", async () => (await shownText(app)).includes("==hi=="));
 });
 
-check("a note's front matter is hidden, out of the cursor's reach, shown by ⌘E, and the note opens under it", async ({ app, cwd }) => {
+check("a note's front matter is hidden, out of the cursor's reach, shown by ⌥⌘E, and the note opens under it", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "props.md"), "---\ntags: [x]\n---\n\n# body\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="props.md"]')`));
 	await app.evaluate(`document.querySelector('#notes button[data-path="props.md"]').click()`);
@@ -2247,9 +2280,9 @@ check("a note's front matter is hidden, out of the cursor's reach, shown by ⌘E
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 0 } }); })()`);
 	assert.equal(await head(), 18, "the cursor is kept under the block");
 	assert.ok(!(await shownText(app)).includes("tags"), "still hidden");
-	await app.press("e", { meta: true });
+	await app.press("e", { meta: true, alt: true });
 	await until("the source", async () => (await shownText(app)).includes("---tags: [x]---") && (await shownText(app)).includes("# body"));
-	await app.press("e", { meta: true });
+	await app.press("e", { meta: true, alt: true });
 	assert.equal(readFileSync(join(cwd, "props.md"), "utf8"), "---\ntags: [x]\n---\n\n# body\n", "the file is untouched");
 });
 
@@ -3314,6 +3347,7 @@ check("a spec opens in the editor by its address, keeps no record of who wrote i
 	// What a note carries at its head and at the foot of the window, for the
 	// comparison below: a spec carries neither.
 	assert.equal(await app.evaluate("!!document.getElementById('add-property')"), true, "a note is offered properties");
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-content').getAttribute('aria-readonly')"), null, "and opens ready to be written in");
 	assert.equal(await app.evaluate("!!document.getElementById('count')"), true, "and its length is in the strip");
 
 	const path = ".octave/specs/e2e/requirements.md";
@@ -3339,6 +3373,12 @@ check("a spec opens in the editor by its address, keeps no record of who wrote i
 	assert.ok(items.includes("Copy path") && !items.includes("Rename") && !items.includes("Delete"), `the spec's items, got ${items.join()}`);
 	await app.press("Escape");
 	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+
+	// A spec opens read: it is the agent's writing, put in front to be judged.
+	// Correcting it is a key away, and this is that key.
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-content').getAttribute('aria-readonly')"), "true", "a spec opens read");
+	await app.press("e", { meta: true });
+	await until("the spec open for writing", async () => (await app.evaluate("document.querySelector('#editor .cm-content').getAttribute('aria-readonly')")) === null);
 
 	// Typed: down to the disk, and no log beside it.
 	assert.equal(await type(app, "TYPED "), true);

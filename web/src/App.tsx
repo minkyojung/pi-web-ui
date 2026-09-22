@@ -5,7 +5,7 @@ import { layoutStorage, prefs } from "./prefs.ts";
 
 import { Editor } from "./components/Editor";
 import { Pi } from "./components/Pi";
-import { PiToggle, SidebarToggle } from "./components/PanelHeader";
+import { ModeToggle, PiToggle, SidebarToggle } from "./components/PanelHeader";
 import { Sidebar, Steps } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { QuickOpen } from "./components/QuickOpen";
@@ -20,6 +20,7 @@ import { UpdateToast } from "./components/UpdateToast";
 import { pageNamed, type Place } from "../../links.ts";
 import { hashForNote, noteFromHash } from "./noteSync";
 import { pageOf, whatsNewPath } from "./pages";
+import { modeOf, modeStore, switchMode } from "./readMode";
 import { toOpen } from "./specTabs";
 import type { SpecInfo } from "../../protocol.ts";
 import { pageAskedStore, updateStore } from "./update";
@@ -316,6 +317,11 @@ export function App() {
 	// idea of which note is open — is told there is none.
 	const page = pageOf(open);
 	const note = page ? null : open;
+	// Read or written — of the markdown in front, and of nothing else: a PDF,
+	// a file of the repository and the app's own pages are read whatever
+	// anybody chooses.
+	const modes = useSyncExternalStore(modeStore.subscribe, modeStore.get);
+	const mode = modeOf(modes, note);
 
 	// What is new, on the first run of a version (the shell says so, once, until
 	// it is told it has been seen) and whenever Help asks.
@@ -430,6 +436,13 @@ export function App() {
 			if ((e.key === "d" || e.key === "D") && e.shiftKey && mod) {
 				e.preventDefault();
 				setRaw((on) => !on);
+			}
+			// Reading and writing, as in Obsidian. The window's rather than the
+			// editor's, so it is heard while the cursor is in the agent's box or
+			// in the list — the file in front is the one it is about either way.
+			if ((e.key === "e" || e.key === "E") && mod && !e.shiftKey && !e.altKey) {
+				e.preventDefault();
+				switchMode(note);
 			}
 			if (e.key === "\\" && mod) {
 				e.preventDefault();
@@ -618,7 +631,7 @@ export function App() {
 					    offers what can be done to a file, which is to find it, not to
 					    rename it (noteActions.ts). A PDF is left out: its viewer
 					    reaches the top of the column, and the words there are its own. */}
-					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} onOpen={setOpen} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
+					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} onOpen={setOpen} trailing={<>{note && <ModeToggle mode={mode} onSwitch={() => switchMode(note)} />}<PiToggle open={piOpen} onToggle={togglePi} /></>} />
 					{/* Under the header and over the page, so it stays while a long
 					    document scrolls — and `note` is null for anything that is not
 					    a note or a spec, which keeps it off a PDF and off a page. */}
@@ -669,8 +682,8 @@ export function App() {
 							    the steps and the checks all look up, and it should be there
 							    whether or not what it holds could be drawn. */}
 							<Boundary name="note" hint="What you had typed was written to the file.">
-								<Title path={open} />
-								<Editor key={noteIdentity(open)} path={open} place={place} left={left} onLeave={onLeave} onOpen={setOpen} />
+								<Title path={open} mode={mode} />
+								<Editor key={noteIdentity(open)} path={open} mode={mode} place={place} left={left} onLeave={onLeave} onOpen={setOpen} />
 							</Boundary>
 						</div>
 					) : (
