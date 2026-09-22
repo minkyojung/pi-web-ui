@@ -43,6 +43,7 @@ import {
 	searchResultsStore,
 	sessionsStore,
 	specsStore,
+	standingStore,
 	usageStore,
 } from "./serverState";
 import { clearedText } from "./queue";
@@ -99,6 +100,7 @@ const STATE: Record<StateMsg["type"], true> = {
 	commit: true,
 	commit_gone: true,
 	specs: true,
+	standing: true,
 	backlinks: true,
 	tagged: true,
 	property_types: true,
@@ -184,6 +186,9 @@ function receive(msg: ServerMsg): void {
 			return;
 		case "specs":
 			specsStore.set(msg.specs);
+			return;
+		case "standing":
+			standingStore.set(msg.standing);
 			return;
 		case "note":
 			// A spec is in none of the notes' lists, so it has neither.

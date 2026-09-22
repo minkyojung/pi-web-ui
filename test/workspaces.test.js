@@ -68,9 +68,12 @@ test("a workspace removed leaves its repository on the list, with the rest of it
 });
 
 test("a branch's status is its pull request's when it has one, else only whether the remote has it — never merged by git alone", () => {
-	assert.deepEqual(statusOf({ onRemote: true, pr: { number: 27, state: "OPEN" } }), { state: "open", number: 27 });
-	assert.deepEqual(statusOf({ onRemote: true, pr: { number: 27, state: "MERGED" } }), { state: "merged", number: 27 });
-	assert.deepEqual(statusOf({ onRemote: true, pr: { number: 27, state: "CLOSED" } }), { state: "closed", number: 27 });
+	const bare = { url: null, draft: false, review: "", checks: { total: 0, pending: 0, failed: 0 } };
+	assert.deepEqual(statusOf({ onRemote: true, pr: { number: 27, state: "OPEN" } }), { state: "open", number: 27, ...bare });
+	assert.deepEqual(statusOf({ onRemote: true, pr: { number: 27, state: "MERGED" } }), { state: "merged", number: 27, ...bare });
+	assert.deepEqual(statusOf({ onRemote: true, pr: { number: 27, state: "CLOSED" } }), { state: "closed", number: 27, ...bare });
+	const full = { number: 30, state: "OPEN", url: "https://x/30", draft: true, review: "APPROVED", checks: { total: 2, pending: 1, failed: 0 } };
+	assert.deepEqual(statusOf({ onRemote: true, pr: full }), { state: "open", number: 30, url: "https://x/30", draft: true, review: "APPROVED", checks: { total: 2, pending: 1, failed: 0 } }, "what gh said of it goes along");
 	assert.deepEqual(statusOf({ onRemote: true, pr: null }), { state: "pushed" });
 	assert.deepEqual(statusOf({ onRemote: false, pr: null }), { state: "local" });
 	assert.deepEqual(statusOf({ onRemote: false, pr: { number: 1, state: "WHAT" } }), { state: "local" }, "a state gh does not have is no pull request");

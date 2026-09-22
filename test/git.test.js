@@ -207,9 +207,17 @@ test("a new workspace's branch is not on the remote until pushed — and never r
 	assert.equal(await onRemote(repo.root, made.branch), true);
 });
 
-test("gh's pull requests are read by head branch, the newest first, and nothing else passed on", async () => {
+test("gh's pull requests are read by head branch, the newest first, with their checks folded and the rest read strictly", async () => {
 	const { pullRequestsFrom } = await import("../electron/github.js");
-	const map = pullRequestsFrom('[{"number":30,"state":"OPEN","headRefName":"me/x"},{"number":12,"state":"MERGED","headRefName":"me/x"},{"number":9,"state":"CLOSED","headRefName":"me/y"},{"number":"3","state":"OPEN","headRefName":"me/z"}]');
-	assert.deepEqual([...map], [["me/x", { number: 30, state: "OPEN" }], ["me/y", { number: 9, state: "CLOSED" }]]);
+	const map = pullRequestsFrom(JSON.stringify([
+		{ number: 30, state: "OPEN", headRefName: "me/x", url: "https://x/30", isDraft: false, reviewDecision: "APPROVED", statusCheckRollup: [{ name: "test", status: "COMPLETED", conclusion: "SUCCESS" }, { name: "e2e", status: "IN_PROGRESS", conclusion: "" }, { context: "lint", state: "FAILURE" }] },
+		{ number: 12, state: "MERGED", headRefName: "me/x" },
+		{ number: 9, state: "CLOSED", headRefName: "me/y", statusCheckRollup: "nope" },
+		{ number: "3", state: "OPEN", headRefName: "me/z" },
+	]));
+	assert.deepEqual([...map], [
+		["me/x", { number: 30, state: "OPEN", url: "https://x/30", draft: false, review: "APPROVED", checks: { total: 3, pending: 1, failed: 1 } }],
+		["me/y", { number: 9, state: "CLOSED", url: null, draft: false, review: "", checks: { total: 0, pending: 0, failed: 0 } }],
+	]);
 	assert.equal(pullRequestsFrom("nope"), null);
 });
