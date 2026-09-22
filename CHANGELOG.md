@@ -5,6 +5,8 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+
+## [0.0.8] - 2026-09-22
 ### Added
 - The foot of the window says where this workspace's branch stands, at its left end, one thing at a time: how many changes are not committed; `↑ 2 not pushed`, then `↑ 2 pushed`; once there is a pull request, its number — press it to open it — and what its checks and reviews came to (`1 check pending…`, `checks passed`, `✗ 1 check failed` in red, `changes requested` in red, `approved`); `merged` or `closed` at the end; and `· 5 behind` when the default branch has moved on. Read from git as the window comes back and as turns end, and from GitHub through `gh`. In the sidebar the word beside a workspace is a dot now — blue for an open pull request, grey for merged, red for closed — with the words at the foot.
 ### Fixed
@@ -133,7 +135,8 @@ The first release. Octave is a notes app for the Mac with an agent that works in
 - A signed, notarized disk image for Apple Silicon Macs. Octave updates itself: a new version is downloaded in the background and offered, with its notes, when it is ready.
 - Octave is free software under the AGPL-3.0; the licences of everything it is built on ship inside it.
 
-[Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.7...HEAD
+[Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.8...HEAD
+[0.0.8]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.4...v0.0.5
