@@ -573,6 +573,20 @@ async function setUp(root, path) {
 	}
 }
 
+/**
+ * The repository's own archive command run in a workspace about to be
+ * removed — a database dropped, a tunnel closed. Nothing stands in the
+ * removal's way: what went wrong is answered as a warning, since the folder,
+ * and the log in it, will be gone.
+ */
+async function archive(root, path) {
+	const config = readConfig(path);
+	if (!isConfig(config)) return `The workspace was removed without its archive command: ${config.error}`;
+	if (!config.archive) return null;
+	const ran = await runScript({ name: "archive", command: config.archive, cwd: path, env: { ...process.env, OCTAVE_REPOSITORY: root }, timeout: DEFAULT_TIMEOUT });
+	return ran.exit === 0 ? null : `The workspace was removed, but its archive command failed (exit ${ran.exit})${ran.last ? `: ${ran.last}` : ""}.`;
+}
+
 /** Setup run again in a listed workspace, from its row — after it failed, or after the command was changed. */
 function setUpAgain(path) {
 	const root = repositoryOfWorkspace(path);
@@ -598,6 +612,9 @@ async function workspaceChanges(path) {
  * and the number is answered instead, to be asked about again. Not while the
  * agent is working there. One at a time with making, which reads the same
  * folders. The window, if it was on this one, goes to the first screen.
+ * The repository's own `archive` command, if it names one, runs in the
+ * folder first; one that fails does not keep the folder — `{ warning }`
+ * says how it went, with the removal done.
  */
 function removeWorkspace(path, seen) {
 	const done = making.then(async () => {
@@ -609,12 +626,13 @@ function removeWorkspace(path, seen) {
 			if (changes !== seen) return { changes };
 			if (path === front || path === wanted) await showStart();
 			await servers.stop(path);
+			const warning = await archive(root, path);
 			await removeWorktree(root, path);
 			writeSettings({ ...readSettings(), projects: withoutWorkspace(projectsOf(readSettings(), isCheckout), path) });
 			waiting.take(path);
 			for (const kept of [ports, busy, since]) kept.delete(path);
 			workspacesChanged();
-			return {};
+			return warning ? { warning } : {};
 		} catch (err) {
 			return { error: err.message };
 		}

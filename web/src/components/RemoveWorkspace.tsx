@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { toast } from "sonner";
+
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Spinner } from "./ui/spinner";
@@ -7,7 +9,7 @@ import { Spinner } from "./ui/spinner";
 /** The shell's side: how many uncommitted changes a workspace holds, and the removing. See preload.cjs `workspaces`. */
 export interface Removing {
 	changes(path: string): Promise<number | null>;
-	remove(path: string, seen: number): Promise<{ error?: string; changes?: number } | null>;
+	remove(path: string, seen: number): Promise<{ error?: string; changes?: number; warning?: string } | null>;
 }
 
 /**
@@ -47,7 +49,11 @@ export function RemoveWorkspace({ workspace, onClose, shell }: { workspace: { pa
 			.then((result) => {
 				if (result?.error) setError(result.error);
 				else if (typeof result?.changes === "number") setChanges(result.changes);
-				else onClose();
+				else {
+					// Removed: what the repository's own archive command said, if it failed, is said after.
+					if (result?.warning) toast.warning(result.warning);
+					onClose();
+				}
 			})
 			.catch((err: Error) => setError(err.message))
 			.finally(() => setRemoving(false));

@@ -52,7 +52,7 @@ const workspaceShell = (
 				branches(root: string): Promise<{ branches: string[]; base: string | null } | null>;
 				open(path: string): Promise<void>;
 				changes(path: string): Promise<number | null>;
-				remove(path: string, seen: number): Promise<{ error?: string; changes?: number } | null>;
+				remove(path: string, seen: number): Promise<{ error?: string; changes?: number; warning?: string } | null>;
 				setup(path: string): Promise<{ error?: string; ran?: boolean } | null>;
 				onSetup(listen: (path: string, stage: "running" | null) => void): () => void;
 				onChange(listen: () => void): () => void;

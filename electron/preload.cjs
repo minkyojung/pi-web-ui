@@ -48,7 +48,8 @@ contextBridge.exposeInMainWorld("pi", {
 	 * what this page's workspace was made to be told first, given once, a
 	 * workspace put in front, and one removed — `changes` says how many
 	 * uncommitted changes it holds, and `remove` takes the number the person
-	 * was told and answers `{ changes }` instead when it no longer holds. `setup`
+	 * was told and answers `{ changes }` instead when it no longer holds, or
+	 * `{ warning }` when it was removed but its archive command failed. `setup`
 	 * runs the repository's setup command again in a workspace (`{ ran }`, or
 	 * `{ error }`), and `onSetup` says when one's setup is running (`"running"`)
 	 * or has ended (null). `onChange` says the list is to be asked for again;
