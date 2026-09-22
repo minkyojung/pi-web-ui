@@ -5,6 +5,8 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+
+## [0.0.7] - 2026-09-22
 ### Added
 - A workspace's row says where its branch stands: `#27` when a pull request is open, `merged` once it is in — struck through, as work that is done — and `closed` when its pull request was closed without merging. A branch that is only here, or pushed and nothing more, says nothing: that is work in progress. Read from git and, when `gh` is signed in, from GitHub, at most once every half minute.
 - A spec's branch is pushed to the remote the moment it is named — right after the requirements are written and the branch takes the spec's name — tracking it, so a later push from you or the agent needs nothing more. Offline, or with no remote, it stays local and the notice says so.
@@ -127,7 +129,8 @@ The first release. Octave is a notes app for the Mac with an agent that works in
 - A signed, notarized disk image for Apple Silicon Macs. Octave updates itself: a new version is downloaded in the background and offered, with its notes, when it is ready.
 - Octave is free software under the AGPL-3.0; the licences of everything it is built on ship inside it.
 
-[Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.6...HEAD
+[Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.7...HEAD
+[0.0.7]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.3...v0.0.4
