@@ -82,6 +82,8 @@ only what is committed — no dependencies, no `.env`. Type `/setup` in the agen
 the foot of the window, and the agent drafts `.octave/config.toml` from what is there: package files, CI, the
 README. Read it and fix it; it is a short file, and yours. What goes in it:
 
+- `copy`, the files kept beside the code and out of git — `.env*` unless you say otherwise — brought over
+  from the repository's own folder into every new workspace first. A file the branch already has is left alone.
 - `setup`, run in every new workspace before it opens — `npm ci`, say. Fails, and the workspace stays on the
   list with what you typed; the dialog says why, and *Run setup again* is in the menu at the foot of the window.
 - `[[scripts.check]]`, one per check: run after every task the agent finishes, before its commit, in order.

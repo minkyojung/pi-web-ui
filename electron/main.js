@@ -20,6 +20,7 @@ import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
 import { CONFIG_FILE, DEFAULT_TIMEOUT, isConfig, readConfig } from "./octaveConfig.js";
 import { prefsOf, withPref } from "./prefs.js";
+import { copyInto } from "./copies.js";
 import { runLogsIn } from "./runLogs.js";
 import { createRuns } from "./runs.js";
 import { runScript } from "./scripts.js";
@@ -602,13 +603,17 @@ function setupChanged(path, stage) {
  * The repository's own setup, run in a workspace: the command its
  * `.octave/config.toml` names (octaveConfig.js), to its end, with the
  * repository's folder in `OCTAVE_REPOSITORY` and the output's tail in the
- * workspace's `.pi/runs/setup.log` (scripts.js). `{ ran: false }` where the
- * file names none; `{ error }` — a config that could not be read, or a
+ * workspace's `.pi/runs/setup.log` (scripts.js), after the files the config
+ * says to copy from the clone are (copies.js). `{ ran: false }` where the
+ * file names no setup; `{ error }` — a config that could not be read, or a
  * command that did not exit 0 — says why, with the log's place.
  */
 async function setUp(root, path) {
 	const config = readConfig(path);
 	if (!isConfig(config)) return { error: config.error };
+	// What is kept beside the code and out of git comes over first, so the
+	// setup finds it there — an `.env` the install reads, say (copies.js).
+	copyInto(root, path, config.copy);
 	if (!config.setup) return { ran: false };
 	setupChanged(path, "running");
 	try {

@@ -503,7 +503,7 @@ test("/setup은 저장소의 명령을 에이전트가 초안하게 한다 — �
   assert.deepEqual(hidden.options, { deliverAs: "nextTurn" });
   assert.equal(sent.sendUserMessage, "/setup");
   const prompt = hidden.sendMessage.content;
-  for (const said of [".octave/config.toml", "setup", "[scripts.run.<id>]", "[[scripts.check]]", "archive", "$OCTAVE_PORT", "$OCTAVE_REPOSITORY", "exit 2", "description", "invent none", "run nothing that installs", "Commit it and every new workspace runs it", "Run setup again"]) assert.ok(prompt.includes(said), said);
+  for (const said of [".octave/config.toml", "setup", "[scripts.run.<id>]", "[[scripts.check]]", "archive", "$OCTAVE_PORT", "exit 2", "description", "invent none", "run nothing that installs", "`copy`", "Commit it and every new workspace runs it", "Run setup again"]) assert.ok(prompt.includes(said), said);
   assert.equal(prompt.includes("The file is there already"), false);
   assert.equal(/\blanguage\b|in English|Korean/i.test(prompt), false, "언어는 말하지 않는다");
   pi.config("[scripts]\nsetup = 'npm ci'\n");
