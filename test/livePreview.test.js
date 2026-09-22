@@ -6,7 +6,7 @@ import { EditorSelection, EditorState } from "@codemirror/state";
 import { Decoration } from "@codemirror/view";
 
 import { noteSyntax } from "../syntax.ts";
-import { hidden } from "../web/src/features/livePreview.ts";
+import { editing, hidden, reading } from "../web/src/features/livePreview.ts";
 
 const state = (doc, cursor = doc.length) =>
 	EditorState.create({ doc, selection: EditorSelection.cursor(cursor), extensions: [markdown({ base: markdownLanguage, extensions: [noteSyntax] })] });
@@ -236,4 +236,29 @@ test("앞머리는 커서가 그 줄에 없으면 통째로 숨고, 그 줄에 �
   assert.deepEqual(drawn(parsed(doc, 6)), [], "inside too");
   // Not at the top, not front matter: a rule, drawn as one.
   assert.deepEqual(drawn(parsed("text\n\n---\n")).map(([, k]) => k), ["Rule"]);
+});
+
+/** A state that is being read rather than written: the two things a read mode is. */
+const read = (doc, cursor = doc.length) =>
+  EditorState.create({
+    doc,
+    selection: EditorSelection.cursor(cursor),
+    extensions: [markdown({ base: markdownLanguage, extensions: [noteSyntax] }), reading.of(true), EditorState.readOnly.of(true)],
+  });
+
+test("읽기 상태에서는 커서가 닿은 곳도 쓰인 대로 보이지 않는다", () => {
+  // 같은 문서, 같은 커서. 편집이면 마크업이 드러나고, 읽기면 드러나지 않는다.
+  assert.equal(editing(state("## Hi\n\ntext", 3)).length, 1);
+  assert.deepEqual(editing(read("## Hi\n\ntext", 3)), []);
+  const s = read("## Hi\n\ntext", 3);
+  const out = [];
+  for (const it = hidden(s, 0, s.doc.length, editing(s)).iter(); it.value; it.next()) out.push(s.doc.sliceString(it.from, it.to));
+  assert.deepEqual(out, ["## "]);
+});
+
+test("읽기 상태에서는 박스가 눌리지 않는다", () => {
+  let out = null;
+  const handled = toggleTask({ state: read("- [ ] a\n", 7), dispatch: (tr) => (out = tr.changes) });
+  assert.equal(handled, false, "the key passes on");
+  assert.equal(out, null, "and nothing was changed");
 });

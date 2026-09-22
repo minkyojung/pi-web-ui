@@ -43,7 +43,7 @@
  * of it, in one order.
  */
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import { Compartment, type EditorState, type Extension, type Range, type RangeSet, RangeSetBuilder, type SelectionRange, StateEffect, StateField, type Transaction } from "@codemirror/state";
+import { Compartment, type EditorState, type Extension, Facet, type Range, type RangeSet, RangeSetBuilder, type SelectionRange, StateEffect, StateField, type Transaction } from "@codemirror/state";
 import { BlockWrapper, Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
 import { markerOf } from "./listTree.ts";
@@ -176,8 +176,22 @@ function mirrorFocus(view: EditorView, alive: () => boolean) {
 	});
 }
 
-/** The selection ranges the markup answers to: none while the editor is not focused. */
-const editing = (state: EditorState): readonly SelectionRange[] => (state.field(focused, false) ?? true ? state.selection.ranges : []);
+/**
+ * Reading: the markup answers to nothing, so none of it is ever shown as it
+ * was written.
+ *
+ * The rule is one this file already makes — an editor nobody is in hides all
+ * of its markup — said for a view nobody can type in. A facet and not a
+ * second compartment, because which extensions are on does not change: the
+ * same three functions run, over no ranges. What refuses the changes is the
+ * state's own readOnly, set beside this (Editor.tsx); the two are what a
+ * read mode is.
+ */
+export const reading = Facet.define<boolean, boolean>({ combine: (values) => values[values.length - 1] ?? false });
+
+/** The selection ranges the markup answers to: none while reading, and none while the editor is not focused. */
+export const editing = (state: EditorState): readonly SelectionRange[] =>
+	state.facet(reading) ? [] : (state.field(focused, false) ?? true ? state.selection.ranges : []);
 
 /** The decorations in the visible lines, `hidden` and `inline` together, and the widgets among them for the cursor to step over. */
 function build(view: EditorView): { deco: DecorationSet; atoms: DecorationSet } {
@@ -517,6 +531,7 @@ function taskToggle(state: EditorState, pos: number): { from: number; to: number
 
 /** Tick or untick the task on the line of every cursor — each line once, however many cursors are on it. */
 export const toggleTask = (view: EditorView) => {
+	if (view.state.readOnly) return false;
 	const lines = new Set<number>();
 	const changes = [];
 	for (const r of view.state.selection.ranges) {
@@ -556,6 +571,9 @@ const blockLayer: Extension = [
 		mousedown(event, view) {
 			const el = event.target;
 			if (!(el instanceof HTMLInputElement) || !el.classList.contains("cm-task")) return false;
+			// The box is drawn while reading too; it is only pressed where the
+			// document can be changed.
+			if (view.state.readOnly) return true;
 			event.preventDefault();
 			const change = taskToggle(view.state, view.posAtDOM(el));
 			if (change) view.dispatch({ changes: change, userEvent: "input" });
