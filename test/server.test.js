@@ -240,6 +240,24 @@ it("저장소의 파일은 읽기로 열리고, 열어 둔 동안 디스크의 �
   assert.equal(inbox.some((m) => m.type === "code"), false, "닫은 탭에는 보내지 않는다");
 });
 
+it("명령이 찍은 로그(.pi/runs/)는 앱의 폴더에 있어도 읽기로 열리고, 자라면 따라온다", async () => {
+  mkdirSync(join(cwd, ".pi", "runs"), { recursive: true });
+  writeFileSync(join(cwd, ".pi", "runs", "dev.log"), "$ npm run dev\nready\n");
+  clear();
+  send({ type: "open_code", path: ".pi/runs/dev.log" });
+  const first = await want("code");
+  assert.equal(first.text, "$ npm run dev\nready\n");
+  clear();
+  appendFileSync(join(cwd, ".pi", "runs", "dev.log"), "listening on 4000\n");
+  await want("code", (m) => m.text.endsWith("listening on 4000\n"));
+  send({ type: "close_code" });
+  writeFileSync(join(cwd, ".pi", "settings.json"), "{}");
+  clear();
+  send({ type: "open_code", path: ".pi/settings.json" });
+  assert.equal((await want("code_gone")).reason, "missing", "앱의 나머지는 여전히 앱의 것이다");
+  send({ type: "close_code" });
+});
+
 it("읽을 것이 없으면 없다고 말한다 — 없는 파일, 글자가 아닌 파일, git의 것", async () => {
   clear();
   send({ type: "open_code", path: "nothing-here.ts" });
