@@ -12,7 +12,23 @@
  */
 const { contextBridge, ipcRenderer } = require("electron");
 
+/**
+ * What the page keeps about the window — the theme, the columns' widths —
+ * held once by the shell (prefs.js) and read here before the page runs, so
+ * the theme is known before the first paint. A set is written through and
+ * kept here too, so what this page reads back is what it wrote.
+ */
+const prefs = ipcRenderer.sendSync("prefs");
+
 contextBridge.exposeInMainWorld("pi", {
+	prefs: {
+		get: (key) => (Object.hasOwn(prefs, key) ? prefs[key] : null),
+		set: (key, value) => {
+			if (value === null) delete prefs[key];
+			else prefs[key] = value;
+			ipcRenderer.send("prefs:set", key, value);
+		},
+	},
 	/** Show a file in the Finder. Takes the whole path; the page knows it. */
 	reveal: (path) => ipcRenderer.invoke("file:reveal", path),
 	/** The models a spec can be started on, for the first screen: `{ model, models }` as the server's config has them, or null when pi could not be asked. */
@@ -110,6 +126,7 @@ contextBridge.exposeInMainWorld("pi", {
 		check: () => ipcRenderer.invoke("update:check"),
 		restart: () => ipcRenderer.invoke("update:restart"),
 		seen: () => ipcRenderer.invoke("update:seen"),
+		dismiss: (version) => ipcRenderer.invoke("update:dismiss", version),
 	},
 	/** The shell asking for a page of the app's own to be opened — Help › What's New. */
 	onOpenPage: (listen) => {

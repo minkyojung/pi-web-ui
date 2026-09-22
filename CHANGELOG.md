@@ -6,6 +6,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 ### Fixed
+- The theme, the widths of the three columns, whether the count at the foot is words or characters, and an update offer waved away are the window's now, the same in every workspace and on the first screen. They were kept by each workspace's server address, so every workspace opened on the default theme and widths, and the first screen was never in the chosen theme. What was chosen before is not carried over; choose once more in Settings › Appearance.
 - Each workspace keeps its own tabs, its way back, its recent notes, which folders stand open and how far down each spec's results you had read. They were kept by the address of the workspace's server, which is handed out afresh each time the app starts, so a workspace could open on another's tabs — and two workspaces of one repository, with every file named the same, swapped them without anyone able to tell. What was kept the old way is not carried over; the first time each workspace opens, it opens with no tabs.
 ### Added
 - The new spec dialog on the first screen — with no workspace open — chooses the model and effort too, as the one in a workspace does. Octave asks pi for the list itself there, since there is no server behind that screen; `Default model` is what it says when pi could not be asked.

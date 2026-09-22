@@ -1,10 +1,10 @@
 /**
  * Light, dark, either Perplexity, or whatever the system says.
  *
- * Kept in this browser rather than in settings.json with the rest. A theme is
- * about the screen it is being read on, not about the work — the same
- * reader on a laptop at night and a desk in daylight wants two answers, and a
- * setting on the server can only hold one.
+ * Kept with the window rather than in settings.json with the rest (prefs.ts).
+ * A theme is about the screen it is being read on, not about the work — the
+ * same reader on a laptop at night and a desk in daylight wants two answers,
+ * and a setting on the server can only hold one.
  *
  * The choice and the answer are two different things. The choice is one of the
  * five below; the answer is one of the four that name a theme, since only
@@ -14,20 +14,17 @@
  * The answer is what goes on the element as data-theme. index.html works it out
  * again, inline, before the first paint — keep the two in step.
  */
+import { prefs } from "./prefs.ts";
+
 export type Theme = "system" | "light" | "dark" | "perplexity-light" | "perplexity-dark";
 
 const KEY = "theme";
 const THEMES: Theme[] = ["system", "light", "dark", "perplexity-light", "perplexity-dark"];
 const dark = () => matchMedia("(prefers-color-scheme: dark)");
 
-/** Storage throws in a window opened with cookies blocked; the default is not worth a crash. */
 export function readTheme(): Theme {
-	try {
-		const stored = localStorage.getItem(KEY) as Theme | null;
-		return stored && THEMES.includes(stored) ? stored : "system";
-	} catch {
-		return "system";
-	}
+	const stored = prefs.get(KEY) as Theme | null;
+	return stored && THEMES.includes(stored) ? stored : "system";
 }
 
 export function applyTheme(theme: Theme): void {
@@ -36,11 +33,7 @@ export function applyTheme(theme: Theme): void {
 }
 
 export function setTheme(theme: Theme): void {
-	try {
-		localStorage.setItem(KEY, theme);
-	} catch {
-		// Unwritable storage costs the choice its memory, not this window its theme.
-	}
+	prefs.set(KEY, theme);
 	applyTheme(theme);
 }
 

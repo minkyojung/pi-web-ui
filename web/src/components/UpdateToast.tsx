@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
 import { configStore } from "../serverState";
-import { bridge, dismiss, dismissed, offer, restartWhenIdle, updateStore } from "../update";
+import { bridge, dismissed, offer, restartWhenIdle, updateStore } from "../update";
 
 /**
  * The offer to restart into a new version, in the corner — the update flow's
@@ -25,7 +25,7 @@ export function UpdateToast() {
 
 	const version = update?.phase === "ready" ? update.version : null;
 	const what = offer(update, config, waiting);
-	const hidden = !what || (version !== null && dismissed(version));
+	const hidden = !what || (version !== null && dismissed(update, version));
 
 	useEffect(() => {
 		if (hidden || !what) {
@@ -56,7 +56,7 @@ export function UpdateToast() {
 				},
 			},
 			onDismiss: () => {
-				if (version) dismiss(version);
+				if (version) void pi.dismiss(version);
 				cancel.current?.();
 				cancel.current = null;
 				setWaiting(false);

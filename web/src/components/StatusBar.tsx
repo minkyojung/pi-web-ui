@@ -37,6 +37,7 @@ import { useSyncExternalStore, useState } from "react";
 
 import { isSpec } from "../../../documentKinds.ts";
 import { showAuthorsStore } from "../features/authors";
+import { prefs } from "../prefs.ts";
 import { inFrontStore, type Saved } from "../inFront";
 import type { Authored } from "../../../protocol.ts";
 import { AgentStatus } from "./AgentStatus";
@@ -137,26 +138,14 @@ function share(of: Authored): { agent: string | null; other: string | null } | n
 export function StatusBar({ path, piWidth, piFolded, onUnfoldPi, onOpen }: { path: string | null; piWidth: number | null; piFolded: boolean; onUnfoldPi: () => void; onOpen: (path: string) => void }) {
 	const front = useSyncExternalStore(inFrontStore.subscribe, inFrontStore.get);
 	// Which of the two the count is showing. Not beside the note — it is how you
-	// like to be told, not a fact about any one note — and kept in this browser,
-	// the way the recent list and the row of tabs are: a choice you made once
-	// and would have to make again at every launch is not a choice, it is a
+	// like to be told, not a fact about any one note — and kept with the
+	// window, the way the theme is (prefs.ts): a choice you made once and
+	// would have to make again at every launch is not a choice, it is a
 	// chore. Words to begin with, which is what a note is usually measured in.
-	const [counting, setCounting] = useState<"words" | "characters">(() =>
-		(() => {
-			try {
-				return localStorage.getItem(COUNTING) === "characters" ? "characters" : "words";
-			} catch {
-				return "words";
-			}
-		})(),
-	);
+	const [counting, setCounting] = useState<"words" | "characters">(() => (prefs.get(COUNTING) === "characters" ? "characters" : "words"));
 	const count = (want: "words" | "characters") => {
 		setCounting(want);
-		try {
-			localStorage.setItem(COUNTING, want);
-		} catch {
-			// A browser that will not keep it still counts; it just forgets which way.
-		}
+		prefs.set(COUNTING, want);
 	};
 
 	// Only ever about the note that is open. While one note is swapped for

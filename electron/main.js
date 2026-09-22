@@ -19,6 +19,7 @@ import updater from "electron-updater";
 import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
 import { CONFIG_FILE, DEFAULT_TIMEOUT, isConfig, readConfig } from "./octaveConfig.js";
+import { prefsOf, withPref } from "./prefs.js";
 import { createRuns } from "./runs.js";
 import { runScript } from "./scripts.js";
 import { createServers, idle } from "./servers.js";
@@ -295,7 +296,7 @@ async function stopServers(event) {
 // The guides are files in the repository, read on GitHub: one copy, current with the latest release.
 const DOCS = "https://github.com/minkyojung/pi-web-ui/blob/main";
 
-let update = { current: app.getVersion(), phase: "idle", version: null, progress: null, error: null, justUpdated: null };
+let update = { current: app.getVersion(), phase: "idle", version: null, progress: null, error: null, justUpdated: null, dismissed: null };
 
 function sayUpdate(patch) {
 	update = { ...update, ...patch };
@@ -324,6 +325,10 @@ function serveUpdates() {
 		writeSettings({ ...readSettings(), whatsNewSeen: app.getVersion() });
 		sayUpdate({ justUpdated: null });
 	});
+	// An offer waved away stays away for as long as the app runs, whichever
+	// page is up: the page is loaded again at every workspace, and a toast
+	// that came back at each would be asking again.
+	ipcMain.handle("update:dismiss", (_event, version) => sayUpdate({ dismissed: typeof version === "string" ? version : null }));
 }
 
 function watchForUpdates() {
@@ -823,6 +828,23 @@ function serveFolders() {
 	});
 }
 
+/**
+ * What the page keeps about the window — see prefs.js. Given whole and at
+ * once as a page loads (sendSync, from the preload), since the theme is read
+ * before the first paint; a change is one key, written through.
+ */
+function servePrefs() {
+	ipcMain.on("prefs", (event) => {
+		event.returnValue = prefsOf(readSettings());
+	});
+	ipcMain.on("prefs:set", (_event, key, value) => {
+		const settings = readSettings();
+		const was = prefsOf(settings);
+		const next = withPref(was, key, value);
+		if (next !== was) writeSettings({ ...settings, prefs: next });
+	});
+}
+
 /** Where the server writes its log — log.ts says the same, from the same two places. */
 const logPath = () => join(process.env.APP_DIR ?? join(app.getPath("home"), ".octave"), "logs", "server.log");
 
@@ -923,6 +945,7 @@ function markTrafficLights(window) {
 async function main() {
 	serveFolders();
 	serveUpdates();
+	servePrefs();
 	noteVersionRun();
 	// Before anything is started, so the servers and every command they run
 	// find what a terminal would — see shellEnv.js. A dev run was started from
