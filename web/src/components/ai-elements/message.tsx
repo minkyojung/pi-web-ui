@@ -335,6 +335,9 @@ export const MessageResponse = memo(
         className
       )}
       plugins={streamdownPlugins}
+      // No "open external link?" box: a link here opens in the Mac's browser,
+      // by the shell (electron/main.js), and a browser is where one goes.
+      linkSafety={{ enabled: false }}
       {...props}
     />
   ),
