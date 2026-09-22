@@ -80,20 +80,18 @@ export function firstWorkspace(projects, workdir) {
 }
 
 /**
- * What a workspace's row says of its branch, from what git and GitHub know:
- * a pull request's state first, since it is the person's own act — open,
- * merged, closed without merging — then git's: merged into the base by some
- * other route, on the remote, or only here. `pr` is null when gh could not
- * say, in which case git's word stands.
+ * What a workspace's row says of its branch: a pull request's state when it
+ * has one — open, merged, closed without merging — else only whether the
+ * remote has it. Merged is never read off git alone: a branch with no commit
+ * of its own, which every new workspace is, is indistinguishable there from
+ * one whose commits were all taken in (git.js onRemote).
  *
- * @returns {{ state: "local" | "pushed" | "open" | "merged" | "closed", number?: number }}
+ * @returns {{ state: "local" | "pushed" | "open" | "merged" | "closed", number?: number, url?: string | null, draft?: boolean, review?: string, checks?: { total: number, pending: number, failed: number } }}
  */
-export function statusOf({ onRemote, merged, pr }) {
+export function statusOf({ onRemote, pr }) {
 	if (pr) {
-		if (pr.state === "OPEN") return { state: "open", number: pr.number };
-		if (pr.state === "MERGED") return { state: "merged", number: pr.number };
-		if (pr.state === "CLOSED") return { state: "closed", number: pr.number };
+		const state = { OPEN: "open", MERGED: "merged", CLOSED: "closed" }[pr.state];
+		if (state) return { state, number: pr.number, url: pr.url ?? null, draft: pr.draft === true, review: pr.review ?? "", checks: pr.checks ?? { total: 0, pending: 0, failed: 0 } };
 	}
-	if (merged) return { state: "merged" };
 	return { state: onRemote ? "pushed" : "local" };
 }

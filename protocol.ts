@@ -74,6 +74,8 @@ export type ClientMsg =
 	/** `provider/id`, as config.models lists them. */
 	| { type: "set_model"; model: string }
 	| { type: "set_thinking"; level: string }
+	/** The window came back: where the branch stands may have moved outside the app. */
+	| { type: "ask_standing" }
 	| { type: "new_session" }
 	| { type: "resume_session"; path: string }
 	| { type: "prompt_response"; id: string; answer?: string; cancelled?: boolean }
@@ -634,6 +636,25 @@ export interface SpecInfo {
 	results: TaskResult[];
 }
 
+/** Where the folder's branch stands, as git knows it — see standing.ts. */
+export interface GitStanding {
+	branch: string;
+	/** The remote's default branch, `main`, or null with no remote. */
+	base: string | null;
+	/** Files changed and not committed, the app's own folder left out. */
+	changes: number;
+	/** Commits here that the base does not have; null with no base. */
+	ahead: number | null;
+	/** Commits on the base that this branch does not have; null with no base. */
+	behind: number | null;
+}
+
+/** Sent on connecting, at a turn's end, after a task's commit, and when asked (ask_standing). Null where the folder is no repository or is on no branch. */
+export interface StandingMsg {
+	type: "standing";
+	standing: GitStanding | null;
+}
+
 export interface SpecsMsg {
 	type: "specs";
 	specs: SpecInfo[];
@@ -973,6 +994,7 @@ export type StateMsg =
 	| NoteMsg
 	| SpecMsg
 	| SpecsMsg
+	| StandingMsg
 	| BacklinksMsg
 	| TaggedMsg
 	| PropertyTypesMsg

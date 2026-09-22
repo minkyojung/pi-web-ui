@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { configStore } from "../serverState";
 import { CloneRepository } from "./CloneRepository";
+import type { BranchStatus } from "../branchStanding";
 import { NewSpec, type SpecOnChoices } from "./NewSpec";
 import { RemoveWorkspace } from "./RemoveWorkspace";
 import { row } from "./sidebarRow";
@@ -15,22 +16,21 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
-/** Where a workspace's branch stands — see electron/workspaces.js `statusOf`. */
-export interface BranchStatus {
-	state: "local" | "pushed" | "open" | "merged" | "closed";
-	number?: number;
-}
-
-/** What the row says of it, after the branch, and what pointing at it says. Nothing for a branch only here or only pushed: that is the ordinary state of work. */
-export function statusWords(status: BranchStatus | undefined): { short: string; long: string } | null {
-	if (!status) return null;
+/**
+ * What the row says of the branch, after its name: a dot, in GitHub's colours
+ * — open blue, merged grey, closed red — and nothing for a branch only here
+ * or only pushed, which is work under way. The words are at the foot of the
+ * window (BranchStanding.tsx), which is where there is room for them.
+ */
+export function statusDot(status: BranchStatus | undefined): { className: string; long: string } | null {
+	if (!status || status.number === undefined) return null;
 	switch (status.state) {
 		case "open":
-			return { short: `#${status.number}`, long: `Pull request #${status.number} is open` };
+			return { className: "bg-blue-500", long: `Pull request #${status.number} is open` };
 		case "merged":
-			return { short: "merged", long: status.number ? `Merged, pull request #${status.number}` : "Merged into the default branch" };
+			return { className: "bg-muted-foreground/60", long: `Pull request #${status.number} was merged` };
 		case "closed":
-			return { short: "closed", long: `Pull request #${status.number} was closed without merging` };
+			return { className: "bg-destructive", long: `Pull request #${status.number} was closed without merging` };
 		default:
 			return null;
 	}
@@ -252,19 +252,15 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 															<GitBranchIcon />
 															<span className="truncate">{branchName(worktree.branch)}</span>
 															{(() => {
-																const said = statusWords(worktree.status);
-																return said ? (
-																	<span data-status={worktree.status?.state} className={cn("ml-auto shrink-0 text-[11px]", worktree.status?.state === "merged" ? "text-muted-foreground line-through" : "text-muted-foreground")}>
-																		{said.short}
-																	</span>
-																) : null;
+																const dot = statusDot(worktree.status);
+																return dot ? <span data-status={worktree.status?.state} aria-label={dot.long} className={cn("ml-auto size-1.5 shrink-0 rounded-full", dot.className)} /> : null;
 															})()}
 														</Button>
 														</ContextMenuTrigger>
 													</TooltipTrigger>
 													<TooltipContent side="right">
 														{worktree.branch}
-														{statusWords(worktree.status) && ` · ${statusWords(worktree.status)!.long}`}
+														{statusDot(worktree.status) && ` · ${statusDot(worktree.status)!.long}`}
 													</TooltipContent>
 												</Tooltip>
 												<ContextMenuContent>

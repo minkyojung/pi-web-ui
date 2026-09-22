@@ -8,6 +8,7 @@
 import type { Suggestions } from "../../properties.ts";
 import type { Registry } from "../../propertyTypes.ts";
 import type {
+	GitStanding,
 	AuthorsMsg,
 	Backlink,
 	BranchPoint,
@@ -173,6 +174,9 @@ export const commitStore = createStore<CommitMsg | CommitGoneMsg | null>(null);
  * not the same as a folder with no specs in it (SpecsMsg).
  */
 export const specsStore = createStore<SpecInfo[] | null>(null);
+
+/** Where the folder's branch stands, as git last said; null before the server has said, or where there is no branch. */
+export const standingStore = createStore<GitStanding | null>(null);
 
 /**
  * The folder held more notes than the walk would take, so this list is not all

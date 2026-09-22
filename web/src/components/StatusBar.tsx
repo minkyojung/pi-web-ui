@@ -40,6 +40,7 @@ import { showAuthorsStore } from "../features/authors";
 import { inFrontStore, type Saved } from "../inFront";
 import type { Authored } from "../../../protocol.ts";
 import { AgentStatus } from "./AgentStatus";
+import { BranchStanding } from "./BranchStanding";
 import { TaskResults } from "./TaskResults";
 import { Button } from "./ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
@@ -179,6 +180,9 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi, onOpen }: { pat
 				{/* First, and whatever is in front: what the spec's tasks have come
 				    to is about the work and not about the page being read, and a
 				    place that moved with the page would not be one to glance at. */}
+				{/* Before that, where the branch stands: the largest thing first,
+				    and the one that is there even with nothing in front. */}
+				<BranchStanding />
 				<TaskResults open={path} onOpen={onOpen} />
 				{/* All of it against the left edge, where the note's own text begins.
 				    The count first, because it is always there: the agent's share is

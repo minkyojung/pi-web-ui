@@ -109,7 +109,25 @@ export function pullRequestsFrom(out) {
 		const byHead = new Map();
 		for (const pr of list) {
 			if (!pr || !Number.isInteger(pr.number) || typeof pr.headRefName !== "string" || typeof pr.state !== "string") continue;
-			if (!byHead.has(pr.headRefName)) byHead.set(pr.headRefName, { number: pr.number, state: pr.state });
+			if (byHead.has(pr.headRefName)) continue;
+			// The checks, folded to what the foot of the window says of them:
+			// gh gives each as a status (its own name for a check run) with a
+			// conclusion, or as a commit status with a state.
+			const rollup = Array.isArray(pr.statusCheckRollup) ? pr.statusCheckRollup : [];
+			const checks = { total: rollup.length, pending: 0, failed: 0 };
+			for (const check of rollup) {
+				const state = String(check?.conclusion || check?.state || "").toUpperCase();
+				if (["", "PENDING", "QUEUED", "IN_PROGRESS", "EXPECTED", "WAITING", "REQUESTED"].includes(state) && String(check?.status || "").toUpperCase() !== "COMPLETED") checks.pending++;
+				else if (["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"].includes(state)) checks.failed++;
+			}
+			byHead.set(pr.headRefName, {
+				number: pr.number,
+				state: pr.state,
+				url: typeof pr.url === "string" ? pr.url : null,
+				draft: pr.isDraft === true,
+				review: typeof pr.reviewDecision === "string" ? pr.reviewDecision : "",
+				checks,
+			});
 		}
 		return byHead;
 	} catch {
@@ -124,6 +142,6 @@ export function pullRequestsFrom(out) {
  * repository, since the list is drawn a row at a time.
  */
 export async function pullRequests(root) {
-	const out = await gh(["pr", "list", "--state", "all", "--limit", "200", "--json", "number,state,headRefName"], { cwd: root, timeoutMs: 30_000 });
+	const out = await gh(["pr", "list", "--state", "all", "--limit", "200", "--json", "number,state,headRefName,url,isDraft,reviewDecision,statusCheckRollup"], { cwd: root, timeoutMs: 30_000 });
 	return out === null ? null : pullRequestsFrom(out);
 }

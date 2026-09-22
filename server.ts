@@ -56,6 +56,7 @@ import { documentType, SPEC_DOCS, SPECS_DIR } from "./documentKinds.ts";
 import { specState } from "./specApproval.ts";
 import { parseTasks, progressOf, type Progress } from "./specTasks.ts";
 import { type TaskResult, taskResults } from "./specResults.ts";
+import { standingIn } from "./standing.ts";
 import { readCommit } from "./commitRead.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
@@ -93,6 +94,7 @@ import type {
 	SnapshotMsg,
 	SpecMsg,
 	SpecsMsg,
+	StandingMsg,
 	UsageMsg,
 } from "./protocol.ts";
 
@@ -730,6 +732,15 @@ let resultsSoon: ReturnType<typeof setTimeout> | null = null;
 async function loadResults(): Promise<void> {
 	results = await taskResults(CWD);
 	saySpecs();
+	// A task's commit moves the branch too.
+	void sayStanding();
+}
+
+/** Where the branch stands, said to every window — see standing.ts. */
+async function sayStanding(to?: (msg: StandingMsg) => void): Promise<void> {
+	const msg: StandingMsg = { type: "standing", standing: await standingIn(CWD) };
+	if (to) to(msg);
+	else broadcast(msg);
 }
 
 function loadResultsSoon(): void {
@@ -1255,6 +1266,7 @@ function onEvent(event: AgentSessionEvent): void {
 	// a spec's task writes. git is asked the same question at the same moment.
 	if (event.type === "agent_settled") void loadRepo();
 	if (event.type === "agent_settled") void loadResults();
+	if (event.type === "agent_settled") void sayStanding();
 	// A finished turn is the first moment there can be something to name the
 	// session by, and each one after is another chance while there is not.
 	if (event.type === "agent_settled") void nameSession();
@@ -1765,6 +1777,7 @@ wss.on("connection", async (ws) => {
 	void loadRepo();
 	void loadResults();
 	reply(specs());
+	void sayStanding(reply);
 	reply({ type: "property_types", types: propertyTypes.all() });
 	reply({ type: "property_names", ...propertyNames.all() });
 	// A tab opened while a question is waiting should see it too.
@@ -2203,6 +2216,10 @@ wss.on("connection", async (ws) => {
 					session().setSessionName(msg.name);
 					broadcast(config());
 					broadcast(await sessions());
+					break;
+
+				case "ask_standing":
+					void sayStanding(reply);
 					break;
 
 				case "open_note": {

@@ -5,6 +5,10 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+### Added
+- The foot of the window says where this workspace's branch stands, at its left end, one thing at a time: how many changes are not committed; `↑ 2 not pushed`, then `↑ 2 pushed`; once there is a pull request, its number — press it to open it — and what its checks and reviews came to (`1 check pending…`, `checks passed`, `✗ 1 check failed` in red, `changes requested` in red, `approved`); `merged` or `closed` at the end; and `· 5 behind` when the default branch has moved on. Read from git as the window comes back and as turns end, and from GitHub through `gh`. In the sidebar the word beside a workspace is a dot now — blue for an open pull request, grey for merged, red for closed — with the words at the foot.
+### Fixed
+- A workspace made a moment ago no longer says `merged`. A branch with no commit of its own looks, to git, exactly like one whose commits were all taken in, so merged is now said only when the branch's pull request was merged.
 
 ## [0.0.7] - 2026-09-22
 ### Added

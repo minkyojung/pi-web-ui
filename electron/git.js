@@ -168,14 +168,16 @@ export async function remoteBranches(root) {
 }
 
 /**
- * Where a workspace's branch stands against the remote: whether the remote
- * has it, and whether every commit of it is in the remote's default branch
- * — merged, by whatever route. Read from what was last fetched: the list is
- * asked for often and a fetch each time would be a network call per row.
+ * Whether the remote has a workspace's branch. Read from what was last
+ * fetched: the list is asked for often and a fetch each time would be a
+ * network call per row.
+ *
+ * Not whether it is merged: git cannot tell. A branch whose every commit is
+ * in the base is what a merged branch looks like — and also what a branch
+ * with no commit of its own looks like, which every new workspace is, and so
+ * every new workspace read as merged. Merged is a pull request's word
+ * (github.js), and a spec's branch always has one.
  */
-export async function branchStanding(root, branch) {
-	const onRemote = (await git(root, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`]).catch(() => null)) !== null;
-	const base = await startOf(root);
-	const merged = base.startsWith("origin/") && (await git(root, ["merge-base", "--is-ancestor", branch, base]).then(() => true, () => false));
-	return { onRemote, merged };
+export async function onRemote(root, branch) {
+	return (await git(root, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`]).catch(() => null)) !== null;
 }

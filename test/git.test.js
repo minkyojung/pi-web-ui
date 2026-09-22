@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { CITIES, pickCity } from "../electron/cities.js";
-import { branchOf, branchStanding, changesIn, fetchOrigin, makeWorkspace, remoteBranches, removeWorktree, repositoryOf, startOf } from "../electron/git.js";
+import { branchOf, changesIn, fetchOrigin, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf, startOf } from "../electron/git.js";
 import { login } from "../electron/github.js";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
@@ -197,26 +197,27 @@ test("gh's issues are read strictly: a number and a title, a body or none, and n
 	for (const out of ["", "not json", '{"number":1}']) assert.equal(issuesFrom(out), null);
 });
 
-test("a branch's standing: only here, then on the remote once pushed, then merged once the base has its commits", async () => {
+test("a new workspace's branch is not on the remote until pushed — and never read as merged, though its every commit is in the base", async () => {
 	const repo = cloned();
 	const made = await makeWorkspace(repo.root, { into: join(repo.dir, "ws"), owner: "me" });
-	writeFileSync(join(made.path, "w.txt"), "work\n");
-	run(made.path, "add", ".");
-	run(made.path, "commit", "-q", "-m", "work");
-	assert.deepEqual(await branchStanding(repo.root, made.branch), { onRemote: false, merged: false });
+	assert.equal(await onRemote(repo.root, made.branch), false);
+	// What a fresh branch and a merged one have in common — and why git is not asked which is which:
+	run(repo.root, "merge-base", "--is-ancestor", made.branch, "origin/main");
 	run(made.path, "push", "-q", "-u", "origin", made.branch);
-	assert.deepEqual(await branchStanding(repo.root, made.branch), { onRemote: true, merged: false });
-	// Merged on the remote's main, and fetched: what the list reads from.
-	run(repo.seed, "fetch", "-q", repo.origin, made.branch);
-	run(repo.seed, "merge", "-q", "--no-ff", "-m", "merge", "FETCH_HEAD");
-	run(repo.seed, "push", "-q", repo.origin, "HEAD:main");
-	await fetchOrigin(repo.root);
-	assert.deepEqual(await branchStanding(repo.root, made.branch), { onRemote: true, merged: true });
+	assert.equal(await onRemote(repo.root, made.branch), true);
 });
 
-test("gh's pull requests are read by head branch, the newest first, and nothing else passed on", async () => {
+test("gh's pull requests are read by head branch, the newest first, with their checks folded and the rest read strictly", async () => {
 	const { pullRequestsFrom } = await import("../electron/github.js");
-	const map = pullRequestsFrom('[{"number":30,"state":"OPEN","headRefName":"me/x"},{"number":12,"state":"MERGED","headRefName":"me/x"},{"number":9,"state":"CLOSED","headRefName":"me/y"},{"number":"3","state":"OPEN","headRefName":"me/z"}]');
-	assert.deepEqual([...map], [["me/x", { number: 30, state: "OPEN" }], ["me/y", { number: 9, state: "CLOSED" }]]);
+	const map = pullRequestsFrom(JSON.stringify([
+		{ number: 30, state: "OPEN", headRefName: "me/x", url: "https://x/30", isDraft: false, reviewDecision: "APPROVED", statusCheckRollup: [{ name: "test", status: "COMPLETED", conclusion: "SUCCESS" }, { name: "e2e", status: "IN_PROGRESS", conclusion: "" }, { context: "lint", state: "FAILURE" }] },
+		{ number: 12, state: "MERGED", headRefName: "me/x" },
+		{ number: 9, state: "CLOSED", headRefName: "me/y", statusCheckRollup: "nope" },
+		{ number: "3", state: "OPEN", headRefName: "me/z" },
+	]));
+	assert.deepEqual([...map], [
+		["me/x", { number: 30, state: "OPEN", url: "https://x/30", draft: false, review: "APPROVED", checks: { total: 3, pending: 1, failed: 1 } }],
+		["me/y", { number: 9, state: "CLOSED", url: null, draft: false, review: "", checks: { total: 0, pending: 0, failed: 0 } }],
+	]);
 	assert.equal(pullRequestsFrom("nope"), null);
 });
