@@ -19,7 +19,6 @@ import {
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import { type WebSocket } from "ws";
@@ -128,7 +127,6 @@ import { isPropertyType } from "./propertyTypes.ts";
 import { backlinksOf, retarget } from "./links.ts";
 import { search } from "./search.ts";
 import { sectionFor } from "./changelog.mjs";
-import { folderMeta } from "./folderMeta.ts";
 import type {
 	Authored,
 	BranchesMsg,
@@ -192,27 +190,6 @@ const modelKey = (m: { provider: string; id: string }) => `${m.provider}/${m.id}
  * run again whenever it can have gone stale; see refreshModels below.
  */
 const availableModels = () => modelRuntime.getAvailableSnapshot();
-
-const CLIENT_DIR = process.env.CLIENT_DIR
-	? pathToFileURL(process.env.CLIENT_DIR.replace(/\/?$/, "/"))
-	: new URL("dist/", import.meta.url);
-
-const CONTENT_TYPES: Record<string, string> = {
-	".html": "text/html; charset=utf-8",
-	".js": "text/javascript; charset=utf-8",
-	// pdf.js's worker is built as a module under this name, and a browser runs
-	// a module only when it is served as JavaScript: as bytes the PDF tab says
-	// the file could not be shown — in the built app alone, since vite serves
-	// its own while developing.
-	".mjs": "text/javascript; charset=utf-8",
-	".css": "text/css; charset=utf-8",
-	".svg": "image/svg+xml",
-	".map": "application/json; charset=utf-8",
-	".ico": "image/x-icon",
-	".woff2": "font/woff2",
-	".wasm": "application/wasm",
-};
-
 
 /** A small request body, whole. Capped: the one endpoint that takes one takes a few fields. */
 function text(req: IncomingMessage): Promise<string> {
@@ -1646,7 +1623,7 @@ export async function createWorkspace(cwd: string) {
 	 * wherever the module happens to sit.
 	 */
 
-	/** Every request to this server: the app's own API, the folder's files, and the built page. */
+	/** A request for this folder: the app's own API, or a file of the folder's. The built page is the server's (server.ts). */
 	async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
 		const url = new URL(req.url ?? "/", "http://localhost");
 		const { pathname } = url;
@@ -1774,28 +1751,7 @@ export async function createWorkspace(cwd: string) {
 			return;
 		}
 
-		// The build hashes its asset names, so the set of files cannot be listed
-		// ahead of time the way the two hand-written ones could be.
-		const file = new URL(pathname === "/" ? "index.html" : pathname.slice(1), CLIENT_DIR);
-		// A path can climb out of dist/ with ..; resolving first and comparing after
-		// is the only check that survives whatever encoding it arrives in.
-		if (!file.pathname.startsWith(CLIENT_DIR.pathname)) {
-			res.writeHead(404).end("Not found");
-			return;
-		}
-		let body: Buffer;
-		try {
-			body = await readFile(file);
-		} catch {
-			if (pathname === "/") console.error("no dist/ yet — run `npm run build`, or use the vite dev server");
-			res.writeHead(404).end("Not found");
-			return;
-		}
-		const ext = file.pathname.slice(file.pathname.lastIndexOf("."));
-		res.writeHead(200, { "content-type": CONTENT_TYPES[ext] ?? "application/octet-stream" });
-		// The page is told which folder it is a window on before any of it runs —
-		// see web/src/workspace.ts for why a page cannot go by its address.
-		res.end(pathname === "/" ? folderMeta(body.toString("utf8"), CWD) : body);
+		res.writeHead(404).end("Not found");
 	}
 
 	/** A tab connected: told everything it needs to start, and listened to from then on. */
