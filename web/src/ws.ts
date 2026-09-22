@@ -325,6 +325,21 @@ function connect(): void {
 	ws.onerror = () => {};
 }
 
+/**
+ * The socket closed and opened again, on the folder the page is on now: the
+ * window moved to another workspace (switch.ts). The old socket's close is
+ * not a reconnect — its generation is over — and the new one begins as a
+ * first connection, not a retry.
+ */
+export function reconnect(): void {
+	if (disposed) return;
+	generation++;
+	socket?.close();
+	socket = null;
+	attempt = 0;
+	connect();
+}
+
 /** Skip the wait when something says the connection should work now. */
 function retryNow(): void {
 	if (disposed) return;

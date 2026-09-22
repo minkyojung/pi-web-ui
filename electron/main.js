@@ -491,10 +491,14 @@ async function show(workdir) {
 	writeSettings({ ...readSettings(), workdir });
 	// The agent acts on this folder, so it should never be a guess.
 	window.setTitle(`Octave — ${basename(workdir)}`);
-	// A load cut short by the next switch is that switch's to finish. Which
-	// folder the page is a window on goes on its address: one server serves
-	// them all, and the page says which it means (web/src/workspace.ts).
-	await window.loadURL(`${url}?folder=${encodeURIComponent(workdir)}`).catch((err) => console.error(`[window] ${err.message}`));
+	// A page already up on the server is told, and moves in place — its
+	// stores, its socket, its tree, and nothing else (web/src/switch.ts). One
+	// not yet, or on the first screen, is loaded: which folder it is a window
+	// on goes on its address, since one server serves them all and the page
+	// says which it means (web/src/workspace.ts). A load cut short by the next
+	// switch is that switch's to finish.
+	if (window.webContents.getURL().startsWith(url)) window.webContents.send("workspace:show", workdir);
+	else await window.loadURL(`${url}?folder=${encodeURIComponent(workdir)}`).catch((err) => console.error(`[window] ${err.message}`));
 	timing.shell.loaded = Date.now();
 	landing(timing);
 }

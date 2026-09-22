@@ -13,20 +13,29 @@ const shell = (window as { pi?: { landed?: (marks: { origin: number; socket?: nu
 let socket: number | undefined;
 let state: number | undefined;
 let reported = false;
+/** When this landing began: the page's start, or the moment the window was moved to another workspace in place. */
+let began = 0;
+
+/** The window is moving to another workspace without the page being made again: the next three moments are that switch's. */
+export function beginSwitch(): void {
+	began = performance.now();
+	socket = state = undefined;
+	reported = false;
+}
 
 export function socketOpened(): void {
-	if (socket === undefined) socket = performance.now();
+	if (socket === undefined) socket = performance.now() - began;
 }
 
 /** The first state landed; drawn is two frames on, and then the shell is told. */
 export function stateLanded(): void {
 	if (state !== undefined) return;
-	state = performance.now();
+	state = performance.now() - began;
 	requestAnimationFrame(() =>
 		requestAnimationFrame(() => {
 			if (reported) return;
 			reported = true;
-			shell?.({ origin: performance.timeOrigin, socket, state, painted: performance.now() });
+			shell?.({ origin: performance.timeOrigin + began, socket, state, painted: performance.now() - began });
 		}),
 	);
 }

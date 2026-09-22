@@ -115,6 +115,12 @@ contextBridge.exposeInMainWorld("pi", {
 			ipcRenderer.on("workspaces:changed", handler);
 			return () => ipcRenderer.off("workspaces:changed", handler);
 		},
+		/** The window is on another workspace now, this page still up: `folder` is the one — see web/src/switch.ts. */
+		onShow: (listen) => {
+			const handler = (_event, folder) => listen(folder);
+			ipcRenderer.on("workspace:show", handler);
+			return () => ipcRenderer.off("workspace:show", handler);
+		},
 	},
 	/**
 	 * The updater, which lives in the shell: where it is, and the two things

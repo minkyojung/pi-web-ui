@@ -4,7 +4,7 @@ import { cn } from "cn";
 import { ChevronRightIcon, GitBranchIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { configStore } from "../serverState";
+import { configStore, createStore } from "../serverState";
 import { CloneRepository } from "./CloneRepository";
 import type { BranchStatus } from "../branchStanding";
 import { NewSpec, type SpecOnChoices } from "./NewSpec";
@@ -101,31 +101,32 @@ export function usePageFolder(): string | null {
  * The shell's list, kept up: `undefined` until the shell has answered, then
  * the list, or null where there is none — a browser tab, a dev run.
  */
+/**
+ * The list itself, the window's rather than any folder's: the same in every
+ * workspace, so it is kept outside the tree — which is remade when the
+ * window moves to another workspace (switch.ts) — and asked for once, then
+ * again whenever the shell says it changed or the window comes back. What
+ * was drawn stays drawn meanwhile.
+ */
+const listStore = createStore<WorkspaceList | null | undefined>(workspaceShell ? undefined : null, { window: true });
+function loadList(): void {
+	workspaceShell?.list().then(
+		(next) => listStore.set(next),
+		() => listStore.set(listStore.get() ?? null),
+	);
+}
+if (workspaceShell) {
+	loadList();
+	workspaceShell.onChange(loadList);
+	// A branch renamed inside a workspace — by hand, in a terminal — is news
+	// only git has, so the list is asked again when the window comes back.
+	window.addEventListener("focus", loadList);
+}
+
 export function useWorkspaceList(): WorkspaceList | null | undefined {
-	const [list, setList] = useState<WorkspaceList | null | undefined>(workspaceShell ? undefined : null);
+	const list = useSyncExternalStore(listStore.subscribe, listStore.get);
 	/** The one way to ask, held where the turn below can reach it too. */
-	const ask = useRef<() => void>(() => {});
-	useEffect(() => {
-		if (!workspaceShell) return;
-		let live = true;
-		const load = () => {
-			workspaceShell.list().then(
-				(next) => live && setList(next),
-				() => live && setList((was) => was ?? null),
-			);
-		};
-		ask.current = load;
-		load();
-		const stop = workspaceShell.onChange(load);
-		// A branch renamed inside a workspace — by hand, in a terminal — is news
-		// only git has, so the list is asked again when the window comes back.
-		window.addEventListener("focus", load);
-		return () => {
-			live = false;
-			stop();
-			window.removeEventListener("focus", load);
-		};
-	}, []);
+	const ask = useRef<() => void>(loadList);
 	// And the moment a turn ends, which is the other time it changes: the turn
 	// that names a spec renames the branch after it (spec.ts), so a row that
 	// said `bangkok` says `email-auth` as the answer arrives rather than the
