@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { firstWorkspace, projectsOf, reordered, statusOf, withWorkspace, withoutWorkspace } from "../electron/workspaces.js";
+import { firstWorkspace, projectsOf, reordered, statusOf, withWorkspace, workspaceState } from "../electron/workspaces.js";
 
 const everywhere = () => true;
 const tree = (path, name = "trenton") => ({ path, branch: `me/${name}`, name });
@@ -60,11 +60,37 @@ test("starting opens the workspace in front last time, and no other in its place
 	assert.equal(firstWorkspace([], "/notes"), null);
 });
 
-test("a workspace removed leaves its repository on the list, with the rest of its workspaces", () => {
+test("a workspace archived keeps its row, with the commit it stood on, and its repository keeps the rest", () => {
 	const projects = [{ path: "/a", worktrees: [tree("/a-1", "one"), tree("/a-2", "two")], retired: [] }, { path: "/b", worktrees: [tree("/b-1", "three")], retired: [] }];
-	assert.deepEqual(withoutWorkspace(projects, "/a-1"), [{ path: "/a", worktrees: [tree("/a-2", "two")] , retired: ["one"] }, projects[1]]);
-	assert.deepEqual(withoutWorkspace(projects, "/b-1"), [projects[0], { path: "/b", worktrees: [] , retired: ["three"] }]);
-	assert.equal(withoutWorkspace(projects, "/nowhere")[0], projects[0], "nothing by that path, nothing changed");
+	const archived = workspaceState(projects, "/a-1", "archived", { commit: "abc", at: "2026-09-22T00:00:00.000Z" });
+	assert.deepEqual(archived[0].worktrees, [{ ...tree("/a-1", "one"), state: "archived", commit: "abc", at: "2026-09-22T00:00:00.000Z" }, tree("/a-2", "two")]);
+	assert.deepEqual(archived[1], projects[1], "the other repository is untouched");
+	assert.deepEqual(workspaceState(projects, "/nowhere", "archived"), projects, "nothing by that path, nothing changed");
+});
+
+test("archiving is written before the folder goes, and what it remembers is kept when it is done", () => {
+	const projects = [{ path: "/a", worktrees: [tree("/a-1", "one")], retired: [] }];
+	const going = workspaceState(projects, "/a-1", "archiving", { commit: "abc" });
+	assert.deepEqual(going[0].worktrees[0], { ...tree("/a-1", "one"), state: "archiving", commit: "abc" });
+	const done = workspaceState(going, "/a-1", "archived", { at: "2026-09-22T00:00:00.000Z" });
+	assert.deepEqual(done[0].worktrees[0], { ...tree("/a-1", "one"), state: "archived", commit: "abc", at: "2026-09-22T00:00:00.000Z" }, "the commit read before the folder went is still there");
+});
+
+test("a workspace brought back is a workspace again, and remembers nothing of having been away", () => {
+	const projects = workspaceState([{ path: "/a", worktrees: [tree("/a-1", "one")], retired: [] }], "/a-1", "archived", { commit: "abc", at: "2026-09-22T00:00:00.000Z" });
+	assert.deepEqual(workspaceState(projects, "/a-1", null)[0].worktrees, [tree("/a-1", "one")]);
+});
+
+test("an archived workspace is on the list though its folder is not, and is not the one the app opens on", () => {
+	const settings = { projects: [{ path: "/a", worktrees: [{ ...tree("/a-1", "one"), state: "archived", commit: "abc" }, tree("/a-2", "two"), { ...tree("/a-3", "three"), state: "archiving" }] }] };
+	const here = (path) => path === "/a" || path === "/a-2";
+	const projects = projectsOf(settings, here);
+	assert.deepEqual(projects[0].worktrees.map((w) => w.path), ["/a-1", "/a-2", "/a-3"], "only a workspace you can open has to be there");
+	assert.equal(projects[0].worktrees[0].commit, "abc");
+	assert.equal(firstWorkspace(projects, "/a-1"), null, "the one in front last time was archived since; the app starts on its first screen");
+	assert.equal(firstWorkspace(projects, "/a-2"), "/a-2");
+	const odd = projectsOf({ projects: [{ path: "/a", worktrees: [{ ...tree("/a-1", "one"), state: "gone", commit: 3 }] }] }, here);
+	assert.deepEqual(odd[0].worktrees, [], "a state the settings made up is no state, and then the folder has to be there");
 });
 
 test("a branch's status is its pull request's when it has one, else only whether the remote has it — never merged by git alone", () => {
@@ -79,13 +105,9 @@ test("a branch's status is its pull request's when it has one, else only whether
 	assert.deepEqual(statusOf({ onRemote: false, pr: { number: 1, state: "WHAT" } }), { state: "local" }, "a state gh does not have is no pull request");
 });
 
-test("a workspace removed retires its name, so the repository never makes another by it and opens on its conversations", () => {
+test("the names of workspaces removed before archiving was how it was done are still not given out again", () => {
 	const projects = projectsOf({ projects: [{ path: "/a", worktrees: [tree("/w/lima", "lima"), tree("/w/oslo", "oslo")], retired: ["tokyo", "tokyo", 3] }] }, everywhere);
 	assert.deepEqual(projects[0].retired, ["tokyo"], "read once each, strings only");
-	const after = withoutWorkspace(projects, "/w/lima");
-	assert.deepEqual(after[0].worktrees, [tree("/w/oslo", "oslo")]);
-	assert.deepEqual(after[0].retired, ["tokyo", "lima"]);
-	assert.deepEqual(withoutWorkspace(after, "/w/nowhere"), after);
 	assert.deepEqual(withWorkspace([], "/b")[0].retired, [], "a repository new to the list has retired none");
 });
 

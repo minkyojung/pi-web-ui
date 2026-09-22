@@ -13,14 +13,23 @@
  */
 
 /**
- * @typedef {{ path: string, branch: string, name: string }} Worktree
+ * @typedef {{ path: string, branch: string, name: string, state?: "archiving" | "archived", commit?: string, at?: string }} Worktree
  * @typedef {{ path: string, worktrees: Worktree[], retired: string[] }} Project
  *
- * `retired` is the names of the workspaces the repository has had and
- * removed. pi keeps a folder's conversations by its path, and a branch is
- * renamed once the work has a subject — so a name whose folder and branch
- * are both gone would be picked again, and the new workspace would open on
- * the old one's conversations. A name once used is not used again.
+ * A workspace with no `state` is one you can open: its folder is there. An
+ * archived one has given its folder back and kept everything else — its
+ * branch, the commit it stood on, and the conversation pi keeps by the
+ * folder's path — so it is a row that can be brought back rather than a row
+ * that is gone. `archiving` is the moment in between, written before the
+ * folder is taken away: a shell that dies in that moment leaves a row that
+ * says what was being done, and the next start finishes it.
+ *
+ * `retired` is the names of the workspaces the repository removed before
+ * archiving was how it was done. pi keeps a folder's conversations by its
+ * path, and a branch is renamed once the work has a subject — so a name
+ * whose folder and branch are both gone would be picked again, and the new
+ * workspace would open on the old one's conversations. A name once used is
+ * not used again; archived workspaces keep their own names on the list.
  */
 
 const isPath = (value) => typeof value === "string" && value.length > 0;
@@ -28,7 +37,14 @@ const isPath = (value) => typeof value === "string" && value.length > 0;
 /** A worktree as the settings hold it, or null for anything that is not one. */
 function worktreeFrom(value) {
 	if (!value || !isPath(value.path) || !isPath(value.branch) || !isPath(value.name)) return null;
-	return { path: value.path, branch: value.branch, name: value.name };
+	const worktree = { path: value.path, branch: value.branch, name: value.name };
+	if (value.state !== "archived" && value.state !== "archiving") return worktree;
+	return {
+		...worktree,
+		state: value.state,
+		...(isPath(value.commit) ? { commit: value.commit } : {}),
+		...(isPath(value.at) ? { at: value.at } : {}),
+	};
 }
 
 /**
@@ -46,7 +62,9 @@ export function projectsOf(settings, exists) {
 		seen.add(entry.path);
 		const worktrees = (Array.isArray(entry.worktrees) ? entry.worktrees : [])
 			.map(worktreeFrom)
-			.filter((worktree) => worktree && !seen.has(worktree.path) && exists(worktree.path));
+			// An archived workspace has no folder — that is what archiving it was
+			// — so it is on the list by its row rather than by a folder being there.
+			.filter((worktree) => worktree && !seen.has(worktree.path) && (worktree.state ? true : exists(worktree.path)));
 		for (const worktree of worktrees) seen.add(worktree.path);
 		const retired = Array.isArray(entry.retired) ? [...new Set(entry.retired.filter(isPath))] : [];
 		projects.push({ path: entry.path, worktrees, retired });
@@ -85,25 +103,34 @@ export function reordered(projects, paths) {
 	return [...named, ...projects.filter((project) => !named.includes(project))];
 }
 
-/** The projects without the workspace at `path`; its repository stays, with the rest of its workspaces, and the name is retired. */
-export function withoutWorkspace(projects, path) {
+/**
+ * The projects with the workspace at `path` in the state given, and with
+ * `commit` and `at` on it when it is archived — Conductor's Archive, which
+ * keeps the row and gives back the folder. `null` is the way back: the row is
+ * a workspace you can open again, and what it remembered of the archive goes.
+ * A path that is no workspace changes nothing.
+ */
+export function workspaceState(projects, path, state, { commit = null, at = null } = {}) {
 	return projects.map((project) => {
-		const gone = project.worktrees.find((w) => w.path === path);
-		if (!gone) return project;
-		return { ...project, worktrees: project.worktrees.filter((w) => w !== gone), retired: project.retired.includes(gone.name) ? project.retired : [...project.retired, gone.name] };
+		const had = project.worktrees.find((w) => w.path === path);
+		if (!had) return project;
+		const now = { path: had.path, branch: had.branch, name: had.name };
+		const next = state === null ? now : { ...now, state, ...(commit ? { commit } : had.commit ? { commit: had.commit } : {}), ...(at ? { at } : had.at ? { at: had.at } : {}) };
+		return { ...project, worktrees: project.worktrees.map((w) => (w === had ? next : w)) };
 	});
 }
 
 /**
  * The workspace to open on starting: the one in front last time, if it is
- * still on the list — the person opened it, and it is put back. Else none,
+ * still on the list and not archived — the person opened it, and it is put
+ * back. Else none,
  * and the app starts on its first screen: a workspace is opened by the person
  * and not for them, so another is not opened in its place. A folder in front
  * that is not a listed workspace — a repository's own clone, a folder of
  * notes from before — is not opened: work happens in a workspace.
  */
 export function firstWorkspace(projects, workdir) {
-	return projects.flatMap((project) => project.worktrees).find((worktree) => worktree.path === workdir)?.path ?? null;
+	return projects.flatMap((project) => project.worktrees).find((worktree) => worktree.path === workdir && !worktree.state)?.path ?? null;
 }
 
 /**

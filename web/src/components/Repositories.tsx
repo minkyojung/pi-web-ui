@@ -5,7 +5,7 @@ import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifi
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "cn";
-import { ChevronRightIcon, GitBranchIcon, PlusIcon } from "lucide-react";
+import { ArchiveIcon, ChevronRightIcon, GitBranchIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { orderedBy, spent } from "../repoOrder";
@@ -13,10 +13,11 @@ import { configStore } from "../serverState";
 import { CloneRepository } from "./CloneRepository";
 import type { BranchStatus } from "../branchStanding";
 import { NewSpec, type SpecOnChoices } from "./NewSpec";
-import { RemoveWorkspace } from "./RemoveWorkspace";
+import { ArchiveWorkspace } from "./ArchiveWorkspace";
 import { row } from "./sidebarRow";
 import { Button } from "./ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { Spinner } from "./ui/spinner";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -43,7 +44,7 @@ export function statusDot(status: BranchStatus | undefined): { className: string
 
 /** The list the shell keeps — see electron/workspaces.js and preload.cjs. */
 export interface WorkspaceList {
-	projects: { path: string; name: string; worktrees: { path: string; name: string; branch: string; status?: BranchStatus }[] }[];
+	projects: { path: string; name: string; worktrees: { path: string; name: string; branch: string; state?: "archiving" | "archived" | null; at?: string | null; status?: BranchStatus }[] }[];
 }
 
 /** The shell's side of the list, absent in a browser tab. */
@@ -56,7 +57,8 @@ const workspaceShell = (
 				branches(root: string): Promise<{ branches: string[]; base: string | null } | null>;
 				open(path: string): Promise<void>;
 				changes(path: string): Promise<number | null>;
-				remove(path: string, seen: number): Promise<{ error?: string; changes?: number; warning?: string } | null>;
+				archive(path: string, seen: number): Promise<{ error?: string; changes?: number; warning?: string } | null>;
+				restore(path: string): Promise<{ error?: string } | null>;
 				setup(path: string): Promise<{ error?: string; ran?: boolean } | null>;
 				onSetup(listen: (path: string, stage: "running" | null) => void): () => void;
 				onChange(listen: () => void): () => void;
@@ -153,7 +155,7 @@ export function useWorkspaceList(): WorkspaceList | null | undefined {
 export function Repositories({ list, choices }: { list: WorkspaceList; choices?: SpecOnChoices }) {
 	/** The repository a spec is being started in, while the dialog for it is open. */
 	const [starting, setStarting] = useState<{ path: string; name: string } | null>(null);
-	/** The workspace being asked about before it is removed. */
+	/** The workspace being asked about before it is archived. */
 	const [doomed, setDoomed] = useState<{ path: string; branch: string } | null>(null);
 	const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
 	const [cloning, setCloning] = useState(false);
@@ -175,6 +177,33 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 			}),
 		[],
 	);
+
+	/**
+	 * The archived workspaces being brought back, for their rows to say so.
+	 * The shell makes the folder again and then runs the repository's setup,
+	 * which can take as long as an install: the row leaves the archived group
+	 * as soon as there is a folder, and the window goes there when it is ready.
+	 */
+	const [restoring, setRestoring] = useState<ReadonlySet<string>>(() => new Set());
+	const restore = (path: string) => {
+		setRestoring((was) => new Set(was).add(path));
+		const done = () =>
+			setRestoring((was) => {
+				const next = new Set(was);
+				next.delete(path);
+				return next;
+			});
+		shell.restore(path).then(
+			(result) => {
+				done();
+				if (result?.error) toast.error(result.error);
+			},
+			(err: Error) => {
+				done();
+				toast.error(err.message);
+			},
+		);
+	};
 
 	// Adding one moves the window into it; what is left to say here is why not.
 	const addLocal = () => {
@@ -247,7 +276,7 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 				</DropdownMenu>
 			</div>
 			<CloneRepository open={cloning} onOpenChange={setCloning} />
-			<RemoveWorkspace workspace={doomed} onClose={() => setDoomed(null)} shell={shell} />
+			<ArchiveWorkspace workspace={doomed} onClose={() => setDoomed(null)} shell={shell} />
 			<NewSpec repository={starting} repositories={list.projects} onRepository={setStarting} onClose={() => setStarting(null)} create={shell.create} setup={shell.onSetup} branches={shell.branches} issues={issuesOf} choices={choices} />
 			{/* The order of the repositories is the person's: a row is dragged to
 			    where it belongs, and the shell keeps it that way. What is drawn
@@ -264,7 +293,9 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 								here={here}
 								shell={shell}
 								onSpec={() => setStarting({ path: project.path, name: project.name })}
-								onRemove={setDoomed}
+								onArchive={setDoomed}
+								onRestore={restore}
+								restoring={restoring}
 								onMove={(by) => move(arrayMove(paths, at, at + by))}
 								first={at === 0}
 								last={at === ordered.length - 1}
@@ -287,14 +318,16 @@ type Project = WorkspaceList["projects"][number];
  * header — so a workspace row is not a handle for the repository above it,
  * and a repository travels with its workspaces.
  */
-function Repository({ project, open, onFold, here, shell, onSpec, onRemove, onMove, first, last }: {
+function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onRestore, restoring, onMove, first, last }: {
 	project: Project;
 	open: boolean;
 	onFold: () => void;
 	here: string | null;
 	shell: Shell;
 	onSpec: () => void;
-	onRemove: (workspace: { path: string; branch: string }) => void;
+	onArchive: (workspace: { path: string; branch: string }) => void;
+	onRestore: (path: string) => void;
+	restoring: ReadonlySet<string>;
 	onMove: (by: -1 | 1) => void;
 	first: boolean;
 	last: boolean;
@@ -305,6 +338,12 @@ function Repository({ project, open, onFold, here, shell, onSpec, onRemove, onMo
 	// drag, and that is what Move up and Move down in the menu are — the way
 	// in without a pointer, and the way a test asks for the same thing.
 	const { attributes: { role: _role, tabIndex: _tabIndex, ...attributes }, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: project.path });
+	// The ones you can open, and the ones that were archived — which are a
+	// group of their own at the foot of the list, folded, since they are what
+	// the repository has finished with. Conductor keeps them the same way.
+	const live = project.worktrees.filter((worktree) => !worktree.state);
+	const archived = project.worktrees.filter((worktree) => worktree.state);
+	const [showArchived, setShowArchived] = useState(false);
 	return (
 		<li
 			ref={setNodeRef}
@@ -351,7 +390,7 @@ function Repository({ project, open, onFold, here, shell, onSpec, onRemove, onMo
 				</ContextMenu>
 				<CollapsibleContent asChild>
 					<ul className="flex flex-col pl-3">
-						{project.worktrees.map((worktree) => {
+						{live.map((worktree) => {
 							const active = worktree.path === here;
 							return (
 								<li key={worktree.path}>
@@ -389,14 +428,55 @@ function Repository({ project, open, onFold, here, shell, onSpec, onRemove, onMo
 									</Tooltip>
 									<ContextMenuContent>
 										{/* The menu is let go of first, so the dialog is not opened behind it. */}
-										<ContextMenuItem variant="destructive" onSelect={() => queueMicrotask(() => onRemove({ path: worktree.path, branch: branchName(worktree.branch) }))}>
-											Remove workspace…
+										<ContextMenuItem variant="destructive" onSelect={() => queueMicrotask(() => onArchive({ path: worktree.path, branch: branchName(worktree.branch) }))}>
+											Archive workspace…
 										</ContextMenuItem>
 									</ContextMenuContent>
 									</ContextMenu>
 								</li>
 							);
 						})}
+						{archived.length > 0 && (
+							<li>
+								<Collapsible open={showArchived} onOpenChange={setShowArchived} className="group/archived">
+									<CollapsibleTrigger asChild>
+										<Button variant="ghost" size="sm" data-archived={project.path} className={cn(row, "text-muted-foreground")}>
+											<ChevronRightIcon className="transition-transform group-data-[state=open]/archived:rotate-90" />
+											<span className="truncate">Archived</span>
+											<span className="ml-auto text-xs tabular-nums">{archived.length}</span>
+										</Button>
+									</CollapsibleTrigger>
+									<CollapsibleContent asChild>
+										<ul className="flex flex-col">
+											{archived.map((worktree) => (
+												<li key={worktree.path}>
+													<Tooltip>
+														<TooltipTrigger asChild>
+															{/* A click is the one thing there is to do with it: the
+															    folder is what was given back, and asking for it
+															    back is asking for this workspace. */}
+															<Button
+																variant="ghost"
+																size="sm"
+																data-workspace={worktree.path}
+																data-archived-workspace={worktree.path}
+																disabled={restoring.has(worktree.path)}
+																onClick={() => onRestore(worktree.path)}
+																className={cn(row, "text-muted-foreground")}
+															>
+																{restoring.has(worktree.path) ? <Spinner /> : <ArchiveIcon />}
+																<span className="truncate">{branchName(worktree.branch)}</span>
+															</Button>
+														</TooltipTrigger>
+														<TooltipContent side="right">{worktree.branch} · archived, click to bring it back</TooltipContent>
+													</Tooltip>
+												</li>
+											))}
+										</ul>
+									</CollapsibleContent>
+								</Collapsible>
+							</li>
+						)}
 					</ul>
 				</CollapsibleContent>
 			</Collapsible>
