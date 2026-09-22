@@ -1,8 +1,9 @@
 /**
  * Git, run as the person would run it: the git on their PATH (shellEnv.js),
- * with their configuration and their credentials, and never waiting on a
- * prompt — a fetch that would ask for a password fails instead, since there
- * is no terminal for it to ask in.
+ * with their configuration and their credentials — their gh sign-in among
+ * them, handed down since git cannot find it on its own (credentials.js) —
+ * and never waiting on a prompt: a fetch that would ask for a password fails
+ * instead, since there is no terminal for it to ask in.
  *
  * A workspace is a worktree of a repository on a branch of its own, made the
  * way Conductor makes one: fetched first, so it starts from the latest commit
@@ -14,14 +15,16 @@ import { mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { pickCity } from "./cities.js";
+import { gitEnv } from "./credentials.js";
 
 /** Git's answer, trimmed; its own words when it refuses. */
-export function git(cwd, args, { timeoutMs = 60_000 } = {}) {
+export async function git(cwd, args, { timeoutMs = 60_000 } = {}) {
+	const env = { ...process.env, ...(await gitEnv()) };
 	return new Promise((resolve, reject) => {
 		execFile(
 			"git",
 			args,
-			{ cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 },
+			{ cwd, env, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 },
 			(err, stdout, stderr) => {
 				if (err) reject(new Error(String(stderr).trim() || err.message));
 				else resolve(String(stdout).trim());

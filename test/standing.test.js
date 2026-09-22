@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { baseLine, baseOf, standingIn } from "../standing.ts";
+import { baseLine, baseOf, githubLine, standingIn } from "../standing.ts";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
 
@@ -72,4 +72,7 @@ test("the base is told to the agent as what a diff or a pull request is against,
 	assert.equal(await baseOf(root), "origin/main");
 	assert.match(baseLine("origin/main"), /^This branch was started from origin\/main, .*pull request is against it/);
 	assert.equal(baseLine(null), null);
+	assert.match(githubLine("origin/main", undefined), /^Octave found no GitHub sign-in .*`gh auth login`, rather than trying again\.$/);
+	assert.equal(githubLine("origin/main", "gho_t"), null);
+	assert.equal(githubLine(null, undefined), null);
 });

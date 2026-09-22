@@ -9,6 +9,8 @@
  */
 import { execFile } from "node:child_process";
 
+import { gitEnv } from "./credentials.js";
+
 /** gh's answer, trimmed, or null when there is no gh, no sign-in, or no answer. */
 function gh(args, { timeoutMs = 15_000, cwd } = {}) {
 	return new Promise((resolve) => {
@@ -68,8 +70,9 @@ export async function clone({ owner, name }, into) {
 	const [command, args] = (await login())
 		? ["gh", ["repo", "clone", `${owner}/${name}`, into]]
 		: ["git", ["clone", `https://github.com/${owner}/${name}.git`, into]];
+	const env = { ...process.env, ...(await gitEnv()), GH_PROMPT_DISABLED: "1" };
 	await new Promise((resolve, reject) => {
-		execFile(command, args, { env: { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" }, timeout: 10 * 60_000 }, (err, _stdout, stderr) => {
+		execFile(command, args, { env, timeout: 10 * 60_000 }, (err, _stdout, stderr) => {
 			if (err) reject(new Error(String(stderr).trim() || err.message));
 			else resolve();
 		});

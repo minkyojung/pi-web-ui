@@ -27,6 +27,7 @@ import { createServers, idle } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
 import { branchOf, changesIn, git, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
 import { clone, issues, login, pullRequests, repositories, repositoryName } from "./github.js";
+import { gitEnv } from "./credentials.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
 import { firstWorkspace, projectsOf, statusOf, withWorkspace, withoutWorkspace } from "./workspaces.js";
@@ -125,9 +126,12 @@ async function startServer(workdir) {
 	// a dev build) and go first on the server's PATH, which is where pi looks
 	// for them before it thinks of downloading its own.
 	const tools = app.isPackaged ? join(process.resourcesPath, "bin") : here("../build/bin");
+	// The person's GitHub sign-in goes with it, for the agent's git and gh —
+	// see credentials.js.
 	const child = spawn(process.execPath, [here("../dist-server/server.mjs")], {
 		env: {
 			...process.env,
+			...(await gitEnv()),
 			PATH: `${tools}:${process.env.PATH ?? ""}`,
 			ELECTRON_RUN_AS_NODE: "1",
 			PORT: String(port),

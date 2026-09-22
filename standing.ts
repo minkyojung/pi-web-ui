@@ -53,3 +53,14 @@ export async function standingIn(cwd: string): Promise<GitStanding | null> {
  */
 export const baseLine = (base: string | null): string | null =>
 	base ? `This branch was started from ${base}, the repository's target branch: a diff, a rebase or a pull request is against it, not against whatever branch happens to be checked out elsewhere.` : null;
+
+/**
+ * What the agent is told of GitHub, after the base: nothing when the shell
+ * handed a sign-in down (electron/credentials.js) or there is no remote to
+ * reach; else that none was found — git may still have credentials of its
+ * own, so not that a push will fail, but what to do when one does.
+ */
+export const githubLine = (base: string | null, token: string | undefined): string | null =>
+	base && !token
+		? "Octave found no GitHub sign-in to hand you: nobody has run `gh auth login` on this machine. Git may still have credentials of its own; if a push, a fetch or `gh` fails for want of them, say so and ask the person to sign in with `gh auth login`, rather than trying again."
+		: null;
