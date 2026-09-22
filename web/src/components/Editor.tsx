@@ -16,7 +16,7 @@ import { indentListItem, listBackspace, listEnter, outdentListItem } from "../fe
 import { listNumbers } from "../features/listNumbers";
 import { listIndent } from "../features/listIndent";
 import { authors, clearAuthors, paintAuthors, showAuthorsStore } from "../features/authors";
-import { blocked as startBlocked, chrome as startChrome, onStart, running as startRunning, taskStart } from "../features/taskStart";
+import { blocked as startBlocked, chrome as startChrome, onStart, running as startRunning } from "../features/taskStart";
 import { chipChrome, commits as taskCommits, onCommit, taskCommit } from "../features/taskCommit";
 import { forget as forgetMoves, observe as observeMoves, take as takeMoves } from "../features/moves";
 import { livePreview, toggleLivePreview, toggleTask } from "../features/livePreview";
@@ -477,11 +477,13 @@ export function Editor({
 				EditorView.updateListener.of((u) => {
 					if (held.current.length > 0 && !u.view.composing) releaseHeld();
 					// What the selection covers of a spec's tasks, for the bar over
-					// them (TaskBar): a cursor covers nothing — one task is its Start.
+					// them (TaskBar) — a cursor is its line's task: the bar is the one
+					// way to run, since the Start beside each line was turned off
+					// (two ways to run is "which one?" — spec-mode.md 6절).
 					if (u.selectionSet || u.docChanged) {
 						const spec = isTasks(at.current) ? specNameOf(at.current) : null;
 						const text = u.state.doc.toString();
-						const numbers = spec === null ? [] : [...new Set(u.state.selection.ranges.filter((range) => !range.empty).flatMap((range) => tasksBetween(text, range.from, range.to).map((task) => task.number)))];
+						const numbers = spec === null ? [] : [...new Set(u.state.selection.ranges.flatMap((range) => tasksBetween(text, range.from, range.to).map((task) => task.number)))];
 						pickTasks(spec !== null && numbers.length > 0 ? { spec, numbers } : null);
 					}
 					if (u.state.field(propertiesField) !== u.startState.field(propertiesField)) setRead(u.state.field(propertiesField));
@@ -606,7 +608,9 @@ export function Editor({
 		);
 		v.dispatch({
 			effects: startRoom.reconfigure([
-				taskStart,
+				// The Start beside each task line is off (taskStart, kept): the bar
+				// over the document runs the task the cursor is on, or the ones a
+				// selection covers, and one way to run is enough.
 				startChrome.of(buttonVariants({ variant: "ghost", size: "icon-xs" })),
 				startBlocked.of(why),
 				// What each task done came to, at the end of its line: the commit of
