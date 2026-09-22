@@ -77,6 +77,24 @@ To read a file as it is now, ⌘P finds any file in the repository and opens it 
 there, in your own editor at the line you were reading. When every task is done the branch is the pull request: the code and the three documents
 together.
 
+**A repository can say how it is worked in.** Octave makes a fresh folder for every spec, and a fresh folder has
+only what is committed — no dependencies, no `.env`. Type `/setup` in the agent's column, or press `Set up` at
+the foot of the window, and the agent drafts `.octave/config.toml` from what is there: package files, CI, the
+README. Read it and fix it; it is a short file, and yours. What goes in it:
+
+- `setup`, run in every new workspace before it opens — `npm ci`, say. Fails, and the workspace stays on the
+  list with what you typed; the dialog says why, and *Run setup again* is in the workspace's right-click menu.
+- `[[scripts.check]]`, one per check: run after every task the agent finishes, before its commit, in order.
+  Each ends up under the commit as `Verified: unit — exit 0`, and the list at the foot of the window shows a
+  tick or a red cross for it, beside the circle that stands for the agent's own word. A check that exits 2
+  stops the commit altogether; any other failure is committed and marked, so a failed try is still a record.
+- `[scripts.run.dev]`, a dev server or a watcher: the ▶ at the foot of the window, on a port of the
+  workspace's own in `OCTAVE_PORT`.
+- `archive`, run just before a workspace is removed.
+
+What each printed is in the workspace's `.pi/runs/` folder. Octave runs these and understands none of them,
+so any language and any tool is fine; it only reads the exit code.
+
 ## 3. Sign in
 
 With nobody signed in yet, the middle of the window says so and has the button. The agent runs on models from

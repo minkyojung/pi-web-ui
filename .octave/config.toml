@@ -1,0 +1,19 @@
+# Octave's own commands, for a workspace of this repository — read by the
+# app (electron/octaveConfig.js). `setup` runs once a workspace is made;
+# each `check` runs after every task the agent finishes, before its commit,
+# in CI's order (.github/workflows/ci.yml). No `run`: the app is Electron,
+# and `npm run dev` binds ports of its own, so two workspaces could not.
+
+[scripts]
+setup = "npm ci"
+
+[[scripts.check]]
+name = "types"
+command = "npm run typecheck"
+description = "The types do not hold together: something is called with what it does not take, or a shape the server sends is not the one the page reads."
+
+[[scripts.check]]
+name = "unit"
+command = "npm test"
+description = "A unit test fails: the change broke behaviour a test pins down. The test's name says which."
+timeout = 900
