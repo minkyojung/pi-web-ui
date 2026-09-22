@@ -20,6 +20,7 @@ import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
 import { CONFIG_FILE, DEFAULT_TIMEOUT, isConfig, readConfig } from "./octaveConfig.js";
 import { prefsOf, withPref } from "./prefs.js";
+import { runLogsIn } from "./runLogs.js";
 import { createRuns } from "./runs.js";
 import { runScript } from "./scripts.js";
 import { createServers, idle } from "./servers.js";
@@ -611,15 +612,16 @@ const runs = createRuns({ onChange: runChanged });
 /**
  * What the foot of the window shows of the repository's commands, in a
  * workspace: whether the repository has the file at all — without it the
- * word there is `Set up` — and the default of its `[scripts.run.*]`
+ * word there is `Set up` — the default of its `[scripts.run.*]`
  * (octaveConfig.js), null where there is none, else what runs.js says of
- * it under the run's id, which is the button's word when nothing is running.
+ * it under the run's id, which is the button's word when nothing is running;
+ * and the logs the commands have left there (runLogs.js), for the menu.
  */
 function runState(path, state = runs.stateOf(path)) {
 	const configured = existsSync(join(path, CONFIG_FILE));
 	const config = readConfig(path);
 	const run = isConfig(config) ? config.run.find((r) => r.default) ?? null : null;
-	return { configured, run: run ? { ...state, id: state.id ?? run.id } : null };
+	return { configured, run: run ? { ...state, id: state.id ?? run.id } : null, logs: runLogsIn(path) };
 }
 
 /** The default run started in a listed workspace, on the port kept for it. */
