@@ -262,3 +262,11 @@ test("읽기 상태에서는 박스가 눌리지 않는다", () => {
   assert.equal(handled, false, "the key passes on");
   assert.equal(out, null, "and nothing was changed");
 });
+
+test("마크업 안의 마크업도 숨는다: 강조 속 코드, 굵기 속 강조, 링크 글 속 강조", () => {
+  assert.deepEqual(gone(state("_a `b` c_\n")), ["_", "`", "`", "_"]);
+  assert.deepEqual(gone(state("**a *b* c**\n")), ["**", "*", "*", "**"]);
+  assert.deepEqual(gone(state("[*a*](http://x)\n")), ["[", "*", "*", "]", "(", "http://x", ")"]);
+  // Touched, the whole construct shows as written — what it holds too.
+  assert.deepEqual(gone(state("_a `b` c_\n", 3)), []);
+});

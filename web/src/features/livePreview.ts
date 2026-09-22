@@ -116,7 +116,11 @@ function isCalloutMark(state: EditorState, link: SyntaxNodeRef): boolean {
  * where the link is being edited, and there the rows are its own.
  */
 export function hidden(state: EditorState, from: number, to: number, ranges = state.selection.ranges): DecorationSet {
-	const builder = new RangeSetBuilder<Decoration>();
+	// Collected and sorted at the end rather than built in order: a node's
+	// closing mark comes after the marks of what it holds — code inside
+	// emphasis, emphasis inside a link — and those are found by walking on
+	// down, after the node's own marks are already in.
+	const out: Range<Decoration>[] = [];
 	const tree = ensureSyntaxTree(state, to, 50) ?? syntaxTree(state);
 	tree.iterate({
 		from,
@@ -125,9 +129,10 @@ export function hidden(state: EditorState, from: number, to: number, ranges = st
 			const marks = MARKUP[node.name];
 			if (!marks) return;
 			if (node.name === "Link" && isCalloutMark(state, node)) return false;
+			// Touched, the whole construct is shown as written, what it holds included.
 			if ((node.name === "Link" ? inside : touches)(ranges, node.from, node.to)) return false;
 			if (node.name === "Escape") {
-				builder.add(node.from, node.from + 1, hide);
+				out.push(hide.range(node.from, node.from + 1));
 				return false;
 			}
 			const aliased = node.name === "WikiLink" && node.node.getChild("WikiLinkAlias") !== null;
@@ -136,12 +141,13 @@ export function hidden(state: EditorState, from: number, to: number, ranges = st
 				if (!marks.has(c.name) && !target) continue;
 				let end = c.to;
 				if (c.name === "HeaderMark" && state.doc.sliceString(end, end + 1) === " ") end++;
-				builder.add(c.from, end, hide);
+				out.push(hide.range(c.from, end));
 			}
-			return false;
+			// And on into it: the marks of what it holds are hidden by the same rule.
+			return;
 		},
 	});
-	return builder.finish();
+	return Decoration.set(out, true);
 }
 
 /**
