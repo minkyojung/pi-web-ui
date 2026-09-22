@@ -52,7 +52,7 @@ test("CRLF 파일에서도 같은 줄이다", () => {
   assert.deepEqual(tasksBetween(crlf, from, from).map((task) => task.number), ["2.2"]);
 });
 
-const ready = { name: "email-auth", approved: 3, waiting: null, waitingAt: null, written: ["requirements.md", "design.md", "tasks.md"], tasks: { total: 3, done: 1, next: "1" } };
+const ready = { name: "email-auth", own: true, approved: 3, waiting: null, waitingAt: null, written: ["requirements.md", "design.md", "tasks.md"], tasks: { total: 3, done: 1, next: "1" } };
 const fine = { online: true, streaming: false, compacting: false, hasCommand: true, spec: ready, count: 1, sent: false };
 
 test("막을 이유가 없으면 막지 않는다; 이유는 가까운 것부터, 사람의 말로", () => {

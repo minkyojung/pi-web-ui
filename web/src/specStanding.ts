@@ -26,6 +26,19 @@ export type Standing = "approved" | "waiting" | "written" | "unwritten";
 export const docPath = (name: string, doc: SpecDoc): string => `${SPECS_DIR}${name}/${doc}`;
 
 /**
+ * The specs this workspace started — the work here, which is the work its
+ * pull request would carry (SpecInfo.own). A workspace is made from the base
+ * and a spec's documents are committed, so the folder also holds every spec
+ * that was merged into the base before it: another branch's, finished, and
+ * nothing for this window to name or to open by itself. The rule is here, in
+ * the one place both of those questions are asked from.
+ *
+ * They are not hidden, only not spoken for: their documents open from the
+ * files like any other note, and what is open is looked up by its path.
+ */
+export const mine = (specs: readonly SpecInfo[]): SpecInfo[] => specs.filter((spec) => spec.own);
+
+/**
  * The spec waiting for the person, and of several the one whose document was
  * written last — which is the one they have just been given. The tab that
  * opens by itself and the control that names a spec ask this same question,
@@ -35,7 +48,7 @@ export function waitingSpec(specs: readonly SpecInfo[]): SpecInfo | null {
 	let best: SpecInfo | null = null;
 	// At least as new wins, so that of several written in the same millisecond
 	// — or of several the disk cannot date — it is the last listed.
-	for (const spec of specs) {
+	for (const spec of mine(specs)) {
 		if (spec.waiting === null) continue;
 		if (!best || (spec.waitingAt ?? 0) >= (best.waitingAt ?? 0)) best = spec;
 	}
@@ -60,16 +73,18 @@ export function standingOf(spec: SpecInfo): { doc: SpecDoc; standing: Standing }
 }
 
 /**
- * Which spec the control names: the one waiting, since that is the one with
- * something for the person to do; else the one they are reading; else the
- * first, which is the folder's own order.
+ * Which spec the control names, of the ones this workspace started (mine):
+ * the one waiting, since that is the one with something for the person to do;
+ * else the one they are reading; else the first, which is the folder's own
+ * order. None of them, and the control has nothing to name.
  */
 export function speaksFor(specs: readonly SpecInfo[], open: string | null): SpecInfo | null {
-	const waiting = waitingSpec(specs);
+	const here = mine(specs);
+	const waiting = waitingSpec(here);
 	if (waiting) return waiting;
 	const name = open === null ? null : specNameOf(open);
-	const reading = name === null ? undefined : specs.find((spec) => spec.name === name);
-	return reading ?? specs[0] ?? null;
+	const reading = name === null ? undefined : here.find((spec) => spec.name === name);
+	return reading ?? here[0] ?? null;
 }
 
 const TITLES: Record<SpecDoc, string> = { "requirements.md": "Requirements", "design.md": "Design", "tasks.md": "Tasks" };
