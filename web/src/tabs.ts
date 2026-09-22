@@ -6,7 +6,9 @@
  * the recent list, so it lives beside it in the browser and not on the
  * server; a rename or a delete reaches it by way of the same `forget`.
  */
-const KEY = "open-tabs";
+import { keyFor } from "./workspace.ts";
+
+const KEY = () => keyFor("open-tabs");
 
 /** `path` added at the end, unless it is already in the row. */
 export function add(tabs: string[], path: string): string[] {
@@ -66,7 +68,7 @@ export function neighbour(tabs: string[], active: string | null, step: 1 | -1): 
 
 export function readTabs(): string[] {
 	try {
-		const raw = JSON.parse(localStorage.getItem(KEY) ?? "[]");
+		const raw = JSON.parse(localStorage.getItem(KEY()) ?? "[]");
 		return Array.isArray(raw) ? raw.filter((p): p is string => typeof p === "string") : [];
 	} catch {
 		return [];
@@ -75,7 +77,7 @@ export function readTabs(): string[] {
 
 export function writeTabs(tabs: string[]): void {
 	try {
-		localStorage.setItem(KEY, JSON.stringify(tabs));
+		localStorage.setItem(KEY(), JSON.stringify(tabs));
 	} catch {
 		// A window with storage blocked opens with one tab next time, which is all that is lost.
 	}

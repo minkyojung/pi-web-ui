@@ -18,6 +18,7 @@
  * came" rather than "somewhere I once was".
  */
 import type { Place } from "../../links.ts";
+import { keyFor } from "./workspace.ts";
 
 /** Where a note was being read: the cursor, and how far down the page was. */
 export type Left = { anchor: number; head: number; scrollTop: number };
@@ -43,7 +44,7 @@ export const empty: Nav = { entries: [], at: -1 };
 /** How far back it is worth being able to go. Chrome keeps 50 a tab; so does VS Code. */
 const KEEP = 50;
 
-const KEY = "nav-history";
+const KEY = () => keyFor("nav-history");
 
 let nextId = 1;
 
@@ -191,7 +192,7 @@ export function restored(raw: unknown): Nav {
 
 export function read(): Nav {
 	try {
-		return restored(JSON.parse(localStorage.getItem(KEY) ?? "null"));
+		return restored(JSON.parse(localStorage.getItem(KEY()) ?? "null"));
 	} catch {
 		return empty;
 	}
@@ -199,7 +200,7 @@ export function read(): Nav {
 
 export function write(nav: Nav): void {
 	try {
-		localStorage.setItem(KEY, JSON.stringify(nav));
+		localStorage.setItem(KEY(), JSON.stringify(nav));
 	} catch {
 		// A window with storage blocked opens with no way back, which is all that is lost.
 	}

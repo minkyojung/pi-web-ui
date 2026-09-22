@@ -70,6 +70,7 @@ import { isPropertyType } from "./propertyTypes.ts";
 import { backlinksOf, retarget } from "./links.ts";
 import { search } from "./search.ts";
 import { sectionFor } from "./changelog.mjs";
+import { folderMeta } from "./folderMeta.ts";
 import type {
 	Authored,
 	BranchesMsg,
@@ -1741,7 +1742,9 @@ const server = createServer(async (req, res) => {
 	}
 	const ext = file.pathname.slice(file.pathname.lastIndexOf("."));
 	res.writeHead(200, { "content-type": CONTENT_TYPES[ext] ?? "application/octet-stream" });
-	res.end(body);
+	// The page is told which folder it is a window on before any of it runs —
+	// see web/src/workspace.ts for why a page cannot go by its address.
+	res.end(pathname === "/" ? folderMeta(body.toString("utf8"), CWD) : body);
 });
 
 const wss = new WebSocketServer({ server });
