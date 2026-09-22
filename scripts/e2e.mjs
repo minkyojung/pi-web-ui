@@ -3516,7 +3516,9 @@ check("a bar over a spec's tasks chooses what they run on, and a Start takes the
 	// would have typed it: the wire is watched for the line.
 	await app.evaluate("(() => { const send = WebSocket.prototype.send; window.__sent = []; WebSocket.prototype.send = function (data) { window.__sent.push(String(data)); return send.call(this, data); }; })()");
 	await app.evaluate("(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.toString().indexOf('Second') } }); })()");
-	await until("the run offered", () => app.evaluate("document.getElementById('runPicked')?.textContent === 'Run 2'"));
+	// Pressable: the bar keeps its Run off for a few seconds after a press that
+	// started nothing, and the check before this one pressed it.
+	await until("the run offered and pressable", () => app.evaluate("(() => { const b = document.getElementById('runPicked'); return !!b && b.textContent === 'Run 2' && !b.disabled; })()"));
 	await app.click("#runPicked");
 	await until("the line sent", () => app.evaluate("window.__sent.some((d) => d.includes('\"prompt\"') && d.includes('/spec-run runon 2 '))"));
 	const line = await app.evaluate("JSON.parse(window.__sent.find((d) => d.includes('/spec-run runon 2 '))).text");
