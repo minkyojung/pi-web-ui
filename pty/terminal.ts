@@ -17,6 +17,7 @@
  * first, which is closed and told so.
  */
 import { existsSync } from "node:fs";
+import { basename } from "node:path";
 import { spawn as spawnPty } from "node-pty";
 import type { WebSocket } from "ws";
 import { shellEnvFor } from "./env.ts";
@@ -28,6 +29,8 @@ export type Terminal = {
 	attach(ws: WebSocket): void;
 	kill(): void;
 	readonly exited: boolean;
+	/** The shell's name — `zsh` — for a tab to be called by. */
+	readonly shell: string;
 };
 
 /** After SIGHUP, how long a shell has to go before it is killed. */
@@ -41,8 +44,9 @@ function shellOf(env: NodeJS.ProcessEnv): string {
 
 export function createTerminal({ cwd, env, onExit }: { cwd: string; env: NodeJS.ProcessEnv; onExit: (code: number) => void }): Terminal {
 	ensureSpawnHelper();
+	const shell = shellOf(env);
 	// encoding null: the pty's bytes as they come, not decoded to strings.
-	const pty = spawnPty(shellOf(env), ["-l"], { cwd, env: shellEnvFor(env), cols: 80, rows: 24, name: "xterm-256color", encoding: null });
+	const pty = spawnPty(shell, ["-l"], { cwd, env: shellEnvFor(env), cols: 80, rows: 24, name: "xterm-256color", encoding: null });
 	const screen = createScreen({ cols: 80, rows: 24 });
 	let ws: WebSocket | null = null;
 	let flow: Flow = idle;
@@ -142,5 +146,6 @@ export function createTerminal({ cwd, env, onExit }: { cwd: string; env: NodeJS.
 		get exited() {
 			return exited;
 		},
+		shell: basename(shell),
 	};
 }

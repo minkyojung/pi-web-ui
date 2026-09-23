@@ -1695,6 +1695,10 @@ export async function createWorkspace(cwd: string) {
 			}
 			if (req.method !== "GET") return json(405, { error: "read only" });
 			if (pathname === "/api/models") return json(200, catalog());
+			// The terminals alive in this folder, for the page's row of tabs
+			// (Terminals.tsx): the page cannot know from its own storage which
+			// shells are still there after a reload.
+			if (pathname === "/api/terminals") return json(200, { terminals: [...terminals].map(([id, t]) => ({ id, shell: t.shell })) });
 			// A note's text as it is on disk, for an embed of it in another note.
 			// Read only, and only a note in the folder (readNote → noteAt).
 			if (pathname === "/api/note") {

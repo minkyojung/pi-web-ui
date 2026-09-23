@@ -126,6 +126,18 @@ try {
 	check("and the shell goes on from there", /after-2\r?\n/.test(e.text), JSON.stringify(e.text.slice(-120)));
 	const b2 = e;
 
+	// 4c. The folder says which terminals it has.
+	const listed = async () => (await (await fetch(`http://127.0.0.1:${port}/api/terminals?folder=${encodeURIComponent(cwd)}`)).json()).terminals;
+	const two = await open("second");
+	await until(() => two.bytes > 0);
+	const list = await listed();
+	check("the folder lists its terminals, by id and shell", list.length === 2 && list.every((t) => typeof t.shell === "string" && t.shell.length > 0) && list.map((t) => t.id).sort().join() === "check,second", JSON.stringify(list));
+	say(two, { type: "close" });
+	await until(() => two.control.some((m) => m.type === "exit"));
+	await until(async () => (await listed()).length === 1);
+	check("a closed one is off the list", true);
+	two.ws.close();
+
 	// 5. `close` ends the shell and its exit is reported.
 	say(b2, { type: "close" });
 	await until(() => b2.control.some((m) => m.type === "exit"));
