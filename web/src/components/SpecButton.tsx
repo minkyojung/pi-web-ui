@@ -78,7 +78,7 @@ export function SpecButton({ open, onOpen }: { open: string | null; onOpen: (pat
 					<span className="min-w-0 truncate" title={named.name}>
 						{named.name}
 					</span>
-					<span className="shrink-0 text-muted-foreground/80">{stateWords(named)}</span>
+					<span className="shrink-0 text-muted-foreground">{stateWords(named)}</span>
 					<ChevronDownIcon className="size-3 opacity-50" />
 				</Button>
 			</DropdownMenuTrigger>

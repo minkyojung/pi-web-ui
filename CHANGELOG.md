@@ -5,6 +5,20 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+### Changed
+- The send button is round, and dimmed while the message box is empty, since there is nothing yet to send.
+- Typing in the message box no longer lights it with a blue ring; its edge goes a shade darker instead.
+- The agent's column is the other half of the note's card: on the same white — or, in the dark theme, the same dark — as the note, divided from it by a single line, with its header level with the note's. It was a grey box inside the card, with a gap round it.
+- The window's type is Pretendard, a face drawn for Korean and English together, so a line that is half of each reads as one. Before, the Korean in a note or a conversation came from a different font than the English around it.
+- The window has one colour, a blue, and it is kept for the moments something happens: the main button in a dialog, a switch that is on, a choice that is picked, the ring round what the keyboard is on, a link, selected text. Everything else stays grey — the send button too, since it is on screen the whole time — so the blue always means the same thing.
+- Sentences you read are a step brighter than the grey of a timestamp or a label: the description under a dialog's title or a setting, a sign-in's instructions, what the agent was thinking once you open it, a message waiting its turn, a search hit's line. Before, they were the same grey as everything you only glance at, so the words that explain did not stand out from the ones that don't.
+- The names in a note's folded properties — `status`, `tags` — are in a grey you can read. They were faded below it, to less contrast than any text is owed.
+### Fixed
+- In the light theme, a line drawn on grey — the rule beside a turn's tools and thinking in the agent's column, the edge of a bar, a rule on a highlighted row — was half as clear as the same line on the white page, and on the darkest greys almost gone. Every line now stands as far from the surface it is on as it does from the page.
+- Red error text in the light theme — a failed tool in the agent's column, an error at the foot of the window — was a shade too light to meet the contrast text is owed on those greys. It is a step darker.
+- An edit's lines in the agent's column read like GitHub's: the text in the ordinary colour on a green or red tint, rather than coloured text on a paler tint of its own colour, which was too faint to read in the light theme. The `+3 −1` beside an edit and the warning at the foot of the window (`GitHub: not signed in`) are dark enough to read in the light theme too.
+- The ticks in the tooltip that says what a tool mode can do were a pale green on the dark theme's light tooltip, and could hardly be seen; they are in the tooltip's own colour, the tick and the cross saying which is which.
+- In the light theme, the edge of the message box — on the agent's grey column — was no stronger than a card's, so it read as a panel more than as somewhere to type. Fields, outline buttons and switches now have the same edge on grey as on white.
 
 ## [0.0.9] - 2026-09-23
 ### Added

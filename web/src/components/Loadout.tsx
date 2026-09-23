@@ -80,7 +80,7 @@ export function Loadout({ chosen, onChange }: { chosen: string[]; onChange: (nex
 		<>
 			<header className="flex flex-col gap-1">
 				<h2 className="text-sm font-semibold">Loadout</h2>
-				<p className="text-xs text-muted-foreground">
+				<p className="text-xs text-subtle-foreground">
 					The models the composer offers, in the order it offers them. {MOD}1 to {MOD}
 					{LOADOUT_SLOTS} there.
 				</p>
@@ -128,7 +128,7 @@ export function Loadout({ chosen, onChange }: { chosen: string[]; onChange: (nex
 					aria-label="Search models"
 				/>
 				{full && (
-					<p className="text-xs text-muted-foreground">
+					<p className="text-xs text-subtle-foreground">
 						All {LOADOUT_SLOTS} places are taken — take one out to put another in.
 					</p>
 				)}

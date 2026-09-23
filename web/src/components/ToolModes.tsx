@@ -51,13 +51,13 @@ function Grants({ id, web }: { id: ToolModeId | null; web?: boolean }) {
 		<div className="flex flex-col text-left">
 			{mode.can.map((line) => (
 				<span key={line} className="flex gap-1.5">
-					<span className="text-emerald-400">✓</span>
+					<span>✓</span>
 					{line}
 				</span>
 			))}
 			{web !== undefined && (
 				<span className={`flex gap-1.5 ${web ? "" : "text-background/60"}`}>
-					<span className={web ? "text-emerald-400" : ""}>{web ? "✓" : "✗"}</span>
+					<span>{web ? "✓" : "✗"}</span>
 					{web ? "Search and read the web" : "Search or read the web"}
 				</span>
 			)}

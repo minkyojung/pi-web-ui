@@ -1,4 +1,11 @@
 @import "tailwindcss";
+/* The window's typeface, Pretendard: Inter's Latin with a Hangul drawn to sit
+   beside it, one family for a line that is half of each — which notes and
+   conversations here are. The system face it replaces has no Hangul of its
+   own, so a Korean word came from Apple SD Gothic Neo in the middle of an SF
+   one. One variable file rather than the web's hundred subsets: the app reads
+   it off its own disk, where there is no network to save. */
+@import "pretendard/dist/web/variable/pretendardvariable.css";
 /* Rendered markdown goes through the prose classes. */
 @plugin "@tailwindcss/typography";
 /* Vite's root is web/, so pin the scan rather than rely on detection: when it
@@ -9,7 +16,7 @@
 @source "../../node_modules/streamdown/dist";
 
 /*
- * shadcn's neutral tokens, light in :root, the other three behind data-theme.
+ * shadcn's neutral tokens, light in :root and dark behind data-theme.
  *
  * The dark set used to live in @media (prefers-color-scheme: dark), which
  * followed the system with no JS at all. It cannot any more: a window told to
@@ -20,16 +27,7 @@
  * on the element. One block, and dark: utilities in vendored components follow
  * it through the custom variant below.
  */
-/* Two themes are dark, not one, and dark: has to mean both of them: it is what
-   turns the code block over to its dark syntax colours and reaches the handful
-   of vendored components that hardcode a light and a dark. Adding a selector
-   takes nothing away from the neutral dark, which still matches first. */
-@custom-variant dark (
-  &:where(
-    [data-theme="dark"], [data-theme="dark"] *,
-    [data-theme="octave-dark"], [data-theme="octave-dark"] *
-  )
-);
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 :root {
   color-scheme: light;
@@ -39,8 +37,24 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
+  /*
+   * The accent, #1F6BE0, and only where something is pressed, turned on,
+   * focused, followed or selected — the budget Linear keeps, where the chrome
+   * is grey and the colour means something is happening. Everything else in
+   * the window is the greys above and below. The steps are Radix's for this
+   * colour on this page (radix-ui.com/colors/custom): 9 the solid thing to
+   * press, which carries white at 4.96; 11 for the words, a link.
+   */
+  --primary: oklch(0.552 0.193 259.5);
+  --primary-foreground: oklch(1 0 0);
+  /* Words you can follow, apart from --primary because the two jobs part as
+     soon as --primary is a colour: a fill carries white words and wants to be
+     dark, a link is words itself and has to clear 4.5 on the page — a solid
+     blue that does the first does not do the second on a dark page (Radix
+     gives text its steps 11 and 12, never 9, for this). The same as --primary
+     while that is black or white. Step 11: 4.69 on pi's wash, the darkest
+     surface a link is put on. */
+  --link: oklch(0.537 0.193 259.6);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -53,22 +67,52 @@
      lands on is no longer --muted: pi's conversation sits on the frame now, so
      a hovered row under it is --sidebar-accent, a step below that again. */
   --muted-foreground: oklch(0.531 0 0);
+  /* The step between the two: words that are read rather than glanced at but
+     are not the thing itself — a dialog's description, a setting's hint, what
+     the agent was thinking. Three text steps is what Linear, Apple and
+     Atlassian all keep (Atlassian names this one text.subtle); two left every
+     sentence under a heading at the same grey as a timestamp. It cannot go
+     below --muted-foreground, which is already at AA's floor on the darkest
+     surface, so it is placed above it — about half the distance again, the
+     spacing Linear's own text steps keep. */
+  --subtle-foreground: oklch(0.37 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  /* Tailwind's 700, a step past shadcn's 600: that read 4.41 on the frame and
+     on pi's floor, where a failed tool and an error at the foot are drawn. */
+  --destructive: oklch(0.505 0.213 27.518);
+  /* The other two meanings a colour has here, beside --destructive: done or
+     added, and wait or look. One of each per theme, as Primer and Atlassian
+     keep them (success.fg, attention.fg), rather than a Tailwind shade picked
+     where each was needed — which had left an added line's count and the
+     warning at the foot under AA on the frame. Tailwind's 700 in the light,
+     as --destructive is: 4.6 on the frame. */
+  --success: oklch(0.527 0.154 150.069);
+  --warning: oklch(0.555 0.163 48.998);
   /* The rim, at the distance from the page the dark themes keep theirs at,
      the other way up — a raised thing here is white and its edge is a shadow
      rather than a highlight. --input is left where it was: an edge you aim a
-     pointer at is not the same job as an edge that only has to be there. */
-  --border: oklch(0.948 0 0);
-  --input: oklch(0.922 0 0);
+     pointer at is not the same job as an edge that only has to be there.
+
+     Black at an alpha rather than a grey, for the reason the dark themes use
+     white at one: a rim is drawn on more than the page — pi's floor, a bar's
+     fill, a card — and an opaque grey is its 0.052 on white only. On pi's
+     floor it was 0.025, half a rim; at 7% it is 0.052 on every one of them.
+     Linear's translucent border and Apple's separator are alphas for this.
+     --input the same way, at the 0.078 its grey stood from the page: in the
+     message box, on pi's floor, the grey was 0.051 — a rim's distance, and a
+     field there read as a card. */
+  --border: oklch(0 0 0 / 7%);
+  --input: oklch(0 0 0 / 10%);
   /* A focus ring is a non-text indicator, which WCAG asks 3:1 of. The figure
      shadcn ships reads 2.59 on a page this light — the only one of the four
      themes where it did; the other three were already clear. Down again now
      that a control can be focused on pi's floor as well as on the page: the
      figure is held to the lower of the two, which is what the rule already
-     was — this theme simply grew a second surface to keep it on. */
-  --ring: oklch(0.644 0 0);
+     was — this theme simply grew a second surface to keep it on. The accent's
+     own step 9 now, which is 4.59 on pi's floor: a ring the colour of the
+     button it is round, as Linear draws it. */
+  --ring: oklch(0.552 0.193 259.5);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -82,21 +126,23 @@
   --code-name: oklch(0.45 0.16 285);
   --code-number: oklch(0.5 0.14 60);
   /*
-   * pi's side of the card. The note is the page; the conversation beside it is
-   * not the same page, so it takes a surface of its own — and which way it
-   * steps off the note is the theme's business, not one value's. A light
-   * window has nowhere to go but down, so pi sits where the frame sits, a
-   * step below the note it is next to; a dark window has nowhere to go but up,
-   * so pi is raised the same step a card is. Same distance either way, read
-   * off the ladder each theme already declares — no new rung is invented here.
+   * pi's side of the card, on the same page as the note: the conversation is
+   * read as closely as the note is, and a grey floor under it read as a sidebar
+   * to the side of the work rather than half of it. The line between the two
+   * is what says where one ends — shadcn's resize handle, drawn always, at a
+   * rim's distance off the page — as a split view in VS Code or Zed says it.
+   *
+   * It had a floor of its own, a step off the note either way, and the tokens
+   * are kept so it can have one again: .surface-panel still rebinds the page
+   * to --panel, which is only the page's own value for now.
    */
-  --panel: oklch(0.973 0 0);
+  --panel: oklch(1 0 0);
   /* What is laid on that floor — a tool's output, a hovered row, a badge.
      It steps off --panel the way --sidebar-accent steps off --sidebar, not
      the way --muted steps off the page: a wash on a frame is a shorter step
      than a wash on paper, and taking the page's step twice put second-rank
-     text under AA. */
-  --panel-muted: oklch(0.958 0 0);
+     text under AA. On the page now, the page's own wash. */
+  --panel-muted: oklch(0.97 0 0);
   /* The frame, below the page as in every theme here. White is the ceiling in
      a light window, so the ladder is built downward from the content: --card
      and --popover stay white and say they are raised with a shadow, which is
@@ -107,10 +153,10 @@
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.958 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  /* Its own 0.052, measured from the frame rather than from the page: an
-     opaque rim cannot follow the surface it is drawn on the way an alpha can,
-     so the sidebar's is written out. */
-  --sidebar-border: oklch(0.921 0 0);
+  /* The same alpha as --border, and so the same 0.052 from the frame: it was
+     written out as its own grey only because an opaque rim cannot follow the
+     surface it is drawn on. */
+  --sidebar-border: oklch(0 0 0 / 7%);
   --sidebar-ring: oklch(0.653 0 0);
   /*
    * Selected text, one pair for the whole window: the layer CodeMirror draws
@@ -120,9 +166,11 @@
    *
    * Not --accent: in the light theme that is nearly the page colour, and a
    * selection that cannot be seen is not one. The text keeps its own colour,
-   * which is what a wash this light is for.
+   * which is what a wash this light is for. A wash of the accent, which is
+   * what selected text is on a Mac and in Linear: selecting is one of the
+   * things the accent is for.
    */
-  --selection: color-mix(in oklab, var(--foreground) 18%, transparent);
+  --selection: color-mix(in oklab, var(--primary) 22%, transparent);
   --selection-foreground: currentColor;
 }
 
@@ -148,21 +196,31 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.238 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary: oklch(0.552 0.193 259.5);
+  --primary-foreground: oklch(1 0 0);
+  /* Step 11 of the dark ramp. Step 9 as words reads 2.74 on pi's wash. */
+  --link: oklch(0.773 0.116 257.9);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
+  --subtle-foreground: oklch(0.87 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  /* Tailwind's 400s, as --destructive is here. */
+  --success: oklch(0.792 0.209 151.711);
+  --warning: oklch(0.828 0.189 84.429);
   /* A rim on a raised surface, not a line drawn between two flat ones: at 5%
      it lands 0.052 over the page, where Linear draws its own. Ten was twice
      that. --input keeps its own, being an edge you are meant to aim at. */
   --border: oklch(1 0 0 / 5%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  /* Step 11, not the button's 9: on a page this dark the solid step reads
+     2.74 on pi's wash, under the 3:1 a ring is owed. The one place the ring
+     and the button it is round part company. */
+  --ring: oklch(0.773 0.116 257.9);
+  --selection: color-mix(in oklab, var(--primary) 40%, transparent);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -173,9 +231,9 @@
   --code-string: oklch(0.8 0.1 145);
   --code-name: oklch(0.78 0.1 285);
   --code-number: oklch(0.8 0.12 60);
-  /* Raised, the step a card takes off this page. */
-  --panel: oklch(0.238 0 0);
-  --panel-muted: oklch(0.302 0 0);
+  /* The page's own, as in the light theme. */
+  --panel: oklch(0.21 0.002 287);
+  --panel-muted: oklch(0.269 0 0);
   --sidebar: oklch(0.183 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -187,160 +245,8 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
-/*
- * Octave, in two. Generated rather than picked: Radix's custom-palette tool,
- * given the one colour this product is — #3E4798 — as the accent in both
- * appearances, with its default gray (#8B8D98, a slate that leans the same way
- * the accent does) and its default pages, white and #111111. That is twelve
- * accent steps and twelve grays per appearance, each step meaning a job rather
- * than a shade: 1 the page, 3 a filled control, 6 a rim, 9 the solid thing to
- * press, 11 second-rank text, 12 first-rank.
- *
- *   https://www.radix-ui.com/colors/custom?accent-dark=3E4798&accent-light=3E4798
- *
- * Radix gives the colours; this file gives the steps. The ladder below is the
- * one the neutral pair already declares — the frame 0.027 under the content,
- * a card 0.028 over it, pi's wash a step past that — and each token takes the
- * Radix rung that lands nearest the rung its neutral twin stands on. Where the
- * ramp has no rung there (its light grays bunch at the top), the value is
- * interpolated along the ramp and said so. A palette dropped in whole would
- * have moved the surfaces and taken the contrast promise with them; every pair
- * here is measured by scripts/contrast.mjs like the other two.
- *
- * Accent is spent where something is to be pressed, focused or selected, and
- * on the charts, where colour is the data. Rims, surfaces and the syntax
- * colours stay gray — a hairline is the last place to spend a brand colour,
- * and every panel edge in the window is one.
- */
-:root[data-theme="octave-light"] {
-  color-scheme: light;
-  /* gray 2 is the page, gray 1 and white above it, gray 3 the frame below —
-     Radix's own panel convention, and the order an inset layout needs. */
-  --background: oklch(0.983 0.003 286.4);
-  --foreground: oklch(0.24 0.01 276.7);
-  /* White stays the ceiling, as in every light window here: a raised thing is
-     white and says so with a shadow. */
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.24 0.01 276.7);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.24 0.01 276.7);
-  /* Accent 9, the step Radix reserves for the solid thing to press — which is
-     #3E4798 itself, unmoved, in both appearances. Its contrast colour is the
-     one the tool computed: white. */
-  --primary: oklch(0.436 0.131 274.8);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.955 0.004 271.4);
-  --secondary-foreground: oklch(0.24 0.01 276.7);
-  --muted: oklch(0.955 0.004 271.4);
-  /* Gray 11, which Radix defines as text that must clear AA on steps 1 to 3.
-     It lands under that here too, on gray 4 — the darkest surface second-rank
-     text is drawn on in this window. */
-  --muted-foreground: oklch(0.502 0.014 280.8);
-  --accent: oklch(0.955 0.004 271.4);
-  --accent-foreground: oklch(0.24 0.01 276.7);
-  /* The neutral light theme's red, unchanged: no red was asked of the tool,
-     and this one is already measured against a page this bright. */
-  --destructive: oklch(0.577 0.245 27.325);
-  /* Gray 4 and 5, which are 0.052 and 0.073 under the page — the distances the
-     neutral light theme holds for a rim and for an edge you aim at. Radix
-     names gray 6 the subtle border, but that is drawn for a white page; this
-     one is gray 2, so the rim comes up a step with it. */
-  --border: oklch(0.931 0.005 275);
-  --input: oklch(0.91 0.007 277.2);
-  /* Accent 9 again, not accent 8. A focus ring is a non-text indicator, which
-     WCAG asks 3:1 of, and step 8 — the rung Radix names for a ring — reads
-     2.0 on a page this light. The brand colour itself clears it, and a ring
-     that is the same colour as the button is what Linear draws. */
-  --ring: oklch(0.436 0.131 274.8);
-  /* The accent ramp, light to dark, the way the neutral ramp runs: steps 6, 8,
-     11, 9, 12. */
-  --chart-1: oklch(0.864 0.058 275.4);
-  --chart-2: oklch(0.729 0.096 274.4);
-  --chart-3: oklch(0.508 0.132 275.1);
-  --chart-4: oklch(0.436 0.131 274.8);
-  --chart-5: oklch(0.312 0.078 275.1);
-  /* Down to the frame, as in every light window here. */
-  --panel: oklch(0.955 0.004 271.4);
-  --panel-muted: oklch(0.931 0.005 275);
-  --sidebar: oklch(0.955 0.004 271.4);
-  --sidebar-foreground: oklch(0.24 0.01 276.7);
-  --sidebar-primary: oklch(0.436 0.131 274.8);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.931 0.005 275);
-  --sidebar-accent-foreground: oklch(0.24 0.01 276.7);
-  --sidebar-border: oklch(0.91 0.007 277.2);
-  --sidebar-ring: oklch(0.436 0.131 274.8);
-  /* The brand colour washed over the page, the words on it taken to accent 12
-     so a selection reads darker than it did unselected rather than lighter. */
-  --selection: color-mix(in oklab, var(--primary) 18%, transparent);
-  --selection-foreground: var(--chart-5);
-}
-
-:root[data-theme="octave-dark"] {
-  color-scheme: dark;
-  /* Gray 1 is the frame, gray 2 the page, gray 3 what is raised off it —
-     Radix's dark steps already run in the order this window needs. Gray 3 is
-     interpolated 0.006 down the ramp, to 0.250: as drawn it stands 0.042 over
-     the page and pi's floor is declared to reach 0.04, so the rung comes to
-     the ladder rather than the ladder to the rung. */
-  --background: oklch(0.214 0.004 286.1);
-  --foreground: oklch(0.95 0.003 286.3);
-  --card: oklch(0.25 0.004 264.5);
-  --card-foreground: oklch(0.95 0.003 286.3);
-  --popover: oklch(0.25 0.004 264.5);
-  --popover-foreground: oklch(0.95 0.003 286.3);
-  /* #3E4798 unmoved, as in the light theme: the tool keeps the given colour at
-     step 9 in both appearances, and computed white for the words on it. Dark
-     is where a brand colour goes wrong if it is used for text — for that, this
-     theme reaches step 11 below, which is a different colour entirely. */
-  --primary: oklch(0.436 0.131 274.8);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.286 0.007 274.7);
-  --secondary-foreground: oklch(0.95 0.003 286.3);
-  --muted: oklch(0.286 0.007 274.7);
-  --muted-foreground: oklch(0.769 0.014 281.5);
-  --accent: oklch(0.286 0.007 274.7);
-  --accent-foreground: oklch(0.95 0.003 286.3);
-  --destructive: oklch(0.704 0.191 22.216);
-  /* The paper at the neutral dark's own alphas, not gray 6: a rim on a raised
-     surface follows the surface it is drawn on, which an opaque step cannot. */
-  --border: oklch(0.95 0.003 286.3 / 5%);
-  --input: oklch(0.95 0.003 286.3 / 15%);
-  /* Accent 11, not the step 8 Radix names for a ring: on a page this dark
-     step 8 reads 2.58 on a card, under the 3:1 WCAG asks of a non-text
-     indicator. Step 11 is the rung that carries this page as text, and there
-     is nothing between the two — the ramp turns over at 9. */
-  --ring: oklch(0.769 0.118 274.3);
-  /* The dark ramp, light to dark: steps 12, 11, 8, 9, 5. */
-  --chart-1: oklch(0.913 0.042 273.7);
-  --chart-2: oklch(0.769 0.118 274.3);
-  --chart-3: oklch(0.506 0.15 274.8);
-  --chart-4: oklch(0.436 0.131 274.8);
-  --chart-5: oklch(0.359 0.118 275.1);
-  --code-keyword: oklch(0.78 0.14 330);
-  --code-type: oklch(0.8 0.1 250);
-  --code-string: oklch(0.8 0.1 145);
-  --code-name: oklch(0.78 0.1 285);
-  --code-number: oklch(0.8 0.12 60);
-  /* Raised, the step a card takes off this page; its wash one rung further. */
-  --panel: oklch(0.25 0.004 264.5);
-  --panel-muted: oklch(0.314 0.009 276.8);
-  --sidebar: oklch(0.179 0.004 286);
-  --sidebar-foreground: oklch(0.95 0.003 286.3);
-  --sidebar-primary: oklch(0.436 0.131 274.8);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.25 0.004 264.5);
-  --sidebar-accent-foreground: oklch(0.95 0.003 286.3);
-  --sidebar-border: oklch(0.95 0.003 286.3 / 5%);
-  --sidebar-ring: oklch(0.769 0.118 274.3);
-  /* The same as the light pair the other way up: the brand colour washed over
-     the page, and the words taken to accent 11 — the rung that carries a page
-     this dark — so the selection reads as the colour and not as a patch. */
-  --selection: color-mix(in oklab, var(--primary) 30%, transparent);
-  --selection-foreground: var(--chart-2);
-}
-
 @theme inline {
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -348,14 +254,18 @@
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
+  --color-link: var(--link);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -652,7 +562,7 @@
 .cm-footnote {
 	font-size: 0.7em;
 	line-height: 1;
-	color: var(--primary);
+	color: var(--link);
 	cursor: pointer;
 	padding: 0 0.1em;
 }

@@ -12,7 +12,7 @@ import { check, ladder } from "../scripts/contrast.mjs";
  * `npm run contrast` prints the whole table, including how far each surface
  * sits from the content, which is what to read when this fails.
  */
-test("every pair clears AA in all four themes", () => {
+test("every pair clears AA in both themes", () => {
 	assert.deepEqual(check(), []);
 });
 

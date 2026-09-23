@@ -59,8 +59,13 @@ function dirOf(name, from) {
 	}
 }
 
-/** Permissive licences, which Octave's AGPL-3.0 may be built on. */
-const ALLOWED = /^(MIT|ISC|0BSD|BSD-[23]-Clause|Apache-2\.0|BlueOak-1\.0\.0|MPL-2\.0|CC0-1\.0|Unlicense|Python-2\.0|WTFPL)$/;
+/**
+ * Permissive licences, which Octave's AGPL-3.0 may be built on. OFL-1.1 is
+ * the one for fonts: it lets a font be bundled with any software, the software
+ * under whatever licence it has, so long as its notice goes with it and the
+ * font is not sold on its own — which is what this file is for.
+ */
+const ALLOWED = /^(MIT|ISC|0BSD|BSD-[23]-Clause|Apache-2\.0|BlueOak-1\.0\.0|MPL-2\.0|CC0-1\.0|Unlicense|Python-2\.0|WTFPL|OFL-1\.1)$/;
 /** An SPDX expression is fine if any one alternative is. */
 const allowed = (license) => license.replace(/[()]/g, "").split(/\s+OR\s+/).some((l) => ALLOWED.test(l.trim()));
 
@@ -71,8 +76,10 @@ function visit(name, from) {
 	const dir = dirOf(name, from);
 	if (!dir || seen.has(dir)) return;
 	const meta = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
-	const file = readdirSync(dir).find((f) => /^(licen[cs]e|copying)(\.|$)/i.test(f));
-	const text = file ? readFileSync(join(dir, file), "utf8").trim() : null;
+	// At the top as a rule; a font package keeps it beside the fonts, in dist.
+	const isLicence = (f) => /^(licen[cs]e|copying)(\.|$)/i.test(f);
+	const where = [dir, join(dir, "dist")].find((d) => existsSync(d) && readdirSync(d).some(isLicence));
+	const text = where ? readFileSync(join(where, readdirSync(where).find(isLicence)), "utf8").trim() : null;
 	const license = typeof meta.license === "string" ? meta.license : JSON.stringify(meta.license ?? meta.licenses ?? "unknown");
 	const author = typeof meta.author === "string" ? meta.author : meta.author?.name;
 	seen.set(dir, { name: meta.name, version: meta.version, license, author, text });

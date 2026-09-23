@@ -50,7 +50,7 @@ export function Watermark() {
 						<Kbd className="justify-self-end">{command}</Kbd>
 					</Fragment>
 				))}
-				<p className="col-span-2 mt-2 text-xs text-muted-foreground/70">Typed in the message box.</p>
+				<p className="col-span-2 mt-2 text-xs text-muted-foreground">Typed in the message box.</p>
 			</div>
 		</div>
 	);

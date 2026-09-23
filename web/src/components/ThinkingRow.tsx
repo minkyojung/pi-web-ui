@@ -40,7 +40,7 @@ export function ThinkingRow({ text }: { text: string }) {
 		<Collapsible className="-my-1">
 			<CollapsibleTrigger className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-left font-normal hover:bg-muted/60">
 				<BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
-				<span className="shrink-0 text-sm font-normal text-foreground/80">Thinking</span>
+				<span className="shrink-0 text-sm font-normal text-subtle-foreground">Thinking</span>
 				{preview && <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{preview}</span>}
 			</CollapsibleTrigger>
 
@@ -49,7 +49,7 @@ export function ThinkingRow({ text }: { text: string }) {
 				    lists, code, the occasional heading — and read as prose. Held a
 				    shade back from the answer's own text: it is what led to the
 				    answer, not the answer. */}
-				<div className="mt-1 mb-2 ml-[0.7rem] border-l pl-3 text-sm text-muted-foreground">
+				<div className="mt-1 mb-2 ml-[0.7rem] border-l pl-3 text-sm text-subtle-foreground">
 					<MessageResponse>{text}</MessageResponse>
 				</div>
 			</CollapsibleContent>

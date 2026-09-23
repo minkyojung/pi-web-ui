@@ -32,7 +32,7 @@ export function WhatsNew({ version }: { version: string }) {
 			<article className="mx-auto w-full max-w-2xl px-8 py-10 text-[16px] leading-7">
 				<h1 className="mb-6 text-2xl font-semibold tracking-tight">What's new in {version}</h1>
 				{notes === undefined && <p className="text-muted-foreground">Reading…</p>}
-				{notes === null && <p className="text-muted-foreground">This version's notes are not here to read.</p>}
+				{notes === null && <p className="text-subtle-foreground">This version's notes are not here to read.</p>}
 				{notes &&
 					blocksOf(notes).map((block, i) =>
 						block.kind === "heading" ? (

@@ -39,7 +39,7 @@ export class Boundary extends Component<{ name: string; hint?: string; children:
 		const { failed } = this.state;
 		if (!failed) return <Fragment key={this.state.tries}>{this.props.children}</Fragment>;
 		return (
-			<div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
+			<div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-subtle-foreground">
 				<p className="text-foreground">The {this.props.name} stopped drawing.</p>
 				{this.props.hint ? <p>{this.props.hint}</p> : null}
 				<p className="max-w-sm break-words font-mono text-xs">{failed.message}</p>

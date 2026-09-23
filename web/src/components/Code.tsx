@@ -154,7 +154,7 @@ export default function Code({ path }: { path: string }) {
 		<div id="page" data-code={path} className="edge-top relative flex min-h-0 flex-1 flex-col">
 			<div ref={host} className="min-h-0 flex-1 overflow-hidden" />
 			{gone && (
-				<p className="absolute inset-0 flex items-center justify-center bg-background p-8 text-center text-sm text-muted-foreground">
+				<p className="absolute inset-0 flex items-center justify-center bg-background p-8 text-center text-sm text-subtle-foreground">
 					{gone.reason === "binary" ? "Not a text file." : "This file is not in the folder."}
 				</p>
 			)}

@@ -7,7 +7,7 @@
  * a memory — and so the surfaces can be moved (see .context/plans/
  * surface-elevation.md) without the promise quietly lapsing.
  *
- * Reads the four :root blocks straight out of styles.css. No dependencies:
+ * Reads the two :root blocks straight out of styles.css. No dependencies:
  * oklch to sRGB is forty lines, and a colour library would be a second place
  * for the truth to live.
  *
@@ -70,8 +70,6 @@ const over = (src, alpha, dst) =>
 const THEMES = {
 	"neutral light": /^:root \{$/m,
 	"neutral dark": /^:root\[data-theme="dark"\] \{$/m,
-	"octave light": /^:root\[data-theme="octave-light"\] \{$/m,
-	"octave dark": /^:root\[data-theme="octave-dark"\] \{$/m,
 };
 
 /** The declarations of one :root block, comments and all the rest dropped. */
@@ -150,11 +148,36 @@ const TEXT = [
 	["--sidebar-foreground", "--sidebar", "the column's own text"],
 	["--sidebar-accent-foreground", "--sidebar-accent", "selected note"],
 	["--muted-foreground", "--sidebar-accent", "a hovered row on the frame"],
+	["--subtle-foreground", "--background", "a dialog's description, a setting's hint"],
+	["--subtle-foreground", "--card", "a description on a card"],
+	["--subtle-foreground", "--popover", "a description in a dialog or menu"],
+	["--subtle-foreground", "--muted", "a description on a banner"],
+	["--subtle-foreground", "--accent", "a description on a hover"],
+	["--subtle-foreground", "--sidebar", "a description on the frame"],
+	["--subtle-foreground", "--panel", "what the agent was thinking"],
+	["--subtle-foreground", "--panel-muted", "a description on pi's wash"],
+	["--subtle-foreground", "--sidebar-accent", "a description on a hovered row"],
 	["--foreground", "--sidebar-accent", "a hovered row on the frame"],
 	["--sidebar-primary-foreground", "--sidebar-primary", "sidebar primary"],
+	["--link", "--background", "a link on the page"],
+	["--link", "--card", "a link on a card"],
+	["--link", "--popover", "a link in a dialog"],
+	["--link", "--panel", "a link in pi's column"],
 	["--destructive", "--background", "error text"],
 	["--destructive", "--card", "error on a card"],
 	["--destructive", "--popover", "destructive menu row"],
+	["--destructive", "--panel", "a failed tool, a removed line's count"],
+	["--destructive", "--sidebar", "an error at the foot"],
+	["--success", "--background", "done, on the page"],
+	["--success", "--card", "done, on a card"],
+	["--success", "--popover", "done, in a menu"],
+	["--success", "--panel", "an added line's count"],
+	["--success", "--sidebar", "done, at the foot"],
+	["--warning", "--background", "a warning on the page"],
+	["--warning", "--card", "a warning on a card"],
+	["--warning", "--popover", "a warning in a menu"],
+	["--warning", "--panel", "a warning in pi's column"],
+	["--warning", "--sidebar", "a warning at the foot"],
 ];
 
 /**
@@ -173,6 +196,8 @@ const WASHES = [
 	["--foreground", 0.14, "--background", "--foreground", ".cm-searchMatch"],
 	["--foreground", 0.28, "--background", "--foreground", ".cm-searchMatch-selected"],
 	["--foreground", 0.1, "--background", "--foreground", ".cm-selectionMatch"],
+	["--success", 0.15, "--panel", "--foreground", "an added line of a diff"],
+	["--destructive", 0.15, "--panel", "--foreground", "a removed line of a diff"],
 ];
 
 /** Focus rings are UI, not text: WCAG 1.4.11 asks 3.0. */
@@ -197,7 +222,22 @@ const RIMS = [
 	["--border", "--card", "rim on a card"],
 	["--border", "--popover", "rim on a popover"],
 	["--sidebar-border", "--sidebar", "rim in the sidebar"],
-	["--border", "--panel", "rim round pi"],
+	["--border", "--panel", "the line between the note and pi"],
+	["--border", "--muted", "a bar's edge"],
+	["--border", "--panel-muted", "a rule on pi's wash"],
+];
+
+/**
+ * The edge of something you aim a pointer at — an input, an outline button, a
+ * checkbox — on each surface a control is put on. Measured apart from the
+ * rims because it is a different job: an edge that has to be found, not one
+ * that only has to be there.
+ */
+const EDGES = [
+	["--input", "--background", "an input on the page"],
+	["--input", "--card", "an input on a card"],
+	["--input", "--popover", "an input in a dialog"],
+	["--input", "--panel", "the message box"],
 ];
 
 /* ── run ────────────────────────────────────────────────────────────────── */
@@ -233,11 +273,13 @@ export function measure() {
 		}
 
 		const steps = STEPS.map(([a, b, where]) => ({ token: a, where, delta: okL(flat(vars, a, page)) - okL(flat(vars, b, page)) }));
-		const rims = RIMS.map(([rim, on, where]) => {
+		const edge = ([token, on, where]) => {
 			const surface = flat(vars, on, page);
-			return { token: rim, where, delta: okL(flat(vars, rim, surface)) - okL(surface) };
-		});
-		return { theme, rows, steps, rims };
+			return { token, where, delta: okL(flat(vars, token, surface)) - okL(surface) };
+		};
+		const rims = RIMS.map(edge);
+		const edges = EDGES.map(edge);
+		return { theme, rows, steps, rims, edges };
 	});
 }
 
@@ -257,7 +299,7 @@ export function measure() {
  */
 export function ladder() {
 	const out = [];
-	for (const { theme, steps, rims } of measure()) {
+	for (const { theme, steps, rims, edges } of measure()) {
 		const step = (token) => steps.find((s) => s.token === token).delta;
 		const rim = (token, where) => rims.find((r) => r.token === token && r.where === where).delta;
 
@@ -270,14 +312,12 @@ export function ladder() {
 			if (step(token) < 0) out.push(`${theme}: ${token} is sunk into the content — ${step(token).toFixed(3)}, wants 0 or more`);
 		}
 
-		// pi is not the note, and the eye should not have to be told twice.
-		// Which way it steps is the theme's: a light window has nowhere to go
-		// but down, a dark one nowhere but up. Far enough to be seen, near
-		// enough that it is still the same window.
+		// pi sits on the note's page, and the line between them — held with the
+		// rims below — is what says where it ends. A floor a shade off the page
+		// would be neither: not the same page, and not far enough to be a floor.
 		const up = theme.includes("dark") ? 1 : -1;
-		const panel = step("--panel") * up;
-		if (panel < 0.02 || panel > 0.04) {
-			out.push(`${theme}: --panel ${panel < 0.02 ? "is not a floor of its own" : "has left the window"} — ${step("--panel").toFixed(3)}, wants ${up > 0 ? "+" : "-"}0.02 to ${up > 0 ? "+" : "-"}0.04`);
+		if (Math.abs(step("--panel")) > 0.001) {
+			out.push(`${theme}: --panel is not the note's page — ${step("--panel").toFixed(3)}, wants 0`);
 		}
 
 		// And what is laid on pi's floor goes on past it, never back toward
@@ -287,12 +327,19 @@ export function ladder() {
 
 		// A rim is one distance from its own surface, and which side of it
 		// depends only on where the light is. Too far and it is a line again.
-		for (const [token, where] of [
-			["--border", "rim on content"],
-			["--sidebar-border", "rim in the sidebar"],
-		]) {
+		// Every surface one is drawn on, not only the page: an opaque grey
+		// holds its distance on the one surface it was measured against.
+		for (const { token, where } of rims) {
 			const d = Math.abs(rim(token, where));
 			if (d < 0.035 || d > 0.065) out.push(`${theme}: ${token} is ${d < 0.035 ? "too faint to be an edge" : "drawn as a line, not a rim"} — ${rim(token, where).toFixed(3)}, wants 0.035 to 0.065`);
+		}
+
+		// A control's edge stands further off than a rim, on whatever it is
+		// put on — a rim's distance and it reads as a card, not a field — and
+		// not so far that it is a box drawn round the words.
+		for (const { token, where, delta } of edges) {
+			const d = Math.abs(delta);
+			if (d < 0.065 || d > 0.15) out.push(`${theme}: ${token} ${d < 0.065 ? "is no further off than a rim" : "is a box, not an edge"} (${where}) — ${delta.toFixed(3)}, wants 0.065 to 0.15`);
 		}
 	}
 	return out;
@@ -309,7 +356,7 @@ export const check = () =>
 if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
 	const quiet = process.argv.includes("--quiet");
 	const fail = [];
-	for (const { theme, rows, steps, rims } of measure()) {
+	for (const { theme, rows, steps, rims, edges } of measure()) {
 		const bad = rows.filter((r) => r.ratio < r.wants);
 		bad.forEach((r) => fail.push(`${theme}: ${r.pair} (${r.where}) — ${r.ratio.toFixed(2)}, wants ${r.wants}`));
 		if (quiet) continue;
@@ -322,7 +369,7 @@ if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.me
 			console.log(`  ${mark} ${ratio.toFixed(2).padStart(5)} / ${wants}  ${pair.padEnd(52)} ${where}`);
 		}
 		console.log("  \x1b[2melevation (oklch L, signed against content)\x1b[0m");
-		for (const { token, where, delta } of [...steps, ...rims]) {
+		for (const { token, where, delta } of [...steps, ...rims, ...edges]) {
 			console.log(`    \x1b[2m${delta >= 0 ? "+" : ""}${delta.toFixed(3)}  ${token.padEnd(18)} ${where}\x1b[0m`);
 		}
 	}
@@ -336,5 +383,5 @@ if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.me
 		fail.forEach((f) => console.error(`  ${f}`));
 		process.exit(1);
 	}
-	console.log("\n\x1b[32mevery pair clears AA in all four themes\x1b[0m");
+	console.log("\n\x1b[32mevery pair clears AA in both themes\x1b[0m");
 }

@@ -91,7 +91,7 @@ export function ModelMenu({
 										    which. The level does not truncate — three letters
 										    cut down is no level at all. */}
 										<span className="min-w-0 truncate" title={current.name}>{current.name}</span>
-										<span className="shrink-0 text-muted-foreground/80">{levelLabel(current.level)}</span>
+										<span className="shrink-0 text-muted-foreground">{levelLabel(current.level)}</span>
 									</>
 								) : (
 									<span className="text-muted-foreground">{models.length ? "model" : "No model"}</span>

@@ -33,7 +33,7 @@ export function statusDot(status: BranchStatus | undefined): { className: string
 	if (!status || status.number === undefined) return null;
 	switch (status.state) {
 		case "open":
-			return { className: "bg-blue-500", long: `Pull request #${status.number} is open` };
+			return { className: "bg-primary", long: `Pull request #${status.number} is open` };
 		case "merged":
 			return { className: "bg-muted-foreground/60", long: `Pull request #${status.number} was merged` };
 		case "closed":
