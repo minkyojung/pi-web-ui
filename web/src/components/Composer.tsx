@@ -95,7 +95,7 @@ function AskingAgain() {
 	if (!asking) return null;
 
 	return (
-		<div className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+		<div className="mb-2 flex items-center gap-1.5 text-xs text-subtle-foreground">
 			<PencilIcon className="size-3 shrink-0" />
 			<span className="min-w-0 flex-1 truncate">Asking again: {asking.text}</span>
 			<Button

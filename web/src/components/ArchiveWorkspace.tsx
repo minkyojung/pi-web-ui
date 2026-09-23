@@ -73,7 +73,7 @@ export function ArchiveWorkspace({ workspace, onClose, shell }: { workspace: { p
 						{changes === 1 ? "1 uncommitted change" : `${changes} uncommitted changes`} in it will be lost.
 					</p>
 				)}
-				{changes === null && <p className="text-sm text-muted-foreground">Git could not say what this folder holds, so it is left alone.</p>}
+				{changes === null && <p className="text-sm text-subtle-foreground">Git could not say what this folder holds, so it is left alone.</p>}
 				{error && (
 					<p id="archive-workspace-error" role="alert" className="text-sm text-destructive">
 						{error}

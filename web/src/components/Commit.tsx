@@ -52,7 +52,7 @@ export default function Commit({ commit, onOpen }: { commit: string; onOpen: (pa
 	if (!mine) return <div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>;
 	if (mine.type === "commit_gone") {
 		return (
-			<div id="page" data-commit={commit} className="flex flex-1 flex-col items-center justify-center gap-1 text-sm text-muted-foreground">
+			<div id="page" data-commit={commit} className="flex flex-1 flex-col items-center justify-center gap-1 text-sm text-subtle-foreground">
 				<span>There is no commit {commit.slice(0, 7)} in this repository.</span>
 				<span className="text-xs">It may be on another branch, or the history may have been rewritten.</span>
 			</div>
@@ -68,7 +68,7 @@ export default function Commit({ commit, onOpen }: { commit: string; onOpen: (pa
 				{work.map((file) => (
 					<FileBlock key={file.path} file={file} onOpen={onOpen} />
 				))}
-				{work.length === 0 && <p className="text-sm text-muted-foreground">Nothing outside the spec's own folder was changed.</p>}
+				{work.length === 0 && <p className="text-sm text-subtle-foreground">Nothing outside the spec's own folder was changed.</p>}
 				{mine.truncated && <p className="text-xs text-muted-foreground">This commit changed more files than are shown here.</p>}
 				{kept.length > 0 && (
 					<Collapsible className="flex flex-col gap-3">

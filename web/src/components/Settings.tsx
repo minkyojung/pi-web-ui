@@ -237,20 +237,20 @@ function Panel({ section }: { section: Section }) {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-subtle-foreground">
               {settings ? describeMode(settings.toolMode).can.join(" · ") : " "}
             </p>
             {/* The mode of the session already open is on the composer, and this
                 does not reach back and change it — pi does not remember a tool
                 change, so every session is set once, when it starts. */}
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-subtle-foreground">
               The session already running keeps the mode on its own control.
             </p>
           </div>
           <div className="flex items-center justify-between gap-4">
             <div className="flex flex-col gap-0.5">
               <Label htmlFor="loadExtensions">Load the extensions installed for pi&apos;s terminal</Label>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-subtle-foreground">
                 Their tools and commands appear here as they do there. Applies when the next session starts. One of
                 them registering a tool Octave has — ask_user, the note tools — keeps Octave&apos;s.
               </p>
@@ -293,7 +293,7 @@ function PiSwitches() {
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
           <Label htmlFor="compaction">Compact the conversation automatically</Label>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-subtle-foreground">
             When {k(pi.compaction.reserveTokens)} tokens of the context window are left, keeping the last{" "}
             {k(pi.compaction.keepRecentTokens)}. Those two are pi&apos;s to change, in ~/.pi/agent/settings.json.
           </p>
@@ -307,7 +307,7 @@ function PiSwitches() {
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
           <Label htmlFor="retry">Retry a failed call on its own</Label>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-subtle-foreground">
             A few times, with growing waits, before giving up. Each attempt is said in the conversation.
           </p>
         </div>
@@ -320,7 +320,7 @@ function PiSwitches() {
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
           <Label htmlFor="hideThinking">Hide the model&apos;s thinking</Label>
-          <p className="text-xs text-muted-foreground">The thinking rows are left out of the conversation; the answers stay.</p>
+          <p className="text-xs text-subtle-foreground">The thinking rows are left out of the conversation; the answers stay.</p>
         </div>
         <Switch
           id="hideThinking"
@@ -331,7 +331,7 @@ function PiSwitches() {
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
           <Label htmlFor="askBranchSummary">Ask to summarize when leaving a branch</Label>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-subtle-foreground">
             Stepping to another answer with the arrows asks first whether to keep a summary of the one left. Off, it moves without one.
           </p>
         </div>
@@ -344,7 +344,7 @@ function PiSwitches() {
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
           <Label htmlFor="projectTrust">Let pi read this folder&apos;s own .pi</Label>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-subtle-foreground">
             {pi.projectTrust === "nothing"
               ? "This folder has no .pi settings, skills, prompts or SYSTEM.md of its own to read."
               : "Its settings, skills, prompt templates and SYSTEM.md, as pi reads a trusted project's. Remembered in pi's trust.json, where pi's terminal keeps its /trust answer."}
@@ -399,7 +399,7 @@ function Appearance() {
             </Button>
           ))}
         </ButtonGroup>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-subtle-foreground">
           Kept in this browser, not with the rest — the same window at a desk and in bed wants
           two answers.
         </p>
@@ -433,7 +433,7 @@ function Keys() {
         {KEYS.map(([key, what]) => (
           <div key={key} className="contents">
             <dt className="whitespace-nowrap font-medium tabular-nums">{key}</dt>
-            <dd className="text-muted-foreground">{what}</dd>
+            <dd className="text-subtle-foreground">{what}</dd>
           </div>
         ))}
       </dl>
@@ -480,7 +480,7 @@ function About() {
               Check for Updates
             </Button>
           </div>
-          <p role="status" className="text-muted-foreground">
+          <p role="status" className="text-subtle-foreground">
             {status ?? "Octave looks for a new version when it starts and every four hours, and downloads it quietly."}
           </p>
         </div>
@@ -493,7 +493,7 @@ function Heading({ title, children }: { title: string; children: React.ReactNode
   return (
     <header className="flex flex-col gap-1">
       <h2 className="text-sm font-semibold">{title}</h2>
-      <p className="text-xs text-muted-foreground">{children}</p>
+      <p className="text-xs text-subtle-foreground">{children}</p>
     </header>
   );
 }

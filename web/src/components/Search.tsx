@@ -72,7 +72,7 @@ export function Search({
 							<CommandItem key={`${hit.path}:${hit.line}`} value={`${hit.path}:${hit.line}`} onSelect={() => pick(hit.path)}>
 								<span className="max-w-[40%] shrink-0 truncate font-medium">{titleOf(hit.path)}</span>
 								<span className="text-muted-foreground">·</span>
-								<span className="min-w-0 truncate text-muted-foreground">
+								<span className="min-w-0 truncate text-subtle-foreground">
 									{hit.text.slice(0, hit.from)}
 									<mark className="bg-transparent font-medium text-foreground">{hit.text.slice(hit.from, hit.to)}</mark>
 									{hit.text.slice(hit.to)}

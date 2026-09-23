@@ -55,7 +55,7 @@ export function Accounts() {
 		<>
 			<header className="flex flex-col gap-1">
 				<h2 className="text-sm font-semibold">Accounts</h2>
-				<p className="text-xs text-muted-foreground">
+				<p className="text-xs text-subtle-foreground">
 					Who pi runs its models from. Kept by pi, in <code className="text-[11px]">~/.pi/agent</code>, so the terminal pi is
 					signed in too.
 				</p>
@@ -171,7 +171,7 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 						</DialogHeader>
 						<div className="flex flex-col gap-3 text-xs">
 							{signing.code && <Event event={{ type: "device_code", ...signing.code }} />}
-							{signing.code && !signing.error && <p className="text-muted-foreground">Then come back here: this closes by itself once GitHub says yes.</p>}
+							{signing.code && !signing.error && <p className="text-subtle-foreground">Then come back here: this closes by itself once GitHub says yes.</p>}
 							{signing.error && (
 								<p role="alert" className="text-destructive">
 									{signing.error}
@@ -201,7 +201,7 @@ function Group({ title, empty, children }: { title: string; empty?: string; chil
 	return (
 		<section className="flex flex-col gap-1">
 			<h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
-			{rows.length ? <ul className="flex flex-col gap-1">{children}</ul> : empty && <p className="px-3 py-2 text-xs text-muted-foreground">{empty}</p>}
+			{rows.length ? <ul className="flex flex-col gap-1">{children}</ul> : empty && <p className="px-3 py-2 text-xs text-subtle-foreground">{empty}</p>}
 		</section>
 	);
 }
@@ -357,7 +357,7 @@ function Event({ event }: { event: LoginEvent }) {
 			return <DeviceCode userCode={event.userCode} verificationUri={event.verificationUri} />;
 		case "info":
 			return (
-				<p className="flex flex-col gap-1 text-muted-foreground">
+				<p className="flex flex-col gap-1 text-subtle-foreground">
 					<span>{event.message}</span>
 					{event.links?.map((link) => (
 						<a key={link.url} href={link.url} target="_blank" rel="noreferrer" className="text-primary underline-offset-2 hover:underline">
@@ -367,7 +367,7 @@ function Event({ event }: { event: LoginEvent }) {
 				</p>
 			);
 		case "progress":
-			return <p className="text-muted-foreground">{event.message}</p>;
+			return <p className="text-subtle-foreground">{event.message}</p>;
 	}
 }
 
@@ -413,7 +413,7 @@ function Ask({ prompt }: { prompt: LoginPrompt }) {
 				{prompt.options.map((o) => (
 					<Button key={o.id} type="button" variant="outline" size="sm" className="h-auto flex-col items-start gap-0 py-1.5 text-xs" onClick={() => answer(o.id)}>
 						<span>{o.label}</span>
-						{o.description && <span className="font-normal text-muted-foreground">{o.description}</span>}
+						{o.description && <span className="font-normal text-subtle-foreground">{o.description}</span>}
 					</Button>
 				))}
 			</div>

@@ -85,7 +85,7 @@ function QuestionnaireDescription({
   return (
     <QuestionnairePrimitive.Description
       data-slot="questionnaire-description"
-      className={cn("text-sm text-pretty text-muted-foreground", className)}
+      className={cn("text-sm text-pretty text-subtle-foreground", className)}
       {...props}
     />
   )

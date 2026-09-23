@@ -104,7 +104,7 @@ export function ContextCard({
 							))}
 						</>
 					) : (
-						<div className="text-xs text-muted-foreground">No estimate yet — the agent counts after each response.</div>
+						<div className="text-xs text-subtle-foreground">No estimate yet — the agent counts after each response.</div>
 					)}
 				</Section>
 

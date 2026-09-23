@@ -31,6 +31,8 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - In the list of a spec's results, the tick or the cross opens what that check printed, in a tab; the line still opens the commit.
 - `/setup` has the agent draft `.octave/config.toml` for a repository from what is there — its package file and lockfile, CI, Makefile, README — for you to read and fix; it runs nothing. A workspace of a repository with no such file has `Set up` at the foot of the window where the ▶ would be, which asks for the same.
 - The agent is told which branch this workspace was started from, so a diff, a rebase or a pull request it makes is against that branch.
+### Changed
+- Sentences you read are a step brighter than the grey of a timestamp or a label: the description under a dialog's title or a setting, a sign-in's instructions, what the agent was thinking once you open it, a message waiting its turn, a search hit's line. Before, they were the same grey as everything you only glance at, so the words that explain did not stand out from the ones that don't.
 
 ## [0.0.8] - 2026-09-22
 ### Added

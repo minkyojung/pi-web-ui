@@ -49,7 +49,7 @@ export function ThinkingRow({ text }: { text: string }) {
 				    lists, code, the occasional heading — and read as prose. Held a
 				    shade back from the answer's own text: it is what led to the
 				    answer, not the answer. */}
-				<div className="mt-1 mb-2 ml-[0.7rem] border-l pl-3 text-sm text-muted-foreground">
+				<div className="mt-1 mb-2 ml-[0.7rem] border-l pl-3 text-sm text-subtle-foreground">
 					<MessageResponse>{text}</MessageResponse>
 				</div>
 			</CollapsibleContent>

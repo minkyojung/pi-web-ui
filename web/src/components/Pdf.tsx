@@ -118,7 +118,7 @@ export default function Pdf({ path, page = null }: { path: string; page?: number
 				<div ref={pages} className="pdfViewer" />
 			</div>
 			{failed && (
-				<p className="absolute inset-0 flex items-center justify-center p-8 text-center text-sm text-muted-foreground">
+				<p className="absolute inset-0 flex items-center justify-center p-8 text-center text-sm text-subtle-foreground">
 					This file could not be shown: {failed}
 				</p>
 			)}

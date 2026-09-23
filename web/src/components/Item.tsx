@@ -80,7 +80,7 @@ export const ItemView = memo(function ItemView({ item, index }: { item: Item; in
 		// "warning", which a finished compaction is not.
 		default:
 			return (
-				<div className="flex items-start gap-1.5 px-1 text-sm text-muted-foreground">
+				<div className="flex items-start gap-1.5 px-1 text-sm text-subtle-foreground">
 					<InfoIcon className="mt-0.5 size-3.5 shrink-0" />
 					<span className="min-w-0">{item.text}</span>
 				</div>

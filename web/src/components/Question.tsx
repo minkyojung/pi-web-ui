@@ -143,7 +143,7 @@ function Form({ prompt, onSubmit }: { prompt: PromptRequest; onSubmit: (answer: 
 	}, [at]);
 
 	if (questions.length === 0) {
-		return <p className="pr-12 text-sm text-muted-foreground">This question arrived in a shape that cannot be shown.</p>;
+		return <p className="pr-12 text-sm text-subtle-foreground">This question arrived in a shape that cannot be shown.</p>;
 	}
 
 	const batch = prompt.type === "batch";
@@ -177,7 +177,7 @@ function Form({ prompt, onSubmit }: { prompt: PromptRequest; onSubmit: (answer: 
 						{heading && <span className="min-w-0 truncate text-xs font-medium">{heading}</span>}
 						<QuestionnaireProgress className="shrink-0" />
 					</div>
-					{message && <p className="text-xs whitespace-pre-wrap text-muted-foreground">{message}</p>}
+					{message && <p className="text-xs whitespace-pre-wrap text-subtle-foreground">{message}</p>}
 				</div>
 			)}
 			{questions.map((q, i) => (
