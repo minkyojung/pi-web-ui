@@ -44,6 +44,8 @@ export const SPECS_DIR = `${OCTAVE_DIR}/specs/`;
  * here with the rest of what both ends must agree on.
  */
 export const SPEC_DOCS = ["requirements.md", "design.md", "tasks.md"] as const;
+/** The two that wait for the person's approval before the next is written. The tasks are not approved: they are run, and running one is the person's word on it. */
+export const APPROVED_DOCS = ["requirements.md", "design.md"] as const;
 export type SpecDoc = (typeof SPEC_DOCS)[number];
 
 /** That record's name, in the spec's folder beside the documents. */

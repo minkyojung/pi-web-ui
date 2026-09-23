@@ -18,6 +18,7 @@
  * Pure, and the rule in one place: App.tsx holds the two states this reads.
  */
 import type { SpecInfo } from "../../protocol.ts";
+import { APPROVED_DOCS } from "../../documentKinds.ts";
 import { docPath, waitingSpec } from "./specStanding.ts";
 
 /** Where a spec's waiting document is, as a path from the folder, or null when none is. */
@@ -42,6 +43,12 @@ function newest(waiting: SpecInfo[]): string | null {
 export function toOpen(before: SpecInfo[] | null, after: SpecInfo[], anythingOpen: boolean): string | null {
 	const waiting = after.filter((spec) => spec.waiting !== null);
 	if (before === null) return anythingOpen ? null : newest(waiting);
-	const was = new Map(before.map((spec) => [spec.name, spec.waiting]));
-	return newest(waiting.filter((spec) => was.get(spec.name) !== spec.waiting));
+	const was = new Map(before.map((spec) => [spec.name, spec]));
+	const opened = newest(waiting.filter((spec) => was.get(spec.name)?.waiting !== spec.waiting));
+	if (opened) return opened;
+	// The tasks, just written with nothing left to approve: opened as a waiting
+	// document is, to be read before any of them is run — they are not
+	// approved, so they are never "waiting".
+	const written = after.find((spec) => spec.own && spec.approved === APPROVED_DOCS.length && spec.written.includes("tasks.md") && !was.get(spec.name)?.written.includes("tasks.md"));
+	return written ? docPath(written.name, "tasks.md") : null;
 }

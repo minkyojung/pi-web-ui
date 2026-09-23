@@ -1254,13 +1254,16 @@ it("작업이 어디까지 왔는지도 같은 메시지로 — tasks.md가 없�
 });
 
 it("승인이 풀려도 써진 문서는 써진 것이다 — 승인만으로는 알 수 없는 것", async () => {
-  for (const doc of ["requirements.md", "design.md", "tasks.md"]) {
+  for (const doc of ["requirements.md", "design.md"]) {
     putSpec(`.octave/specs/back/${doc}`, `# ${doc}\n`);
     await want("specs", (m) => m.specs.find((spec) => spec.name === "back")?.waiting === doc);
     approve(cwd, "back");
   }
-  const all = await want("specs", (m) => m.specs.find((spec) => spec.name === "back")?.approved === 3);
-  assert.equal(all.specs.find((spec) => spec.name === "back").waiting, null, "셋 다 승인됐다");
+  // The tasks are written and not approved: never waiting, ready as they are.
+  putSpec(".octave/specs/back/tasks.md", "# tasks.md\n");
+  const all = await want("specs", (m) => m.specs.find((spec) => spec.name === "back")?.written.includes("tasks.md"));
+  assert.equal(all.specs.find((spec) => spec.name === "back").approved, 2, "둘이 승인됐다");
+  assert.equal(all.specs.find((spec) => spec.name === "back").waiting, null, "작업 목록은 기다리지 않는다");
   clear();
   // Back to the requirements: the approvals after it fall away, but the design
   // and the tasks are still on the disk and can still be read.

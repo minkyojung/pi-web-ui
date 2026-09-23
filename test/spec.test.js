@@ -487,9 +487,9 @@ test("/spec-approve는 기다리는 문서를 승인하고, 같은 턴에 다음
   spec.put("tasks.md");
   pi.done.length = 0;
   await pi.approve("");
-  assert.deepEqual(spec.state(), { approved: 3, waiting: null });
-  assert.deepEqual(pi.done, [], "마지막 문서 뒤에는 쓸 것이 없다 — 턴을 시작하지 않는다");
-  assert.deepEqual(pi.notes, [{ text: "The spec email-auth is ready: its requirements, design and tasks are approved.", type: "info" }]);
+  assert.deepEqual(spec.state(), { approved: 2, waiting: null }, "작업 목록은 승인하지 않는다");
+  assert.deepEqual(pi.done, [], "쓸 것이 없다 — 턴을 시작하지 않는다");
+  assert.deepEqual(pi.notes, [{ text: "The spec email-auth is ready: its requirements and design are approved, and its tasks are written — read them, and /spec-run.", type: "info" }]);
 });
 
 test("/setup은 저장소의 명령을 에이전트가 초안하게 한다 — 숨긴 지시문은 파일의 모양과 네 시점을 말하고, 있는 파일은 고치라고 한다", async (t) => {
@@ -900,11 +900,11 @@ test("실제 pi 세션에서 사슬 한 바퀴: 세 문서가 차례로, 승인 
 
   await send("/spec-approve");
   assert.ok(toldLast().includes("The tasks are the order of the work"), "작업 지시문은 그 턴에 모델에게");
-  assert.deepEqual(state(), { approved: 2, waiting: "tasks.md" });
+  assert.deepEqual(state(), { approved: 2, waiting: null }, "작업 목록은 기다리지 않는다");
 
   const calls = sent.length;
   await session.prompt("/spec-approve");
-  assert.deepEqual(state(), { approved: 3, waiting: null });
+  assert.deepEqual(state(), { approved: 2, waiting: null });
   assert.equal(sent.length, calls, "마지막 승인에는 모델을 부르지 않는다");
   assert.match(notes.at(-1), /The spec email-auth is ready/);
 
@@ -990,7 +990,7 @@ test("작업 하나가 커밋 하나를 남기고 칸은 그대로 둔다 — �
   const files = run.git("show", "--name-only", "--format=", "HEAD").split("\n").sort();
   assert.deepEqual(files, [".octave/specs/email-auth/approvals.json", ".octave/specs/email-auth/design.md", ".octave/specs/email-auth/requirements.md", ".octave/specs/email-auth/tasks.md", "door.js"], "첫 작업의 커밋이 세 문서를 데려간다");
   assert.equal(run.git("status", "--porcelain"), "", "남는 것이 없다");
-  assert.deepEqual(run.state(), { approved: 3, waiting: null }, "승인은 그대로");
+  assert.deepEqual(run.state(), { approved: 2, waiting: null }, "승인은 그대로");
   assert.equal(run.notes.length, 1);
   assert.match(run.notes[0].text, /ready to look at/, "검토를 기다린다고 말한다");
   assert.match(run.notes[0].text, /Next is 2\.1/, "다음은 검토 중인 1을 건너뛴다");
@@ -1371,7 +1371,7 @@ test("실제 pi 세션에서 작업 둘을 이어서: 저마다 자기 세션에
   const first = git("show", "--name-only", "--format=", "HEAD").split("\n").sort();
   assert.deepEqual(first, [".octave/specs/email-auth/approvals.json", ".octave/specs/email-auth/design.md", ".octave/specs/email-auth/requirements.md", ".octave/specs/email-auth/tasks.md", "door.js"], "첫 작업이 세 문서를 데려간다");
   assert.equal(git("status", "--porcelain"), "", "남는 것이 없다");
-  assert.deepEqual(specState(cwd, "email-auth"), { approved: 3, waiting: null }, "승인은 그대로");
+  assert.deepEqual(specState(cwd, "email-auth"), { approved: 2, waiting: null }, "승인은 그대로");
 
   // What the run's own session was sent: its line, and the instructions beside it.
   const texts = sent.at(-1).map((m) => (typeof m.content === "string" ? m.content : m.content.map((c) => c.text ?? "").join("")));
@@ -1564,7 +1564,7 @@ test("/spec-done ticks the task's box and no other byte, a heading follows its s
   await pi.mark("spec-done", "2.1 2.2");
   assert.equal(pi.tasks("email-auth"), PLAN.replaceAll("- [ ]", "- [x]"), "2의 하위가 다 끝나 2도 따라간다");
   assert.match(pi.notes.at(-1).text, /2\.1 and 2\.2 are done\. That was the last one/);
-  assert.deepEqual(specState(pi.cwd, "email-auth"), { approved: 3, waiting: null }, "칸은 승인의 지문 밖이다");
+  assert.deepEqual(specState(pi.cwd, "email-auth"), { approved: 2, waiting: null }, "칸은 승인의 지문 밖이다");
 });
 
 test("a heading is not accepted by itself; a number the plan does not have, or no number, is said back", async (t) => {
@@ -1589,7 +1589,7 @@ test("/spec-cancel sets a task aside with `-`, a heading with everything under i
   await pi.mark("spec-cancel", "2");
   assert.equal(pi.tasks("email-auth"), PLAN.replace("- [ ] 2. Hang", "- [-] 2. Hang").replace("- [ ] 2.1", "- [-] 2.1").replace("- [ ] 2.2", "- [-] 2.2"));
   assert.match(pi.notes.at(-1).text, /2 is set aside/);
-  assert.deepEqual(specState(pi.cwd, "email-auth"), { approved: 3, waiting: null }, "접어 두어도 승인은 그대로");
+  assert.deepEqual(specState(pi.cwd, "email-auth"), { approved: 2, waiting: null }, "접어 두어도 승인은 그대로");
   await pi.mark("spec-reopen", "2.1");
   assert.equal(pi.tasks("email-auth"), PLAN.replace("- [ ] 2. Hang", "- [-] 2. Hang").replace("- [ ] 2.2", "- [-] 2.2"), "2.1만 열린다");
   await pi.mark("spec-reopen", "2");

@@ -9,7 +9,7 @@
  *
  * Pure, and tested without a browser.
  */
-import { SPEC_DOCS, SPECS_DIR, specNameOf, type SpecDoc } from "../../documentKinds.ts";
+import { APPROVED_DOCS, SPEC_DOCS, SPECS_DIR, specNameOf, type SpecDoc } from "../../documentKinds.ts";
 import type { SpecInfo } from "../../protocol.ts";
 
 /**
@@ -20,7 +20,7 @@ import type { SpecInfo } from "../../protocol.ts";
  * after everything was approved. It can be read; it is not approved as things
  * stand. `unwritten` is one the agent has not written at all.
  */
-export type Standing = "approved" | "waiting" | "written" | "unwritten";
+export type Standing = "approved" | "waiting" | "written" | "ready" | "unwritten";
 
 /** Where a spec's document is, as a path from the folder. */
 export const docPath = (name: string, doc: SpecDoc): string => `${SPECS_DIR}${name}/${doc}`;
@@ -57,6 +57,8 @@ export function waitingSpec(specs: readonly SpecInfo[]): SpecInfo | null {
 
 /** What has become of one document of one spec. */
 export function docStanding(spec: SpecInfo, doc: SpecDoc): Standing {
+	// The tasks are never approved: written, they are ready to be run.
+	if (doc === "tasks.md") return spec.written.includes(doc) ? "ready" : "unwritten";
 	if (SPEC_DOCS.indexOf(doc) < spec.approved) return "approved";
 	if (spec.waiting === doc) return "waiting";
 	return spec.written.includes(doc) ? "written" : "unwritten";
@@ -92,12 +94,12 @@ const TITLES: Record<SpecDoc, string> = { "requirements.md": "Requirements", "de
 /** A document's name as it is shown: the spec's language, not the file's. */
 export const docTitle = (doc: SpecDoc): string => TITLES[doc];
 
-const WORDS: Record<Standing, string> = { approved: "Approved", waiting: "Waiting", written: "Not approved", unwritten: "Not written yet" };
+const WORDS: Record<Standing, string> = { approved: "Approved", waiting: "Waiting", written: "Not approved", ready: "Ready", unwritten: "Not written yet" };
 
 /** What has become of a document, for the list where the document is already named. */
 export const standingWord = (standing: Standing): string => WORDS[standing];
 
-const PHRASES: Record<Standing, string> = { approved: "approved", waiting: "waiting", written: "not approved", unwritten: "not written yet" };
+const PHRASES: Record<Standing, string> = { approved: "approved", waiting: "waiting", written: "not approved", ready: "ready", unwritten: "not written yet" };
 
 /**
  * A spec in three or four words, for the control that names it: which
@@ -120,7 +122,7 @@ export function stateWords(spec: SpecInfo): string {
  * what is on the screen.
  */
 export function progressWords(spec: SpecInfo): string | null {
-	if (spec.approved < SPEC_DOCS.length || !spec.tasks) return null;
+	if (spec.approved < APPROVED_DOCS.length || !spec.written.includes("tasks.md") || !spec.tasks) return null;
 	const { done, total } = spec.tasks;
 	if (total === 0) return null;
 	return `${done} / ${total}${done === total ? " done" : ""}`;

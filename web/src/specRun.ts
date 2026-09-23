@@ -23,7 +23,7 @@
  * Pure. The stores are read where they are drawn.
  */
 import type { ClientMsg, SpecInfo } from "../../protocol.ts";
-import { SPEC_DOCS } from "../../documentKinds.ts";
+import { APPROVED_DOCS } from "../../documentKinds.ts";
 import { runsUnder, type Task, taskAt } from "../../specTasks.ts";
 
 /** Its name on pi's list of commands (CommandsMsg), which is how the window knows it is there. */
@@ -151,7 +151,7 @@ export function runBlocked(now: { online: boolean; streaming: boolean; compactin
 	if (!now.online) return "offline";
 	if (now.streaming || now.compacting) return "busy";
 	if (!now.hasCommand) return "no-command";
-	if (!now.spec || now.spec.approved < SPEC_DOCS.length) return "not-approved";
+	if (!now.spec || now.spec.approved < APPROVED_DOCS.length || !now.spec.written.includes("tasks.md")) return "not-approved";
 	if (now.count === 0) return "nothing";
 	if (now.sent) return "sent";
 	return null;
@@ -161,7 +161,7 @@ const REASONS: Record<NonNullable<Block>, string> = {
 	offline: "Not connected",
 	busy: "The agent is working",
 	"no-command": "Spec commands are not loaded here",
-	"not-approved": "Approve all three documents first",
+	"not-approved": "Approve the requirements and the design first, and have the tasks written",
 	nothing: "No task here left to run",
 	sent: "Starting…",
 };

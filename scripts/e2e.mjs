@@ -3593,17 +3593,11 @@ check("a bar over a spec's tasks chooses what they run on, and a Start takes the
 	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
 	writeFileSync(join(dir, "design.md"), "# Design\n");
 	writeFileSync(join(dir, "tasks.md"), "# Tasks\n\n- [ ] 1. First\n- [ ] 2. Second\n");
-	// The first two approved, the tasks waiting: the list opens by itself as
-	// the document waiting (specTabs.ts), with the approval's line over it
-	// and not this one — the bar is for running, and nothing runs before the
-	// approvals are done.
-	for (const name of readdirSync(join(cwd, ".octave/specs"))) if (name !== "runon") while (approve(cwd, name)) {}
-	approve(cwd, "runon");
-	approve(cwd, "runon");
+	// The two approved and the tasks written: the list opens by itself, as a
+	// document waiting does (specTabs.ts) — the tasks are not approved, they
+	// are read and run — with the run's bar over it.
+	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
 	await until("the plan in front", async () => (await editorText(app)).includes("Second"));
-	await until("the approval's line", () => app.evaluate("!!document.getElementById('specBar')"));
-	assert.equal(await app.evaluate("!!document.getElementById('taskBar')"), false, "no bar before the approvals");
-	approve(cwd, "runon");
 	await until("the bar", () => app.evaluate("!!document.getElementById('taskBar')"));
 	const bar = () => app.evaluate("document.getElementById('taskBar')?.textContent ?? ''");
 	assert.match(await bar(), /the session's model/, "nothing chosen yet: the session's");

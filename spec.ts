@@ -50,7 +50,7 @@ import { join, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { writeAtomic } from "./atomic.ts";
-import { APP_DIR_NAME, APPROVALS, SPEC_DOCS, type SpecDoc, SPECS_DIR } from "./documentKinds.ts";
+import { APP_DIR_NAME, APPROVALS, APPROVED_DOCS, SPEC_DOCS, type SpecDoc, SPECS_DIR } from "./documentKinds.ts";
 import { CITIES } from "./electron/cities.js";
 import { CONFIG_FILE, DEFAULT_TIMEOUT, isConfig, readConfig } from "./electron/octaveConfig.js";
 import { approve, type SpecState, specState } from "./specApproval.ts";
@@ -278,6 +278,10 @@ const TASKS_FORM = `\`\`\`md
 - [ ] 2.2 […]
 \`\`\``;
 
+/** How the tasks' turn ends: the same stop, but the tasks are not approved — they are read, and run. */
+const stopBeforeRun = (said: string) =>
+	`Then stop. Say in a line or two what you ${said}, and point out what needs their decision. Do not ask them to approve it: they read it, and run its tasks themselves with /spec-run. Do not start on the tasks.`;
+
 /** How every document's turn ends: stopped, told, and not asked. */
 const stop = (said: string, onward: string) =>
 	`Then stop. Say in a line or two what you ${said}, and point out what needs their decision. Do not ask them to approve it: they approve it themselves, with a command, once they have read it. ${onward}`;
@@ -328,7 +332,7 @@ export function nextPrompt({ name, next, redo }: { name: string; next: "design.m
 						"1. Read the requirements, the design and the tasks, and find where the tasks no longer fit them.",
 						"2. Change the tasks there, and only there, with edit: add, change or remove tasks, keeping their form, their numbering and the requirements they are for right. A task checked as done stays as it is; if what it built has to change, add a task for that. If nothing needs to change, change nothing.",
 						"3. If the design or the requirements now miss something, do not change them: say what, and offer to go back.",
-						`4. ${stop("changed, or that nothing needed to change", "Do not start on the tasks.")}`,
+						`4. ${stopBeforeRun("changed, or that nothing needed to change")}`,
 					]
 				: [
 						`The person approved the design of the spec "${name}": ${dir}design.md, on ${dir}requirements.md.`,
@@ -346,7 +350,7 @@ export function nextPrompt({ name, next, redo }: { name: string; next: "design.m
 							...TASKS_RULES.map((rule) => `- ${rule}`),
 						].join("\n"),
 						"3. If writing them shows that the design or the requirements miss something, do not change them: say what, and offer to go back.",
-						`4. ${stop("wrote", "Do not start on the tasks.")}`,
+						`4. ${stopBeforeRun("wrote")}`,
 					];
 	return [...steps, "", "Do not narrate these steps; do them."].join("\n");
 }
@@ -1029,21 +1033,24 @@ export default function spec(pi: ExtensionAPI): void {
 			const specs = takenSpecs(ctx.cwd).map((name) => ({ name, ...specState(ctx.cwd, name) }));
 			// Somewhere to go on to: a document waiting, or one approved and the
 			// next not written — its turn was stopped before it wrote it.
-			const open = (spec: SpecState) => spec.waiting !== null || (spec.approved > 0 && spec.approved < SPEC_DOCS.length);
+			// Somewhere to go on to: a document waiting, one approved and the next not written, or both approved and the tasks not written yet — the tasks are not approved, only written and then run.
+			const open = (spec: SpecState & { name: string }) => spec.waiting !== null || (spec.approved > 0 && spec.approved < APPROVED_DOCS.length) || (spec.approved === APPROVED_DOCS.length && !existsSync(join(ctx.cwd, SPECS_DIR, spec.name, "tasks.md")));
 			const candidates = given ? specs.filter((spec) => spec.name === given) : specs.filter(open);
 			const chosen = candidates[0];
 			if (!chosen) {
-				ctx.ui.notify(given ? `There is no spec called ${given}.` : "Nothing is waiting for your approval. A spec starts with /spec and a line of what to build.", "info");
+				// Nothing to go on to: a spec whose tasks are written is ready, and said so; else there is nothing.
+				const done = specs.filter((spec) => spec.approved === APPROVED_DOCS.length && existsSync(join(ctx.cwd, SPECS_DIR, spec.name, "tasks.md")));
+				ctx.ui.notify(given ? `There is no spec called ${given}.` : done.length === 1 ? `The spec ${done[0]!.name} is ready: its requirements and design are approved, and its tasks are written — read them, and /spec-run.` : "Nothing is waiting for your approval. A spec starts with /spec and a line of what to build.", "info");
 				return;
 			}
 			if (candidates.length > 1) {
 				ctx.ui.notify(`More than one spec is waiting: ${candidates.map((spec) => spec.name).join(", ")}. Say which: /spec-approve ${chosen.name}`, "info");
 				return;
 			}
-			const ready = `The spec ${chosen.name} is ready: its requirements, design and tasks are approved.`;
+			const ready = `The spec ${chosen.name} is ready: its requirements and design are approved, and its tasks are written — read them, and /spec-run.`;
 			const idle = `Nothing of ${chosen.name} is waiting for your approval.`;
 			if (!open(chosen)) {
-				ctx.ui.notify(chosen.approved === SPEC_DOCS.length ? ready : idle, "info");
+				ctx.ui.notify(chosen.approved === APPROVED_DOCS.length ? ready : idle, "info");
 				return;
 			}
 			// Where the next document is: after the one approved now, or after the
@@ -1056,10 +1063,6 @@ export default function spec(pi: ExtensionAPI): void {
 					return;
 				}
 				at = SPEC_DOCS.indexOf(approved) + 1;
-				if (at === SPEC_DOCS.length) {
-					ctx.ui.notify(ready, "info");
-					return;
-				}
 			}
 			const next = SPEC_DOCS[at] as "design.md" | "tasks.md";
 			const redo = existsSync(join(ctx.cwd, SPECS_DIR, chosen.name, next));
@@ -1105,7 +1108,7 @@ export default function spec(pi: ExtensionAPI): void {
 				}
 			}
 			const specs = takenSpecs(ctx.cwd).map((name) => ({ name, ...specState(ctx.cwd, name) }));
-			const ready = (spec: SpecState) => spec.approved === SPEC_DOCS.length;
+			const ready = (spec: SpecState & { name: string }) => spec.approved === APPROVED_DOCS.length && existsSync(join(ctx.cwd, SPECS_DIR, spec.name, "tasks.md"));
 			const run = specs.filter(ready);
 			// The ready ones when there are any, and otherwise all of them, so
 			// that the one spec there is says what it is waiting for rather than
