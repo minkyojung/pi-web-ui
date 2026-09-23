@@ -8,7 +8,7 @@ import { Pi } from "./components/Pi";
 import { ModeToggle, PiToggle, SidebarToggle } from "./components/PanelHeader";
 import { Sidebar, Steps } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
-import { Terminal } from "./components/Terminal";
+import { Terminals } from "./components/Terminals";
 import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
 import { WhyCard } from "./components/WhyCard";
@@ -758,7 +758,7 @@ export function App() {
 						className="flex min-h-0 flex-col"
 						onResize={() => setTerminalOpen(!terminal.current?.isCollapsed())}
 					>
-						<Terminal open={terminalOpen} />
+						<Terminals open={terminalOpen} onEmpty={() => terminal.current?.collapse()} />
 					</ResizablePanel>
 					</ResizablePanelGroup>
 					</ResizablePanel>

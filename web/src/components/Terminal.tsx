@@ -26,7 +26,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as Xterm, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { useEffect, useRef } from "react";
+import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import { type Channel, openTerminal } from "../pty.ts";
 
 /** Lines kept above the screen: the same number the server's screen keeps (pty/screen.ts). */
@@ -69,9 +69,31 @@ function windowsKey(e: KeyboardEvent): boolean {
 	return false;
 }
 
-export function Terminal({ id = "1", open }: { id?: string; open: boolean }) {
+export type TerminalHandle = {
+	/** End the shell. */
+	close(): void;
+};
+
+export function Terminal({
+	id,
+	open,
+	onReady,
+	onExit,
+	ref,
+}: {
+	id: string;
+	/** In front and shown: the cursor goes to it. */
+	open: boolean;
+	/** The socket is open: the server has the shell now. */
+	onReady?: () => void;
+	/** The shell ended, with this code; the tab is the row's to take away. */
+	onExit: (code: number) => void;
+	ref?: Ref<TerminalHandle>;
+}) {
 	const box = useRef<HTMLDivElement>(null);
 	const term = useRef<Xterm | null>(null);
+	const channel = useRef<Channel | null>(null);
+	useImperativeHandle(ref, () => ({ close: () => channel.current?.close() }), []);
 
 	useEffect(() => {
 		const el = box.current;
@@ -98,34 +120,26 @@ export function Terminal({ id = "1", open }: { id?: string; open: boolean }) {
 			// The DOM renderer, then: slower, and the same on screen.
 		}
 
-		let channel: Channel | null = null;
 		let exited = false;
-		const start = () => {
-			exited = false;
-			channel = openTerminal(id, {
-				// What comes first is the screen as the server kept it, drawn on
-				// a clean one; then the shell is told the size this box is.
-				onOpen: () => {
-					xterm.reset();
-					channel?.resize(xterm.cols, xterm.rows);
-				},
-				onData: (bytes) => xterm.write(bytes, () => channel?.ack(bytes.length)),
-				onExit: (code) => {
-					exited = true;
-					xterm.write(`\r\n\x1b[2m[the shell exited with ${code} — press a key for a new one]\x1b[0m\r\n`);
-				},
-			});
-		};
-		start();
-		const typed = xterm.onData((text) => {
-			if (exited) {
-				channel?.dispose();
-				start();
-				return;
-			}
-			channel?.write(text);
+		const link = openTerminal(id, {
+			// What comes first is the screen as the server kept it, drawn on
+			// a clean one; then the shell is told the size this box is.
+			onOpen: () => {
+				xterm.reset();
+				link.resize(xterm.cols, xterm.rows);
+				onReady?.();
+			},
+			onData: (bytes) => xterm.write(bytes, () => link.ack(bytes.length)),
+			onExit: (code) => {
+				exited = true;
+				onExit(code);
+			},
 		});
-		const resized = xterm.onResize(({ cols, rows }) => channel?.resize(cols, rows));
+		channel.current = link;
+		const typed = xterm.onData((text) => {
+			if (!exited) link.write(text);
+		});
+		const resized = xterm.onResize(({ cols, rows }) => link.resize(cols, rows));
 
 		// Fitted when the box has a size, and again whenever it changes — which
 		// is the panel being dragged, the window resized, or the panel opening.
@@ -145,10 +159,14 @@ export function Terminal({ id = "1", open }: { id?: string; open: boolean }) {
 			sized.disconnect();
 			typed.dispose();
 			resized.dispose();
-			channel?.dispose();
+			link.dispose();
+			channel.current = null;
 			xterm.dispose();
 			term.current = null;
 		};
+		// The callbacks are read through the refs above and at the time they
+		// fire; the terminal is made once for its id.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [id]);
 
 	// Opened: the cursor goes to it, as it does to a terminal pulled up in
@@ -157,5 +175,7 @@ export function Terminal({ id = "1", open }: { id?: string; open: boolean }) {
 		if (open) term.current?.focus();
 	}, [open]);
 
-	return <div id="terminal" ref={box} className="min-h-0 flex-1 overflow-hidden bg-background px-2 pt-1" />;
+	// Not in front: hidden, not gone — xterm keeps its screen and is fitted
+	// again when the box has a size once more.
+	return <div data-terminal={id} ref={box} className={`min-h-0 flex-1 overflow-hidden bg-background px-2 pt-1 ${open ? "" : "hidden"}`} />;
 }
