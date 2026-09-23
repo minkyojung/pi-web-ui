@@ -58,7 +58,7 @@ export function ApproveAction({ path }: { path: string | null }) {
 						id="approveSpec"
 						variant="soft"
 						size="sm"
-						className="h-7 px-2 text-xs text-status-review"
+						className="h-7 px-2 text-xs text-status-done"
 						aria-label={waitingLine(spec.waiting)}
 						disabled={stop !== null}
 						onClick={() => {
