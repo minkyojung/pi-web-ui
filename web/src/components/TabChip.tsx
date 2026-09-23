@@ -20,7 +20,10 @@
  * One width for every tab, and a little generous: as wide as their words
  * they read as ragged and moved under the pointer as tabs opened and
  * closed; a browser's tabs are one width for the same reason. What does
- * not fit is cut with an ellipsis.
+ * not fit is cut with an ellipsis. The small size is the terminals': the
+ * same tab a step down — smaller type, as wide as its short name up to a
+ * limit, less inset — as VS Code's terminal tabs are its editor tabs a
+ * step down. A size, not a second style, so there is still one tab.
  */
 import { X } from "lucide-react";
 import type { ComponentProps, Ref } from "react";
@@ -30,12 +33,14 @@ export function TabChip({
 	title,
 	onClose,
 	onCloseByKey = onClose,
+	size = "default",
 	className,
 	ref,
 	...rest
 }: {
 	title: string;
 	onClose: () => void;
+	size?: "default" | "sm";
 	/** Closed with Delete or Backspace on the focused tab: the row may want to keep the focus on the neighbour. */
 	onCloseByKey?: () => void;
 	ref?: Ref<HTMLDivElement>;
@@ -43,7 +48,7 @@ export function TabChip({
 	return (
 		<div
 			ref={ref}
-			className={cn("group/tab w-48 flex-none justify-start pr-1 pl-3 select-none", className)}
+			className={cn("group/tab flex-none justify-start select-none", size === "sm" ? "h-6 max-w-32 gap-1 pr-0.5 pl-2 text-xs" : "w-48 pr-1 pl-3", className)}
 			{...rest}
 			// The wheel button: Radix already stops its default on mousedown.
 			onAuxClick={(e) => {

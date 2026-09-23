@@ -111,12 +111,12 @@ export function Terminals({ open, onEmpty }: { open: boolean; onEmpty: () => voi
 			{/* The same row as the note tabs over the column (NoteTabs.tsx), on
 			    the panel's own top edge: the line over it is the handle's, and
 			    a line of its own would draw that one twice. */}
-			<div className="flex h-8 shrink-0 items-center gap-0.5 px-1.5">
+			<div className="flex h-7 shrink-0 items-center gap-0.5 px-2">
 				<Tabs value={front ?? ""} onValueChange={setFront} className="h-full min-w-0 flex-1 items-center gap-0 data-[orientation=horizontal]:flex-row">
-					<TabsList className="group-data-[orientation=horizontal]/tabs:h-8 no-scrollbar min-w-0 shrink justify-start gap-0.5 overflow-x-auto bg-transparent p-0">
+					<TabsList className="group-data-[orientation=horizontal]/tabs:h-7 no-scrollbar min-w-0 shrink justify-start gap-0.5 overflow-x-auto bg-transparent p-0">
 						{(list ?? []).map((t) => (
 							<TabsTrigger key={t.id} value={t.id} asChild>
-								<TabChip title={nameOf(t)} data-terminal-tab={t.id} onClose={() => handles.current.get(t.id)?.close()} />
+								<TabChip size="sm" title={nameOf(t)} data-terminal-tab={t.id} onClose={() => handles.current.get(t.id)?.close()} />
 							</TabsTrigger>
 						))}
 					</TabsList>
