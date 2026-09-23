@@ -561,7 +561,12 @@ export function App() {
 						<Sidebar open={page?.kind === "document" ? page.path : note} onOpen={setOpen} />
 					</Boundary>
 				</ResizablePanel>
-				<ResizableHandle />
+				{/* In the frame's gap rather than on a wall between two flats: the
+				    card beside it has an edge of its own, so this one only shows
+				    where it is taken hold of, as VS Code's and Figma's do. shadcn's
+				    handle draws its line always, which is right where the handle is
+				    the one thing between two panes — pi's is. */}
+				<ResizableHandle className="bg-transparent transition-colors hover:bg-border active:bg-border" />
 				<ResizablePanel id="content" className="flex min-w-0 flex-col">
 					{/* With the list folded away this column begins at the window's
 					    edge, under the strip. The tabs start clear of it: the strip is
@@ -702,7 +707,7 @@ export function App() {
 						</div>
 					)}
 					</ResizablePanel>
-					<ResizableHandle />
+					<ResizableHandle className="bg-transparent transition-colors hover:bg-border active:bg-border" />
 					<ResizablePanel
 						id="pi"
 						panelRef={pi}
