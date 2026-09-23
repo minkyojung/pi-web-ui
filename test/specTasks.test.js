@@ -112,14 +112,14 @@ test("하위가 전부 끝나면 상위도 끝난 것이다", () => {
 });
 
 test("진행은 보이는 칸을 전부 센다 — 묶음 상위의 칸도; 다음 작업은 잎에서", () => {
-  assert.deepEqual(progressOf(parseTasks(KIRO)), { total: 4, done: 0, cancelled: 0, next: "1" }, "1, 2, 2.1, 2.2 — 화면의 칸 넷");
+  assert.deepEqual(progressOf(parseTasks(KIRO)), { total: 4, done: 0, cancelled: 0, next: "1", review: [] }, "1, 2, 2.1, 2.2 — 화면의 칸 넷");
   const half = KIRO.replace("- [ ] 1.", "- [x] 1.").replace("- [ ] 2.1", "- [x] 2.1");
-  assert.deepEqual(progressOf(parseTasks(half)), { total: 4, done: 2, cancelled: 0, next: "2.2" });
+  assert.deepEqual(progressOf(parseTasks(half)), { total: 4, done: 2, cancelled: 0, next: "2.2", review: [] });
   const leaves = half.replace("- [ ] 2.2", "- [x] 2.2");
-  assert.deepEqual(progressOf(parseTasks(leaves)), { total: 4, done: 3, cancelled: 0, next: null }, "상위 2의 칸은 코드가 체크하기 전까지 열려 있고, 다음은 없다");
+  assert.deepEqual(progressOf(parseTasks(leaves)), { total: 4, done: 3, cancelled: 0, next: null, review: [] }, "상위 2의 칸은 코드가 체크하기 전까지 열려 있고, 다음은 없다");
   const all = leaves.replace("- [ ] 2.", "- [x] 2.");
-  assert.deepEqual(progressOf(parseTasks(all)), { total: 4, done: 4, cancelled: 0, next: null });
-  assert.deepEqual(progressOf([]), { total: 0, done: 0, cancelled: 0, next: null });
+  assert.deepEqual(progressOf(parseTasks(all)), { total: 4, done: 4, cancelled: 0, next: null, review: [] });
+  assert.deepEqual(progressOf([]), { total: 0, done: 0, cancelled: 0, next: null, review: [] });
 });
 
 test("번호 하나가 뜻하는 실행 — 잎은 그것, 묶음은 남은 하위 전부를 차례로, 없으면 null", () => {
@@ -165,7 +165,7 @@ test("[-]는 사람이 접어 둔 작업: 다음 작업에서 건너뛰고, 진�
   assert.deepEqual(tasks.find((t) => t.number === "2.1"), { number: "2.1", title: "Create core data model interfaces and types", done: false, cancelled: true });
   assert.equal(nextTask(tasks).number, "1");
   assert.equal(nextTask(tasks.filter((t) => t.number !== "1")).number, "2.2", "2.1은 건너뛴다");
-  assert.deepEqual(progressOf(tasks), { total: 4, done: 0, cancelled: 1, next: "1" });
+  assert.deepEqual(progressOf(tasks), { total: 4, done: 0, cancelled: 1, next: "1", review: [] });
   assert.deepEqual(withParents(tasks, new Set(["2.2"])), new Set(["2.2", "2"]), "남은 하위가 끝나면 상위도");
   assert.deepEqual(withParents(parseTasks(aside.replace("- [ ] 2.2", "- [-] 2.2")), new Set([])), new Set([]), "전부 접어 둔 상위는 끝난 것이 아니다");
   assert.deepEqual(runsUnder(tasks, "2").map((t) => t.number), ["2.2"], "묶음을 돌리면 접어 둔 것은 빠진다");
@@ -177,6 +177,8 @@ test("검토 중인 작업 — 커밋은 있으나 사람이 받아들이지 않
   const reviewed = new Set(["1", "2.1"]);
   assert.equal(nextTask(tasks, reviewed).number, "2.2");
   assert.deepEqual(progressOf(tasks, reviewed).next, "2.2");
+  assert.deepEqual(progressOf(tasks, reviewed).review, ["1", "2.1"], "run and not marked: in review, by number");
+  assert.deepEqual(progressOf(parseTasks(KIRO.replace("- [ ] 2.1", "- [x] 2.1")), reviewed).review, ["1"], "accepted, 2.1 is done and not in review");
   assert.deepEqual(runsOf(tasks, ["2"], reviewed).runs.map((t) => t.number), ["2.2"]);
   assert.equal(taskToRun(tasks, "2", reviewed).number, "2.2");
   assert.equal(nextTask(tasks, new Set(["1", "2.1", "2.2"])), null, "전부 검토 중이면 다음은 없다");

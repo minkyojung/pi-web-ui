@@ -141,10 +141,24 @@ export interface Progress {
 	cancelled: number;
 	/** The number of the task nextTask would run, or null when there is none to. */
 	next: string | null;
+	/**
+	 * In review: run, and neither accepted nor set aside — the numbers, in the
+	 * plan's order. A count would do for the foot of the window; the numbers
+	 * let it also say which lines of the results those are, from the one
+	 * reading of the file.
+	 */
+	review: string[];
 }
 
+/** `skip` is the tasks that have been run (reviewedOf in spec.ts, the results in workspace.ts): not next, and in review until their box is marked. */
 export function progressOf(tasks: Task[], skip: ReadonlySet<string> = new Set()): Progress {
-	return { total: tasks.length, done: tasks.filter((task) => task.done).length, cancelled: tasks.filter((task) => task.cancelled).length, next: nextTask(tasks, skip)?.number ?? null };
+	return {
+		total: tasks.length,
+		done: tasks.filter((task) => task.done).length,
+		cancelled: tasks.filter((task) => task.cancelled).length,
+		next: nextTask(tasks, skip)?.number ?? null,
+		review: tasks.filter((task) => open(task, new Set()) && skip.has(task.number)).map((task) => task.number),
+	};
 }
 
 /** `done` with every heading whose sub-tasks are all in it or set aside: the heading is done when nothing under it is left. */
