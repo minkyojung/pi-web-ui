@@ -128,9 +128,9 @@
   /*
    * pi's side of the card, on the same page as the note: the conversation is
    * read as closely as the note is, and a grey floor under it read as a sidebar
-   * to the side of the work rather than half of it. Its rim is what says where
-   * one ends — the box round it is drawn at a rim's distance, as a card's is,
-   * which is how Linear sets its agent beside an issue.
+   * to the side of the work rather than half of it. The line between the two
+   * is what says where one ends — shadcn's resize handle, drawn always, at a
+   * rim's distance off the page — as a split view in VS Code or Zed says it.
    *
    * It had a floor of its own, a step off the note either way, and the tokens
    * are kept so it can have one again: .surface-panel still rebinds the page

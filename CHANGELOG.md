@@ -38,7 +38,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - The agent is told which branch this workspace was started from, so a diff, a rebase or a pull request it makes is against that branch.
 ### Changed
 - The send button is round.
-- The agent's column is on the same white — or, in the dark theme, the same dark — as the note beside it, with a thin edge round it, rather than on a grey of its own.
+- The agent's column is the other half of the note's card: on the same white — or, in the dark theme, the same dark — as the note, divided from it by a single line, with its header level with the note's. It was a grey box inside the card, with a gap round it.
 - The window's type is Pretendard, a face drawn for Korean and English together, so a line that is half of each reads as one. Before, the Korean in a note or a conversation came from a different font than the English around it.
 - The window has one colour, a blue, and it is kept for the moments something happens: the main button in a dialog, a switch that is on, a choice that is picked, the ring round what the keyboard is on, a link, selected text. Everything else stays grey — the send button too, since it is on screen the whole time — so the blue always means the same thing.
 - Sentences you read are a step brighter than the grey of a timestamp or a label: the description under a dialog's title or a setting, a sign-in's instructions, what the agent was thinking once you open it, a message waiting its turn, a search hit's line. Before, they were the same grey as everything you only glance at, so the words that explain did not stand out from the ones that don't.

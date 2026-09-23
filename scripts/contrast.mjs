@@ -222,7 +222,7 @@ const RIMS = [
 	["--border", "--card", "rim on a card"],
 	["--border", "--popover", "rim on a popover"],
 	["--sidebar-border", "--sidebar", "rim in the sidebar"],
-	["--border", "--panel", "rim round pi"],
+	["--border", "--panel", "the line between the note and pi"],
 	["--border", "--muted", "a bar's edge"],
 	["--border", "--panel-muted", "a rule on pi's wash"],
 ];
@@ -312,9 +312,9 @@ export function ladder() {
 			if (step(token) < 0) out.push(`${theme}: ${token} is sunk into the content — ${step(token).toFixed(3)}, wants 0 or more`);
 		}
 
-		// pi sits on the note's page, and its rim — held with the others below —
-		// is what says where it ends. A floor a shade off the page would be
-		// neither: not the same page, and not far enough to be a floor.
+		// pi sits on the note's page, and the line between them — held with the
+		// rims below — is what says where it ends. A floor a shade off the page
+		// would be neither: not the same page, and not far enough to be a floor.
 		const up = theme.includes("dark") ? 1 : -1;
 		if (Math.abs(step("--panel")) > 0.001) {
 			out.push(`${theme}: --panel is not the note's page — ${step("--panel").toFixed(3)}, wants 0`);
