@@ -6,6 +6,7 @@ import { waitingLine } from "../specStanding.ts";
 import { waitingPath } from "../specTabs.ts";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
+import { TaskGlyph } from "./TaskGlyph";
 import { Button } from "./ui/button";
 
 /**
@@ -47,8 +48,11 @@ export function SpecBar({ path }: { path: string | null }) {
 	});
 	const reason = why(stop);
 	return (
-		<div id="specBar" role="status" className="flex h-9 shrink-0 items-center gap-2 border-b bg-muted px-4 text-xs">
-			<span className="min-w-0 flex-1 truncate">
+		<div id="specBar" role="status" className="flex h-10 shrink-0 items-center gap-3 border-b px-4 text-xs">
+			{/* The document stands where a task that has run stands: written, and
+			    waiting to be looked at — the same mark as in the plan (TaskGlyph). */}
+			<TaskGlyph standing="review" />
+			<span className="min-w-0 flex-1 truncate text-foreground">
 				{waitingLine(spec.waiting)}
 				{/* Why the button is not to be pressed, beside it rather than behind
 				    a tooltip a disabled button would never show. */}
@@ -56,7 +60,6 @@ export function SpecBar({ path }: { path: string | null }) {
 			</span>
 			<Button
 				id="approveSpec"
-				variant="outline"
 				size="sm"
 				className="h-7 text-xs"
 				disabled={stop !== null}

@@ -74,7 +74,7 @@ export function TaskBar({ path }: { path: string | null }) {
 	});
 	const reason = runWhy(stop);
 	return (
-		<div id="taskBar" className="flex h-9 shrink-0 items-center gap-2 border-b bg-muted px-4 text-xs">
+		<div id="taskBar" className="flex h-10 shrink-0 items-center gap-3 border-b px-4 text-xs">
 			<span className="min-w-0 flex-1 truncate text-muted-foreground">
 				Run tasks on
 				{!chosen && <span> · the session's model</span>}
