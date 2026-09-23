@@ -9,6 +9,7 @@ import { configFrom, DEFAULT_TIMEOUT, EMPTY, isConfig, readConfig } from "../ele
 test("the whole shape reads back, with defaults where a field is left out", () => {
 	const got = configFrom(`
 [scripts]
+copy = [".env", "config/local.json"]
 setup = "npm ci"
 archive = "docker compose down"
 
@@ -26,10 +27,10 @@ description = "node --test, the repository's own suite"
 
 [[scripts.check]]
 command = "npm run typecheck"
-on = "approve"
 timeout = 120
 `);
 	assert.deepEqual(got, {
+		copy: [".env", "config/local.json"],
 		setup: "npm ci",
 		archive: "docker compose down",
 		run: [
@@ -37,8 +38,8 @@ timeout = 120
 			{ id: "storybook", command: "npm run storybook", default: false },
 		],
 		check: [
-			{ name: "unit", command: "npm test", description: "node --test, the repository's own suite", on: "task", timeout: DEFAULT_TIMEOUT },
-			{ name: "npm run typecheck", command: "npm run typecheck", description: "", on: "approve", timeout: 120 },
+			{ name: "unit", command: "npm test", description: "node --test, the repository's own suite", timeout: DEFAULT_TIMEOUT },
+			{ name: "npm run typecheck", command: "npm run typecheck", description: "", timeout: 120 },
 		],
 	});
 });
@@ -49,6 +50,7 @@ test("no file, an empty file, and a file with no [scripts] all come to nothing t
 	assert.deepEqual(configFrom(""), EMPTY);
 	assert.deepEqual(configFrom("# just a comment\n[other]\nx = 1\n"), EMPTY);
 	assert.deepEqual(configFrom('[scripts]\nsetup = ""\n'), EMPTY, "an empty command is no command");
+	assert.deepEqual(configFrom("[scripts]\ncopy = []\n").copy, [], "an empty list copies nothing — the one way to turn the default off");
 });
 
 test("one run with no default is the default; several without one make the first it", () => {
@@ -60,11 +62,13 @@ test("one run with no default is the default; several without one make the first
 test("what is wrong is said by name, and nothing of the file is used", () => {
 	const wrong = [
 		["[scripts]\nsetup = 3\n", /scripts\.setup must be a command/],
+		['[scripts]\ncopy = ".env"\n', /scripts\.copy must be a list/],
+		['[scripts]\ncopy = ["../outside"]\n', /not inside the repository/],
 		['[scripts]\nsetup = "x"\n[scripts.run]\ndev = "npm run dev"\n', /\[scripts\.run\.dev\] must be a table/],
 		['[scripts.run.dev]\ndefault = true\n', /needs a command/],
 		['[scripts.check]\ncommand = "x"\n', /two brackets/],
 		['[[scripts.check]]\nname = "x"\n', /needs a command/],
-		['[[scripts.check]]\ncommand = "x"\non = "merge"\n', /\.on must be one of task, approve/],
+		['[[scripts.check]]\ncommand = "x"\non = "approve"\n', /\.on is not a setting/],
 		['[[scripts.check]]\ncommand = "x"\ntimeout = "long"\n', /timeout must be a number/],
 		['[[scripts.check]]\ncommand = "x"\ntimeout = 0\n', /timeout must be a number/],
 		["[scripts\nsetup = 1", /config\.toml: /],
@@ -81,7 +85,7 @@ test("read from a folder: the file where it is, and a wrong one said so", () => 
 	const dir = mkdtempSync(join(tmpdir(), "octave-config-"));
 	mkdirSync(join(dir, ".octave"));
 	writeFileSync(join(dir, ".octave", "config.toml"), '[scripts]\nsetup = "uv sync"\n');
-	assert.deepEqual(readConfig(dir), { setup: "uv sync", archive: null, run: [], check: [] });
+	assert.deepEqual(readConfig(dir), { copy: [".env*"], setup: "uv sync", archive: null, run: [], check: [] });
 	writeFileSync(join(dir, ".octave", "config.toml"), "not = [toml");
 	assert.equal(isConfig(readConfig(dir)), false);
 });

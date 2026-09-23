@@ -25,7 +25,9 @@ added to your list and nothing else happens: no workspace is made or opened unti
 A workspace is a folder and a branch of its own, made from the latest on the remote, under
 `~/octave/workspaces/`; the agent works there, and your own clone is never touched. The sidebar lists your
 repositories and their workspaces — and so does the first screen, until a workspace is open: click a workspace
-to move into it, + beside **Repositories** adds another repository, and `⌘O` opens a local one.
+to move into it, + beside **Repositories** adds another repository, and `⌘O` opens a local one. Drag a
+repository's row to put the list in the order you want it in. Right-click one and **Take off the list…** when
+you are done with it: nothing on your disk is touched, and adding it again brings its workspaces back with it.
 
 + on a repository starts a spec, and that is how a workspace is made. Say what you want built, choose the model
 and effort for it, and **Create** (`⌘↵`): the workspace is made, the window moves into it, and your line is sent
@@ -41,9 +43,10 @@ unless you choose another, for a spec that stands on work not merged yet. The bu
 one of the repository's open GitHub issues, listed with `gh`: its number, title and words go into the box, for you
 to read and change before Create.
 
-When you are done with a workspace, right-click its row and **Remove workspace…**. Its folder is deleted; the
-branch and its commits stay, and so does the conversation. Changes you have not committed would go with the
-folder, so you are told how many there are first.
+When you are done with a workspace, right-click its row and **Archive workspace…**. Its folder is given back;
+the branch and its commits stay, the conversation stays, and so does the row — under **Archived** at the foot of
+the repository, where a click makes the folder again from the branch, sets it up and opens it. Changes you have
+not committed would go with the folder, so you are told how many there are first.
 
 When the requirements are right, `/spec-approve` approves them and the agent writes the design; approve that and
 it writes the tasks. Nobody asks you to approve: ask for changes, or make them yourself, as many times as you like
@@ -82,16 +85,20 @@ only what is committed — no dependencies, no `.env`. Type `/setup` in the agen
 the foot of the window, and the agent drafts `.octave/config.toml` from what is there: package files, CI, the
 README. Read it and fix it; it is a short file, and yours. What goes in it:
 
+- `copy`, the files kept beside the code and out of git — `.env*` unless you say otherwise — brought over
+  from the repository's own folder into every new workspace first. A file the branch already has is left alone.
 - `setup`, run in every new workspace before it opens — `npm ci`, say. Fails, and the workspace stays on the
   list with what you typed; the dialog says why, and *Run setup again* is in the menu at the foot of the window.
 - `[[scripts.check]]`, one per check: run after every task the agent finishes, before its commit, in order.
   Each ends up under the commit as `Verified: unit — exit 0`, and the list at the foot of the window shows a
   tick or a red cross for it, beside the circle that stands for the agent's own word; press the tick or the
   cross and what the check printed opens in a tab. A check that exits 2 stops the commit altogether; any
-  other failure is committed and marked, so a failed try is still a record.
+  other failure is committed and marked, so a failed try is still a record. They run one after another, so
+  put the quick ones first and leave the slow ones — a browser suite, say — to your CI on the pull request.
 - `[scripts.run.dev]`, a dev server or a watcher: the ▶ at the foot of the window, on a port of the
-  workspace's own in `OCTAVE_PORT`. Press it for the menu — run or stop, open what it serves, read what it
-  printed. A run that ends by itself gets a red dot, and its exit code is in the menu.
+  workspace's own in `OCTAVE_PORT`. Press it for the menu — every run the file names, to start or stop (one at
+  a time in a workspace), open what it serves, read what it printed. A run that ends by itself gets a red
+  dot, and its exit code is in the menu.
 - `archive`, run just before a workspace is removed.
 
 What each printed is a file in the workspace's `.pi/runs/` folder, and opens in a tab like any file: at its

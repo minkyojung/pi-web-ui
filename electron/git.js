@@ -144,6 +144,21 @@ export async function changesIn(path) {
 	return out.split("\n").filter((line) => line && !/^.. "?\.pi\//.test(line)).length;
 }
 
+/** The commit a workspace stands on, for its row to remember it by once the folder is gone. Null when git cannot say. */
+export async function headOf(path) {
+	return await git(path, ["rev-parse", "HEAD"]).catch(() => null);
+}
+
+/**
+ * An archived workspace's folder made again, where it stood, on the branch it
+ * was on. The branch is not made — it is the one that stayed behind when the
+ * folder went — so git refuses what is not there, or what another workspace
+ * has checked out, in its own words.
+ */
+export async function addBranchWorktree(root, { path, branch }) {
+	await git(root, ["worktree", "add", path, branch]);
+}
+
 /**
  * A workspace's folder taken away: the worktree, and git's record of it. The
  * branch stays, with every commit made on it. Forced, since git will not

@@ -503,7 +503,7 @@ test("/setup은 저장소의 명령을 에이전트가 초안하게 한다 — �
   assert.deepEqual(hidden.options, { deliverAs: "nextTurn" });
   assert.equal(sent.sendUserMessage, "/setup");
   const prompt = hidden.sendMessage.content;
-  for (const said of [".octave/config.toml", "setup", "[scripts.run.<id>]", "[[scripts.check]]", "archive", "$OCTAVE_PORT", "$OCTAVE_REPOSITORY", "exit 2", "description", "invent none", "run nothing that installs"]) assert.ok(prompt.includes(said), said);
+  for (const said of [".octave/config.toml", "setup", "[scripts.run.<id>]", "[[scripts.check]]", "archive", "$OCTAVE_PORT", "exit 2", "description", "invent none", "run nothing that installs", "`copy`", "Commit it and every new workspace runs it", "Run setup again"]) assert.ok(prompt.includes(said), said);
   assert.equal(prompt.includes("The file is there already"), false);
   assert.equal(/\blanguage\b|in English|Korean/i.test(prompt), false, "언어는 말하지 않는다");
   pi.config("[scripts]\nsetup = 'npm ci'\n");
@@ -1214,7 +1214,7 @@ test("작업의 _Done when:_ 명령은 앱이 커밋 전에 돌리고, 어떻게
 test("저장소의 검사(config.toml)가 작업의 것보다 먼저, 순서대로 돌고, 검사마다 Verified 한 줄 — exit 2는 커밋을 막고 칸도 두지 않는다", async (t) => {
   const pi = fakePi("minkyojung/email-auth");
   t.after(pi.cleanup);
-  pi.config('[[scripts.check]]\nname = "unit"\ncommand = "npm test"\n[[scripts.check]]\nname = "types"\ncommand = "npm run typecheck"\non = "approve"\n[[scripts.check]]\nname = "lint"\ncommand = "npm run lint-fail"\n');
+  pi.config('[[scripts.check]]\nname = "unit"\ncommand = "npm test"\n[[scripts.check]]\nname = "lint"\ncommand = "npm run lint-fail"\n');
   pi.plan("email-auth", "# Plan\n\n- [ ] 1. Add the door\n  - _Done when: `npm test -- door`_\n- [ ] 2. Hang the sign\n");
   pi.setDirty([" M door.js"]);
   pi.setEntries([

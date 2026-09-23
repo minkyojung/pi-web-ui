@@ -1,20 +1,26 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
+import { closestCenter, DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { cn } from "cn";
-import { ChevronRightIcon, GitBranchIcon, PlusIcon } from "lucide-react";
+import { ArchiveIcon, ChevronRightIcon, GitBranchIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { orderedBy, spent } from "../repoOrder";
 import { configStore, createStore } from "../serverState";
 import { CloneRepository } from "./CloneRepository";
 import type { BranchStatus } from "../branchStanding";
 import { NewSpec, type SpecOnChoices } from "./NewSpec";
-import { RemoveWorkspace } from "./RemoveWorkspace";
+import { ArchiveWorkspace } from "./ArchiveWorkspace";
+import { RemoveRepository } from "./RemoveRepository";
 import { row } from "./sidebarRow";
 import { Button } from "./ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Spinner } from "./ui/spinner";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
@@ -39,7 +45,7 @@ export function statusDot(status: BranchStatus | undefined): { className: string
 
 /** The list the shell keeps — see electron/workspaces.js and preload.cjs. */
 export interface WorkspaceList {
-	projects: { path: string; name: string; worktrees: { path: string; name: string; branch: string; status?: BranchStatus }[] }[];
+	projects: { path: string; name: string; worktrees: { path: string; name: string; branch: string; state?: "archiving" | "archived" | null; at?: string | null; status?: BranchStatus }[] }[];
 }
 
 /** The shell's side of the list, absent in a browser tab. */
@@ -53,7 +59,8 @@ const workspaceShell = (
 				open(path: string): Promise<void>;
 				warm(path: string): Promise<void>;
 				changes(path: string): Promise<number | null>;
-				remove(path: string, seen: number): Promise<{ error?: string; changes?: number; warning?: string } | null>;
+				archive(path: string, seen: number): Promise<{ error?: string; changes?: number; warning?: string } | null>;
+				restore(path: string): Promise<{ error?: string } | null>;
 				setup(path: string): Promise<{ error?: string; ran?: boolean } | null>;
 				onSetup(listen: (path: string, stage: "running" | null) => void): () => void;
 				onChange(listen: () => void): () => void;
@@ -67,6 +74,12 @@ const onNewSpec = (window as { pi?: { onNewSpec?: (listen: () => void) => () => 
 
 /** The shell's way to a repository's open issues — see preload.cjs `repositories`. Null where there is no shell to ask. */
 const issuesOf = (window as { pi?: { repositories?: { issues?(root: string): Promise<{ number: number; title: string; body: string }[] | null> } } }).pi?.repositories?.issues ?? (async () => null);
+
+/** The shell's way to keep the repositories in the order the person put them in — see preload.cjs `repositories`. */
+const reorder = (window as { pi?: { repositories?: { reorder(paths: string[]): Promise<void> } } }).pi?.repositories?.reorder;
+
+/** The shell's way to take a repository off the list, which touches nothing on the disk — see preload.cjs `repositories`. */
+const removeRepository = (window as { pi?: { repositories?: { remove(root: string): Promise<{ error?: string } | null> } } }).pi?.repositories?.remove;
 
 /** The shell's way to add a repository from the Finder — see preload.cjs `repositories`. */
 const openLocal = (window as { pi?: { repositories?: { openLocal(): Promise<{ error?: string } | null> } } }).pi?.repositories?.openLocal;
@@ -148,15 +161,19 @@ export function useWorkspaceList(): WorkspaceList | null | undefined {
 export function Repositories({ list, choices }: { list: WorkspaceList; choices?: SpecOnChoices }) {
 	/** The repository a spec is being started in, while the dialog for it is open. */
 	const [starting, setStarting] = useState<{ path: string; name: string } | null>(null);
-	/** The workspace being asked about before it is removed. */
+	/** The repository being asked about before it is taken off the list. */
+	const [dropping, setDropping] = useState<{ path: string; name: string; workspaces: number } | null>(null);
+	/** The workspace being asked about before it is archived. */
 	const [doomed, setDoomed] = useState<{ path: string; branch: string } | null>(null);
 	const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
 	const [cloning, setCloning] = useState(false);
+	const shell = workspaceShell!;
+	const here = usePageFolder();
 	/**
 	 * The workspace the window is on its way to, marked from the click until
-	 * the shell answers: the page is replaced when the switch lands, so the
-	 * mark is cleared only by a switch that does not — its server would not
-	 * start, and the shell has said so in a dialog of its own.
+	 * the shell answers: the page moves in place when the switch lands
+	 * (switch.ts), so the mark is cleared by the answer either way — a switch
+	 * that failed has been said so in a dialog of the shell's own.
 	 */
 	const [going, setGoing] = useState<string | null>(null);
 	const go = (path: string) => {
@@ -165,8 +182,8 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 	};
 	/**
 	 * A row the pointer has settled on for a moment is one about to be
-	 * clicked, more often than not, and its server takes most of a second to
-	 * start: it is started now, so the click finds it up. Settled, not
+	 * clicked, more often than not, and its workspace takes a moment to
+	 * make: it is made now, so the click finds it ready. Settled, not
 	 * crossed — a pointer on its way down the list starts nothing.
 	 */
 	const settling = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -179,8 +196,6 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 		settling.current = null;
 	};
 	useEffect(() => unsettle, []);
-	const shell = workspaceShell!;
-	const here = usePageFolder();
 	const folder = useRef(here);
 	folder.current = here;
 
@@ -198,6 +213,33 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 		[],
 	);
 
+	/**
+	 * The archived workspaces being brought back, for their rows to say so.
+	 * The shell makes the folder again and then runs the repository's setup,
+	 * which can take as long as an install: the row leaves the archived group
+	 * as soon as there is a folder, and the window goes there when it is ready.
+	 */
+	const [restoring, setRestoring] = useState<ReadonlySet<string>>(() => new Set());
+	const restore = (path: string) => {
+		setRestoring((was) => new Set(was).add(path));
+		const done = () =>
+			setRestoring((was) => {
+				const next = new Set(was);
+				next.delete(path);
+				return next;
+			});
+		shell.restore(path).then(
+			(result) => {
+				done();
+				if (result?.error) toast.error(result.error);
+			},
+			(err: Error) => {
+				done();
+				toast.error(err.message);
+			},
+		);
+	};
+
 	// Adding one moves the window into it; what is left to say here is why not.
 	const addLocal = () => {
 		openLocal?.().then(
@@ -212,6 +254,35 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 			if (!next.delete(root)) next.add(root);
 			return next;
 		});
+
+	/**
+	 * The order a row was just dropped in, until a list from the shell says the
+	 * same — see repoOrder.ts. Held here rather than in the list itself: the
+	 * list is the shell's word, and this is the person's, waiting to become it.
+	 */
+	const [dragged, setDragged] = useState<string[] | null>(null);
+	useEffect(() => {
+		setDragged((held) => (held && spent(list.projects.map((project) => project.path), held) ? null : held));
+	}, [list]);
+	const ordered = orderedBy(list.projects, dragged);
+	const paths = ordered.map((project) => project.path);
+
+	const move = (order: string[]) => {
+		setDragged(order);
+		reorder?.(order).catch((err: Error) => {
+			// Nothing was written, so the shell's own order is the true one again.
+			setDragged(null);
+			toast.error(err.message);
+		});
+	};
+	// A drag begins once the pointer has moved a few pixels, as the tabs' does
+	// (NoteTabs.tsx): the row is a disclosure trigger and a + as well, and a
+	// click on either has to stay a click.
+	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+	const onDragEnd = ({ active, over }: DragEndEvent) => {
+		if (!over || active.id === over.id) return;
+		move(arrayMove(paths, paths.indexOf(String(active.id)), paths.indexOf(String(over.id))));
+	};
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
@@ -240,99 +311,238 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 				</DropdownMenu>
 			</div>
 			<CloneRepository open={cloning} onOpenChange={setCloning} />
-			<RemoveWorkspace workspace={doomed} onClose={() => setDoomed(null)} shell={shell} />
+			<ArchiveWorkspace workspace={doomed} onClose={() => setDoomed(null)} shell={shell} />
+			<RemoveRepository repository={dropping} onClose={() => setDropping(null)} remove={removeRepository ?? (async () => null)} />
 			<NewSpec repository={starting} repositories={list.projects} onRepository={setStarting} onClose={() => setStarting(null)} create={shell.create} setup={shell.onSetup} branches={shell.branches} issues={issuesOf} choices={choices} />
-			<ul id="workspaces" className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-1">
-				{list.projects.map((project) => (
-					<li key={project.path}>
-						<Collapsible open={!folded.has(project.path)} onOpenChange={() => fold(project.path)} className="group/repo">
-							<div className="flex items-center gap-0.5">
-								<CollapsibleTrigger asChild>
-									<Button variant="ghost" size="sm" data-repo={project.path} className={cn(row, "min-w-0 flex-1 font-medium text-sidebar-foreground")}>
-										<ChevronRightIcon className="transition-transform group-data-[state=open]/repo:rotate-90" />
-										<span className="truncate">{project.name}</span>
-									</Button>
-								</CollapsibleTrigger>
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<Button
-											variant="ghost"
-											size="icon-sm"
-											data-new-workspace={project.path}
-											aria-label={`New spec in ${project.name}`}
-											onClick={() => setStarting({ path: project.path, name: project.name })}
-											className="shrink-0 text-muted-foreground"
-										>
-											<PlusIcon />
-										</Button>
-									</TooltipTrigger>
-									<TooltipContent side="right">New spec</TooltipContent>
-								</Tooltip>
-							</div>
-							<CollapsibleContent asChild>
-								<ul className="flex flex-col pl-3">
-									{project.worktrees.map((worktree) => {
-										const active = worktree.path === here;
-										return (
-											<li key={worktree.path}>
-												{/* The menu wraps the tooltip, as the notes' rows do: both
-												    want the row, and only one can be asChild of it. */}
-												<ContextMenu>
-												<Tooltip>
-													<TooltipTrigger asChild>
-														<ContextMenuTrigger asChild>
-														<Button
-															variant="ghost"
-															size="sm"
-															data-workspace={worktree.path}
-															data-active={active}
-															data-going={worktree.path === going}
-															aria-current={active ? "page" : undefined}
-															aria-busy={worktree.path === going || undefined}
-															onClick={() => !active && go(worktree.path)}
-															onPointerEnter={() => !active && settle(worktree.path)}
-															onPointerLeave={unsettle}
-															className={cn(
-																row,
-																"data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground",
-																"data-[going=true]:bg-sidebar-accent data-[going=true]:text-sidebar-accent-foreground",
-															)}
-														>
-															<GitBranchIcon />
-															<span className="truncate">{branchName(worktree.branch)}</span>
-															{/* Turning where the dot goes while the window is on its way there. */}
-															{worktree.path === going ? (
-																<Spinner className="ml-auto size-3 shrink-0" />
-															) : (
-																(() => {
-																	const dot = statusDot(worktree.status);
-																	return dot ? <span data-status={worktree.status?.state} aria-label={dot.long} className={cn("ml-auto size-1.5 shrink-0 rounded-full", dot.className)} /> : null;
-																})()
-															)}
-														</Button>
-														</ContextMenuTrigger>
-													</TooltipTrigger>
-													<TooltipContent side="right">
-														{worktree.branch}
-														{statusDot(worktree.status) && ` · ${statusDot(worktree.status)!.long}`}
-													</TooltipContent>
-												</Tooltip>
-												<ContextMenuContent>
-													{/* The menu is let go of first, so the dialog is not opened behind it. */}
-													<ContextMenuItem variant="destructive" onSelect={() => queueMicrotask(() => setDoomed({ path: worktree.path, branch: branchName(worktree.branch) }))}>
-														Remove workspace…
-													</ContextMenuItem>
-												</ContextMenuContent>
-												</ContextMenu>
-											</li>
-										);
-									})}
-								</ul>
-							</CollapsibleContent>
-						</Collapsible>
-					</li>
-				))}
-			</ul>
+			{/* The order of the repositories is the person's: a row is dragged to
+			    where it belongs, and the shell keeps it that way. What is drawn
+			    while the shell is being told is repoOrder.ts. */}
+			<DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis, restrictToParentElement]} onDragEnd={onDragEnd}>
+				<SortableContext items={paths} strategy={verticalListSortingStrategy}>
+					<ul id="workspaces" className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-1">
+						{ordered.map((project, at) => (
+							<Repository
+								key={project.path}
+								project={project}
+								open={!folded.has(project.path)}
+								onFold={() => fold(project.path)}
+								here={here}
+								shell={shell}
+								onSpec={() => setStarting({ path: project.path, name: project.name })}
+								onArchive={setDoomed}
+								onDrop={() => setDropping({ path: project.path, name: project.name, workspaces: project.worktrees.length })}
+								onRestore={restore}
+								restoring={restoring}
+								going={going}
+								onOpen={go}
+								onSettle={settle}
+								onUnsettle={unsettle}
+								onMove={(by) => move(arrayMove(paths, at, at + by))}
+								first={at === 0}
+								last={at === ordered.length - 1}
+							/>
+						))}
+					</ul>
+				</SortableContext>
+			</DndContext>
 		</div>
+	);
+}
+
+/** The shell's side of the list, and one repository of it, as the page has them. */
+type Shell = NonNullable<typeof workspaceShell>;
+type Project = WorkspaceList["projects"][number];
+
+/**
+ * One repository: the row that folds, the + that starts a spec in it, and its
+ * workspaces under it. The whole of it is one sortable item, taken by the
+ * header — so a workspace row is not a handle for the repository above it,
+ * and a repository travels with its workspaces.
+ */
+function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onDrop, onRestore, restoring, going, onOpen, onSettle, onUnsettle, onMove, first, last }: {
+	project: Project;
+	open: boolean;
+	onFold: () => void;
+	here: string | null;
+	shell: Shell;
+	onSpec: () => void;
+	onArchive: (workspace: { path: string; branch: string }) => void;
+	onDrop: () => void;
+	onRestore: (path: string) => void;
+	restoring: ReadonlySet<string>;
+	/** The workspace the window is on its way to, and the ways to send it and to have one made ready ahead of the click — see Repositories. */
+	going: string | null;
+	onOpen: (path: string) => void;
+	onSettle: (path: string) => void;
+	onUnsettle: () => void;
+	onMove: (by: -1 | 1) => void;
+	first: boolean;
+	last: boolean;
+}) {
+	// The role and the tab index the sortable offers are not taken: the header
+	// is a disclosure button already, and a drag is a way to move the row, not
+	// a second button around the first. Which leaves the keyboard without a
+	// drag, and that is what Move up and Move down in the menu are — the way
+	// in without a pointer, and the way a test asks for the same thing.
+	const { attributes: { role: _role, tabIndex: _tabIndex, ...attributes }, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: project.path });
+	// The ones you can open, and the ones that were archived — which are a
+	// group of their own at the foot of the list, folded, since they are what
+	// the repository has finished with. Conductor keeps them the same way.
+	const live = project.worktrees.filter((worktree) => !worktree.state);
+	const archived = project.worktrees.filter((worktree) => worktree.state);
+	const [showArchived, setShowArchived] = useState(false);
+	return (
+		<li
+			ref={setNodeRef}
+			data-repository={project.path}
+			data-dragging={isDragging || undefined}
+			// Translate, not Transform: a drag moves a row and has no business scaling it.
+			style={{ transform: CSS.Translate.toString(transform), transition, touchAction: "none" }}
+			className="data-[dragging]:relative data-[dragging]:z-10 data-[dragging]:opacity-60"
+		>
+			<Collapsible open={open} onOpenChange={onFold} className="group/repo">
+				{/* The row is the repository's, and what the menu offers is about the
+				    whole of it. A workspace's own menu is on the workspace's row, which
+				    is not inside this trigger, so neither menu is ever the other's. */}
+				<ContextMenu>
+					<ContextMenuTrigger asChild>
+						<div className="flex items-center gap-0.5" {...attributes} {...listeners}>
+							<CollapsibleTrigger asChild>
+								<Button variant="ghost" size="sm" data-repo={project.path} className={cn(row, "min-w-0 flex-1 font-medium text-sidebar-foreground")}>
+									<ChevronRightIcon className="transition-transform group-data-[state=open]/repo:rotate-90" />
+									<span className="truncate">{project.name}</span>
+								</Button>
+							</CollapsibleTrigger>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										data-new-workspace={project.path}
+										aria-label={`New spec in ${project.name}`}
+										onClick={onSpec}
+										className="shrink-0 text-muted-foreground"
+									>
+										<PlusIcon />
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent side="right">New spec</TooltipContent>
+							</Tooltip>
+						</div>
+					</ContextMenuTrigger>
+					<ContextMenuContent>
+						<ContextMenuItem disabled={first} onSelect={() => onMove(-1)}>Move up</ContextMenuItem>
+						<ContextMenuItem disabled={last} onSelect={() => onMove(1)}>Move down</ContextMenuItem>
+						<ContextMenuSeparator />
+						{/* The menu is let go of first, so the dialog is not opened behind it. */}
+						<ContextMenuItem variant="destructive" onSelect={() => queueMicrotask(onDrop)}>
+							Take off the list…
+						</ContextMenuItem>
+					</ContextMenuContent>
+				</ContextMenu>
+				<CollapsibleContent asChild>
+					<ul className="flex flex-col pl-3">
+						{live.map((worktree) => {
+							const active = worktree.path === here;
+							return (
+								<li key={worktree.path}>
+									{/* The menu wraps the tooltip, as the notes' rows do: both
+									    want the row, and only one can be asChild of it. */}
+									<ContextMenu>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<ContextMenuTrigger asChild>
+											<Button
+												variant="ghost"
+												size="sm"
+												data-workspace={worktree.path}
+												data-active={active}
+												data-going={worktree.path === going}
+												aria-current={active ? "page" : undefined}
+												aria-busy={worktree.path === going || undefined}
+												onClick={() => !active && onOpen(worktree.path)}
+												onPointerEnter={() => !active && onSettle(worktree.path)}
+												onPointerLeave={onUnsettle}
+												className={cn(
+													row,
+													"data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground",
+													"data-[going=true]:bg-sidebar-accent data-[going=true]:text-sidebar-accent-foreground",
+												)}
+											>
+												<GitBranchIcon />
+												<span className="truncate">{branchName(worktree.branch)}</span>
+												{/* Turning where the dot goes while the window is on its way there. */}
+												{worktree.path === going ? (
+													<Spinner className="ml-auto size-3 shrink-0" />
+												) : (
+													(() => {
+														const dot = statusDot(worktree.status);
+														return dot ? <span data-status={worktree.status?.state} aria-label={dot.long} className={cn("ml-auto size-1.5 shrink-0 rounded-full", dot.className)} /> : null;
+													})()
+												)}
+											</Button>
+											</ContextMenuTrigger>
+										</TooltipTrigger>
+										<TooltipContent side="right">
+											{worktree.branch}
+											{statusDot(worktree.status) && ` · ${statusDot(worktree.status)!.long}`}
+										</TooltipContent>
+									</Tooltip>
+									<ContextMenuContent>
+										{/* The menu is let go of first, so the dialog is not opened behind it. */}
+										<ContextMenuItem variant="destructive" onSelect={() => queueMicrotask(() => onArchive({ path: worktree.path, branch: branchName(worktree.branch) }))}>
+											Archive workspace…
+										</ContextMenuItem>
+									</ContextMenuContent>
+									</ContextMenu>
+								</li>
+							);
+						})}
+						{archived.length > 0 && (
+							<li>
+								<Collapsible open={showArchived} onOpenChange={setShowArchived} className="group/archived">
+									<CollapsibleTrigger asChild>
+										<Button variant="ghost" size="sm" data-archived={project.path} className={cn(row, "text-muted-foreground")}>
+											<ChevronRightIcon className="transition-transform group-data-[state=open]/archived:rotate-90" />
+											<span className="truncate">Archived</span>
+											<span className="ml-auto text-xs tabular-nums">{archived.length}</span>
+										</Button>
+									</CollapsibleTrigger>
+									<CollapsibleContent asChild>
+										{/* A step in from the group's own row, as the workspaces are from the repository's. */}
+										<ul className="flex flex-col pl-3">
+											{archived.map((worktree) => (
+												<li key={worktree.path}>
+													<Tooltip>
+														<TooltipTrigger asChild>
+															{/* A click is the one thing there is to do with it: the
+															    folder is what was given back, and asking for it
+															    back is asking for this workspace. */}
+															<Button
+																variant="ghost"
+																size="sm"
+																data-workspace={worktree.path}
+																data-archived-workspace={worktree.path}
+																disabled={restoring.has(worktree.path)}
+																onClick={() => onRestore(worktree.path)}
+																className={cn(row, "text-muted-foreground")}
+															>
+																{restoring.has(worktree.path) ? <Spinner /> : <ArchiveIcon />}
+																<span className="truncate">{branchName(worktree.branch)}</span>
+															</Button>
+														</TooltipTrigger>
+														<TooltipContent side="right">{worktree.branch} · archived, click to bring it back</TooltipContent>
+													</Tooltip>
+												</li>
+											))}
+										</ul>
+									</CollapsibleContent>
+								</Collapsible>
+							</li>
+						)}
+					</ul>
+				</CollapsibleContent>
+			</Collapsible>
+		</li>
 	);
 }

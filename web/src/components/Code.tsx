@@ -159,7 +159,7 @@ export default function Code({ path }: { path: string }) {
 				</p>
 			)}
 			{mine?.type === "code" && mine.truncated && (
-				<p className="border-t px-3 py-1.5 text-xs text-muted-foreground">{isRunLog(path) ? "Too long to show whole — this is the beginning of it; the whole is in the file." : "Too long to show whole — this is the beginning of it."}</p>
+				<p className="border-t px-3 py-1.5 text-xs text-muted-foreground">{isRunLog(path) ? "Too long to show whole — this is the end of it." : "Too long to show whole — this is the beginning of it."}</p>
 			)}
 		</div>
 	);

@@ -575,7 +575,7 @@ const LOG_TAIL = 40;
 
 /**
  * The checks run by the app in the workspace, in order: the repository's own
- * (config.toml, the ones `on = "task"`), then the task's `_Done when:` — the
+ * (config.toml), then the task's `_Done when:` — the
  * checks that are not the agent's word (task-results.md). Each on its own
  * clock, config's or ten minutes; what each printed is kept only at its
  * tail, in `.pi/runs/{task}/{name}.log`, since the commit says how it ended
@@ -583,8 +583,8 @@ const LOG_TAIL = 40;
  * repository with no checks are verified by nothing.
  */
 async function verifyAll(pi: ExtensionAPI, cwd: string, file: string, task: string): Promise<Verified[]> {
-	const config = readConfig(cwd) as { check?: { name: string; command: string; on: string; timeout: number }[]; error?: string };
-	const checks: { name: string; command: string; timeout: number }[] = isConfig(config) && config.check ? config.check.filter((check) => check.on === "task") : [];
+	const config = readConfig(cwd) as { check?: { name: string; command: string; timeout: number }[]; error?: string };
+	const checks: { name: string; command: string; timeout: number }[] = isConfig(config) && config.check ? [...config.check] : [];
 	try {
 		const own = doneWhenOf(readFileSync(file, "utf8"), task);
 		if (own) checks.push({ name: own, command: own, timeout: DEFAULT_TIMEOUT });
@@ -851,7 +851,8 @@ export function setupPrompt({ existing }: { existing: boolean }): string {
 		`The person asked with /setup for this repository's own commands to be written down for Octave, in ${CONFIG_FILE}.${existing ? " The file is there already: read it, and change only what is wrong or missing." : ""}`,
 		"",
 		"Octave runs these commands and understands none of them. Each is a line of bash, run in a workspace of this repository — a git worktree, which has only the committed files — at one of four moments:",
-		"- `setup`, once a workspace is made, before it opens: what a fresh clone needs to be worked in (dependencies installed; an `.env` copied from the repository's own folder, which is `$OCTAVE_REPOSITORY`). Nothing else.",
+		"- `copy`, a list of files kept beside the code and out of git — `.env*` unless the list says otherwise — brought over from the repository's own folder into every new workspace before anything runs. Name only what is not committed; a committed file is there already.",
+		"- `setup`, once a workspace is made, before it opens: what a fresh clone needs to be worked in — dependencies installed. Nothing else; not the copying, which `copy` does.",
 		"- `[scripts.run.<id>]`, when the person presses ▶ at the foot of the window: a dev server or a watcher, on the port in `$OCTAVE_PORT` — so two workspaces can run at once — for as long as they leave it. The first one is the ▶.",
 		"- `[[scripts.check]]`, after every task the agent finishes, before its commit: each in order, each with `name`, `command`, and a `description` of what a failure means. Exit 0 passes; exit 2 stops the commit; any other exit is written down as a failure and the commit is made anyway. What CI runs is what goes here, in CI's order, the fast ones first.",
 		"- `archive`, before a workspace is removed: a database dropped, a tunnel closed. Leave it out where there is nothing to undo.",
@@ -859,6 +860,7 @@ export function setupPrompt({ existing }: { existing: boolean }): string {
 		"The whole shape:",
 		"```toml",
 		"[scripts]",
+		'copy = [".env", ".env.local"]',
 		'setup = "npm ci"',
 		"",
 		"[scripts.run.dev]",
@@ -877,7 +879,7 @@ export function setupPrompt({ existing }: { existing: boolean }): string {
 		"",
 		"Find out, do not guess: package.json and its lockfile (which says npm, pnpm, yarn or bun), pyproject.toml and uv.lock, Cargo.toml, go.mod, the Makefile, the CI workflows, README, CONTRIBUTING and AGENTS.md. Name only commands that exist there; invent none. Read; run nothing that installs or changes anything — the person will, by making a workspace.",
 		"",
-		`Write ${CONFIG_FILE} with write — it is not a note, so not note_write. Then stop, and say in a line or two what you wrote and what you were unsure of. Do not ask them to approve it: the file is theirs, and they will read it and fix it.`,
+		`Write ${CONFIG_FILE} with write — it is not a note, so not note_write. Then stop, and say in a line or two what you wrote and what you were unsure of, and end with this, as it is: "Commit it and every new workspace runs it. For this one, use Run setup again in the ▶ menu at the foot of the window." Do not ask them to approve it: the file is theirs, and they will read it and fix it.`,
 	].join("\n");
 }
 

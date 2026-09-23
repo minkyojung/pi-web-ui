@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ExternalLinkIcon, FileTextIcon, PlayIcon, RotateCwIcon, SquareIcon, WrenchIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -31,7 +31,9 @@ export interface RunLog {
 interface Scripts {
 	/** Whether the repository has `.octave/config.toml` at all. */
 	configured: boolean;
-	/** Its default run, or null where it names none. */
+	/** The ids of its runs, in the file's order; the first with `default` is what the face shows before any has run. */
+	runs: string[];
+	/** The run going, or the last that ended, or the default not yet run; null where the file names none. */
 	run: RunState | null;
 	logs: RunLog[];
 }
@@ -42,7 +44,7 @@ const shell = (
 		pi?: {
 			runs?: {
 				state(path: string): Promise<Scripts | null>;
-				start(path: string): Promise<{ state?: Scripts | null; error?: string } | null>;
+				start(path: string, id?: string): Promise<{ state?: Scripts | null; error?: string } | null>;
 				stop(path: string): Promise<Scripts | null>;
 				onChange(listen: (path: string, state: Scripts | null) => void): () => void;
 			};
@@ -51,12 +53,24 @@ const shell = (
 	}
 ).pi;
 
+/** The repository's setup run in a workspace, with what it said as a toast — the row has no room for it. */
+function runSetup(path: string): void {
+	toast.promise(
+		shell!.workspaces!.setup(path).then((result) => {
+			if (result?.error) throw new Error(result.error);
+			return result?.ran ? "Setup finished." : "This repository names no setup command in .octave/config.toml.";
+		}),
+		{ loading: "Setting up…", success: (said: string) => said, error: (err: Error) => err.message },
+	);
+}
+
 /**
  * The repository's own commands, at the foot of the window: one button whose
  * face says how the run stands — ▶ and the run's name; ■ and the port it was
  * given while it runs (`OCTAVE_PORT`, so a workspace's is its own); a red
  * dot when it ended by itself — and whose menu holds what can be done about
- * them: start or stop the run, open what it serves, read what any command
+ * them: start any of the runs the file names, or stop the one going (one at
+ * a time in a workspace), open what it serves, read what any command
  * printed (a tab on its log, Code.tsx), run the setup again. Only in a
  * workspace whose repository has `.octave/config.toml`; one that has none
  * says `Set up` here instead, which asks the agent to draft it (/setup,
@@ -66,6 +80,8 @@ const shell = (
 export function Scripts({ onOpen }: { onOpen: (path: string) => void }) {
 	const path = usePageFolder();
 	const [state, setState] = useState<Scripts | null>(null);
+	/** Whether the repository had its file when this page last looked: the file appearing is what is offered on. */
+	const had = useRef<boolean | null>(null);
 	// Asked again when the agent's turn ends and when the window comes back:
 	// the file is written by the agent, or by hand in an editor, and neither
 	// is heard here.
@@ -83,6 +99,22 @@ export function Scripts({ onOpen }: { onOpen: (path: string) => void }) {
 			off();
 		};
 	}, [path, working]);
+	// The file appearing under this page — the agent drafted it, or it was
+	// written by hand — is an offer, once: setup runs on its own only in a
+	// workspace being made, and this one is already made. Not run unasked,
+	// since what is here may have been installed by hand already.
+	useEffect(() => {
+		if (!state) return;
+		const was = had.current;
+		had.current = state.configured;
+		if (was === false && state.configured && path) {
+			toast("The repository's commands are written down.", {
+				id: "set-up-now",
+				description: "Commit the file and every new workspace runs its setup. This one can run it now.",
+				action: { label: "Run setup", onClick: () => runSetup(path) },
+			});
+		}
+	}, [state, path]);
 	if (!shell?.runs || !path || !state) return null;
 	const face = "ml-auto cursor-default gap-1 px-1.5 text-xs font-normal";
 	if (!state.configured) {
@@ -102,23 +134,16 @@ export function Scripts({ onOpen }: { onOpen: (path: string) => void }) {
 	}
 	const run = state.run;
 	const died = run !== null && !run.running && run.exit !== null && run.exit !== 0;
-	const toggle = () => {
-		if (!run) return;
-		if (run.running) void shell.runs!.stop(path);
-		else
-			shell.runs!.start(path).then((result) => {
-				if (result?.error) toast.error(result.error);
-				else if (result?.state) setState(result.state);
-			});
-	};
-	const setUpAgain = () =>
-		toast.promise(
-			shell.workspaces!.setup(path).then((result) => {
-				if (result?.error) throw new Error(result.error);
-				return result?.ran ? "Setup finished." : "This repository names no setup command in .octave/config.toml.";
-			}),
-			{ loading: "Setting up…", success: (said: string) => said, error: (err: Error) => err.message },
-		);
+	// One run at a time in a workspace: the one going is the one to stop, and
+	// the others wait for it — a second dev server on the same port would not
+	// be a second run but a broken one.
+	const start = (id: string) =>
+		shell.runs!.start(path, id).then((result) => {
+			if (result?.error) toast.error(result.error);
+			else if (result?.state) setState(result.state);
+		});
+	const stop = () => void shell.runs!.stop(path);
+	const setUpAgain = () => runSetup(path);
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
@@ -138,13 +163,16 @@ export function Scripts({ onOpen }: { onOpen: (path: string) => void }) {
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent id="scripts-menu" side="top" align="end" className="min-w-52">
-				{run && (
-					<DropdownMenuItem id="scripts-run" onSelect={toggle}>
-						{run.running ? <SquareIcon /> : <PlayIcon />}
-						{run.running ? `Stop ${run.id}` : `Run ${run.id}`}
-						{died && <span className="ml-auto text-xs text-destructive">exit {run.exit}</span>}
-					</DropdownMenuItem>
-				)}
+				{state.runs.map((id) => {
+					const going = run?.running === true && run.id === id;
+					return (
+						<DropdownMenuItem key={id} id={`scripts-run-${id}`} data-run={id} disabled={run?.running === true && !going} onSelect={() => (going ? stop() : start(id))}>
+							{going ? <SquareIcon /> : <PlayIcon />}
+							{going ? `Stop ${id}` : `Run ${id}`}
+							{died && run.id === id && <span className="ml-auto text-xs text-destructive">exit {run.exit}</span>}
+						</DropdownMenuItem>
+					);
+				})}
 				{run?.running && (
 					<DropdownMenuItem asChild>
 						<a id="scripts-open" href={`http://localhost:${run.port}/`} target="_blank" rel="noreferrer">
@@ -153,7 +181,7 @@ export function Scripts({ onOpen }: { onOpen: (path: string) => void }) {
 						</a>
 					</DropdownMenuItem>
 				)}
-				{(run || state.logs.length > 0) && <DropdownMenuSeparator />}
+				{(state.runs.length > 0 || state.logs.length > 0) && <DropdownMenuSeparator />}
 				{state.logs.map((log) => (
 					<DropdownMenuItem key={log.path} data-log={log.name} onSelect={() => onOpen(log.path)}>
 						<FileTextIcon />

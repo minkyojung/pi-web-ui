@@ -86,6 +86,7 @@ import { documents } from "./documents.ts";
 import { MAX_BYTES, saveAttachment, type Saved } from "./attach.ts";
 import { documentType, SPEC_DOCS, SPECS_DIR } from "./documentKinds.ts";
 import { specState } from "./specApproval.ts";
+import { inheritedSpecs } from "./specOrigin.ts";
 import { parseTasks, progressOf, type Progress } from "./specTasks.ts";
 import { type TaskResult, taskResults } from "./specResults.ts";
 import {
@@ -755,8 +756,13 @@ export async function createWorkspace(cwd: string) {
 	 * so it is also told when each waiting document was written — of two specs
 	 * waiting at once, the newer is the one the person has just been given — and
 	 * which documents are there at all, which the approvals alone cannot say.
+	 *
+	 * Every spec in the folder, and which of them this workspace started — a
+	 * workspace made from the base has the base's specs on its disk, and only
+	 * git can tell those from the work here (specOrigin.ts).
 	 */
 	function specs(): SpecsMsg {
+		const inherited = inheritedNow();
 		return {
 			type: "specs",
 			specs: takenSpecs(CWD).map((name) => {
@@ -764,6 +770,7 @@ export async function createWorkspace(cwd: string) {
 				const { approved, waiting } = specState(CWD, name);
 				return {
 					name,
+					own: !inherited.has(name),
 					approved,
 					waiting,
 					waitingAt: waiting ? writtenAt(join(dir, waiting)) : null,
@@ -789,7 +796,19 @@ export async function createWorkspace(cwd: string) {
 	let results = new Map<string, TaskResult[]>();
 	let resultsSoon: ReturnType<typeof setTimeout> | null = null;
 
+	/**
+	 * The specs this workspace did not start (specOrigin.ts). Git's answer too,
+	 * and read beside the results because the two move together: what the base
+	 * had when this branch left it changes on a fetch or a rebase, and not on
+	 * anything the person does to the documents. Read at once the first time it
+	 * is asked, so no spec is ever named as this workspace's before it is known
+	 * whose it is.
+	 */
+	let inherited: Set<string> | null = null;
+	const inheritedNow = (): Set<string> => (inherited ??= inheritedSpecs(CWD));
+
 	async function loadResults(): Promise<void> {
+		inherited = inheritedSpecs(CWD);
 		results = await taskResults(CWD);
 		saySpecs();
 		// A task's commit moves the branch too.
