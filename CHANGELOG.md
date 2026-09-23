@@ -5,6 +5,8 @@ rather than the person building it. The format is [Keep a Changelog](https://kee
 the versions follow [SemVer](https://semver.org/), and while they begin with 0 anything may change.
 
 ## [Unreleased]
+
+## [0.0.9] - 2026-09-23
 ### Added
 - When a task's run ends, Octave runs the check the task names on its `_Done when:` line — the command in its backticks — before making the task's commit, and writes how it ended under the subject as `Verified: npm test -- greet — exit 0`, beside the run's own `Checks:` line. In the list of results the mark at the left is then a tick or a red cross, rather than the circle that stands for what the agent said. A check that fails still ends in a commit: it is the unit you read and revert, and a failed try is a record too.
 - A task's run reads `notes.md` in the spec's folder, if the runs before it left one, and leaves there what the runs after it should know — a gotcha, a place the design was silent — and nothing else.
@@ -170,7 +172,8 @@ The first release. Octave is a notes app for the Mac with an agent that works in
 - A signed, notarized disk image for Apple Silicon Macs. Octave updates itself: a new version is downloaded in the background and offered, with its notes, when it is ready.
 - Octave is free software under the AGPL-3.0; the licences of everything it is built on ship inside it.
 
-[Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.8...HEAD
+[Unreleased]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.9...HEAD
+[0.0.9]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/minkyojung/pi-web-ui/compare/v0.0.5...v0.0.6
