@@ -15,10 +15,11 @@
  * that has ended is ended. As VS Code's are, they are named by the shell
  * and a number.
  */
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { frontAfter, nameOf, nextId, readFront, writeFront, type TerminalInfo } from "../terminals.ts";
 import { folderStore, forFolder } from "../workspace.ts";
+import { TabChip } from "./TabChip";
 import { Terminal, type TerminalHandle } from "./Terminal";
 import { Button } from "./ui/button";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
@@ -107,30 +108,15 @@ export function Terminals({ open, onEmpty }: { open: boolean; onEmpty: () => voi
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="flex h-8 shrink-0 items-center gap-1 border-b px-1">
+			{/* The same row as the note tabs over the column (NoteTabs.tsx), on
+			    the panel's own top edge: the line over it is the handle's, and
+			    a line of its own would draw that one twice. */}
+			<div className="flex h-8 shrink-0 items-center gap-0.5 px-1.5">
 				<Tabs value={front ?? ""} onValueChange={setFront} className="h-full min-w-0 flex-1 items-center gap-0 data-[orientation=horizontal]:flex-row">
-					<TabsList variant="line" className="group-data-[orientation=horizontal]/tabs:h-8 no-scrollbar min-w-0 shrink justify-start gap-0.5 overflow-x-auto p-0">
+					<TabsList className="group-data-[orientation=horizontal]/tabs:h-8 no-scrollbar min-w-0 shrink justify-start gap-0.5 overflow-x-auto bg-transparent p-0">
 						{(list ?? []).map((t) => (
 							<TabsTrigger key={t.id} value={t.id} asChild>
-								<div data-terminal-tab={t.id} className="group/tab flex-none select-none justify-start gap-1 pr-1 pl-2 text-xs">
-									<span className="truncate">{nameOf(t)}</span>
-									<span
-										role="button"
-										tabIndex={-1}
-										aria-label={`Close ${nameOf(t)}`}
-										className="rounded-sm p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover/tab:opacity-100 group-data-[state=active]/tab:opacity-100 hover:bg-accent hover:text-foreground"
-										onClick={(e) => {
-											e.stopPropagation();
-											handles.current.get(t.id)?.close();
-										}}
-										onPointerDown={(e) => {
-											e.stopPropagation();
-											e.preventDefault();
-										}}
-									>
-										<X className="size-3" />
-									</span>
-								</div>
+								<TabChip title={nameOf(t)} data-terminal-tab={t.id} onClose={() => handles.current.get(t.id)?.close()} />
 							</TabsTrigger>
 						))}
 					</TabsList>

@@ -3,13 +3,14 @@ import { closestCenter, DndContext, type DragEndEvent, PointerSensor, useSensor,
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { titleOf, wholePath } from "../noteSync";
 import { pageOf } from "../pages";
 import { commitTabTitle, taskOfCommit } from "../resultsList.ts";
 import { configStore, specsStore } from "../serverState";
 import { others, toTheRight } from "../tabs";
+import { TabChip } from "./TabChip";
 import { Button } from "./ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "./ui/context-menu";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
@@ -156,57 +157,20 @@ function NoteTab({
 	// rest have nothing to add, so they get no tooltip.
 	const more = ofTask ? `${title} · ${ofTask.short}` : page === null && path.includes("/") ? path : null;
 	const tab = (
-		<div
+		<TabChip
 			ref={setNodeRef}
+			title={title}
 			data-path={path}
 			data-dragging={isDragging || undefined}
 			// Translate, not Transform: a drag moves a tab and has no business
 			// scaling it.
 			style={{ transform: CSS.Translate.toString(transform), transition, touchAction: "none" }}
-			// One width for every tab, and a little generous. They were as wide
-			// as their words up to a limit, which was a tidy row while a tab was
-			// a note's short name; a file's name and a task's line are longer,
-			// and a row of tabs each its own width reads as ragged and moves
-			// under the pointer as tabs open and close. A browser's tabs are one
-			// width for the same reason. What does not fit is cut with an
-			// ellipsis and said whole on hover.
-			className="group/tab w-48 flex-none justify-start pr-1 pl-3 select-none data-[dragging]:z-10 data-[dragging]:opacity-60"
+			className="data-[dragging]:z-10 data-[dragging]:opacity-60"
+			onClose={onClose}
+			onCloseByKey={onCloseByKey}
 			{...attributes}
 			{...listeners}
-			// The wheel button: Radix already stops its default on mousedown.
-			onAuxClick={(e) => {
-				if (e.button !== 1) return;
-				e.preventDefault();
-				onClose();
-			}}
-			onKeyDown={(e) => {
-				if (e.key !== "Delete" && e.key !== "Backspace") return;
-				e.preventDefault();
-				onCloseByKey();
-			}}
-		>
-			<span className="min-w-0 flex-1 truncate text-left">{title}</span>
-			<span
-				role="button"
-				tabIndex={-1}
-				aria-label={`Close ${title}`}
-				className="rounded-sm p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover/tab:opacity-100 group-data-[state=active]/tab:opacity-100 hover:bg-accent hover:text-foreground"
-				onClick={(e) => {
-					e.stopPropagation();
-					onClose();
-				}}
-				// Radix picks a tab on mousedown and on focus, and the sortable
-				// would start a drag on pointerdown; the close mark is none of
-				// these. Stopping the pointerdown's default keeps the mouse events
-				// and the focus from happening at all; the click still comes.
-				onPointerDown={(e) => {
-					e.stopPropagation();
-					e.preventDefault();
-				}}
-			>
-				<X className="size-3" />
-			</span>
-		</div>
+		/>
 	);
 	// The roots — the menu's, the tooltip's — draw nothing and can sit anywhere
 	// outside; the triggers must be nested, and only DOM-drawing ones, or the
