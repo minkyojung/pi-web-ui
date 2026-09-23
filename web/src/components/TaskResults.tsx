@@ -9,8 +9,9 @@ import { type ResultLine, checkMark, footWords, headWords, listOf } from "../res
 import { sawResults, seenStore } from "../seenResults.ts";
 import { configStore, specsStore } from "../serverState";
 import { docPath, speaksFor } from "../specStanding.ts";
+import { TaskGlyph } from "./TaskGlyph";
 import { Button } from "./ui/button";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "./ui/command";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 /**
@@ -32,9 +33,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
  * A Popover and not the strip's usual HoverCard, because what is in it is
  * pressed: a line opens that task's commit (Commit.tsx). A Command inside
  * it, as ⌘P and a crumb's folder are, for the arrows, Enter and narrowing by
- * a number or a word it brings. Opening it is looking: everything in it is
- * seen as far as its newest commit (seenResults.ts), and what was new is
- * marked for as long as the list stays up.
+ * a number or a word it brings. Its lines are under two small labels, In
+ * Review and Done — what is yours, and what is over — the same words and the
+ * same marks (TaskGlyph.tsx) as the plan's page. Opening it is looking:
+ * everything in it is seen as far as its newest commit (seenResults.ts), and
+ * what was new is marked for as long as the list stays up.
  *
  * Everything in it was already sent (SpecInfo.results); opening asks nobody.
  */
@@ -54,6 +57,12 @@ export function TaskResults({ open: inFront, onOpen }: { open: string | null; on
 
 	const list = listOf(spec.results, up ? seenThen : (seen[spec.name] ?? null));
 	const words = footWords(spec.tasks, { fresh: up ? 0 : list.fresh, running }, list);
+	// In review is the server's word (Progress.review); the rest of the lines are over.
+	const review = new Set(spec.tasks?.review ?? []);
+	const groups = [
+		{ title: "In Review", standing: "review" as const, lines: list.lines.filter((line) => review.has(line.task)) },
+		{ title: "Done", standing: "done" as const, lines: list.lines.filter((line) => !review.has(line.task)) },
+	].filter((group) => group.lines.length > 0);
 	const go = (path: string) => {
 		setUp(false);
 		onOpen(path);
@@ -93,22 +102,23 @@ export function TaskResults({ open: inFront, onOpen }: { open: string | null; on
 					{list.lines.length > 6 && <CommandInput placeholder="Find a task…" />}
 					<CommandList className="max-h-80">
 						<CommandEmpty>No task by that.</CommandEmpty>
-						<CommandGroup>
-							{list.lines.map((line) => (
-								<CommandItem
-									key={line.commit}
-									value={`${line.task} ${line.title} ${line.short}`}
-									data-result={line.task}
-									data-fresh={line.fresh || undefined}
-									title={`${line.short} · ${new Date(line.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}${line.runs > 1 ? ` · run ${line.runs} times, this is the last` : ""}`}
-									onSelect={() => go(commitPath(line.commit))}
-									className="gap-2"
-								>
-									<Line line={line} onLog={go} />
-								</CommandItem>
-							))}
-						</CommandGroup>
-						<CommandSeparator />
+						{groups.map((group) => (
+							<CommandGroup key={group.title} heading={group.title}>
+								{group.lines.map((line) => (
+									<CommandItem
+										key={line.commit}
+										value={`${line.task} ${line.title} ${line.short}`}
+										data-result={line.task}
+										data-fresh={line.fresh || undefined}
+										title={`${line.short} · ${new Date(line.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}${line.runs > 1 ? ` · run ${line.runs} times, this is the last` : ""}`}
+										onSelect={() => go(commitPath(line.commit))}
+										className="gap-2"
+									>
+										<Line line={line} standing={group.standing} onLog={go} />
+									</CommandItem>
+								))}
+							</CommandGroup>
+						))}
 						<CommandGroup>
 							<CommandItem value="open tasks.md the plan" onSelect={() => go(docPath(spec.name, "tasks.md"))}>
 								<FileTextIcon />
@@ -131,7 +141,7 @@ export function TaskResults({ open: inFront, onOpen }: { open: string | null; on
  * it took is not what anybody opens the list to find out: a mark for it was
  * one more thing to learn, explained and still not understood.
  *
- * The mark at the left is the checks. A filled circle: the run said it
+ * The mark before the diff is the checks. A filled circle: the run said it
  * checked its work, and says what in its title. A hollow one: it checked
  * nothing, which is the task worth opening. A circle and not a tick, because
  * a green tick has come to mean that something ran and passed, and this is
@@ -141,7 +151,7 @@ export function TaskResults({ open: inFront, onOpen }: { open: string | null; on
  * Not yet looked at is the line in bold, as unread mail is: nothing to
  * learn, and it leaves the one mark to mean one thing.
  */
-function Line({ line, onLog }: { line: ResultLine; onLog: (path: string) => void }) {
+function Line({ line, standing, onLog }: { line: ResultLine; standing: "review" | "done"; onLog: (path: string) => void }) {
 	const checked = line.checks !== null;
 	// What the app ran outranks what the run said (checkMark): a tick or a
 	// cross where there is a Verified trailer, the circle for the agent's word otherwise.
@@ -155,11 +165,15 @@ function Line({ line, onLog }: { line: ResultLine; onLog: (path: string) => void
 			: "The run checked nothing";
 	return (
 		<>
+			<TaskGlyph standing={standing} />
+			<span className="w-7 shrink-0 text-muted-foreground tabular-nums">{line.task}</span>
+			<span className={`min-w-0 truncate ${line.fresh ? "font-semibold text-foreground" : ""}`}>{line.title}</span>
+			{line.fresh && <span className="sr-only">new</span>}
 			{/* A tick or a cross opens what the check printed — the first one that
 			    failed, else the first — in a tab: the commit says how it ended, the
 			    log says why. Its click is its own, not the line's. */}
 			<span
-				className={`flex w-3 shrink-0 justify-center${ran ? " cursor-default" : ""}`}
+				className={`ml-auto flex w-3 shrink-0 justify-center${ran ? " cursor-default" : ""}`}
 				data-checks={mark}
 				data-log={ran ? checkLogPath(line.task, (failed[0] ?? ran[0]!).name) : undefined}
 				onClick={
@@ -184,10 +198,7 @@ function Line({ line, onLog }: { line: ResultLine; onLog: (path: string) => void
 					<span className="size-2 rounded-full border border-amber-600 dark:border-amber-500" />
 				)}
 			</span>
-			<span className="w-7 shrink-0 text-muted-foreground tabular-nums">{line.task}</span>
-			<span className={`min-w-0 truncate ${line.fresh ? "font-semibold text-foreground" : ""}`}>{line.title}</span>
-			{line.fresh && <span className="sr-only">new</span>}
-			<span className="ml-auto shrink-0 pl-3 text-[11px] tabular-nums">
+			<span className="shrink-0 pl-2 text-[11px] tabular-nums">
 				<span style={{ color: "var(--code-string)" }}>+{line.added}</span> <span className="text-destructive">−{line.deleted}</span>
 			</span>
 		</>
