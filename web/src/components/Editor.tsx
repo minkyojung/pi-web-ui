@@ -18,7 +18,6 @@ import { listIndent } from "../features/listIndent";
 import { authors, clearAuthors, paintAuthors, showAuthorsStore } from "../features/authors";
 import { blocked as startBlocked, chrome as startChrome, onStart, running as startRunning } from "../features/taskStart";
 import { chipChrome, commits as taskCommits, onCommit, taskCommit } from "../features/taskCommit";
-import { taskPlan } from "../features/taskPlan";
 import { forget as forgetMoves, observe as observeMoves, take as takeMoves } from "../features/moves";
 import { livePreview, reading, toggleLivePreview, toggleTask } from "../features/livePreview";
 import { leaveTextUp } from "../features/pageMove";
@@ -684,10 +683,6 @@ export function Editor({
 					send(runMessage(spec, [number], on ? { model: on.model, effort: on.level } : {}));
 					setStarting(number);
 				}),
-				// Read, the plan is drawn over the document: each box its task's
-				// standing, each heading its count (taskPlan.ts). Written, the
-				// document is the document.
-				...(mode === "read" ? [taskPlan] : []),
 			]),
 		});
 	}, [path, mode, online, streaming, config?.isCompacting, config?.run, commands, specs, starting, runOn]);
