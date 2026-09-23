@@ -40,7 +40,7 @@ import { Spinner } from "./ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** Whether the list is by the plan's headings or by standing — the window's choice, the same in every workspace. */
-const groupingStore = createStore<"plan" | "status">("plan");
+const groupingStore = createStore<"plan" | "status">("plan", { window: true });
 
 function Glyph({ standing, blocked }: { standing: Standing; blocked: boolean }) {
 	const size = "size-4 shrink-0";
