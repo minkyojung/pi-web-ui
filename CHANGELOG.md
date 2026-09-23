@@ -37,7 +37,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - `/setup` has the agent draft `.octave/config.toml` for a repository from what is there — its package file and lockfile, CI, Makefile, README — for you to read and fix; it runs nothing. A workspace of a repository with no such file has `Set up` at the foot of the window where the ▶ would be, which asks for the same.
 - The agent is told which branch this workspace was started from, so a diff, a rebase or a pull request it makes is against that branch.
 ### Changed
-- The send button is round.
+- The send button is round, and dimmed while the message box is empty, since there is nothing yet to send.
 - The agent's column is the other half of the note's card: on the same white — or, in the dark theme, the same dark — as the note, divided from it by a single line, with its header level with the note's. It was a grey box inside the card, with a gap round it.
 - The window's type is Pretendard, a face drawn for Korean and English together, so a line that is half of each reads as one. Before, the Korean in a note or a conversation came from a different font than the English around it.
 - The window has one colour, a blue, and it is kept for the moments something happens: the main button in a dialog, a switch that is on, a choice that is picked, the ring round what the keyboard is on, a link, selected text. Everything else stays grey — the send button too, since it is on screen the whole time — so the blue always means the same thing.

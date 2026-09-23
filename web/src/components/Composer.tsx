@@ -309,7 +309,10 @@ export function Composer({ note }: { note: string | null }) {
 		<PromptInputSubmit
 			className="rounded-full bg-foreground text-background hover:bg-foreground/90"
 			aria-label={streaming ? "Queue" : "Submit"}
-			disabled={!online}
+			// Off while there is nothing to send, which is what submit() already
+			// holds: a button that looks pressable and does nothing is the one
+			// thing a control must not be.
+			disabled={!online || !text.trim()}
 			status="ready"
 			onClick={(e) => {
 				if (streaming && (e.metaKey || e.ctrlKey)) steering.current = true;
