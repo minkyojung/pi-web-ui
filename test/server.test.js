@@ -1245,12 +1245,12 @@ it("작업이 어디까지 왔는지도 같은 메시지로 — tasks.md가 없�
   clear();
   putSpec(".octave/specs/count/tasks.md", "- [ ] 1. First\n- [ ] 2. Heading\n- [ ] 2.1 Second\n- [ ] 2.2 Third\n");
   const fresh = await want("specs", (m) => m.specs.find((spec) => spec.name === "count")?.tasks !== null);
-  assert.deepEqual(fresh.specs.find((spec) => spec.name === "count").tasks, { total: 4, done: 0, next: "1" }, "칸 넷, 묶음 2의 것도");
+  assert.deepEqual(fresh.specs.find((spec) => spec.name === "count").tasks, { total: 4, done: 0, cancelled: 0, next: "1" }, "칸 넷, 묶음 2의 것도");
   clear();
   // The box checked as the run's end checks it (spec.ts): the count moves.
   putSpec(".octave/specs/count/tasks.md", "- [x] 1. First\n- [ ] 2. Heading\n- [ ] 2.1 Second\n- [ ] 2.2 Third\n");
   const moved = await want("specs", (m) => m.specs.find((spec) => spec.name === "count")?.tasks?.done === 1);
-  assert.deepEqual(moved.specs.find((spec) => spec.name === "count").tasks, { total: 4, done: 1, next: "2.1" });
+  assert.deepEqual(moved.specs.find((spec) => spec.name === "count").tasks, { total: 4, done: 1, cancelled: 0, next: "2.1" });
 });
 
 it("승인이 풀려도 써진 문서는 써진 것이다 — 승인만으로는 알 수 없는 것", async () => {

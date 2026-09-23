@@ -32,6 +32,9 @@ const STANDING: Record<Standing, Decoration> = {
 	running: Decoration.line({ class: "cm-plan-task cm-standing-running" }),
 	next: Decoration.line({ class: "cm-plan-task cm-standing-next" }),
 	todo: Decoration.line({ class: "cm-plan-task cm-standing-todo" }),
+	// Drawn as the two they are nearest to, until the list view takes over from this overlay.
+	cancelled: Decoration.line({ class: "cm-plan-task cm-standing-done" }),
+	review: Decoration.line({ class: "cm-plan-task cm-standing-todo" }),
 };
 const key = Decoration.line({ class: "cm-plan-key" });
 

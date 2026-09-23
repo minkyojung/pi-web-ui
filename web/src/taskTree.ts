@@ -133,21 +133,26 @@ export function treeOf(text: string): Tree {
  *
  * Running outranks everything: a heading is running while one of its
  * sub-tasks is, since that is what running the heading means (Kiro's Start on
- * a heading). Done is the box, which the run's end checks (spec.ts). Next is
- * specTasks' nextTask — the first leaf not done — and is only ever a leaf;
- * a heading's progress is its sub-tasks' and is said as a count instead.
+ * a heading). Cancelled and done are the box, which the person sets (spec.ts).
+ * Review is a run's commit the person has not accepted — git's word, handed
+ * in as `reviewed`. Next is specTasks' nextTask — the first leaf still open —
+ * and is only ever a leaf; a heading's progress is its sub-tasks' and is
+ * said as a count instead.
  */
-export type Standing = "running" | "done" | "next" | "todo";
+export type Standing = "running" | "done" | "cancelled" | "review" | "next" | "todo";
 
-export function standingOf(task: Pick<Task, "number" | "done">, at: { running: string | null; next: string | null }): Standing {
+export function standingOf(task: Pick<Task, "number" | "done" | "cancelled">, at: { running: string | null; next: string | null; reviewed?: ReadonlySet<string> }): Standing {
 	if (at.running !== null && (at.running === task.number || at.running.startsWith(`${task.number}.`))) return "running";
+	if (task.cancelled) return "cancelled";
 	if (task.done) return "done";
+	// A run ended in a commit the person has not accepted yet: waiting to be looked at.
+	if (at.reviewed?.has(task.number)) return "review";
 	if (at.next === task.number) return "next";
 	return "todo";
 }
 
-/** How many of a heading's sub-tasks are done, over how many there are — by the boxes, as the count at the start of the row has it. */
+/** How many of a heading's sub-tasks are done, over how many there are to do — one set aside is in neither, as the count beside the row has it. */
 export function progressUnder(tasks: readonly Task[], number: string): { done: number; total: number } {
-	const under = tasks.filter((task) => task.number.startsWith(`${number}.`));
+	const under = tasks.filter((task) => task.number.startsWith(`${number}.`) && !task.cancelled);
 	return { done: under.filter((task) => task.done).length, total: under.length };
 }

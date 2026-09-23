@@ -28,7 +28,10 @@ export interface Task {
 	number: string;
 	/** The objective, as the line gives it — and, when it is run, its commit's subject. */
 	title: string;
+	/** `[x]`: accepted by the person (spec.ts done). */
 	done: boolean;
+	/** `[-]`: set aside by the person, not to be run — the box Obsidian and others use for it. */
+	cancelled: boolean;
 }
 
 /**
@@ -36,13 +39,13 @@ export interface Task {
  * box, the box itself, and everything after it verbatim, so that putting a
  * line back changes the one character and no other byte.
  */
-const TASK = /^(\s*- \[)([ xX])(\] (\d+(?:\.\d+)?)\.?[ \t]+(\S.*))$/;
+const TASK = /^(\s*- \[)([ xX-])(\] (\d+(?:\.\d+)?)\.?[ \t]+(\S.*))$/;
 const TASKS = new RegExp(TASK.source, "gm");
 
 /** The task a single line is, or null for a line that is not one — the same reading parseTasks makes of every line. */
 export function taskAt(line: string): Task | null {
 	const found = TASK.exec(line.replace(/\r$/, ""));
-	return found ? { number: found[4]!, title: found[5]!.replace(/\s+$/, ""), done: found[2] !== " " } : null;
+	return found ? { number: found[4]!, title: found[5]!.replace(/\s+$/, ""), done: /[xX]/.test(found[2]!), cancelled: found[2] === "-" } : null;
 }
 
 export function parseTasks(text: string): Task[] {
@@ -50,7 +53,8 @@ export function parseTasks(text: string): Task[] {
 		number: found[4]!,
 		// The line's tail as matched carries any trailing spaces and a CR with it.
 		title: found[5]!.replace(/\s+$/, ""),
-		done: found[2] !== " ",
+		done: /[xX]/.test(found[2]!),
+		cancelled: found[2] === "-",
 	}));
 }
 
@@ -62,8 +66,16 @@ const childrenOf = (tasks: Task[], number: string) => tasks.filter((task) => tas
  * sub-tasks is only their heading — Kiro's rule is to start with the sub-tasks,
  * and there is nothing left in the parent once they are done.
  */
-export function nextTask(tasks: Task[]): Task | null {
-	return tasks.find((task) => !task.done && childrenOf(tasks, task.number).length === 0) ?? null;
+/**
+ * Whether a task is still to be run: not done, not set aside, and not
+ * waiting to be looked at — `skip` names those, the ones a run has ended in
+ * a commit for that the person has not accepted (review); the list itself
+ * cannot know them, git does (specResults.ts), so the caller says.
+ */
+const open = (task: Task, skip: ReadonlySet<string>) => !task.done && !task.cancelled && !skip.has(task.number);
+
+export function nextTask(tasks: Task[], skip: ReadonlySet<string> = new Set()): Task | null {
+	return tasks.find((task) => open(task, skip) && childrenOf(tasks, task.number).length === 0) ?? null;
 }
 
 /**
@@ -71,9 +83,9 @@ export function nextTask(tasks: Task[]): Task | null {
  * being no work of its own — the first of its sub-tasks still to do, which is
  * Kiro's rule again. Null when the list has no such number.
  */
-export function taskToRun(tasks: Task[], number: string): Task | null {
+export function taskToRun(tasks: Task[], number: string, skip: ReadonlySet<string> = new Set()): Task | null {
 	const named = tasks.find((task) => task.number === number);
-	return named ? (nextTask(childrenOf(tasks, number)) ?? named) : null;
+	return named ? (nextTask(childrenOf(tasks, number), skip) ?? named) : null;
 }
 
 /**
@@ -84,12 +96,13 @@ export function taskToRun(tasks: Task[], number: string): Task | null {
  * no such number. Two numbers that overlap (`2` and `2.2`) mean the same
  * run once, which is the caller's to fold (runsOf).
  */
-export function runsUnder(tasks: Task[], number: string): Task[] | null {
+export function runsUnder(tasks: Task[], number: string, skip: ReadonlySet<string> = new Set()): Task[] | null {
 	const named = tasks.find((task) => task.number === number);
 	if (!named) return null;
 	const children = childrenOf(tasks, number);
+	// Named by the person: a task set aside or waiting to be looked at runs again if they say so; only one accepted does not.
 	if (children.length === 0) return named.done ? [] : [named];
-	return children.filter((child) => !child.done && childrenOf(tasks, child.number).length === 0);
+	return children.filter((child) => open(child, skip) && childrenOf(tasks, child.number).length === 0);
 }
 
 /**
@@ -97,10 +110,10 @@ export function runsUnder(tasks: Task[], number: string): Task[] | null {
  * list stands: `2 2.2` is 2's sub-tasks, and `2.2 1` is 1 then 2.2. Null
  * names the first number the list does not have.
  */
-export function runsOf(tasks: Task[], numbers: readonly string[]): { runs: Task[]; missing: string | null } {
+export function runsOf(tasks: Task[], numbers: readonly string[], skip: ReadonlySet<string> = new Set()): { runs: Task[]; missing: string | null } {
 	const wanted = new Set<string>();
 	for (const number of numbers) {
-		const under = runsUnder(tasks, number);
+		const under = runsUnder(tasks, number, skip);
 		if (under === null) return { runs: [], missing: number };
 		for (const task of under) wanted.add(task.number);
 	}
@@ -124,20 +137,22 @@ export function runsOf(tasks: Task[], numbers: readonly string[]): { runs: Task[
 export interface Progress {
 	total: number;
 	done: number;
-	/** The number of the task nextTask would run, or null when all are done. */
+	/** Set aside: counted in `total`, since the box is drawn, and not in `done`. */
+	cancelled: number;
+	/** The number of the task nextTask would run, or null when there is none to. */
 	next: string | null;
 }
 
-export function progressOf(tasks: Task[]): Progress {
-	return { total: tasks.length, done: tasks.filter((task) => task.done).length, next: nextTask(tasks)?.number ?? null };
+export function progressOf(tasks: Task[], skip: ReadonlySet<string> = new Set()): Progress {
+	return { total: tasks.length, done: tasks.filter((task) => task.done).length, cancelled: tasks.filter((task) => task.cancelled).length, next: nextTask(tasks, skip)?.number ?? null };
 }
 
-/** `done` with every heading whose sub-tasks are all in it: the heading is done when they are. */
+/** `done` with every heading whose sub-tasks are all in it or set aside: the heading is done when nothing under it is left. */
 export function withParents(tasks: Task[], done: Set<string>): Set<string> {
 	const grown = new Set(done);
 	for (const task of tasks) {
 		const children = childrenOf(tasks, task.number);
-		if (children.length > 0 && children.every((child) => grown.has(child.number))) grown.add(task.number);
+		if (children.length > 0 && children.every((child) => grown.has(child.number) || child.cancelled) && children.some((child) => grown.has(child.number))) grown.add(task.number);
 	}
 	return grown;
 }
@@ -148,7 +163,13 @@ export function withParents(tasks: Task[], done: Set<string>): Set<string> {
  * so a box the model checked on its way past is undone here.
  */
 export function withDone(text: string, done: Set<string>): string {
-	return text.replace(TASKS, (_line, open: string, _box: string, rest: string, number: string) => `${open}${done.has(number) ? "x" : " "}${rest}`);
+	// A box set aside stays set aside: that was the person's word, not a run's.
+	return text.replace(TASKS, (_line, before: string, box: string, rest: string, number: string) => `${before}${box === "-" ? "-" : done.has(number) ? "x" : " "}${rest}`);
+}
+
+/** The text with one task's box saying `box` and every other byte as it was — the person's own word on a task (spec.ts done, cancel). */
+export function withBox(text: string, number: string, box: " " | "x" | "-"): string {
+	return text.replace(TASKS, (line, before: string, _box: string, rest: string, found: string) => (found === number ? `${before}${box}${rest}` : line));
 }
 
 /**
