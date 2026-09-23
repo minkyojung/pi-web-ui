@@ -20,7 +20,7 @@ export function SignInToGitHub({ before, after, onGo }: { before: string; after:
 		<>
 			<button
 				type="button"
-				className="text-primary underline-offset-2 hover:underline"
+				className="text-link underline-offset-2 hover:underline"
 				onClick={() => {
 					onGo();
 					openSettings("Accounts");

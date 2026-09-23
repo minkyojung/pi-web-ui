@@ -32,6 +32,13 @@
   --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.205 0 0);
   --primary-foreground: oklch(0.985 0 0);
+  /* Words you can follow, apart from --primary because the two jobs part as
+     soon as --primary is a colour: a fill carries white words and wants to be
+     dark, a link is words itself and has to clear 4.5 on the page — a solid
+     blue that does the first does not do the second on a dark page (Radix
+     gives text its steps 11 and 12, never 9, for this). The same as --primary
+     while that is black or white. */
+  --link: oklch(0.205 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -159,6 +166,7 @@
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
+  --link: oklch(0.922 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -205,6 +213,7 @@
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
+  --color-link: var(--link);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -510,7 +519,7 @@
 .cm-footnote {
 	font-size: 0.7em;
 	line-height: 1;
-	color: var(--primary);
+	color: var(--link);
 	cursor: pointer;
 	padding: 0 0.1em;
 }

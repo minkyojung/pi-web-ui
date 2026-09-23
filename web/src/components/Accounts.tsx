@@ -149,7 +149,7 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 	} else if (standing?.state === "missing") {
 		status = <span className="text-xs text-muted-foreground">GitHub CLI isn't installed</span>;
 		actions = (
-			<a href="https://cli.github.com" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline">
+			<a href="https://cli.github.com" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-link underline-offset-2 hover:underline">
 				Get gh <ExternalLinkIcon className="size-3" />
 			</a>
 		);
@@ -348,7 +348,7 @@ function Event({ event }: { event: LoginEvent }) {
 			return (
 				<p className="flex flex-col gap-1">
 					<span>{event.instructions ?? "Sign in in your browser, then come back here."}</span>
-					<a href={event.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline">
+					<a href={event.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-link underline-offset-2 hover:underline">
 						Open the sign-in page <ExternalLinkIcon className="size-3" />
 					</a>
 				</p>
@@ -360,7 +360,7 @@ function Event({ event }: { event: LoginEvent }) {
 				<p className="flex flex-col gap-1 text-subtle-foreground">
 					<span>{event.message}</span>
 					{event.links?.map((link) => (
-						<a key={link.url} href={link.url} target="_blank" rel="noreferrer" className="text-primary underline-offset-2 hover:underline">
+						<a key={link.url} href={link.url} target="_blank" rel="noreferrer" className="text-link underline-offset-2 hover:underline">
 							{link.label ?? link.url}
 						</a>
 					))}
@@ -387,7 +387,7 @@ function DeviceCode({ userCode, verificationUri }: { userCode: string; verificat
 		<div className="flex flex-col gap-1">
 			<span>
 				Enter this code at{" "}
-				<a href={verificationUri} target="_blank" rel="noreferrer" className="text-primary underline-offset-2 hover:underline">
+				<a href={verificationUri} target="_blank" rel="noreferrer" className="text-link underline-offset-2 hover:underline">
 					{verificationUri}
 				</a>
 			</span>
