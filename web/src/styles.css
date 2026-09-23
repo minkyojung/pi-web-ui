@@ -71,7 +71,17 @@
   --subtle-foreground: oklch(0.37 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  /* Tailwind's 700, a step past shadcn's 600: that read 4.41 on the frame and
+     on pi's floor, where a failed tool and an error at the foot are drawn. */
+  --destructive: oklch(0.505 0.213 27.518);
+  /* The other two meanings a colour has here, beside --destructive: done or
+     added, and wait or look. One of each per theme, as Primer and Atlassian
+     keep them (success.fg, attention.fg), rather than a Tailwind shade picked
+     where each was needed — which had left an added line's count and the
+     warning at the foot under AA on the frame. Tailwind's 700 in the light,
+     as --destructive is: 4.6 on the frame. */
+  --success: oklch(0.527 0.154 150.069);
+  --warning: oklch(0.555 0.163 48.998);
   /* The rim, at the distance from the page the dark themes keep theirs at,
      the other way up — a raised thing here is white and its edge is a shadow
      rather than a highlight. --input is left where it was: an edge you aim a
@@ -189,6 +199,9 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  /* Tailwind's 400s, as --destructive is here. */
+  --success: oklch(0.792 0.209 151.711);
+  --warning: oklch(0.828 0.189 84.429);
   /* A rim on a raised surface, not a line drawn between two flat ones: at 5%
      it lands 0.052 over the page, where Linear draws its own. Ten was twice
      that. --input keeps its own, being an edge you are meant to aim at. */
@@ -241,6 +254,8 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

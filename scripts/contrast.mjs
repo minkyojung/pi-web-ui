@@ -166,6 +166,18 @@ const TEXT = [
 	["--destructive", "--background", "error text"],
 	["--destructive", "--card", "error on a card"],
 	["--destructive", "--popover", "destructive menu row"],
+	["--destructive", "--panel", "a failed tool, a removed line's count"],
+	["--destructive", "--sidebar", "an error at the foot"],
+	["--success", "--background", "done, on the page"],
+	["--success", "--card", "done, on a card"],
+	["--success", "--popover", "done, in a menu"],
+	["--success", "--panel", "an added line's count"],
+	["--success", "--sidebar", "done, at the foot"],
+	["--warning", "--background", "a warning on the page"],
+	["--warning", "--card", "a warning on a card"],
+	["--warning", "--popover", "a warning in a menu"],
+	["--warning", "--panel", "a warning in pi's column"],
+	["--warning", "--sidebar", "a warning at the foot"],
 ];
 
 /**
