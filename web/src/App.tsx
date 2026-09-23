@@ -738,29 +738,14 @@ export function App() {
 							setPiWidth(size.inPixels);
 						}}
 					>
-						{/* A floor of its own, laid inside the card rather than up
-						    against it: the note is the page, the conversation beside it
-						    is not the same page, and --panel steps off the note — up in
-						    a dark window, down in a light one, the same distance either
-						    way. The eight pixels all round are what the two surfaces are
-						    read against: the note's page runs behind pi on every side,
-						    so the panel is a thing on the page and not the other half of
-						    it, and no line has to be drawn to say so.
-
-						    The corner is the card's own less the gap — 14px round the
-						    outside, 8px of page, 6px here — which is what keeps two
-						    curves this close from reading as a mistake. Tailwind has
-						    that number already: --radius-sm is --radius-xl less 8.
-
-						    And --border round it, the token every other rim in the
-						    window uses. It is a rim on a surface rather than a line
-						    between two, which is the one job that token has: in the
-						    dark themes it is white at 5%, so it lands the same 0.047
-						    off pi's floor that the card's rim lands off the page, and
-						    in the light ones it is fainter against pi than against the
-						    card — which is what is wanted, since a floor that is already
-						    a step down does not need saying twice. */}
-						<div className="surface-panel m-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-sm border">
+						{/* A floor of its own — --panel steps off the note, up in a dark
+						    window and down in a light one — met at the divider, as two
+						    panes of one window meet: one line between them, and what
+						    runs across the note's column (the bars over a spec) ends
+						    where the conversation begins. It used to be a card inset
+						    eight pixels inside this one, which left a strip of page
+						    between a bar's end and the conversation's edge. */}
+						<div className="surface-panel flex min-h-0 flex-1 flex-col overflow-hidden border-l">
 							<Boundary name="conversation">
 								{/* A PDF in front is what the message is beside, as a note is:
 								    the agent is told which, and what was chosen on its pages. */}
