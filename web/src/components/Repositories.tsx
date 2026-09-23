@@ -9,7 +9,7 @@ import { ArchiveIcon, ChevronRightIcon, GitBranchIcon, PlusIcon } from "lucide-r
 import { toast } from "sonner";
 
 import { orderedBy, spent } from "../repoOrder";
-import { configStore } from "../serverState";
+import { configStore, createStore } from "../serverState";
 import { CloneRepository } from "./CloneRepository";
 import type { BranchStatus } from "../branchStanding";
 import { NewSpec, type SpecOnChoices } from "./NewSpec";
@@ -57,6 +57,7 @@ const workspaceShell = (
 				create(root: string, first: { line: string; model: string | null; effort: string | null }, from: string | null): Promise<{ error?: string } | null>;
 				branches(root: string): Promise<{ branches: string[]; base: string | null } | null>;
 				open(path: string): Promise<void>;
+				warm(path: string): Promise<void>;
 				changes(path: string): Promise<number | null>;
 				archive(path: string, seen: number): Promise<{ error?: string; changes?: number; warning?: string } | null>;
 				restore(path: string): Promise<{ error?: string } | null>;
@@ -113,31 +114,32 @@ export function usePageFolder(): string | null {
  * The shell's list, kept up: `undefined` until the shell has answered, then
  * the list, or null where there is none — a browser tab, a dev run.
  */
+/**
+ * The list itself, the window's rather than any folder's: the same in every
+ * workspace, so it is kept outside the tree — which is remade when the
+ * window moves to another workspace (switch.ts) — and asked for once, then
+ * again whenever the shell says it changed or the window comes back. What
+ * was drawn stays drawn meanwhile.
+ */
+const listStore = createStore<WorkspaceList | null | undefined>(workspaceShell ? undefined : null, { window: true });
+function loadList(): void {
+	workspaceShell?.list().then(
+		(next) => listStore.set(next),
+		() => listStore.set(listStore.get() ?? null),
+	);
+}
+if (workspaceShell) {
+	loadList();
+	workspaceShell.onChange(loadList);
+	// A branch renamed inside a workspace — by hand, in a terminal — is news
+	// only git has, so the list is asked again when the window comes back.
+	window.addEventListener("focus", loadList);
+}
+
 export function useWorkspaceList(): WorkspaceList | null | undefined {
-	const [list, setList] = useState<WorkspaceList | null | undefined>(workspaceShell ? undefined : null);
+	const list = useSyncExternalStore(listStore.subscribe, listStore.get);
 	/** The one way to ask, held where the turn below can reach it too. */
-	const ask = useRef<() => void>(() => {});
-	useEffect(() => {
-		if (!workspaceShell) return;
-		let live = true;
-		const load = () => {
-			workspaceShell.list().then(
-				(next) => live && setList(next),
-				() => live && setList((was) => was ?? null),
-			);
-		};
-		ask.current = load;
-		load();
-		const stop = workspaceShell.onChange(load);
-		// A branch renamed inside a workspace — by hand, in a terminal — is news
-		// only git has, so the list is asked again when the window comes back.
-		window.addEventListener("focus", load);
-		return () => {
-			live = false;
-			stop();
-			window.removeEventListener("focus", load);
-		};
-	}, []);
+	const ask = useRef<() => void>(loadList);
 	// And the moment a turn ends, which is the other time it changes: the turn
 	// that names a spec renames the branch after it (spec.ts), so a row that
 	// said `bangkok` says `email-auth` as the answer arrives rather than the
@@ -167,6 +169,33 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 	const [cloning, setCloning] = useState(false);
 	const shell = workspaceShell!;
 	const here = usePageFolder();
+	/**
+	 * The workspace the window is on its way to, marked from the click until
+	 * the shell answers: the page moves in place when the switch lands
+	 * (switch.ts), so the mark is cleared by the answer either way — a switch
+	 * that failed has been said so in a dialog of the shell's own.
+	 */
+	const [going, setGoing] = useState<string | null>(null);
+	const go = (path: string) => {
+		setGoing(path);
+		shell.open(path).finally(() => setGoing((was) => (was === path ? null : was)));
+	};
+	/**
+	 * A row the pointer has settled on for a moment is one about to be
+	 * clicked, more often than not, and its workspace takes a moment to
+	 * make: it is made now, so the click finds it ready. Settled, not
+	 * crossed — a pointer on its way down the list starts nothing.
+	 */
+	const settling = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const settle = (path: string) => {
+		unsettle();
+		settling.current = setTimeout(() => void shell.warm(path).catch(() => {}), 120);
+	};
+	const unsettle = () => {
+		if (settling.current !== null) clearTimeout(settling.current);
+		settling.current = null;
+	};
+	useEffect(() => unsettle, []);
 	const folder = useRef(here);
 	folder.current = here;
 
@@ -304,6 +333,10 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 								onDrop={() => setDropping({ path: project.path, name: project.name, workspaces: project.worktrees.length })}
 								onRestore={restore}
 								restoring={restoring}
+								going={going}
+								onOpen={go}
+								onSettle={settle}
+								onUnsettle={unsettle}
 								onMove={(by) => move(arrayMove(paths, at, at + by))}
 								first={at === 0}
 								last={at === ordered.length - 1}
@@ -326,7 +359,7 @@ type Project = WorkspaceList["projects"][number];
  * header — so a workspace row is not a handle for the repository above it,
  * and a repository travels with its workspaces.
  */
-function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onDrop, onRestore, restoring, onMove, first, last }: {
+function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onDrop, onRestore, restoring, going, onOpen, onSettle, onUnsettle, onMove, first, last }: {
 	project: Project;
 	open: boolean;
 	onFold: () => void;
@@ -337,6 +370,11 @@ function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onD
 	onDrop: () => void;
 	onRestore: (path: string) => void;
 	restoring: ReadonlySet<string>;
+	/** The workspace the window is on its way to, and the ways to send it and to have one made ready ahead of the click — see Repositories. */
+	going: string | null;
+	onOpen: (path: string) => void;
+	onSettle: (path: string) => void;
+	onUnsettle: () => void;
 	onMove: (by: -1 | 1) => void;
 	first: boolean;
 	last: boolean;
@@ -419,19 +457,29 @@ function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onD
 												size="sm"
 												data-workspace={worktree.path}
 												data-active={active}
+												data-going={worktree.path === going}
 												aria-current={active ? "page" : undefined}
-												onClick={() => !active && shell.open(worktree.path)}
+												aria-busy={worktree.path === going || undefined}
+												onClick={() => !active && onOpen(worktree.path)}
+												onPointerEnter={() => !active && onSettle(worktree.path)}
+												onPointerLeave={onUnsettle}
 												className={cn(
 													row,
 													"data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground",
+													"data-[going=true]:bg-sidebar-accent data-[going=true]:text-sidebar-accent-foreground",
 												)}
 											>
 												<GitBranchIcon />
 												<span className="truncate">{branchName(worktree.branch)}</span>
-												{(() => {
-													const dot = statusDot(worktree.status);
-													return dot ? <span data-status={worktree.status?.state} aria-label={dot.long} className={cn("ml-auto size-1.5 shrink-0 rounded-full", dot.className)} /> : null;
-												})()}
+												{/* Turning where the dot goes while the window is on its way there. */}
+												{worktree.path === going ? (
+													<Spinner className="ml-auto size-3 shrink-0" />
+												) : (
+													(() => {
+														const dot = statusDot(worktree.status);
+														return dot ? <span data-status={worktree.status?.state} aria-label={dot.long} className={cn("ml-auto size-1.5 shrink-0 rounded-full", dot.className)} /> : null;
+													})()
+												)}
 											</Button>
 											</ContextMenuTrigger>
 										</TooltipTrigger>

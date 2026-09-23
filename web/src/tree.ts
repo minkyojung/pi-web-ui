@@ -96,7 +96,10 @@ function readOpen(): ReadonlySet<string> {
 }
 
 /** The folders standing open. Read by the sidebar; changed through `setOpenFolders`. */
-export const openFoldersStore = createStore<ReadonlySet<string>>(readOpen());
+export const openFoldersStore = createStore<ReadonlySet<string>>(readOpen(), { window: true });
+
+/** The window moved to another workspace: which of its folders stand open is read under its own key (switch.ts). */
+export const reloadOpenFolders = (): void => openFoldersStore.set(readOpen());
 
 export function setOpenFolders(open: ReadonlySet<string>): void {
 	if (open === openFoldersStore.get()) return;

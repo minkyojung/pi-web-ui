@@ -8,6 +8,15 @@
  * Linear keep a draft per place: read when the box is made, written as it is
  * typed in, and emptied when it is sent.
  */
-import { createStore } from "./serverState";
+import { createStore } from "./serverState.ts";
 
-export const draftStore = createStore<string>("");
+export const draftStore = createStore<string>("", { window: true });
+
+/** Each folder's draft while the window is on another — a draft per place, as Slack keeps one per channel. */
+const kept = new Map<string, string>();
+
+/** The window moved from one folder to another: what was typed stays with the folder it was typed for, and the other's comes back. */
+export function switchDraft(from: string | null, to: string): void {
+	if (from) kept.set(from, draftStore.get());
+	draftStore.set(kept.get(to) ?? "");
+}

@@ -46,6 +46,8 @@ import {
 	standingStore,
 	usageStore,
 } from "./serverState";
+import { socketOpened, stateLanded } from "./landing";
+import { forFolder } from "./workspace";
 import { clearedText } from "./queue";
 import { applyServerEvent, replaceConversation, setConnection } from "./store";
 import type { ClientMsg, ServerMsg, StateMsg } from "./types";
@@ -249,6 +251,7 @@ function receive(msg: ServerMsg): void {
 			// them; the replay that follows a snapshot re-adds any still open.
 			promptsStore.set([]);
 			replaceConversation(msg.items);
+			stateLanded();
 			return;
 		// The messages a clear took out of the queue, on their way back to the box.
 		case "queue_cleared": {
@@ -283,10 +286,12 @@ function connect(): void {
 	const gen = ++generation;
 	setConnection(attempt === 0 ? "connecting" : "reconnecting");
 
-	const ws = new WebSocket(`ws://${location.host}/ws`);
+	// Which folder this page is a window on goes on the address: one server serves every workspace.
+	const ws = new WebSocket(forFolder(`ws://${location.host}/ws`));
 	socket = ws;
 
 	ws.onopen = () => {
+		socketOpened();
 		if (gen !== generation) return;
 		setConnection("open");
 		// Recovery is entirely server-driven: it pushes config, usage, snapshot
@@ -318,6 +323,21 @@ function connect(): void {
 	};
 	// An 'error' is always followed by a 'close', which does the reconnecting.
 	ws.onerror = () => {};
+}
+
+/**
+ * The socket closed and opened again, on the folder the page is on now: the
+ * window moved to another workspace (switch.ts). The old socket's close is
+ * not a reconnect — its generation is over — and the new one begins as a
+ * first connection, not a retry.
+ */
+export function reconnect(): void {
+	if (disposed) return;
+	generation++;
+	socket?.close();
+	socket = null;
+	attempt = 0;
+	connect();
 }
 
 /** Skip the wait when something says the connection should work now. */
