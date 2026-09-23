@@ -12,6 +12,7 @@ import type { EditorState, Extension, Range, SelectionRange } from "@codemirror/
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 
 import { readWikiLink } from "../../../links.ts";
+import { forFolder } from "../workspace.ts";
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i;
 const REMOTE = /^(https?:|data:)/i;
@@ -19,7 +20,7 @@ const REMOTE = /^(https?:|data:)/i;
 /** Where the browser fetches the picture from. */
 export function imageSrc(target: string, here: string): string {
 	if (REMOTE.test(target)) return target;
-	return `/vault/${target.split("/").map(encodeURIComponent).join("/")}?from=${encodeURIComponent(here)}`;
+	return forFolder(`/vault/${target.split("/").map(encodeURIComponent).join("/")}?from=${encodeURIComponent(here)}`);
 }
 
 /** Obsidian's `|300` and `|300x200` after an embed's name are its size; anything else is what to say instead of the picture. */

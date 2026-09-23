@@ -50,7 +50,12 @@ for (const signal of ["SIGTERM", "SIGINT"]) {
     const appDir = mkdtempSync(join(tmpdir(), "shutdown-test-app-"));
     writeFileSync(join(cwd, "a.md"), "# a\n");
     const port = await freePort();
-    const server = spawn(join(root, "node_modules/.bin/tsx"), ["server.ts"], {
+    // node itself, as the desktop shell runs the server, rather than tsx: tsx
+    // relays a signal to its child through a hook of its own, and while the
+    // child is loading the agent's code — which it does after the port opens
+    // — that hook cannot run, so tsx ends it as if nothing were listening.
+    // The server listens from its first tick; that is what is tested here.
+    const server = spawn(process.execPath, ["--experimental-strip-types", "--no-warnings", "server.ts"], {
       cwd: root,
       env: { ...process.env, WORKDIR: cwd, PORT: String(port), APP_DIR: appDir },
       stdio: ["ignore", "pipe", "pipe"],

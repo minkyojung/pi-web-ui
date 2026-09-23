@@ -60,12 +60,14 @@ test.before(async () => {
   // A built page of its own, so what the server says of a built file can be asked: see the .mjs check.
   clientDir = mkdtempSync(join(tmpdir(), "server-test-client-"));
   mkdirSync(join(clientDir, "assets"));
-  writeFileSync(join(clientDir, "index.html"), "<!doctype html><title>test</title>");
+  writeFileSync(join(clientDir, "index.html"), "<!doctype html><html><head><title>test</title></head><body></body></html>");
   writeFileSync(join(clientDir, "assets", "worker.mjs"), "export {};\n");
   server = spawn(join(root, "node_modules/.bin/tsx"), ["server.ts"], {
     cwd: root,
-    env: { ...process.env, WORKDIR: cwd, PORT: String(port), APP_DIR: appDir, CLIENT_DIR: clientDir },
-    stdio: ["ignore", "pipe", "pipe"],
+    // A folder nobody looks at is let go of after this long here, so the test below need not wait half an hour; the first folder has a tab on it throughout.
+    env: { ...process.env, WORKDIR: cwd, PORT: String(port), APP_DIR: appDir, CLIENT_DIR: clientDir, IDLE_MS: "1500" },
+    // With a channel, as the desktop shell opens one: the test names a second folder over it, as the shell does.
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
   server.stdout.on("data", (d) => (log += d));
   server.stderr.on("data", (d) => (log += d));
@@ -1436,5 +1438,88 @@ it("작업이 무엇에 이르렀는지는 저장소의 역사에서 — 커밋�
     rmSync(join(cwd, ".git"), { recursive: true, force: true });
     rmSync(join(cwd, ".octave"), { recursive: true, force: true });
     rmSync(join(cwd, "came-to.js"), { force: true });
+  }
+});
+
+it("one process serves a second folder the shell names, and each folder's tabs hear only their own", async () => {
+  const other = mkdtempSync(join(tmpdir(), "server-test-other-"));
+  writeFileSync(join(other, "b.md"), "# b\n");
+  const connect = (folder) => {
+    const tab = new WebSocket(`ws://127.0.0.1:${port}/ws?folder=${encodeURIComponent(folder)}`);
+    const heard = [];
+    tab.onmessage = (e) => heard.push(JSON.parse(e.data));
+    const closed = new Promise((r) => (tab.onclose = (e) => r(e.code)));
+    return { tab, heard, closed };
+  };
+  try {
+    // Not named yet: refused, with the code for it, and nothing said.
+    const refused = connect(other);
+    assert.equal(await refused.closed, 1008, "a folder the shell has not named is closed on");
+    assert.equal((await fetch(`http://127.0.0.1:${port}/api/note?path=b.md&folder=${encodeURIComponent(other)}`)).status, 404);
+    assert.equal((await fetch(`http://127.0.0.1:${port}/?folder=${encodeURIComponent(other)}`)).status, 404, "nor is the page served for it");
+
+    server.send({ workspace: other });
+    const page = await until("the page for the second folder", async () => { const r = await fetch(`http://127.0.0.1:${port}/?folder=${encodeURIComponent(other)}`); return r.ok ? await r.text() : null; });
+    assert.ok(page.includes(other), "the page is told which folder it is a window on");
+    const b = connect(other);
+    const config = await until("the second folder's config", () => b.heard.find((m) => m.type === "config"), 30000);
+    assert.equal(config.folder, other);
+    const files = await until("the second folder's files", () => b.heard.find((m) => m.type === "files"));
+    assert.deepEqual(files.files.map((f) => f.path), ["b.md"], "its notes, not the first folder's");
+    assert.equal((await (await fetch(`http://127.0.0.1:${port}/api/note?path=b.md&folder=${encodeURIComponent(other)}`)).json()).text, "# b\n");
+
+    // A note written in the second folder is news there and not in the first.
+    clear();
+    b.heard.length = 0;
+    writeFileSync(join(other, "c.md"), "# c\n");
+    await until("the second folder's list", () => b.heard.find((m) => m.type === "files" && m.files.some((f) => f.path === "c.md")), 10000);
+    await new Promise((r) => setTimeout(r, 500));
+    assert.equal(inbox.find((m) => m.type === "files" && m.files.some((f) => f.path === "c.md")), undefined, "the first folder's tab heard nothing of it");
+    assert.equal((await (await fetch(`http://127.0.0.1:${port}/api/note?path=c.md`)).status), 404, "and by default the first folder is meant");
+
+    // The settings are the process's: written once, heard in both.
+    const r = await fetch(`http://127.0.0.1:${port}/api/settings`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loadExtensions: false }) });
+    assert.equal(r.status, 200);
+    await until("settings in the first", () => inbox.find((m) => m.type === "settings"));
+    await until("settings in the second", () => b.heard.find((m) => m.type === "settings"));
+
+    // Let go of by the shell: its tab is closed, and the folder can be removed.
+    server.send({ dispose: other });
+    await b.closed;
+    b.tab.close();
+  } finally {
+    rmSync(other, { recursive: true, force: true });
+  }
+});
+
+it("a folder nobody has looked at for a while is let go of — not one a tab is on — and made again when asked for", async () => {
+  const other = mkdtempSync(join(tmpdir(), "server-test-idle-"));
+  writeFileSync(join(other, "b.md"), "# b\n");
+  const connect = (folder) => {
+    const tab = new WebSocket(`ws://127.0.0.1:${port}/ws?folder=${encodeURIComponent(folder)}`);
+    const heard = [];
+    tab.onmessage = (e) => heard.push(JSON.parse(e.data));
+    return { tab, heard };
+  };
+  try {
+    server.send({ workspace: other });
+    const before = log.length;
+    const first = connect(other);
+    const config = await until("the folder's config", () => first.heard.find((m) => m.type === "config"), 30000);
+    assert.equal(config.folder, other);
+    first.tab.close();
+    const gone = await until("let go of", () => log.slice(before).includes(`${other}: let go of`), 10000);
+    assert.ok(gone);
+    assert.equal(log.slice(before).includes(`${cwd}: let go of`), false, "the first folder, with a tab on it, is kept");
+    // Asked for again: made anew, on a session of its own.
+    const again = connect(other);
+    const made = await until("made again", () => again.heard.find((m) => m.type === "config"), 30000);
+    assert.equal(made.folder, other);
+    assert.equal((log.slice(before).match(new RegExp(`${other.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: model: `, "g")) ?? []).length, 2, "made twice: once before, once after");
+    again.tab.close();
+    server.send({ dispose: other });
+    await new Promise((r) => setTimeout(r, 300));
+  } finally {
+    rmSync(other, { recursive: true, force: true });
   }
 });

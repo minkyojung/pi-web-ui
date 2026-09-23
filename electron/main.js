@@ -7,7 +7,7 @@
  * report on, rather than the shell itself.
  */
 import { execFile, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
@@ -24,14 +24,15 @@ import { copyInto } from "./copies.js";
 import { runLogsIn } from "./runLogs.js";
 import { createRuns } from "./runs.js";
 import { runScript } from "./scripts.js";
-import { createServers, idle } from "./servers.js";
+import { createServerProcess } from "./serverProcess.js";
 import { shellEnv } from "./shellEnv.js";
 import { addBranchWorktree, branchOf, changesIn, git, headOf, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
 import { clone, issues, login, pullRequests, repositories, repositoryName, signIn, signOut, standing } from "./github.js";
 import { KEYS, forget, gitEnv } from "./credentials.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
-import { firstWorkspace, hiddenRepository, projectsOf, reordered, statusOf, withWorkspace, workspaceState } from "./workspaces.js";
+import { switchLine } from "./switching.js";
+import { firstWorkspace, hiddenRepository, projectsOf, remembered, reordered, statusOf, withWorkspace, workspaceState } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
@@ -111,12 +112,12 @@ async function askForRepository() {
  * exit code the shell would otherwise have to report.
  */
 async function startServer(workdir) {
-	// The port a folder had before, if it is free: nothing of the page's is
-	// kept by it (web/src/workspace.ts), but a server started again after
-	// going idle is found where it was.
-	const port = await freePort(ports.get(workdir));
-	ports.set(workdir, port);
-	busy.set(workdir, false);
+	// The port the server had before, if it is free: nothing of the page's is
+	// kept by it (web/src/workspace.ts), but a server started again after a
+	// crash is found where it was.
+	port = await freePort(port);
+	named.clear();
+	named.add(resolve(workdir));
 	const errors = [];
 	const said = (lines) => errors.splice(0, Math.max(0, errors.push(...lines) - 10));
 	// ELECTRON_RUN_AS_NODE turns this same binary into plain node, so the app does
@@ -147,8 +148,9 @@ async function startServer(workdir) {
 		// say which kind of run this is.
 		stdio: ["ignore", "pipe", "pipe", "ipc"],
 	});
-	answerTrashAsks(child, workdir);
+	answerTrashAsks(child);
 	openUrlAsks(child);
+	answerDisposals(child);
 	child.stdout.on("data", (d) => process.stdout.write(`[server] ${d}`));
 	child.stderr.on("data", (d) => {
 		process.stderr.write(`[server] ${d}`);
@@ -157,53 +159,84 @@ async function startServer(workdir) {
 	// A failed spawn emits 'error', not 'exit', and without this the shell would
 	// sit forever waiting for a server that was never going to start.
 	child.on("error", (err) => said([`Could not start the pi server: ${err.message}`]));
-	// Whether it is in the middle of a run, so it is not stopped for being idle.
+	// Which folders the agent is in the middle of a turn in, so none is removed under it.
 	child.on("message", (message) => {
-		if (typeof message?.busy !== "boolean") return;
-		busy.set(workdir, message.busy);
-		if (!message.busy) since.set(workdir, Date.now());
+		if (typeof message?.busy !== "boolean" || typeof message.folder !== "string") return;
+		busy.set(resolve(message.folder), message.busy);
 	});
 	return { child, url: `http://${HOST}:${port}/`, errors };
 }
 
-/** Each folder's port for as long as the app runs. */
-const ports = new Map();
-/** Each folder's port for the repository's own run command — `OCTAVE_PORT`, kept the same for as long as the app runs, as the server's is. */
-const runPorts = new Map();
-/** Whether each folder's server is in the middle of a run. */
-const busy = new Map();
-/** When each folder was last in front or last finished a run. */
-const since = new Map();
-
 /**
- * A server nobody is using is stopped after this long, and started again when
- * its workspace is next opened — a few seconds, against a process's memory
- * for as long as the app is open. Conductor keeps agent processes only for
- * the workspaces in use the same way.
+ * A folder named to the server, which then serves it: told before the window
+ * is pointed at it, and again ahead of a click (`warm`) — the server makes
+ * the folder's workspace the first time and keeps it. Every folder named
+ * is remembered here, since the trash asks (below) are answered for those
+ * and no other.
  */
-const IDLE_MS = 10 * 60_000;
-
-function stopIdle() {
-	for (const workdir of idle(servers.folders(), { keep: [front, wanted].filter(Boolean), busy, since, now: Date.now(), idleMs: IDLE_MS })) {
-		void servers.stop(workdir);
-	}
+async function nameFolder(workdir, { warm = false } = {}) {
+	const server = await servers.get(workdir);
+	const full = resolve(workdir);
+	named.add(full);
+	if (server.child.connected) server.child.send(warm ? { workspace: full, warm: full } : { workspace: full });
+	return server;
 }
 
 /**
- * Every folder's server — see servers.js. One that stops unasked says why;
- * the one in front takes the app with it, since the window has nothing left
- * to show, and one behind is started again when its folder is next opened.
+ * A folder let go of by the server — its watcher, its session, its tabs —
+ * so it can be removed. Waited for, up to a moment: a folder deleted under
+ * a watcher that is still on it is a folder deleted with a fight.
  */
-const servers = createServers({
+function disposeFolder(workdir) {
+	const full = resolve(workdir);
+	named.delete(full);
+	busy.delete(full);
+	return servers.current().then((server) => {
+		if (!server?.child.connected) return;
+		return new Promise((done) => {
+			const timer = setTimeout(done, 3000);
+			disposals.set(full, () => {
+				clearTimeout(timer);
+				done();
+			});
+			server.child.send({ dispose: full });
+		});
+	});
+}
+
+/** Whoever is waiting for a folder to be let go of, by folder — see disposeFolder. */
+const disposals = new Map();
+function answerDisposals(server) {
+	server.on("message", (message) => {
+		if (typeof message?.disposed !== "string") return;
+		const waiting = disposals.get(message.disposed);
+		disposals.delete(message.disposed);
+		waiting?.();
+	});
+}
+
+/** The server's port for as long as the app runs. */
+let port;
+/** The folders the server has been told of — the ones it works in. */
+const named = new Set();
+/** Each folder's port for the repository's own run command — `OCTAVE_PORT`, kept the same for as long as the app runs, as the server's is. */
+const runPorts = new Map();
+/** Whether the agent is in the middle of a turn in each folder. */
+const busy = new Map();
+
+/**
+ * The server — see serverProcess.js. One that stops unasked says why and,
+ * with a workspace in front, takes the app with it, since the window has
+ * nothing left to show; on the first screen the app stays, and the server
+ * is started again when a workspace is next opened.
+ */
+const servers = createServerProcess({
 	start: startServer,
-	onCrash: (workdir, code, server) => {
+	onCrash: (code, server) => {
 		const why = server.errors.length ? server.errors.join("\n") : `Exit code ${code}. Check the terminal output.`;
-		if (workdir !== front) {
-			dialog.showErrorBox(`The server for ${basename(workdir)} stopped`, why);
-			return;
-		}
+		busy.clear();
 		dialog.showErrorBox("The server stopped", why);
-		app.quit();
+		if (front) app.quit();
 	},
 });
 
@@ -247,15 +280,16 @@ async function signInToGitHub(page) {
 async function tellCredentials() {
 	forget();
 	const set = await gitEnv();
-	await servers.each((server) => server.child.connected && server.child.send({ credentials: { unset: KEYS, set } }));
+	const server = await servers.current();
+	if (server?.child.connected) server.child.send({ credentials: { unset: KEYS, set } });
 }
 
-function answerTrashAsks(server, workdir) {
-	const root = resolve(workdir) + sep;
+function answerTrashAsks(server) {
 	server.on("message", async (message) => {
 		if (message?.ask !== "trash" || typeof message.id !== "number" || typeof message.path !== "string") return;
 		let ok = false;
-		if (resolve(message.path).startsWith(root)) {
+		const path = resolve(message.path);
+		if ([...named].some((root) => path.startsWith(root + sep))) {
 			try {
 				await shell.trashItem(message.path);
 				ok = true;
@@ -303,7 +337,7 @@ async function stopServers(event) {
 	if (quitting) return;
 	quitting = true;
 	event?.preventDefault();
-	await Promise.all([servers.stopAll(), runs.stopAll()]);
+	await Promise.all([servers.stop(), runs.stopAll()]);
 	app.quit();
 }
 
@@ -354,7 +388,7 @@ function serveUpdates() {
 	ipcMain.handle("update:check", () => (app.isPackaged ? autoUpdater.checkForUpdates().catch(() => {}) : null));
 	ipcMain.handle("update:restart", async () => {
 		quitting = true;
-		await Promise.all([servers.stopAll(), runs.stopAll()]);
+		await Promise.all([servers.stop(), runs.stopAll()]);
 		autoUpdater.quitAndInstall();
 	});
 	ipcMain.handle("update:seen", () => {
@@ -430,9 +464,11 @@ async function show(workdir) {
 	if (workdir === front) return;
 	const mine = ++asked;
 	wanted = workdir;
+	const timing = { from: front, to: workdir, shell: { asked: Date.now() }, page: null };
 	let url;
 	try {
-		({ url } = await servers.get(workdir));
+		({ url } = await nameFolder(workdir));
+		timing.shell.server = Date.now();
 	} catch (err) {
 		if (mine === asked) wanted = null;
 		if (quitting) return;
@@ -448,16 +484,50 @@ async function show(workdir) {
 		if (!window.isVisible()) app.quit();
 		return;
 	}
+	timing.shell.answered = Date.now();
 	if (mine !== asked) return;
-	if (front) since.set(front, Date.now());
 	front = workdir;
 	wanted = null;
 	// The workspace to open on the next start — see firstWorkspace.
 	writeSettings({ ...readSettings(), workdir });
 	// The agent acts on this folder, so it should never be a guess.
 	window.setTitle(`Octave — ${basename(workdir)}`);
-	// A load cut short by the next switch is that switch's to finish.
-	await window.loadURL(url).catch((err) => console.error(`[window] ${err.message}`));
+	// A page already up on the server is told, and moves in place — its
+	// stores, its socket, its tree, and nothing else (web/src/switch.ts). One
+	// not yet, or on the first screen, is loaded: which folder it is a window
+	// on goes on its address, since one server serves them all and the page
+	// says which it means (web/src/workspace.ts). A load cut short by the next
+	// switch is that switch's to finish.
+	if (window.webContents.getURL().startsWith(url)) window.webContents.send("workspace:show", workdir);
+	else await window.loadURL(`${url}?folder=${encodeURIComponent(workdir)}`).catch((err) => console.error(`[window] ${err.message}`));
+	timing.shell.loaded = Date.now();
+	landing(timing);
+}
+
+/**
+ * The switch whose page has yet to say it is ready. One line per switch in
+ * the server's log, with both halves (switching.js): written when the page
+ * reports, or with the shell's half alone if it has not within a while — a
+ * page that never got there is worth knowing about too.
+ */
+let landingSoon = null;
+function landing(timing) {
+	if (landingSoon) landed(null);
+	landingSoon = { timing, later: setTimeout(() => landed(null), 15_000) };
+}
+function landed(page) {
+	if (!landingSoon) return;
+	const { timing, later } = landingSoon;
+	clearTimeout(later);
+	landingSoon = null;
+	const line = switchLine({ ...timing, page });
+	console.log(line);
+	try {
+		mkdirSync(join(logPath(), ".."), { recursive: true });
+		appendFileSync(logPath(), `${new Date().toISOString()} ${line}\n`);
+	} catch {
+		// The console has it; a log that cannot be written is not this line's problem.
+	}
 }
 
 /**
@@ -494,7 +564,7 @@ async function workspaces() {
 	return {
 		projects: await Promise.all(
 			projects.map(async (project) => {
-				const prs = await pullRequestsOf(project.path);
+				const prs = pullRequestsOf(project.path);
 				return {
 					path: project.path,
 					name: basename(project.path),
@@ -518,17 +588,20 @@ async function workspaces() {
 }
 
 /**
- * A repository's pull requests by branch, asked of gh at most once every
- * half minute: the list is drawn again at every change and every focus, and
- * a call to GitHub for each would make the sidebar wait on the network.
+ * A repository's pull requests by branch, as gh last said — at once, with gh
+ * asked again when that is over half a minute old and the list drawn again
+ * when it answers. The list is drawn at every change and every focus, and at
+ * every switch, since the page is new there; waiting on GitHub for it was two
+ * seconds of an empty sidebar each time. Not known yet is null, which the
+ * rows read as git's word alone until the answer lands.
  */
-const prsAsked = new Map();
-function pullRequestsOf(root) {
-	const had = prsAsked.get(root);
-	if (had && Date.now() - had.at < 30_000) return had.answer;
-	const answer = pullRequests(root).catch(() => null);
-	prsAsked.set(root, { at: Date.now(), answer });
-	return answer;
+const pullRequestsOf = remembered({ ask: (root) => branchesOf(root).then((branches) => pullRequests(root, branches)), onFresh: workspacesChanged, staleMs: 30_000 });
+
+/** The branches the repository's workspaces are on now — what GitHub is asked about, and nothing else. */
+async function branchesOf(root) {
+	const project = projectsOf(readSettings(), isCheckout).find((p) => p.path === root);
+	const branches = await Promise.all((project?.worktrees ?? []).map(async (worktree) => (await branchOf(worktree.path)) ?? worktree.branch));
+	return [...new Set(branches)];
 }
 
 /**
@@ -729,14 +802,14 @@ function archiveWorkspace(path, seen) {
 			if (changes !== seen) return { changes };
 			const commit = await headOf(path);
 			if (path === front || path === wanted) await showStart();
-			await servers.stop(path);
+			await disposeFolder(path);
 			await runs.stop(path);
 			const warning = await archive(root, path);
 			writeSettings({ ...readSettings(), projects: workspaceState(projectsOf(readSettings(), isCheckout), path, "archiving", { commit }) });
 			await removeWorktree(root, path);
 			writeSettings({ ...readSettings(), projects: workspaceState(projectsOf(readSettings(), isCheckout), path, "archived", { at: new Date().toISOString() }) });
 			waiting.take(path);
-			for (const kept of [ports, runPorts, busy, since]) kept.delete(path);
+			runPorts.delete(path);
 			runs.forget(path);
 			workspacesChanged();
 			return warning ? { warning } : {};
@@ -801,17 +874,37 @@ async function finishArchiving() {
 	}
 }
 
-/** A workspace from the list put in front. Only one on the list, and not an archived one, whose folder is not there: the page does not name folders of its own. */
-function openWorkspace(path) {
+/**
+ * A workspace from the list put in front. Only one on the list, and not an
+ * archived one, whose folder is not there: the page does not name folders of
+ * its own. Answered when the window is there or the switch has failed, not
+ * when it is asked for — the page marks the row it chose until then, and a
+ * switch that fails is a row to unmark, since the page is still the one
+ * looking.
+ */
+async function openWorkspace(path) {
 	const known = projectsOf(readSettings(), isCheckout).some((project) => project.worktrees.some((worktree) => worktree.path === path && !worktree.state));
-	if (known) void show(path);
+	if (known) await show(path);
+}
+
+/**
+ * A listed workspace made ready now, before anyone asks for the window to
+ * go there: the page asks as the pointer settles on the row, and the click
+ * comes a few hundred milliseconds later — time enough for the server to
+ * open the folder's session and read its notes. The server keeps it, so a
+ * row not chosen after all costs a folder's workspace, not a process.
+ */
+function warmWorkspace(path) {
+	if (path === front) return;
+	const known = projectsOf(readSettings(), isCheckout).some((project) => project.worktrees.some((worktree) => worktree.path === path && !worktree.state));
+	// A server that will not start is the click's to report, not the hover's.
+	if (known) nameFolder(path, { warm: true }).catch(() => {});
 }
 
 /** The screen that adds a repository, when there is no workspace to put in front. */
 async function showStart() {
 	++asked;
 	wanted = null;
-	if (front) since.set(front, Date.now());
 	front = null;
 	window.setTitle("Octave");
 	await window.loadURL(pageUrl("start.html")).catch((err) => console.error(`[window] ${err.message}`));
@@ -860,7 +953,7 @@ async function removeRepository(root) {
 	if (project.worktrees.some((worktree) => busy.get(worktree.path))) return { error: "The agent is working in one of its workspaces. Take the repository off the list when it has finished." };
 	if (project.worktrees.some((worktree) => worktree.path === front || worktree.path === wanted)) await showStart();
 	for (const worktree of project.worktrees) {
-		await servers.stop(worktree.path);
+		await disposeFolder(worktree.path);
 		await runs.stop(worktree.path);
 	}
 	writeSettings({ ...readSettings(), projects: hiddenRepository(projectsOf(readSettings(), isCheckout), root, true) });
@@ -954,6 +1047,7 @@ function serveFolders() {
 	// would be given the wrong workspace's line.
 	ipcMain.handle("workspace:first", (_event, folder) => (typeof folder === "string" ? waiting.take(folder) : null));
 	ipcMain.handle("workspace:open", (_event, path) => (devUrl ? null : openWorkspace(path)));
+	ipcMain.handle("workspace:warm", (_event, path) => (devUrl ? null : warmWorkspace(path)));
 	ipcMain.handle("workspace:changes", (_event, path) => (devUrl ? null : workspaceChanges(path)));
 	ipcMain.handle("workspace:archive", (_event, path, seen) => (devUrl ? null : archiveWorkspace(path, seen)));
 	ipcMain.handle("workspace:restore", (_event, path) => (devUrl ? null : restoreWorkspace(path)));
@@ -1005,6 +1099,9 @@ function serveFolders() {
 function servePrefs() {
 	ipcMain.on("prefs", (event) => {
 		event.returnValue = prefsOf(readSettings());
+	});
+	ipcMain.on("switch:landed", (_event, marks) => {
+		if (marks && typeof marks.origin === "number") landed(marks);
 	});
 	ipcMain.on("prefs:set", (_event, key, value) => {
 		const settings = readSettings();
@@ -1195,7 +1292,6 @@ async function main() {
 	}
 	window.show();
 	watchForUpdates();
-	setInterval(stopIdle, 60_000).unref();
 }
 
 // Before the app is ready, as Electron requires: a scheme of the app's own

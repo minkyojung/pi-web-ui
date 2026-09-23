@@ -54,15 +54,27 @@ export interface Store<T> {
 	subscribe: (listener: () => void) => () => void;
 }
 
-export function createStore<T>(initial: T): Store<T> {
+/**
+ * A store made here is the folder's unless it says it is the window's: the
+ * folder's are cleared to how they began when the window moves to another
+ * workspace (resetAll, switch.ts), since everything the server said was
+ * said of the folder that was; the window's — the theme, a dialog open —
+ * stay. Cleared with the value they were made with, so what they hold must
+ * be replaced rather than changed in place, which is how React reads them.
+ */
+const folders: (() => void)[] = [];
+
+export function createStore<T>(initial: T, { window = false }: { window?: boolean } = {}): Store<T> {
 	let value = initial;
 	const listeners = new Set<() => void>();
+	if (!window) folders.push(() => set(initial));
+	function set(next: T): void {
+		value = next;
+		for (const listener of listeners) listener();
+	}
 	return {
 		get: () => value,
-		set: (next) => {
-			value = next;
-			for (const listener of listeners) listener();
-		},
+		set,
 		subscribe: (listener) => {
 			listeners.add(listener);
 			return () => {
@@ -298,4 +310,9 @@ export const rawStore = createStore<ServerMsg[]>([]);
 export function pushRaw(event: ServerMsg): void {
 	const next = rawStore.get().concat(event);
 	rawStore.set(next.length > RAW_LIMIT ? next.slice(next.length - RAW_LIMIT) : next);
+}
+
+/** Every store of the folder's cleared to how it began — the window is moving to another workspace. */
+export function resetAll(): void {
+	for (const reset of folders) reset();
 }

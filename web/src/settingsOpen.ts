@@ -5,6 +5,6 @@
  */
 import { createStore } from "./serverState";
 
-export const settingsOpenStore = createStore<string | null>(null);
+export const settingsOpenStore = createStore<string | null>(null, { window: true });
 
 export const openSettings = (section: string) => settingsOpenStore.set(section);
