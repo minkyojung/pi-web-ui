@@ -126,6 +126,18 @@
   --code-name: oklch(0.45 0.16 285);
   --code-number: oklch(0.5 0.14 60);
   /*
+   * The terminal's sixteen colours (Terminal.tsx). A shell's own colours, not
+   * the window's — ls, git and a test runner choose among these — so the
+   * window's one-accent rule does not reach them; what it asks is that each
+   * reads on the page: Tailwind's 700s on white, 400s on the dark page, as
+   * --success and --warning are. Selection is the accent, washed.
+   */
+  --term-black: #18181b; --term-red: #b91c1c; --term-green: #15803d; --term-yellow: #a16207;
+  --term-blue: #1d4ed8; --term-magenta: #a21caf; --term-cyan: #0e7490; --term-white: #d4d4d8;
+  --term-bright-black: #71717a; --term-bright-red: #dc2626; --term-bright-green: #16a34a; --term-bright-yellow: #ca8a04;
+  --term-bright-blue: #2563eb; --term-bright-magenta: #c026d3; --term-bright-cyan: #0891b2; --term-bright-white: #f4f4f5;
+  --term-selection: oklch(0.552 0.193 259.5 / 0.25);
+  /*
    * pi's side of the card, on the same page as the note: the conversation is
    * read as closely as the note is, and a grey floor under it read as a sidebar
    * to the side of the work rather than half of it. The line between the two
@@ -231,6 +243,11 @@
   --code-string: oklch(0.8 0.1 145);
   --code-name: oklch(0.78 0.1 285);
   --code-number: oklch(0.8 0.12 60);
+  --term-black: #27272a; --term-red: #f87171; --term-green: #4ade80; --term-yellow: #facc15;
+  --term-blue: #60a5fa; --term-magenta: #e879f9; --term-cyan: #22d3ee; --term-white: #d4d4d8;
+  --term-bright-black: #71717a; --term-bright-red: #fca5a5; --term-bright-green: #86efac; --term-bright-yellow: #fde047;
+  --term-bright-blue: #93c5fd; --term-bright-magenta: #f0abfc; --term-bright-cyan: #67e8f9; --term-bright-white: #fafafa;
+  --term-selection: oklch(0.552 0.193 259.5 / 0.35);
   /* The page's own, as in the light theme. */
   --panel: oklch(0.21 0.002 287);
   --panel-muted: oklch(0.269 0 0);
