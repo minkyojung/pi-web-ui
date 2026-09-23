@@ -56,6 +56,8 @@ export default defineConfig({
 		// the /api routes go to it.
 		proxy: {
 			"/ws": { target: `ws://${apiHost}:${apiPort}`, ws: true },
+			// A terminal's bytes, the same way (pty/terminal.ts).
+			"/pty": { target: `ws://${apiHost}:${apiPort}`, ws: true },
 			"/api": { target: `http://${apiHost}:${apiPort}` },
 			// The pictures in the folder, served by the API server (pictures.ts).
 			"/vault": { target: `http://${apiHost}:${apiPort}` },

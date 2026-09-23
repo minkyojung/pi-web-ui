@@ -253,19 +253,31 @@ const server = createServer(async (req, res) => {
 	return page(pathname, res, full);
 });
 
-const wss = new WebSocketServer({ server });
+/**
+ * Two kinds of socket, told apart by path: `/ws` is a tab's, JSON both
+ * ways (workspace.ts attach); `/pty` is a terminal's screen, bytes both
+ * ways (pty/terminal.ts). Neither listens on the http server itself, so
+ * the upgrade is routed here, once.
+ */
+const wss = new WebSocketServer({ noServer: true });
+const ptys = new WebSocketServer({ noServer: true });
+server.on("upgrade", (req, socket, head) => {
+	const { pathname } = new URL(req.url ?? "/", "http://localhost");
+	const target = pathname === "/pty" ? ptys : wss;
+	target.handleUpgrade(req, socket, head, (ws) => target.emit("connection", ws, req));
+});
 
 /**
- * A tab attached to its folder — named on the socket's address, or the
+ * A socket given to its folder — named on the socket's address, or the
  * first — once there is one. What it sends meanwhile — the note its editor
  * has open, typing on the way out — is kept in order and given to the
- * folder's own listener the moment that is registered, which attach() does
- * before its first await. A folder this process may not work in is closed
- * on, with the code for it.
+ * folder's own listener the moment that is registered, which the folder
+ * does before its first await. A folder this process may not work in is
+ * closed on, with the code for it.
  */
-function attachWhenReady(ws: WebSocket, req: IncomingMessage): void {
-	const folder = new URL(req.url ?? "/", "http://localhost").searchParams.get("folder");
-	const workspace = open(folder);
+function whenReady(ws: WebSocket, req: IncomingMessage, use: (ready: Workspace, url: URL) => void): void {
+	const url = new URL(req.url ?? "/", "http://localhost");
+	const workspace = open(url.searchParams.get("folder"));
 	if (!workspace) return ws.close(1008, "no such workspace");
 	const early: [unknown, boolean][] = [];
 	const hold = (data: unknown, isBinary: boolean) => early.push([data, isBinary]);
@@ -273,14 +285,15 @@ function attachWhenReady(ws: WebSocket, req: IncomingMessage): void {
 	void workspace.then(
 		(ready) => {
 			if (ws.readyState !== ws.OPEN) return;
-			void ready.attach(ws);
+			use(ready, url);
 			ws.off("message", hold);
 			for (const [data, isBinary] of early) ws.emit("message", data, isBinary);
 		},
 		() => ws.close(1011, "the workspace could not be made"),
 	);
 }
-wss.on("connection", attachWhenReady);
+wss.on("connection", (ws: WebSocket, req: IncomingMessage) => whenReady(ws, req, (ready) => void ready.attach(ws)));
+ptys.on("connection", (ws: WebSocket, req: IncomingMessage) => whenReady(ws, req, (ready, url) => ready.terminal(url.searchParams.get("id") || "1", ws)));
 
 server.listen(PORT, HOST, () => {
 	console.log(`open http://localhost:${PORT}  (ctrl+c to stop)`);
