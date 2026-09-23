@@ -178,5 +178,5 @@ export function Terminal({
 	// Not in front: hidden, not gone — xterm keeps its screen and is fitted
 	// again when the box has a size once more.
 	// Inset as the row of tabs over it is, so the prompt begins under the first tab's name.
-	return <div data-terminal={id} ref={box} className={`min-h-0 flex-1 overflow-hidden bg-background px-3 pt-0.5 ${open ? "" : "hidden"}`} />;
+	return <div data-terminal={id} ref={box} className={`min-h-0 flex-1 overflow-hidden bg-background px-3 pt-1.5 pb-1 ${open ? "" : "hidden"}`} />;
 }
