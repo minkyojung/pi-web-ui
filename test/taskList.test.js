@@ -30,13 +30,13 @@ test("rows fall under the plan's headings, each with a standing from the box, gi
 	assert.deepEqual(list.sections.map((s) => [s.title, s.rows.map((r) => r.number)]), [["Backend", ["1", "2", "2.1", "2.2"]], ["UI", ["3", "4"]]]);
 	const [backend, ui] = list.sections;
 	const standing = Object.fromEntries([...backend.rows, ...ui.rows].map((r) => [r.number, r.standing]));
-	assert.deepEqual(standing, { "1": "review", "2": "running", "2.1": "running", "2.2": "next", "3": "todo", "4": "cancelled" }, "1 has run and waits to be looked at; 2 runs by way of 2.1; 2.2 is next since 1 is in review and 2.1 runs");
+	assert.deepEqual(standing, { "1": "review", "2": "running", "2.1": "running", "2.2": "todo", "3": "todo", "4": "cancelled" }, "1 has run and waits to be looked at; 2 runs by way of 2.1; which is next is not a standing");
 	assert.equal(backend.rows[0].tries, 2);
 	assert.equal(backend.rows[0].latest.commit, "1-9", "the newest run is the one shown");
 	assert.deepEqual(backend.rows[1].count, { done: 0, total: 2 }, "a heading counts its sub-tasks");
 	assert.deepEqual([backend.done, backend.total], [0, 3], "the heading is not a task of its own");
 	assert.deepEqual([ui.done, ui.total], [0, 1], "one set aside is not to do");
-	assert.deepEqual(list.counts, { running: 1, review: 1, next: 1, todo: 1, done: 0, cancelled: 1 });
+	assert.deepEqual(list.counts, { running: 1, review: 1, todo: 2, done: 0, cancelled: 1 });
 	assert.equal(list.started, true);
 });
 

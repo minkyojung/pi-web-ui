@@ -67,7 +67,7 @@ function Row({ row, spec, started, canRun, why, onOpen, flat }: { row: ListRow; 
 							)}
 						>
 							<TaskGlyph standing={row.standing} blocked={blocked} />
-							<span className={cn("min-w-0 flex-1 truncate text-sm", (muted || (blocked && !muted)) && "text-muted-foreground", row.standing === "cancelled" && "line-through", (row.standing === "next" || parent) && "font-medium")}>
+							<span className={cn("min-w-0 flex-1 truncate text-sm", (muted || (blocked && !muted)) && "text-muted-foreground", row.standing === "cancelled" && "line-through", parent && "font-medium")}>
 								{row.title}
 							</span>
 							<span className="flex shrink-0 items-center gap-2 text-xs tabular-nums text-muted-foreground">

@@ -10,7 +10,6 @@
  * (spec.ts /spec-done and the two beside it), as the approvals are.
  */
 import type { TaskResult } from "../../specResults.ts";
-import { nextTask } from "../../specTasks.ts";
 import type { ClientMsg } from "../../protocol.ts";
 import { progressUnder, type Standing, standingOf, type TaskRow, treeOf } from "./taskTree.ts";
 
@@ -43,7 +42,7 @@ export interface List {
 	started: boolean;
 }
 
-const STANDINGS: Standing[] = ["running", "review", "next", "todo", "done", "cancelled"];
+const STANDINGS: Standing[] = ["running", "review", "todo", "done", "cancelled"];
 
 export function listOf(text: string, { results, running }: { results: readonly TaskResult[]; running: string | null }): List {
 	const tree = treeOf(text);
@@ -56,8 +55,6 @@ export function listOf(text: string, { results, running }: { results: readonly T
 	const settled = (number: string) => tree.tasks.find((task) => task.number === number)?.done ?? false;
 	// Git's word: a task a run ended in a commit for. The person's `x` outranks it (standingOf).
 	const reviewed = new Set(results.map((result) => result.task));
-	// The one running is not the next one either.
-	const next = nextTask(tree.tasks, new Set([...reviewed, ...(running ? [running] : [])]))?.number ?? null;
 	const sections: Section[] = [];
 	let current: Section = { title: first ? first[1]! : null, rows: [], done: 0, total: 0 };
 	const counts = Object.fromEntries(STANDINGS.map((s) => [s, 0])) as Record<Standing, number>;
@@ -68,7 +65,7 @@ export function listOf(text: string, { results, running }: { results: readonly T
 			continue;
 		}
 		const ran = results.filter((result) => result.task === row.number).sort((a, b) => b.at - a.at);
-		const standing = standingOf(row, { running, next, reviewed });
+		const standing = standingOf(row, { running, reviewed });
 		const parent = row.children.length > 0;
 		const listed: ListRow = {
 			...row,
@@ -93,7 +90,7 @@ export function listOf(text: string, { results, running }: { results: readonly T
 export const GROUPS: { title: string; of: Standing[] }[] = [
 	{ title: "In progress", of: ["running"] },
 	{ title: "In Review", of: ["review"] },
-	{ title: "To do", of: ["next", "todo"] },
+	{ title: "To do", of: ["todo"] },
 	{ title: "Done", of: ["done"] },
 	{ title: "Set aside", of: ["cancelled"] },
 ];
@@ -118,8 +115,7 @@ export const wordMessage = (word: Word, spec: string, number: string): ClientMsg
 export function wordsFor(standing: Standing): Word[] {
 	switch (standing) {
 		case "review": return ["done", "cancel"];
-		case "todo":
-		case "next": return ["cancel"];
+		case "todo": return ["cancel"];
 		case "done":
 		case "cancelled": return ["reopen"];
 		case "running": return [];

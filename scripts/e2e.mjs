@@ -3499,7 +3499,8 @@ check("a spec's tasks.md opens as the list of its tasks: each row its standing, 
 	await app.evaluate(`location.hash = ${JSON.stringify(want)}`);
 	const standings = () => app.evaluate("[...document.querySelectorAll('#tasks [data-task]')].map((r) => r.dataset.task + ':' + r.dataset.standing)");
 	await until("the plan drawn", () => app.evaluate(`(() => { if (decodeURIComponent(location.hash) !== ${JSON.stringify(want)}) { location.hash = ${JSON.stringify(want)}; return false; } return document.querySelectorAll('#tasks [data-task]').length === 5; })()`));
-	assert.deepEqual(await standings(), ["1:done", "2:todo", "2.1:done", "2.2:next", "3:todo"]);
+	assert.deepEqual(await standings(), ["1:done", "2:todo", "2.1:done", "2.2:todo", "3:todo"]);
+	assert.match(await app.evaluate("document.getElementById('next')?.textContent ?? ''"), /next is 2\.2/, "which runs next is the run's line, not a mark on a row");
 	assert.equal(await app.evaluate("document.querySelector('#tasks [data-task=\"2\"]').textContent.includes('1 / 2')"), true, "a heading counts its sub-tasks, on its own row");
 	assert.equal(await app.evaluate("[...document.querySelectorAll('#tasks h3')].map((h) => h.textContent).join(',')"), "Later", "the plan's heading is the group's");
 	assert.equal(await app.evaluate("!!document.querySelector('#editor .cm-content')"), false, "the list, not the editor");

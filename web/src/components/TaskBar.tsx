@@ -78,6 +78,8 @@ export function TaskBar({ path }: { path: string | null }) {
 			<span className="min-w-0 flex-1 truncate text-muted-foreground">
 				Run tasks on
 				{!chosen && <span> · the session's model</span>}
+				{/* Which task /spec-run would start, from the server's reading of the plan (Progress.next): the list marks no row as next. */}
+				{spec.tasks?.next && <span id="next"> · next is {spec.tasks.next}</span>}
 			</span>
 			{numbers.length > 0 && (
 				<Button

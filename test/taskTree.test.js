@@ -72,13 +72,13 @@ test("CR은 줄의 끝이지 줄이 아니다", () => {
   assert.deepEqual(tree.rows[0].requirements, ["1.1"]);
 });
 
-test("서 있는 자리: 도는 것이 먼저, 끝난 것, 다음 것, 나머지", () => {
-  assert.equal(standingOf({ number: "2.1", done: false, cancelled: false }, { running: "2.1", next: "2.1" }), "running");
-  assert.equal(standingOf({ number: "2", done: false, cancelled: false }, { running: "2.1", next: "2.1" }), "running", "a heading runs by way of its sub-task");
-  assert.equal(standingOf({ number: "1", done: true, cancelled: false }, { running: "2.1", next: "2.2" }), "done");
-  assert.equal(standingOf({ number: "2.2", done: false, cancelled: false }, { running: null, next: "2.2" }), "next");
-  assert.equal(standingOf({ number: "3", done: false, cancelled: false }, { running: null, next: "2.2" }), "todo");
-  assert.equal(standingOf({ number: "21", done: false, cancelled: false }, { running: "2.1", next: null }), "todo", "21 is not 2's sub-task");
+test("서 있는 자리: 도는 것이 먼저, 끝난 것, 나머지 — 다음 것은 자리가 아니다", () => {
+  assert.equal(standingOf({ number: "2.1", done: false, cancelled: false }, { running: "2.1" }), "running");
+  assert.equal(standingOf({ number: "2", done: false, cancelled: false }, { running: "2.1" }), "running", "a heading runs by way of its sub-task");
+  assert.equal(standingOf({ number: "1", done: true, cancelled: false }, { running: "2.1" }), "done");
+  assert.equal(standingOf({ number: "2.2", done: false, cancelled: false }, { running: null }), "todo", "the first open one is to do like the rest");
+  assert.equal(standingOf({ number: "3", done: false, cancelled: false }, { running: null }), "todo");
+  assert.equal(standingOf({ number: "21", done: false, cancelled: false }, { running: "2.1" }), "todo", "21 is not 2's sub-task");
 });
 
 test("부모의 진행은 자식 칸의 수다", () => {
@@ -103,8 +103,8 @@ test("행마다 자기 줄 번호를 안다 — 편집기가 세는 대로, 1부
 });
 
 test("접어 둔 것과 검토 중인 것: 접어 둔 것은 도는 것 다음이고, 검토 중은 끝난 것 다음, 다음 것 앞이다", () => {
-  assert.equal(standingOf({ number: "1", done: false, cancelled: true }, { running: null, next: "1" }), "cancelled");
-  assert.equal(standingOf({ number: "1", done: false, cancelled: true }, { running: "1", next: null }), "running", "돌고 있으면 도는 것");
+  assert.equal(standingOf({ number: "1", done: false, cancelled: true }, { running: null }), "cancelled");
+  assert.equal(standingOf({ number: "1", done: false, cancelled: true }, { running: "1" }), "running", "돌고 있으면 도는 것");
   assert.equal(standingOf({ number: "1", done: false, cancelled: false }, { running: null, next: "2", reviewed: new Set(["1"]) }), "review");
   assert.equal(standingOf({ number: "1", done: true, cancelled: false }, { running: null, next: null, reviewed: new Set(["1"]) }), "done", "받아들여졌으면 끝난 것");
   const { tasks } = treeOf(PLAN.replace("- [ ] 2.2", "- [-] 2.2"));

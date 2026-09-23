@@ -5,7 +5,8 @@
  * looks the same wherever it is met.
  *
  * The family is Linear's, because it is the one people already read: an empty
- * ring is to do, a dashed ring waits on something, a ring filling up is under
+ * ring is to do — which of them is next is the first from the top, not a mark
+ * — a dashed ring waits on something, a ring filling up is under
  * way — three quarters for in review, which is nearly there — and a filled
  * disc is over, a tick for done and a cross for set aside. Colour is on the
  * disc alone and says how far along: amber under way, green in review, the
@@ -31,15 +32,9 @@ export function TaskGlyph({ standing, blocked = false, className }: { standing: 
 	const ring = { cx: 8, cy: 8, r: 6.25, fill: "none", stroke: "currentColor", strokeWidth: 1.5 } as const;
 	switch (standing) {
 		case "todo":
-		case "next":
 			// Waiting on another task is a ring that is not yet whole.
 			if (blocked) return <svg viewBox="0 0 16 16" className={cn(size, "text-muted-foreground/60")} role="img" aria-label="waiting on another task"><circle {...ring} strokeDasharray="2.6 2.3" strokeLinecap="round" /></svg>;
-			return (
-				<svg viewBox="0 0 16 16" className={cn(size, standing === "next" ? "text-foreground" : "text-muted-foreground/60")} role="img" aria-label={standing === "next" ? "next to run" : "to do"}>
-					<circle {...ring} />
-					{standing === "next" && <circle cx={8} cy={8} r={2.25} fill="currentColor" />}
-				</svg>
-			);
+			return <svg viewBox="0 0 16 16" className={cn(size, "text-muted-foreground/60")} role="img" aria-label="to do"><circle {...ring} /></svg>;
 		case "review":
 			return (
 				<svg viewBox="0 0 16 16" className={cn(size, "text-status-review")} role="img" aria-label="in review">
