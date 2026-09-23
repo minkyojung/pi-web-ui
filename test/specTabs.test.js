@@ -4,7 +4,7 @@ import test from "node:test";
 import { toOpen, waitingPath } from "../web/src/specTabs.ts";
 
 /** A spec as the server describes it. */
-const spec = (name, waiting, waitingAt = waiting ? 1000 : null, approved = 0) => ({ name, approved, waiting, waitingAt });
+const spec = (name, waiting, waitingAt = waiting ? 1000 : null, approved = 0, own = true) => ({ name, own, approved, waiting, waitingAt });
 
 test("기다리는 문서의 자리는 스펙 폴더 안이다", () => {
   assert.equal(waitingPath(spec("email-auth", "requirements.md")), ".octave/specs/email-auth/requirements.md");
@@ -51,4 +51,12 @@ test("창을 열었을 때는 가운데가 비어 있을 때만 연다", () => {
 test("창을 열었을 때 둘이 기다리면 가장 최근 것 하나만", () => {
   const specs = [spec("a", "requirements.md", 1000), spec("b", "design.md", 2000)];
   assert.equal(toOpen(null, specs, false), ".octave/specs/b/design.md");
+});
+
+test("다른 브랜치가 시작한 스펙의 문서는 저절로 열리지 않는다", () => {
+  const theirs = spec("airbnb-clone-page", "requirements.md", 2000, 0, false);
+  const ours = spec("stay-reservation", "design.md", 1000);
+  assert.equal(toOpen(null, [theirs], false), null, "가운데가 비어 있어도");
+  assert.equal(toOpen([spec("airbnb-clone-page", null, null, 0, false)], [theirs], true), null, "막 대기로 바뀌어도");
+  assert.equal(toOpen(null, [theirs, ours], false), ".octave/specs/stay-reservation/design.md", "더 새것이어도 이 워크스페이스의 것이 열린다");
 });

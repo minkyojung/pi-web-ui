@@ -15,7 +15,6 @@
  *   name = "unit"
  *   command = "npm test"
  *   description = "…"             why, for the person reading the draft
- *   on = "task"                   task (default) | approve
  *   timeout = 600                 seconds; Claude Code's default
  *
  * Read by the shell (setup, run, archive) and by the spec extension
@@ -30,9 +29,8 @@ import { parse } from "smol-toml";
 
 export const CONFIG_FILE = ".octave/config.toml";
 export const DEFAULT_TIMEOUT = 600;
-const EVENTS = ["task", "approve"];
 
-/** @typedef {{ name: string, command: string, description: string, on: "task" | "approve", timeout: number }} Check */
+/** @typedef {{ name: string, command: string, description: string, timeout: number }} Check */
 /** @typedef {{ id: string, command: string, default: boolean }} Run */
 /** @typedef {{ copy: string[], setup: string | null, archive: string | null, run: Run[], check: Check[] }} Config */
 
@@ -94,11 +92,12 @@ export function configFrom(text) {
 				if (!cmd) throw new Error(`${where} needs a command`);
 				const name = typeof entry.name === "string" && entry.name.trim() ? entry.name.trim() : cmd;
 				if (entry.description !== undefined && typeof entry.description !== "string") throw new Error(`${where}.description must be text`);
-				const on = entry.on === undefined ? "task" : entry.on;
-				if (!EVENTS.includes(on)) throw new Error(`${where}.on must be one of ${EVENTS.join(", ")}`);
+				// A check runs after a task, and nowhere else: a key that would say
+				// otherwise is refused rather than read as nothing.
+				if (entry.on !== undefined) throw new Error(`${where}.on is not a setting: every check runs after a task, before its commit`);
 				const timeout = entry.timeout === undefined ? DEFAULT_TIMEOUT : entry.timeout;
 				if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0) throw new Error(`${where}.timeout must be a number of seconds`);
-				check.push({ name, command: cmd, description: entry.description ?? "", on, timeout });
+				check.push({ name, command: cmd, description: entry.description ?? "", timeout });
 			});
 		}
 		return { copy, setup, archive, run, check };

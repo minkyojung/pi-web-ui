@@ -26,12 +26,12 @@ import { createRuns } from "./runs.js";
 import { runScript } from "./scripts.js";
 import { createServers, idle } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
-import { branchOf, changesIn, git, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
+import { addBranchWorktree, branchOf, changesIn, git, headOf, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
 import { clone, issues, login, pullRequests, repositories, repositoryName, signIn, signOut, standing } from "./github.js";
 import { KEYS, forget, gitEnv } from "./credentials.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
-import { firstWorkspace, projectsOf, statusOf, withWorkspace, withoutWorkspace } from "./workspaces.js";
+import { firstWorkspace, hiddenRepository, projectsOf, reordered, statusOf, withWorkspace, workspaceState } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
@@ -485,7 +485,9 @@ function workspacesChanged() {
  * what gets renamed once the work has a subject, by the agent or by hand.
  */
 async function workspaces() {
-	const projects = projectsOf(readSettings(), isCheckout);
+	// A repository taken off the list is still in the settings, so that adding
+	// it again brings back its workspaces — it is left out here (workspaces.js).
+	const projects = projectsOf(readSettings(), isCheckout).filter((project) => !project.hidden);
 	// Which of these a page is on is not said here: the page knows its own
 	// folder from its server, and the one in front is where the window is
 	// going, which a page still up while it goes there is not.
@@ -498,12 +500,15 @@ async function workspaces() {
 					name: basename(project.path),
 					worktrees: await Promise.all(
 						project.worktrees.map(async (worktree) => {
-							const branch = (await branchOf(worktree.path)) ?? worktree.branch;
+							// An archived workspace has no folder to read a branch out of;
+							// the name it was archived under is the one it kept.
+							const branch = (worktree.state ? null : await branchOf(worktree.path)) ?? worktree.branch;
 							// Where the branch stands, for the row to say: git's word, and
 							// GitHub's when gh can give it. A workspace whose branch git
-							// cannot read is listed as only here.
+							// cannot read is listed as only here. The clone is what is
+							// asked, so an archived row says it too.
 							const remote = await onRemote(project.path, branch).catch(() => false);
-							return { path: worktree.path, name: worktree.name, branch, status: statusOf({ onRemote: remote, pr: prs?.get(branch) ?? null }) };
+							return { path: worktree.path, name: worktree.name, branch, state: worktree.state ?? null, at: worktree.at ?? null, status: statusOf({ onRemote: remote, pr: prs?.get(branch) ?? null }) };
 						}),
 					),
 				};
@@ -572,7 +577,7 @@ function newWorkspace(root, first, from) {
 		const project = projectsOf(readSettings(), isCheckout).find((project) => project.path === root);
 		if (!project) return { error: "That repository is no longer on the list." };
 		try {
-			const worktree = await makeWorkspace(root, { into: join(home(), "workspaces", basename(root)), owner: await login(), start: typeof from === "string" && from ? from : null, retired: project.retired });
+			const worktree = await makeWorkspace(root, { into: join(home(), "workspaces", basename(root)), owner: await login(), start: typeof from === "string" && from ? from : null, retired: [...project.retired, ...project.worktrees.map((worktree) => worktree.name)] });
 			writeSettings({ ...readSettings(), projects: withWorkspace(projectsOf(readSettings(), isCheckout), root, worktree) });
 			waiting.keep(worktree.path, told);
 			workspacesChanged();
@@ -694,32 +699,42 @@ async function workspaceChanges(path) {
 }
 
 /**
- * A workspace removed: its server stopped, its folder and worktree taken
- * away, and its row off the list. The branch stays, and so does what was
- * said in it — pi keeps a conversation by its folder's path (spec-mode.md
- * 6절). `seen` is how many uncommitted changes the person was told would go
- * with it: when the folder holds another number by now, nothing is removed
- * and the number is answered instead, to be asked about again. Not while the
- * agent is working there. One at a time with making, which reads the same
- * folders. The window, if it was on this one, goes to the first screen.
- * The repository's own `archive` command, if it names one, runs in the
- * folder first; one that fails does not keep the folder — `{ warning }`
- * says how it went, with the removal done.
+ * A workspace archived: its server stopped, its folder and worktree given
+ * back, and its row kept — Conductor's Archive. What is not the folder stays:
+ * the branch with every commit on it, the commit it stood on, written down
+ * for the row, and what was said in it, since pi keeps a conversation by its
+ * folder's path (spec-mode.md 6절). So it can be brought back (restoreWorkspace).
+ *
+ * `seen` is how many uncommitted changes the person was told would go with
+ * the folder — the one thing archiving does not keep: when the folder holds
+ * another number by now, nothing is done and the number is answered instead,
+ * to be asked about again. Not while the agent is working there. One at a
+ * time with making, which reads the same folders. The window, if it was on
+ * this one, goes to the first screen. The repository's own `archive`
+ * command, if it names one, runs in the folder first; one that fails does
+ * not keep the folder — `{ warning }` says how it went, with the archiving
+ * done.
+ *
+ * The row is marked `archiving` before the folder goes and `archived` after,
+ * so a shell that dies in between leaves a row that says what was happening
+ * rather than one that points at a folder nobody can find (finishArchiving).
  */
-function removeWorkspace(path, seen) {
+function archiveWorkspace(path, seen) {
 	const done = making.then(async () => {
 		const root = repositoryOfWorkspace(path);
 		if (!root) return { error: "That workspace is no longer on the list." };
-		if (busy.get(path)) return { error: "The agent is working there. Remove it when it has finished." };
+		if (busy.get(path)) return { error: "The agent is working there. Archive it when it has finished." };
 		try {
 			const changes = await changesIn(path);
 			if (changes !== seen) return { changes };
+			const commit = await headOf(path);
 			if (path === front || path === wanted) await showStart();
 			await servers.stop(path);
 			await runs.stop(path);
 			const warning = await archive(root, path);
+			writeSettings({ ...readSettings(), projects: workspaceState(projectsOf(readSettings(), isCheckout), path, "archiving", { commit }) });
 			await removeWorktree(root, path);
-			writeSettings({ ...readSettings(), projects: withoutWorkspace(projectsOf(readSettings(), isCheckout), path) });
+			writeSettings({ ...readSettings(), projects: workspaceState(projectsOf(readSettings(), isCheckout), path, "archived", { at: new Date().toISOString() }) });
 			waiting.take(path);
 			for (const kept of [ports, runPorts, busy, since]) kept.delete(path);
 			runs.forget(path);
@@ -733,9 +748,62 @@ function removeWorkspace(path, seen) {
 	return done;
 }
 
-/** A workspace from the list put in front. Only one on the list: the page does not name folders of its own. */
+/**
+ * An archived workspace brought back and opened: the worktree made again
+ * where it stood, on the branch it kept, then what the repository keeps out
+ * of git copied in and its setup run — a worktree has only what is committed
+ * — and the window put on it. The conversation is the one that was there,
+ * pi keeping it by the folder's path.
+ *
+ * Says why not in git's words: a branch deleted since, one another workspace
+ * has checked out, a folder in the way. Set up outside the one at a time, as
+ * a new workspace is, and a setup that fails leaves the workspace on the
+ * list to be opened as it is or set up again.
+ */
+function restoreWorkspace(path) {
+	const made = making.then(async () => {
+		const root = repositoryOfWorkspace(path);
+		if (!root) return { error: "That workspace is no longer on the list." };
+		const worktree = projectsOf(readSettings(), isCheckout).find((project) => project.path === root).worktrees.find((w) => w.path === path);
+		if (!worktree.state) return { error: "That workspace is not archived." };
+		if (existsSync(path)) return { error: `There is already a folder at ${path}.` };
+		try {
+			await addBranchWorktree(root, { path, branch: worktree.branch });
+			writeSettings({ ...readSettings(), projects: workspaceState(projectsOf(readSettings(), isCheckout), path, null) });
+			workspacesChanged();
+			return { root };
+		} catch (err) {
+			return { error: err.message };
+		}
+	});
+	making = made.then(() => {});
+	return made.then(async ({ root, error }) => {
+		if (error) return { error };
+		const setup = await setUp(root, path);
+		if (setup.error) return { error: setup.error };
+		void show(path);
+		return {};
+	});
+}
+
+/**
+ * Any workspace whose archiving was interrupted, finished at the next start:
+ * the folder taken away if it is still there, and the row marked archived.
+ * A row left saying `archiving` is the one thing a crash in the middle can
+ * leave behind, and this is the one place it is read.
+ */
+async function finishArchiving() {
+	for (const project of projectsOf(readSettings(), isCheckout)) {
+		for (const worktree of project.worktrees.filter((w) => w.state === "archiving")) {
+			await removeWorktree(project.path, worktree.path).catch(() => {});
+			writeSettings({ ...readSettings(), projects: workspaceState(projectsOf(readSettings(), isCheckout), worktree.path, "archived", { at: new Date().toISOString() }) });
+		}
+	}
+}
+
+/** A workspace from the list put in front. Only one on the list, and not an archived one, whose folder is not there: the page does not name folders of its own. */
 function openWorkspace(path) {
-	const known = projectsOf(readSettings(), isCheckout).some((project) => project.worktrees.some((worktree) => worktree.path === path));
+	const known = projectsOf(readSettings(), isCheckout).some((project) => project.worktrees.some((worktree) => worktree.path === path && !worktree.state));
 	if (known) void show(path);
 }
 
@@ -766,10 +834,49 @@ async function openLocalRepository() {
 /**
  * A repository's clone added to the list, and nothing more: no workspace is
  * made of it and the window stays where it is. A workspace is made, and
- * opened, when the person asks for one — spec-mode.md 6절.
+ * opened, when the person asks for one — spec-mode.md 6절. One that was taken
+ * off the list is on it again, with the workspaces and the place it had.
  */
 function addRepository(root) {
-	writeSettings({ ...readSettings(), projects: withWorkspace(projectsOf(readSettings(), isCheckout), root) });
+	const projects = withWorkspace(projectsOf(readSettings(), isCheckout), root);
+	writeSettings({ ...readSettings(), projects: hiddenRepository(projects, root, false) });
+	workspacesChanged();
+}
+
+/**
+ * A repository taken off the list. Nothing on the disk is touched — not the
+ * clone, which is the person's own folder and was theirs before the app saw
+ * it, and not the workspaces made from it: the row is hidden and everything
+ * it holds is kept, so adding the repository again brings all of it back
+ * (workspaces.js `hiddenRepository`), which is what Conductor's hidden
+ * repository does. Its workspaces' servers are stopped, since nothing is
+ * going to ask for them, and the window goes to the first screen if it was
+ * in one of them. Not while the agent is working in one: stopping its server
+ * under it would end the turn, and there is no hurry.
+ */
+async function removeRepository(root) {
+	const project = projectsOf(readSettings(), isCheckout).find((project) => project.path === root && !project.hidden);
+	if (!project) return { error: "That repository is no longer on the list." };
+	if (project.worktrees.some((worktree) => busy.get(worktree.path))) return { error: "The agent is working in one of its workspaces. Take the repository off the list when it has finished." };
+	if (project.worktrees.some((worktree) => worktree.path === front || worktree.path === wanted)) await showStart();
+	for (const worktree of project.worktrees) {
+		await servers.stop(worktree.path);
+		await runs.stop(worktree.path);
+	}
+	writeSettings({ ...readSettings(), projects: hiddenRepository(projectsOf(readSettings(), isCheckout), root, true) });
+	workspacesChanged();
+	return {};
+}
+
+/**
+ * The repositories put in the order the person dragged them into. The list is
+ * theirs and always was — a new one goes at the end (workspaces.js
+ * `withWorkspace`) — and this is the way to say so afterwards. Which is first
+ * is not only a look: a new spec asked for from the menu, with the window on
+ * no repository, opens over it.
+ */
+function reorderRepositories(paths) {
+	writeSettings({ ...readSettings(), projects: reordered(projectsOf(readSettings(), isCheckout), paths) });
 	workspacesChanged();
 }
 
@@ -815,6 +922,8 @@ async function openRepositoryFromMenu() {
 function serveFolders() {
 	ipcMain.handle("repository:open", () => (devUrl ? null : openLocalRepository()));
 	ipcMain.handle("repository:clone", (_event, source) => (devUrl ? null : cloneRepository(source)));
+	ipcMain.handle("repositories:reorder", (_event, paths) => (devUrl ? null : reorderRepositories(paths)));
+	ipcMain.handle("repository:remove", (_event, root) => (devUrl ? null : removeRepository(root)));
 	// What the clone dialog offers, or null when gh cannot say.
 	ipcMain.handle("github:repositories", () => (devUrl ? null : repositories()));
 	// The open issues of a repository on the list, for a spec to start from one.
@@ -846,7 +955,8 @@ function serveFolders() {
 	ipcMain.handle("workspace:first", (_event, folder) => (typeof folder === "string" ? waiting.take(folder) : null));
 	ipcMain.handle("workspace:open", (_event, path) => (devUrl ? null : openWorkspace(path)));
 	ipcMain.handle("workspace:changes", (_event, path) => (devUrl ? null : workspaceChanges(path)));
-	ipcMain.handle("workspace:remove", (_event, path, seen) => (devUrl ? null : removeWorkspace(path, seen)));
+	ipcMain.handle("workspace:archive", (_event, path, seen) => (devUrl ? null : archiveWorkspace(path, seen)));
+	ipcMain.handle("workspace:restore", (_event, path) => (devUrl ? null : restoreWorkspace(path)));
 	ipcMain.handle("workspace:setup", (_event, path) => (devUrl ? null : setUpAgain(path)));
 	ipcMain.handle("run:state", (_event, path) => (devUrl ? null : runState(path)));
 	ipcMain.handle("run:start", (_event, path, id) => (devUrl ? null : startRun(path, typeof id === "string" ? id : null)));
@@ -1019,6 +1129,7 @@ async function main() {
 		const file = fileFor(here("../dist"), request.url);
 		return file ? net.fetch(pathToFileURL(file).toString()) : new Response("Not found", { status: 404 });
 	});
+	if (!devUrl) await finishArchiving();
 	const settings = readSettings();
 	const first = devUrl ? null : firstWorkspace(projectsOf(settings, isCheckout), settings.workdir);
 	buildMenu(devUrl ? process.cwd() : null);

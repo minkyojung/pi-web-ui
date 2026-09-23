@@ -39,11 +39,16 @@ contextBridge.exposeInMainWorld("pi", {
 	 * answers `{ error }` when it cannot be done, and a Finder choice
 	 * cancelled answers null. `github` is the signed-in person's repositories
 	 * and `issues` the open issues of one on the list — `[{ number, title,
-	 * body }]` — each null when gh cannot say.
+	 * body }]` — each null when gh cannot say. `reorder` puts the list in the
+	 * order `paths` names, which is the one the person dragged them into, and
+	 * `remove` takes one off the list without touching anything on the disk,
+	 * answering `{ error }` when it will not just now.
 	 */
 	repositories: {
 		openLocal: () => ipcRenderer.invoke("repository:open"),
 		clone: (source) => ipcRenderer.invoke("repository:clone", source),
+		reorder: (paths) => ipcRenderer.invoke("repositories:reorder", paths),
+		remove: (root) => ipcRenderer.invoke("repository:remove", root),
 		github: () => ipcRenderer.invoke("github:repositories"),
 		issues: (root) => ipcRenderer.invoke("github:issues", root),
 	},
@@ -82,10 +87,12 @@ contextBridge.exposeInMainWorld("pi", {
 	 * `branches` is chosen, answered with `{ error }` when it could not be made —
 	 * what the workspace at `folder` — this page's own, which the server told
 	 * it — was made to be told first, given once, a
-	 * workspace put in front, and one removed — `changes` says how many
-	 * uncommitted changes it holds, and `remove` takes the number the person
+	 * workspace put in front, and one archived — `changes` says how many
+	 * uncommitted changes it holds, and `archive` takes the number the person
 	 * was told and answers `{ changes }` instead when it no longer holds, or
-	 * `{ warning }` when it was removed but its archive command failed. `setup`
+	 * `{ warning }` when it was archived but its archive command failed.
+	 * `restore` makes an archived workspace's folder again, from the branch it
+	 * kept, and opens it — `{ error }` when git will not have it. `setup`
 	 * runs the repository's setup command again in a workspace (`{ ran }`, or
 	 * `{ error }`), and `onSetup` says when one's setup is running (`"running"`)
 	 * or has ended (null). `onChange` says the list is to be asked for again;
@@ -99,7 +106,8 @@ contextBridge.exposeInMainWorld("pi", {
 		first: (folder) => ipcRenderer.invoke("workspace:first", folder),
 		open: (path) => ipcRenderer.invoke("workspace:open", path),
 		changes: (path) => ipcRenderer.invoke("workspace:changes", path),
-		remove: (path, seen) => ipcRenderer.invoke("workspace:remove", path, seen),
+		archive: (path, seen) => ipcRenderer.invoke("workspace:archive", path, seen),
+		restore: (path) => ipcRenderer.invoke("workspace:restore", path),
 		setup: (path) => ipcRenderer.invoke("workspace:setup", path),
 		onSetup: (listen) => {
 			const handler = (_event, path, stage) => listen(path, stage);

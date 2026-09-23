@@ -25,7 +25,9 @@ added to your list and nothing else happens: no workspace is made or opened unti
 A workspace is a folder and a branch of its own, made from the latest on the remote, under
 `~/octave/workspaces/`; the agent works there, and your own clone is never touched. The sidebar lists your
 repositories and their workspaces — and so does the first screen, until a workspace is open: click a workspace
-to move into it, + beside **Repositories** adds another repository, and `⌘O` opens a local one.
+to move into it, + beside **Repositories** adds another repository, and `⌘O` opens a local one. Drag a
+repository's row to put the list in the order you want it in. Right-click one and **Take off the list…** when
+you are done with it: nothing on your disk is touched, and adding it again brings its workspaces back with it.
 
 + on a repository starts a spec, and that is how a workspace is made. Say what you want built, choose the model
 and effort for it, and **Create** (`⌘↵`): the workspace is made, the window moves into it, and your line is sent
@@ -41,9 +43,10 @@ unless you choose another, for a spec that stands on work not merged yet. The bu
 one of the repository's open GitHub issues, listed with `gh`: its number, title and words go into the box, for you
 to read and change before Create.
 
-When you are done with a workspace, right-click its row and **Remove workspace…**. Its folder is deleted; the
-branch and its commits stay, and so does the conversation. Changes you have not committed would go with the
-folder, so you are told how many there are first.
+When you are done with a workspace, right-click its row and **Archive workspace…**. Its folder is given back;
+the branch and its commits stay, the conversation stays, and so does the row — under **Archived** at the foot of
+the repository, where a click makes the folder again from the branch, sets it up and opens it. Changes you have
+not committed would go with the folder, so you are told how many there are first.
 
 When the requirements are right, `/spec-approve` approves them and the agent writes the design; approve that and
 it writes the tasks. Nobody asks you to approve: ask for changes, or make them yourself, as many times as you like

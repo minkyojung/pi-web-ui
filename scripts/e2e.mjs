@@ -3221,6 +3221,7 @@ check("a version ready to install is offered in the corner, × leaves a dot, Abo
 			check: async () => window.__update.calls.push("check"),
 			restart: async () => window.__update.calls.push("restart"),
 			seen: async () => window.__update.calls.push("seen"),
+			dismiss: async (version) => window.__update.calls.push("dismiss " + version),
 		}, onOpenSettings: (l) => { window.__update.opens.push(l); return () => {}; }, onOpenPage: (l) => { window.__update.pages.push(l); return () => {}; } };
 		}`);
 	try {
@@ -3778,39 +3779,50 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 	}
 });
 
-// Removing a workspace, from its row. The shell is stood in for: it says how
-// many changes the folder holds, and holds one more by the time it is asked.
-check("a workspace's row removes it from a right click: what stays is said, the changes that would be lost are counted, and a count that moved is asked about again", async ({ app }) => {
+// Archiving a workspace, from its row, and bringing one back. The shell is
+// stood in for: it says how many changes the folder holds, and holds one more
+// by the time it is asked.
+check("a workspace's row archives it from a right click: what stays is said, the changes that would be lost are counted, and a count that moved is asked about again", async ({ app }) => {
 	const stopStanding = await app.onNewDocument(`
-		if (sessionStorage.getItem("stand-in-for-removing") === "1") {
-		window.__removes = [];
+		if (sessionStorage.getItem("stand-in-for-archiving") === "1") {
+		window.__archives = []; window.__restores = [];
 		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
-			workspaces: { list: async () => ({ projects: [{ path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }, { path: "/w/lima", name: "lima", branch: "me/email-auth" }] }] }),
+			workspaces: { list: async () => ({ projects: [{ path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }, { path: "/w/lima", name: "lima", branch: "me/email-auth" }, { path: "/w/oslo", name: "oslo", branch: "me/oslo", state: "archived" }] }] }),
 				create: async () => ({}), open: async () => {}, onChange: () => () => {}, first: async () => null,
 				changes: async () => 1,
-				remove: async (path, seen) => { window.__removes.push({ path, seen }); return seen === 2 ? {} : { changes: 2 }; } } };
+				restore: async (path) => { window.__restores.push(path); return {}; },
+				archive: async (path, seen) => { window.__archives.push({ path, seen }); return seen === 2 ? {} : { changes: 2 }; } } };
 		}`);
 	try {
-		await app.evaluate(`sessionStorage.setItem("stand-in-for-removing", "1"); location.reload()`);
+		await app.evaluate(`sessionStorage.setItem("stand-in-for-archiving", "1"); location.reload()`);
 		await until("the rows", () => app.evaluate("document.querySelectorAll('[data-workspace]').length === 2"));
 		await app.evaluate(`(() => { const row = document.querySelector('[data-workspace="/w/lima"]'); const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: r.x + 8, clientY: r.y + 8 })); })()`);
-		await until("the menu", () => app.evaluate("[...document.querySelectorAll('[role=menuitem]')].some((i) => i.textContent.includes('Remove workspace'))"));
-		await app.evaluate("[...document.querySelectorAll('[role=menuitem]')].find((i) => i.textContent.includes('Remove workspace')).click()");
-		await until("the count", () => app.evaluate("document.getElementById('remove-workspace-changes')?.textContent === '1 uncommitted change in it will be lost.'"));
-		const said = await app.evaluate("document.getElementById('remove-workspace').innerText");
-		assert.match(said, /^Remove email-auth\?/, "by the name its row has");
+		await until("the menu", () => app.evaluate("[...document.querySelectorAll('[role=menuitem]')].some((i) => i.textContent.includes('Archive workspace'))"));
+		await app.evaluate("[...document.querySelectorAll('[role=menuitem]')].find((i) => i.textContent.includes('Archive workspace')).click()");
+		await until("the count", () => app.evaluate("document.getElementById('archive-workspace-changes')?.textContent === '1 uncommitted change in it will be lost.'"));
+		const said = await app.evaluate("document.getElementById('archive-workspace').innerText");
+		assert.match(said, /^Archive email-auth\?/, "by the name its row has");
 		assert.match(said, /The branch and its commits stay/);
-		await app.shot("remove-workspace");
-		await app.click("#remove-workspace-confirm");
-		await until("the count that moved", () => app.evaluate("document.getElementById('remove-workspace-changes')?.textContent === '2 uncommitted changes in it will be lost.'"));
-		await app.click("#remove-workspace-confirm");
-		await until("the dialog gone", async () => !(await app.evaluate("!!document.getElementById('remove-workspace')")));
-		assert.deepEqual(JSON.parse(await app.evaluate("JSON.stringify(window.__removes)")), [{ path: "/w/lima", seen: 1 }, { path: "/w/lima", seen: 2 }]);
+		await app.shot("archive-workspace");
+		await app.click("#archive-workspace-confirm");
+		await until("the count that moved", () => app.evaluate("document.getElementById('archive-workspace-changes')?.textContent === '2 uncommitted changes in it will be lost.'"));
+		await app.click("#archive-workspace-confirm");
+		await until("the dialog gone", async () => !(await app.evaluate("!!document.getElementById('archive-workspace')")));
+		assert.deepEqual(JSON.parse(await app.evaluate("JSON.stringify(window.__archives)")), [{ path: "/w/lima", seen: 1 }, { path: "/w/lima", seen: 2 }]);
+
+		// The archived one is not among the rows you can open; it is under
+		// Archived, folded, and a click on it asks for it back.
+		assert.equal(await app.evaluate("document.querySelector('[data-archived=\"/r/demo\"]').innerText.replace(/\\s+/g, ' ').trim()"), "Archived 1");
+		assert.equal(await app.evaluate("!!document.querySelector('[data-archived-workspace]')"), false, "folded until it is asked for");
+		await app.click('[data-archived="/r/demo"]');
+		await until("the archived row", () => app.evaluate("!!document.querySelector('[data-archived-workspace=\"/w/oslo\"]')"));
+		await app.click('[data-archived-workspace="/w/oslo"]');
+		await until("it was asked for back", () => app.evaluate("JSON.stringify(window.__restores) === '[\"/w/oslo\"]'"));
 	} finally {
 		await app.press("Escape");
 		await stopStanding();
-		await app.evaluate(`sessionStorage.removeItem("stand-in-for-removing"); location.reload()`);
-		await until("the page back", () => app.evaluate("!window.__removes && !!document.getElementById('chat')"));
+		await app.evaluate(`sessionStorage.removeItem("stand-in-for-archiving"); location.reload()`);
+		await until("the page back", () => app.evaluate("!window.__archives && !!document.getElementById('chat')"));
 	}
 });
 

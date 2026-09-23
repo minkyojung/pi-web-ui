@@ -575,7 +575,7 @@ const LOG_TAIL = 40;
 
 /**
  * The checks run by the app in the workspace, in order: the repository's own
- * (config.toml, the ones `on = "task"`), then the task's `_Done when:` — the
+ * (config.toml), then the task's `_Done when:` — the
  * checks that are not the agent's word (task-results.md). Each on its own
  * clock, config's or ten minutes; what each printed is kept only at its
  * tail, in `.pi/runs/{task}/{name}.log`, since the commit says how it ended
@@ -583,8 +583,8 @@ const LOG_TAIL = 40;
  * repository with no checks are verified by nothing.
  */
 async function verifyAll(pi: ExtensionAPI, cwd: string, file: string, task: string): Promise<Verified[]> {
-	const config = readConfig(cwd) as { check?: { name: string; command: string; on: string; timeout: number }[]; error?: string };
-	const checks: { name: string; command: string; timeout: number }[] = isConfig(config) && config.check ? config.check.filter((check) => check.on === "task") : [];
+	const config = readConfig(cwd) as { check?: { name: string; command: string; timeout: number }[]; error?: string };
+	const checks: { name: string; command: string; timeout: number }[] = isConfig(config) && config.check ? [...config.check] : [];
 	try {
 		const own = doneWhenOf(readFileSync(file, "utf8"), task);
 		if (own) checks.push({ name: own, command: own, timeout: DEFAULT_TIMEOUT });

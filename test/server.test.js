@@ -1230,7 +1230,7 @@ it("스펙이 어디까지 왔는지 탭이 듣는다 — 문서가 써지면 �
   // is the one change the tabs would otherwise never hear.
   approve(cwd, "waiting");
   const after = await want("specs", (m) => m.specs.find((spec) => spec.name === "waiting")?.waiting === null);
-  assert.deepEqual(after.specs.find((spec) => spec.name === "waiting"), { name: "waiting", approved: 1, waiting: null, waitingAt: null, written: ["requirements.md"], tasks: null, results: [] });
+  assert.deepEqual(after.specs.find((spec) => spec.name === "waiting"), { name: "waiting", own: true, approved: 1, waiting: null, waitingAt: null, written: ["requirements.md"], tasks: null, results: [] });
   clear();
   // The next document, written on the approved one: waiting in its turn.
   putSpec(".octave/specs/waiting/design.md", "# Design\n");
@@ -1373,6 +1373,37 @@ it("명령이 연 세션도 사람이 고른 모드로 열린다 — Plan이면 
 
 // Last, because it makes the folder a repository for as long as it runs, and
 // the checks above were written for a folder that is none.
+it("워크스페이스가 시작한 스펙과 base에서 딸려온 스펙을 갈라 말한다", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const git = (where, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd: where, encoding: "utf8" }).trim();
+  const origin = mkdtempSync(join(tmpdir(), "octave-origin-"));
+  try {
+    // main에 이미 합쳐진 스펙 하나 — 새 워크스페이스는 이것을 디스크에 가지고 시작한다.
+    git(cwd, "init", "-q", "-b", "main");
+    mkdirSync(join(cwd, ".octave/specs/from-main"), { recursive: true });
+    writeFileSync(join(cwd, ".octave/specs/from-main/requirements.md"), "# Requirements Document\n");
+    git(cwd, "add", "-A", "--", ".octave");
+    git(cwd, "commit", "-q", "-m", "theirs");
+    git(cwd, "clone", "-q", "--bare", cwd, join(origin, "origin.git"));
+    git(cwd, "remote", "add", "origin", join(origin, "origin.git"));
+    git(cwd, "fetch", "-q", "origin");
+    git(cwd, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+    git(cwd, "checkout", "-q", "-b", "someone/started-here");
+    // 이 워크스페이스에서 시작한 스펙.
+    mkdirSync(join(cwd, ".octave/specs/started-here"), { recursive: true });
+    writeFileSync(join(cwd, ".octave/specs/started-here/requirements.md"), "# Requirements Document\n");
+    // 무엇이 base의 것인지는 git만 아는 사실이라 작업 결과와 같은 길로 다시 읽힌다
+    // (server.ts loadResults) — 스펙이 바뀌고 한 박자 뒤.
+    const told = await want("specs", (m) => m.specs.find((spec) => spec.name === "from-main")?.own === false, 15_000);
+    assert.equal(told.specs.length, 2, "둘 다 폴더에 있고, 둘 다 말해진다");
+    assert.equal(told.specs.find((spec) => spec.name === "started-here").own, true, "여기서 시작한 것만 이 워크스페이스의 일이다");
+  } finally {
+    rmSync(join(cwd, ".git"), { recursive: true, force: true });
+    rmSync(join(cwd, ".octave"), { recursive: true, force: true });
+    rmSync(origin, { recursive: true, force: true });
+  }
+});
+
 it("작업이 무엇에 이르렀는지는 저장소의 역사에서 — 커밋의 트레일러로 찾아, 스펙마다", async () => {
   const { execFileSync } = await import("node:child_process");
   const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
