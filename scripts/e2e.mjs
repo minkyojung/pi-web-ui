@@ -4090,24 +4090,24 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	await until("the other task's commit", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(second)}`));
 });
 
-// The other place the answer can be given: over the document being read.
-check("a document waiting for approval says so above itself, and the line goes once it is approved", async ({ app, cwd }) => {
+// The other place the answer can be given: in the header of the document being read.
+check("a document waiting for approval has Approve in its header, and it goes once it is approved", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/bar");
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(join(dir, "requirements.md"), "# Requirements\n\nBARWORD\n");
-	await until("the document in front with its line", async () => (await editorText(app)).includes("BARWORD") && (await app.evaluate("!!document.getElementById('specBar')")));
-	assert.match(await app.evaluate("document.getElementById('specBar').textContent"), /Requirements waiting for your approval/);
+	await until("the document in front with its button", async () => (await editorText(app)).includes("BARWORD") && (await app.evaluate("!!document.getElementById('approveSpec')")));
+	assert.match(await app.evaluate("document.getElementById('approveSpec').getAttribute('aria-label')"), /Requirements waiting for your approval/);
 
 	// About the document in front, not about the folder: on a note, nothing.
 	await pickNote(app, "first.md");
-	await until("the line gone", async () => !(await app.evaluate("!!document.getElementById('specBar')")));
+	await until("the button gone", async () => !(await app.evaluate("!!document.getElementById('approveSpec')")));
 
-	// Back to it, and answered from the line itself.
+	// Back to it, and answered from the header itself.
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/bar/requirements.md")}`);
 	await until("the button ready", () => app.evaluate("document.getElementById('approveSpec')?.disabled === false"));
 	assert.equal(await app.click("#approveSpec"), true);
 	await until("the record on disk", () => existsSync(join(dir, "approvals.json")));
-	await until("the line gone once it is approved", async () => !(await app.evaluate("!!document.getElementById('specBar')")));
+	await until("the button gone once it is approved", async () => !(await app.evaluate("!!document.getElementById('approveSpec')")));
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {

@@ -388,7 +388,7 @@ function CommitCrumbs({ commit, onOpen }: { commit: string; onOpen: (path: strin
 	);
 }
 
-export function NoteHeader({ path, commit = null, onOpen, trailing }: { path: string | null; commit?: string | null; onOpen: (path: string) => void; trailing?: React.ReactNode }) {
+export function NoteHeader({ path, commit = null, onOpen, actions, trailing }: { path: string | null; commit?: string | null; onOpen: (path: string) => void; actions?: React.ReactNode; trailing?: React.ReactNode }) {
 	// The same identifiers the sidebar keys its open folders on, so a crumb and
 	// a row are talking about the same folder without either being told.
 	const folders = path ? foldersOf(path) : [];
@@ -428,6 +428,12 @@ export function NoteHeader({ path, commit = null, onOpen, trailing }: { path: st
 			    muted word — the words there are the line's colour, so the fill is
 			    what says this is not more path. */}
 			{path && isCode(path) && <ReadOnly path={path} />}
+			{/* What is to be done about the document — approve it, what its
+			    tasks run on — before the file's own tools: the one thing here
+			    that is the document's rather than the file's, and the one a
+			    person came to it for. Words, not icons, since they are pressed
+			    for what they say. */}
+			{actions}
 			{path && <NoteMenu path={path} />}
 			{trailing}
 		</div>
