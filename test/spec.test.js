@@ -190,6 +190,8 @@ function fakePi(branch, branches = [], { remote = true } = {}) {
   const call = (toolName, path) => handlers.tool_call?.({ type: "tool_call", toolCallId: "call-1", toolName, input: { path, content: "x" } }, ctx(true));
   const cleanup = () => rmSync(cwd, { recursive: true, force: true });
   const runTask = (args = "", { idle = true } = {}) => commands["spec-run"].handler(args, ctx(idle));
+  /** The person's word on a task: /spec-done, /spec-cancel, /spec-reopen. */
+  const mark = (command, args = "", { idle = true } = {}) => commands[command].handler(args, ctx(idle));
   /** A spec approved to the end, its tasks as given. */
   const config = (text) => {
     mkdirSync(join(cwd, ".octave"), { recursive: true });
@@ -236,6 +238,7 @@ function fakePi(branch, branches = [], { remote = true } = {}) {
     chained: () => new Promise((resolve) => setTimeout(resolve, 20)),
     setEntries: (given) => (entries = given),
     tasks: (name) => readFileSync(join(cwd, ".octave/specs", name, "tasks.md"), "utf8"),
+    mark,
   };
 }
 
@@ -1547,4 +1550,60 @@ test("실행이 시작되면 명령은 돌아온다 — 턴이 끝나기를 기�
   assert.equal(pi.sessions.length, 1);
   assert.equal(pi.done.at(-1).sendUserMessage, "/spec-run 1");
   assert.deepEqual(pi.notes, []);
+});
+
+// --- the person's word on a task: done, set aside, opened again ---
+
+test("/spec-done ticks the task's box and no other byte, a heading follows its sub-tasks, and the next task is said", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.plan("email-auth");
+  await pi.mark("spec-done", "1");
+  assert.equal(pi.tasks("email-auth"), PLAN.replace("- [ ] 1.", "- [x] 1."));
+  assert.match(pi.notes.at(-1).text, /1 is done\. Next is 2\.1/);
+  await pi.mark("spec-done", "2.1 2.2");
+  assert.equal(pi.tasks("email-auth"), PLAN.replaceAll("- [ ]", "- [x]"), "2의 하위가 다 끝나 2도 따라간다");
+  assert.match(pi.notes.at(-1).text, /2\.1 and 2\.2 are done\. That was the last one/);
+  assert.deepEqual(specState(pi.cwd, "email-auth"), { approved: 3, waiting: null }, "칸은 승인의 지문 밖이다");
+});
+
+test("a heading is not accepted by itself; a number the plan does not have, or no number, is said back", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.plan("email-auth");
+  await pi.mark("spec-done", "2");
+  assert.match(pi.notes.at(-1).text, /2 is a heading/);
+  await pi.mark("spec-done", "9");
+  assert.match(pi.notes.at(-1).text, /no task 9/);
+  await pi.mark("spec-done", "");
+  assert.match(pi.notes.at(-1).text, /Which task/);
+  assert.equal(pi.tasks("email-auth"), PLAN, "아무것도 바뀌지 않았다");
+  await pi.mark("spec-done", "1", { idle: false });
+  assert.match(pi.notes.at(-1).text, /agent is working/);
+});
+
+test("/spec-cancel sets a task aside with `-`, a heading with everything under it, and the fingerprint does not move; /spec-reopen opens it again", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.plan("email-auth");
+  await pi.mark("spec-cancel", "2");
+  assert.equal(pi.tasks("email-auth"), PLAN.replace("- [ ] 2. Hang", "- [-] 2. Hang").replace("- [ ] 2.1", "- [-] 2.1").replace("- [ ] 2.2", "- [-] 2.2"));
+  assert.match(pi.notes.at(-1).text, /2 is set aside/);
+  assert.deepEqual(specState(pi.cwd, "email-auth"), { approved: 3, waiting: null }, "접어 두어도 승인은 그대로");
+  await pi.mark("spec-reopen", "2.1");
+  assert.equal(pi.tasks("email-auth"), PLAN.replace("- [ ] 2. Hang", "- [-] 2. Hang").replace("- [ ] 2.2", "- [-] 2.2"), "2.1만 열린다");
+  await pi.mark("spec-reopen", "2");
+  assert.equal(pi.tasks("email-auth"), PLAN, "상위를 열면 아래도 열린다");
+});
+
+test("a task accepted, then its run asked for again: named, it runs; not named, it is not next", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.plan("email-auth");
+  await pi.mark("spec-done", "1");
+  await pi.runTask("1");
+  assert.match(pi.notes.at(-1).text, /1 is already done/);
+  pi.eachTurnWrites([" M door.js"]);
+  await pi.runTask("");
+  assert.deepEqual(pi.turns, ["/spec-run 2.1"], "다음은 2.1");
 });

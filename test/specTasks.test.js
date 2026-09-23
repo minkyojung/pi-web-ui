@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { blankBoxes } from "../specTasks.ts";
 import test from "node:test";
 
 import { doneWhenOf, nextTask, parseTasks, progressOf, runsOf, runsUnder, taskToRun, withBox, withDone, withParents } from "../specTasks.ts";
@@ -189,4 +190,8 @@ test("칸 하나만 바꾼다 — 사람의 말: 받아들임(x), 접어 둠(-),
   assert.equal(withBox(aside, "2.2", " "), done, "되돌리면 그대로");
   assert.equal(withBox(KIRO, "9", "x"), KIRO, "없는 번호는 아무것도 바꾸지 않는다");
   assert.equal(withDone(aside, new Set(["2.1"])), aside, "withDone은 접어 둔 칸을 건드리지 않는다");
+});
+
+test("a box set aside is outside the fingerprint, as a box ticked is", () => {
+  assert.equal(blankBoxes("- [x] 1. a\n- [-] 2. b\n- [ ] 3. c\n"), "- [ ] 1. a\n- [ ] 2. b\n- [ ] 3. c\n");
 });

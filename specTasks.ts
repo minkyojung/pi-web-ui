@@ -167,6 +167,11 @@ export function withDone(text: string, done: Set<string>): string {
 	return text.replace(TASKS, (_line, before: string, box: string, rest: string, number: string) => `${before}${box === "-" ? "-" : done.has(number) ? "x" : " "}${rest}`);
 }
 
+/** The text with every box empty — the plan as it was approved, however far it has got or what was set aside (specApproval.ts). */
+export function blankBoxes(text: string): string {
+	return text.replace(TASKS, (_line, before: string, _box: string, rest: string) => `${before} ${rest}`);
+}
+
 /** The text with one task's box saying `box` and every other byte as it was — the person's own word on a task (spec.ts done, cancel). */
 export function withBox(text: string, number: string, box: " " | "x" | "-"): string {
 	return text.replace(TASKS, (line, before: string, _box: string, rest: string, found: string) => (found === number ? `${before}${box}${rest}` : line));

@@ -55,7 +55,7 @@ import { CITIES } from "./electron/cities.js";
 import { CONFIG_FILE, DEFAULT_TIMEOUT, isConfig, readConfig } from "./electron/octaveConfig.js";
 import { approve, type SpecState, specState } from "./specApproval.ts";
 import { taskResults } from "./specResults.ts";
-import { doneWhenOf, nextTask, parseTasks, runsOf, runsUnder, type Task, taskToRun, withDone, withParents } from "./specTasks.ts";
+import { doneWhenOf, nextTask, parseTasks, runsOf, runsUnder, type Task, taskToRun, withBox, withDone, withParents } from "./specTasks.ts";
 
 /** A workspace's placeholder name: a city, or a city of a later round (`lisbon-v2`). */
 const PLACEHOLDER = new RegExp(`^(?:${CITIES.join("|")})(?:-v\\d+)?$`);
@@ -693,6 +693,70 @@ async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, c
 }
 
 /**
+ * The person's word on a task, written as one box: `x` accepts it, once they
+ * have looked at what its run did (or done it by hand); `-` sets it aside;
+ * ` ` opens it again. `args` is the numbers, and the spec's name when there
+ * is more than one to mean. A heading is not accepted by itself — its
+ * sub-tasks are, and it follows (withParents) — but is set aside or opened
+ * with everything under it, since that is what the heading is. Nothing else
+ * in the file changes: the boxes are what the plan's fingerprint leaves out
+ * (specApproval.ts), so this never asks for the plan to be approved again.
+ */
+async function markTask({ cwd, ui, isIdle }: Speaking & { isIdle(): boolean }, args: string, box: "x" | "-" | " "): Promise<void> {
+	const verb = box === "x" ? "accept" : box === "-" ? "set aside" : "open again";
+	if (!isIdle()) {
+		ui.notify(`The agent is working. ${verb[0]!.toUpperCase()}${verb.slice(1)} the task when it has finished.`, "warning");
+		return;
+	}
+	const words = args.trim().split(/\s+/).filter(Boolean);
+	const numbers = [...new Set(words.filter((word) => /^\d+(?:\.\d+)?$/.test(word)))];
+	const given = words.find((word) => !numbers.includes(word)) ?? null;
+	const withTasks = takenSpecs(cwd).filter((name) => existsSync(join(cwd, SPECS_DIR, name, "tasks.md")));
+	const chosen = given ? (withTasks.includes(given) ? given : null) : withTasks.length === 1 ? withTasks[0]! : null;
+	if (!chosen) {
+		ui.notify(given ? `There is no spec called ${given} with tasks.` : withTasks.length === 0 ? "No spec has tasks yet." : `More than one spec has tasks: ${withTasks.join(", ")}. Say which: /spec-${box === "x" ? "done" : box === "-" ? "cancel" : "reopen"} ${withTasks[0]} ${numbers[0] ?? "1"}`, "info");
+		return;
+	}
+	if (numbers.length === 0) {
+		ui.notify(`Which task? Its number, as in tasks.md: /spec-${box === "x" ? "done" : box === "-" ? "cancel" : "reopen"} 2.1`, "info");
+		return;
+	}
+	const file = join(cwd, SPECS_DIR, chosen, "tasks.md");
+	let text = readFileSync(file, "utf8");
+	const tasks = parseTasks(text);
+	const missing = numbers.find((number) => !tasks.some((task) => task.number === number));
+	if (missing !== undefined) {
+		ui.notify(`${chosen} has no task ${missing}.`, "info");
+		return;
+	}
+	const children = (number: string) => tasks.filter((task) => task.number.startsWith(`${number}.`));
+	if (box === "x") {
+		const heading = numbers.find((number) => children(number).length > 0);
+		if (heading !== undefined) {
+			ui.notify(`${heading} is a heading: accept its sub-tasks, and it follows them.`, "info");
+			return;
+		}
+	}
+	for (const number of numbers) {
+		text = withBox(text, number, box);
+		// A heading set aside or opened takes what is under it along.
+		if (box !== "x") for (const child of children(number)) text = withBox(text, child.number, box);
+	}
+	// A heading whose sub-tasks are all accepted or set aside is accepted with them; one opened again is opened.
+	const now = parseTasks(text);
+	const done = withParents(now, new Set(now.filter((task) => task.done).map((task) => task.number)));
+	for (const task of now) {
+		if (children(task.number).length === 0) continue;
+		if (done.has(task.number) && !task.done) text = withBox(text, task.number, "x");
+		if (!done.has(task.number) && task.done && children(task.number).some((child) => numbers.includes(child.number))) text = withBox(text, task.number, " ");
+	}
+	writeAtomic(file, text);
+	const said = numbers.length === 1 ? numbers[0]! : `${numbers.slice(0, -1).join(", ")} and ${numbers.at(-1)}`;
+	const rest = nextTask(parseTasks(text));
+	ui.notify(`${said} ${numbers.length === 1 ? "is" : "are"} ${box === "x" ? "done" : box === "-" ? "set aside" : "open again"}.${box === "x" ? (rest ? ` Next is ${rest.number} — /spec-run` : " That was the last one.") : ""}`, "info");
+}
+
+/**
  * The tasks of `spec` a run has ended in a commit for and the person has not
  * accepted — waiting to be looked at. Git's answer (specResults.ts), read
  * beside the list each time it is asked which task is next: the list alone
@@ -1005,6 +1069,19 @@ export default function spec(pi: ExtensionAPI): void {
 		},
 	});
 
+	// The person's own word on a task, one box at a time — see markTask.
+	pi.registerCommand("spec-done", {
+		description: "Accept a task whose run you have looked at: its box is ticked, and a heading's when all under it are",
+		handler: (args, ctx) => markTask(ctx, args, "x"),
+	});
+	pi.registerCommand("spec-cancel", {
+		description: "Set a task aside: it is not run, and a heading's sub-tasks go with it",
+		handler: (args, ctx) => markTask(ctx, args, "-"),
+	});
+	pi.registerCommand("spec-reopen", {
+		description: "Open a task again — one accepted or set aside — so it is to do",
+		handler: (args, ctx) => markTask(ctx, args, " "),
+	});
 	pi.registerCommand("spec-run", {
 		description: "Run the next task of a spec you have approved: a session of its own, one task, one commit",
 		handler: async (args, ctx) => {

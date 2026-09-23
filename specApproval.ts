@@ -34,7 +34,7 @@ import { join } from "node:path";
 
 import { writeAtomic } from "./atomic.ts";
 import { APPROVALS, SPEC_DOCS, type SpecDoc, SPECS_DIR } from "./documentKinds.ts";
-import { withDone } from "./specTasks.ts";
+import { blankBoxes } from "./specTasks.ts";
 
 export interface SpecState {
 	/** How many of SPEC_DOCS, from the first, are approved as they are now. */
@@ -47,10 +47,11 @@ export interface SpecState {
  * The file's fingerprint, or null when there is no file to read.
  *
  * The tasks are fingerprinted with their boxes emptied. What the person
- * approved is the plan, and a task checked off is how far it has got, not a
- * change to it: a list approved and then worked through is the same list, and
- * without this every finished task would ask to be approved again. The text
- * around the boxes is held to as closely as the other two documents are.
+ * approved is the plan, and a task ticked or set aside is how far it has got,
+ * not a change to it: a list approved and then worked through is the same
+ * list, and without this every finished task would ask to be approved again.
+ * The text around the boxes is held to as closely as the other two documents
+ * are.
  */
 function fingerprint(doc: SpecDoc, file: string): string | null {
 	try {
@@ -58,7 +59,7 @@ function fingerprint(doc: SpecDoc, file: string): string | null {
 		// Bytes for the documents that are only text, so what was approved before
 		// this went in reads the same; the tasks are read as the text they are.
 		return createHash("sha256")
-			.update(doc === "tasks.md" ? withDone(read.toString("utf8"), new Set()) : read)
+			.update(doc === "tasks.md" ? blankBoxes(read.toString("utf8")) : read)
 			.digest("hex");
 	} catch {
 		return null;
