@@ -209,6 +209,19 @@ const RIMS = [
 	["--border", "--panel-muted", "a rule on pi's wash"],
 ];
 
+/**
+ * The edge of something you aim a pointer at — an input, an outline button, a
+ * checkbox — on each surface a control is put on. Measured apart from the
+ * rims because it is a different job: an edge that has to be found, not one
+ * that only has to be there.
+ */
+const EDGES = [
+	["--input", "--background", "an input on the page"],
+	["--input", "--card", "an input on a card"],
+	["--input", "--popover", "an input in a dialog"],
+	["--input", "--panel", "the message box"],
+];
+
 /* ── run ────────────────────────────────────────────────────────────────── */
 
 /**
@@ -242,11 +255,13 @@ export function measure() {
 		}
 
 		const steps = STEPS.map(([a, b, where]) => ({ token: a, where, delta: okL(flat(vars, a, page)) - okL(flat(vars, b, page)) }));
-		const rims = RIMS.map(([rim, on, where]) => {
+		const edge = ([token, on, where]) => {
 			const surface = flat(vars, on, page);
-			return { token: rim, where, delta: okL(flat(vars, rim, surface)) - okL(surface) };
-		});
-		return { theme, rows, steps, rims };
+			return { token, where, delta: okL(flat(vars, token, surface)) - okL(surface) };
+		};
+		const rims = RIMS.map(edge);
+		const edges = EDGES.map(edge);
+		return { theme, rows, steps, rims, edges };
 	});
 }
 
@@ -266,7 +281,7 @@ export function measure() {
  */
 export function ladder() {
 	const out = [];
-	for (const { theme, steps, rims } of measure()) {
+	for (const { theme, steps, rims, edges } of measure()) {
 		const step = (token) => steps.find((s) => s.token === token).delta;
 		const rim = (token, where) => rims.find((r) => r.token === token && r.where === where).delta;
 
@@ -302,6 +317,14 @@ export function ladder() {
 			const d = Math.abs(rim(token, where));
 			if (d < 0.035 || d > 0.065) out.push(`${theme}: ${token} is ${d < 0.035 ? "too faint to be an edge" : "drawn as a line, not a rim"} — ${rim(token, where).toFixed(3)}, wants 0.035 to 0.065`);
 		}
+
+		// A control's edge stands further off than a rim, on whatever it is
+		// put on — a rim's distance and it reads as a card, not a field — and
+		// not so far that it is a box drawn round the words.
+		for (const { token, where, delta } of edges) {
+			const d = Math.abs(delta);
+			if (d < 0.065 || d > 0.15) out.push(`${theme}: ${token} ${d < 0.065 ? "is no further off than a rim" : "is a box, not an edge"} (${where}) — ${delta.toFixed(3)}, wants 0.065 to 0.15`);
+		}
 	}
 	return out;
 }
@@ -317,7 +340,7 @@ export const check = () =>
 if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
 	const quiet = process.argv.includes("--quiet");
 	const fail = [];
-	for (const { theme, rows, steps, rims } of measure()) {
+	for (const { theme, rows, steps, rims, edges } of measure()) {
 		const bad = rows.filter((r) => r.ratio < r.wants);
 		bad.forEach((r) => fail.push(`${theme}: ${r.pair} (${r.where}) — ${r.ratio.toFixed(2)}, wants ${r.wants}`));
 		if (quiet) continue;
@@ -330,7 +353,7 @@ if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.me
 			console.log(`  ${mark} ${ratio.toFixed(2).padStart(5)} / ${wants}  ${pair.padEnd(52)} ${where}`);
 		}
 		console.log("  \x1b[2melevation (oklch L, signed against content)\x1b[0m");
-		for (const { token, where, delta } of [...steps, ...rims]) {
+		for (const { token, where, delta } of [...steps, ...rims, ...edges]) {
 			console.log(`    \x1b[2m${delta >= 0 ? "+" : ""}${delta.toFixed(3)}  ${token.padEnd(18)} ${where}\x1b[0m`);
 		}
 	}

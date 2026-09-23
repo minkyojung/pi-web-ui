@@ -65,9 +65,12 @@
      white at one: a rim is drawn on more than the page — pi's floor, a bar's
      fill, a card — and an opaque grey is its 0.052 on white only. On pi's
      floor it was 0.025, half a rim; at 7% it is 0.052 on every one of them.
-     Linear's translucent border and Apple's separator are alphas for this. */
+     Linear's translucent border and Apple's separator are alphas for this.
+     --input the same way, at the 0.078 its grey stood from the page: in the
+     message box, on pi's floor, the grey was 0.051 — a rim's distance, and a
+     field there read as a card. */
   --border: oklch(0 0 0 / 7%);
-  --input: oklch(0.922 0 0);
+  --input: oklch(0 0 0 / 10%);
   /* A focus ring is a non-text indicator, which WCAG asks 3:1 of. The figure
      shadcn ships reads 2.59 on a page this light — the only one of the four
      themes where it did; the other three were already clear. Down again now
