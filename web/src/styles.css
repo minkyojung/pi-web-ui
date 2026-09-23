@@ -126,21 +126,23 @@
   --code-name: oklch(0.45 0.16 285);
   --code-number: oklch(0.5 0.14 60);
   /*
-   * pi's side of the card. The note is the page; the conversation beside it is
-   * not the same page, so it takes a surface of its own — and which way it
-   * steps off the note is the theme's business, not one value's. A light
-   * window has nowhere to go but down, so pi sits where the frame sits, a
-   * step below the note it is next to; a dark window has nowhere to go but up,
-   * so pi is raised the same step a card is. Same distance either way, read
-   * off the ladder each theme already declares — no new rung is invented here.
+   * pi's side of the card, on the same page as the note: the conversation is
+   * read as closely as the note is, and a grey floor under it read as a sidebar
+   * to the side of the work rather than half of it. Its rim is what says where
+   * one ends — the box round it is drawn at a rim's distance, as a card's is,
+   * which is how Linear sets its agent beside an issue.
+   *
+   * It had a floor of its own, a step off the note either way, and the tokens
+   * are kept so it can have one again: .surface-panel still rebinds the page
+   * to --panel, which is only the page's own value for now.
    */
-  --panel: oklch(0.973 0 0);
+  --panel: oklch(1 0 0);
   /* What is laid on that floor — a tool's output, a hovered row, a badge.
      It steps off --panel the way --sidebar-accent steps off --sidebar, not
      the way --muted steps off the page: a wash on a frame is a shorter step
      than a wash on paper, and taking the page's step twice put second-rank
-     text under AA. */
-  --panel-muted: oklch(0.958 0 0);
+     text under AA. On the page now, the page's own wash. */
+  --panel-muted: oklch(0.97 0 0);
   /* The frame, below the page as in every theme here. White is the ceiling in
      a light window, so the ladder is built downward from the content: --card
      and --popover stay white and say they are raised with a shadow, which is
@@ -229,9 +231,9 @@
   --code-string: oklch(0.8 0.1 145);
   --code-name: oklch(0.78 0.1 285);
   --code-number: oklch(0.8 0.12 60);
-  /* Raised, the step a card takes off this page. */
-  --panel: oklch(0.238 0 0);
-  --panel-muted: oklch(0.302 0 0);
+  /* The page's own, as in the light theme. */
+  --panel: oklch(0.21 0.002 287);
+  --panel-muted: oklch(0.269 0 0);
   --sidebar: oklch(0.183 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
