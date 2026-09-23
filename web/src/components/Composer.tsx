@@ -300,7 +300,13 @@ export function Composer({ note }: { note: string | null }) {
 		// it are for people who can see them, and a screen reader is read the
 		// label alone — which said "Submit" mid-run, the one thing a press then
 		// does not do.
+		//
+		// In the window's ink, not its accent: it is on screen the whole time,
+		// and the accent is kept for what is pressed, turned on, focused or
+		// followed — the one solid colour always showing would be this, and it
+		// would say nothing. Linear's reply button is the same.
 		<PromptInputSubmit
+			className="bg-foreground text-background hover:bg-foreground/90"
 			aria-label={streaming ? "Queue" : "Submit"}
 			disabled={!online}
 			status="ready"
