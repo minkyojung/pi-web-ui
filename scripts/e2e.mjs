@@ -3645,9 +3645,10 @@ check("tasks a selection covers are offered as one run in the header, by their n
 	writeFileSync(join(dir, "tasks.md"), plan);
 	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/picked/tasks.md")}`);
-	await until("the list", () => app.evaluate("!!document.querySelector('#tasks [data-task]')"));
-	// The markdown, as these work on the editor: ⌘E.
-	await app.press("e", { meta: true });
+	// The list, or — on a second try, the mode being the path's for the window's
+	// life — the editor this check left it in. The markdown is what it works on.
+	await until("the plan", async () => (await app.evaluate("!!document.querySelector('#tasks [data-task]')")) || (await editorText(app)).includes("Fourth"));
+	if (await app.evaluate("!!document.querySelector('#tasks [data-task]')")) await app.press("e", { meta: true });
 	await until("the plan in front", async () => (await editorText(app)).includes("Fourth"));
 	await until("the picker in the header", () => app.evaluate("!!document.getElementById('runOn')"));
 	const select = (from, to) => app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: ${from}, head: ${to} } })`);
@@ -3665,6 +3666,9 @@ check("tasks a selection covers are offered as one run in the header, by their n
 	await app.shot("task-picked");
 	// Pressed: the one command, the numbers on it, as the person would have typed it.
 	await app.evaluate("(() => { const send = WebSocket.prototype.send; window.__sent = []; WebSocket.prototype.send = function (data) { window.__sent.push(String(data)); return send.call(this, data); }; })()");
+	// Pressable: Run stays off for a few seconds after a press that started
+	// nothing, and the check before this one pressed it.
+	await until("the run pressable", () => app.evaluate("(() => { const b = document.getElementById('runPicked'); return !!b && !b.disabled; })()"));
 	await app.click("#runPicked");
 	await until("the line sent", () => app.evaluate("window.__sent.some((d) => d.includes('/spec-run picked '))"));
 	assert.equal(await app.evaluate("JSON.parse(window.__sent.find((d) => d.includes('/spec-run picked '))).text"), "/spec-run picked 1 2 3", "2 for all of it; the command unfolds it");
