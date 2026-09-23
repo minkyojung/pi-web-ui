@@ -3480,7 +3480,7 @@ check("the spec at the start of the row names what is waiting, opens its documen
 // The plan, read: the document as the editor draws it, with what it cannot
 // say of itself drawn over its lines — each box the task's standing, a
 // heading's count of what is done under it, the two keys stepped back.
-check("a spec's tasks.md opens read with the plan drawn over it: each box is its task's standing, a heading counts its sub-tasks, and ⌘E is the plain document", async ({ app, cwd }) => {
+check("a spec's tasks.md opens as the list of its tasks: each row its standing, a heading its count, and ⌘E the markdown", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/tree");
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
@@ -3497,26 +3497,22 @@ check("a spec's tasks.md opens read with the plan drawn over it: each box is its
 	// click the tab again.
 	const want = "#.octave/specs/tree/tasks.md";
 	await app.evaluate(`location.hash = ${JSON.stringify(want)}`);
-	const standings = () => app.evaluate("[...document.querySelectorAll('#editor .cm-line.cm-plan-task')].map((l) => l.textContent.trim().split(/\\s+/)[0].replace(/\\.$/, '') + ':' + [...l.classList].find((c) => c.startsWith('cm-standing-')).slice('cm-standing-'.length))");
-	await until("the plan drawn", () => app.evaluate(`(() => { if (decodeURIComponent(location.hash) !== ${JSON.stringify(want)}) { location.hash = ${JSON.stringify(want)}; return false; } return document.querySelectorAll('#editor .cm-line.cm-plan-task').length === 5; })()`));
-	assert.equal(await app.evaluate("document.querySelector('#editor .cm-content').getAttribute('aria-readonly')"), "true", "read: the document refuses changes");
+	const standings = () => app.evaluate("[...document.querySelectorAll('#tasks [data-task]')].map((r) => r.dataset.task + ':' + r.dataset.standing)");
+	await until("the plan drawn", () => app.evaluate(`(() => { if (decodeURIComponent(location.hash) !== ${JSON.stringify(want)}) { location.hash = ${JSON.stringify(want)}; return false; } return document.querySelectorAll('#tasks [data-task]').length === 5; })()`));
 	assert.deepEqual(await standings(), ["1:done", "2:todo", "2.1:done", "2.2:next", "3:todo"]);
-	assert.equal(await app.evaluate("document.querySelector('#editor .cm-plan-count')?.textContent"), "1 / 2", "a heading counts its sub-tasks");
-	assert.equal(await app.evaluate("document.querySelector('#editor .cm-plan-count').closest('.cm-line').textContent.includes('Heading')"), true, "on the heading's own line");
-	assert.deepEqual(await app.evaluate("[...document.querySelectorAll('#editor .cm-line.cm-plan-key')].map((l) => l.textContent.replace(/^[\\s•]+/, '').split(/\\s+/)[0])"), ["Requirements:", "Done"], "the two keys step back");
-	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-line.cm-plan-key')).fontStyle"), "italic");
-	// The command in its backticks is drawn as code, the backticks hidden with the rest of the marks — inside the emphasis they sit in.
-	assert.equal(await app.evaluate("[...document.querySelectorAll('#editor .cm-line.cm-plan-key')].some((l) => l.textContent.includes('`'))"), false, "no marks shown, nested or not");
-	assert.equal(await app.evaluate("[...document.querySelectorAll('#editor .cm-cursor')].every((c) => getComputedStyle(c).display === 'none')"), true, "no caret while reading");
-	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('#editor .cm-standing-done')).textDecorationLine"), "none", "done is the mark, not a strike");
-	assert.ok((await editorText(app)).includes("- [ ] 2.2 Third"), "the document is still the document under it");
+	assert.equal(await app.evaluate("document.querySelector('#tasks [data-task=\"2\"]').textContent.includes('1 / 2')"), true, "a heading counts its sub-tasks, on its own row");
+	assert.equal(await app.evaluate("[...document.querySelectorAll('#tasks h3')].map((h) => h.textContent).join(',')"), "Later", "the plan's heading is the group's");
+	assert.equal(await app.evaluate("!!document.querySelector('#editor .cm-content')"), false, "the list, not the editor");
+	// A row opens to what it involves and what proves it — its marks off.
+	await app.evaluate("document.querySelector('#tasks [data-task=\"1\"]').click()");
+	await until("the row open", () => app.evaluate("document.getElementById('tasks').textContent.includes('web/a.ts')"));
+	assert.equal(await app.evaluate("document.getElementById('tasks').textContent.includes('`')"), false, "no marks shown");
 	await app.shot("tasks-plan");
-	// ⌘E: the plain document, boxes and all; ⌘E again, the plan.
+	// ⌘E: the plain document, boxes and all; ⌘E again, the list.
 	await app.press("e", { meta: true });
-	await until("the plain document", () => app.evaluate("document.querySelectorAll('#editor .cm-plan-task').length === 0 && document.querySelector('#editor .cm-content').getAttribute('aria-readonly') === null"));
-	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-task').length"), 5, "the boxes are boxes again");
+	await until("the plain document", () => app.evaluate("!!document.querySelector('#editor .cm-content') && document.querySelectorAll('#editor .cm-task').length === 5"));
 	await app.press("e", { meta: true });
-	await until("the plan again", () => app.evaluate("document.querySelectorAll('#editor .cm-line.cm-plan-task').length === 5"));
+	await until("the list again", () => app.evaluate("document.querySelectorAll('#tasks [data-task]').length === 5"));
 });
 
 // tasks.md by the server, so a box checked on disk moves it.
@@ -3534,6 +3530,9 @@ check("the spec at the start of the row says how far its tasks have got once all
 	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
 	// With none waiting, the control names the spec being read: this one, opened.
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/count/tasks.md")}`);
+	await until("the list", () => app.evaluate("!!document.querySelector('#tasks [data-task]')"));
+	// The markdown, as these work on the editor: ⌘E.
+	await app.press("e", { meta: true });
 	await until("the plan in front", async () => (await editorText(app)).includes("Heading"));
 	const button = () => app.evaluate("document.getElementById('spec')?.textContent ?? ''");
 	await until("the count", async () => (await button()).includes("count") && (await button()).includes("0 / 4"));
@@ -3561,6 +3560,9 @@ check("a spec's task is run from the bar over the document: the cursor's line is
 	writeFileSync(join(dir, "tasks.md"), plan(" "));
 	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/start/tasks.md")}`);
+	await until("the list", () => app.evaluate("!!document.querySelector('#tasks [data-task]')"));
+	// The markdown, as these work on the editor: ⌘E.
+	await app.press("e", { meta: true });
 	await until("the plan in front", async () => (await editorText(app)).includes("Heading"));
 	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-start').length"), 0, "no Start beside the lines");
 	const cursorOn = (word) => app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf(${JSON.stringify(word)}); v.dispatch({ selection: { anchor: at } }); })()`);
@@ -3597,6 +3599,9 @@ check("a bar over a spec's tasks chooses what they run on, and a Start takes the
 	// document waiting does (specTabs.ts) — the tasks are not approved, they
 	// are read and run — with the run's bar over it.
 	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
+	await until("the list", () => app.evaluate("!!document.querySelector('#tasks [data-task]')"));
+	// The markdown, as these work on the editor: ⌘E.
+	await app.press("e", { meta: true });
 	await until("the plan in front", async () => (await editorText(app)).includes("Second"));
 	await until("the bar", () => app.evaluate("!!document.getElementById('taskBar')"));
 	const bar = () => app.evaluate("document.getElementById('taskBar')?.textContent ?? ''");
@@ -3640,6 +3645,9 @@ check("tasks a selection covers are offered as one run over the list, by their n
 	writeFileSync(join(dir, "tasks.md"), plan);
 	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/picked/tasks.md")}`);
+	await until("the list", () => app.evaluate("!!document.querySelector('#tasks [data-task]')"));
+	// The markdown, as these work on the editor: ⌘E.
+	await app.press("e", { meta: true });
 	await until("the plan in front", async () => (await editorText(app)).includes("Fourth"));
 	await until("the bar", () => app.evaluate("!!document.getElementById('taskBar')"));
 	const select = (from, to) => app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: ${from}, head: ${to} } })`);
@@ -3979,6 +3987,9 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	writeFileSync(join(dir, "tasks.md"), "- [ ] 1. Add the door\n- [ ] 2. Hang the sign\n");
 	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/came/tasks.md")}`);
+	await until("the list", () => app.evaluate("!!document.querySelector('#tasks [data-task]')"));
+	// The markdown, as these work on the editor: ⌘E.
+	await app.press("e", { meta: true });
 	await until("the plan in front", async () => (await editorText(app)).includes("Hang the sign"));
 	assert.equal(await app.evaluate("!!document.getElementById('results')"), false, "nothing to say before a task has been run");
 

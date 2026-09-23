@@ -235,7 +235,7 @@ function fakePi(branch, branches = [], { remote = true } = {}) {
     /** Turns run to their end from now on, each leaving `files` changed. */
     eachTurnWrites: (files) => (turnWork = files),
     /** The queue's next step runs after the turn's promise, not in it: give it its tick. */
-    chained: () => new Promise((resolve) => setTimeout(resolve, 20)),
+    chained: () => new Promise((resolve) => setTimeout(resolve, 150)),
     setEntries: (given) => (entries = given),
     tasks: (name) => readFileSync(join(cwd, ".octave/specs", name, "tasks.md"), "utf8"),
     mark,
