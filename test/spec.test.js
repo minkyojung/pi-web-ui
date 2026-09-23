@@ -558,7 +558,7 @@ test("설계와 작업 목록의 지시문은 문서가 무엇을 위한 것인�
   assert.match(tasks, /at most two levels/);
   assert.match(tasks, /one commit's worth/, "작업 하나 = 커밋 하나");
   assert.match(tasks, /_Done when: …_/, "끝났다는 증거가 작업 안에");
-  assert.match(tasks, /Those two keys are written exactly so: they are read by name/);
+  assert.match(tasks, /Those keys are written exactly so: they are read by name/);
   assert.match(tasks, /Test the way this repository tests/);
   assert.match(tasks, /deployment/, "코딩이 아닌 작업은 넣지 않는다");
   assert.match(tasks, /Every acceptance criterion is covered by some task/);

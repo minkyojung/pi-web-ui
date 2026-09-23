@@ -251,7 +251,8 @@ const TASKS_CHARGE =
 const TASKS_RULES = [
 	"A task is one commit's worth: when it is done the repository builds and its tests pass, and it could be reverted alone. One that would touch everything is several tasks; one that leaves nothing working on its own is part of another.",
 	"Each task builds on the ones before it, and the last ones wire things together. No code is left that nothing uses.",
-	"The line of a task is its objective and becomes its commit's subject: write it the way this repository writes its commits. Under it, as sub-bullets: what it involves, naming the files the design says it changes; the acceptance criteria it is for, by their numbers, on a line `_Requirements: 1.2, 3.3_`; and how it is known to be done, on a line `_Done when: …_` — a command to run and what it shows (`npm test -- greet` passes), or what to look at. Those two keys are written exactly so: they are read by name.",
+	"The line of a task is its objective and becomes its commit's subject: write it the way this repository writes its commits. Under it, as sub-bullets: what it involves, naming the files the design says it changes — one bullet, two at most, since the list is read at a glance and the reading is the line; the acceptance criteria it is for, by their numbers, on a line `_Requirements: 1.2, 3.3_`; how it is known to be done, on a line `_Done when: …_` — a command to run and what it shows (`npm test -- greet` passes), or what to look at; and, only when it must wait for a task that is not simply the one before it, `_After: 2.1_`. Those keys are written exactly so: they are read by name.",
+	"More than eight or so tasks go under `##` headings by area — the parts of the design they belong to — which the app draws as groups; fewer need none.",
 	"Test the way this repository tests: find out how first — its tests, its scripts, its AGENTS.md or CLAUDE.md — and follow it, the test written with the code it tests or before it. If it has no tests for this kind of thing, say so in the task rather than bring a framework of your own.",
 	"Every acceptance criterion is covered by some task. A task that is for none is left out, unless later tasks stand on it, and then it says so.",
 	"Only what a coding agent can do: writing, modifying and testing code. Leave out user testing, deployment, gathering metrics, running the app by hand to check it (an automated test that does is a task), and documentation for its own sake — what the repository asks of every change, a changelog line say, belongs to the task that makes the change.",
@@ -276,6 +277,7 @@ const TASKS_FORM = `\`\`\`md
   - _Requirements: 1.2, 2.1_
   - _Done when: […]_
 - [ ] 2.2 […]
+  - _After: 2.1_
 \`\`\``;
 
 /** How the tasks' turn ends: the same stop, but the tasks are not approved — they are read, and run. */
@@ -420,7 +422,7 @@ export function taskPrompt({ spec, task, title }: TaskMark): string {
 		"In order:",
 		...steps.map((step, i) => `${i + 1}. ${step}`),
 		"",
-		`Leave ${dir}tasks.md alone: the task is checked off for you when this turn ends, and changing the plan is something to go back to the person about. Do not commit and do not touch the branch or anything under .git — the commit for this task is made for you too.`,
+		`Leave ${dir}tasks.md alone: its boxes are the person's — this turn ends in a commit for them to look at, and they tick the box once they have — and changing the plan is something to go back to the person about. Do not commit and do not touch the branch or anything under .git — the commit for this task is made for you.`,
 		"",
 		"Do not narrate these steps; do them.",
 	].join("\n");
