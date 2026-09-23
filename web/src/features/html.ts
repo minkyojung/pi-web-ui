@@ -248,7 +248,10 @@ export function html(here: () => string): Extension {
 			".cm-html-b, .cm-html-strong": { fontWeight: "600" },
 			".cm-html-i, .cm-html-em": { fontStyle: "italic" },
 			".cm-html-s, .cm-html-del": { textDecoration: "line-through" },
-			".cm-html-mark": { backgroundColor: "color-mix(in oklab, var(--primary) 25%, transparent)" },
+			// A highlighter's wash in the window's ink, not the accent: the
+			// accent's wash is what selected text is on, and a mark that looks
+			// selected is neither.
+			".cm-html-mark": { backgroundColor: "color-mix(in oklab, var(--foreground) 25%, transparent)" },
 			".cm-html-sub": { verticalAlign: "sub", fontSize: "0.8em" },
 			".cm-html-sup": { verticalAlign: "super", fontSize: "0.8em" },
 			".cm-html-kbd": { fontFamily: "ui-monospace, monospace", fontSize: "0.85em", border: "1px solid var(--border)", borderRadius: "3px", padding: "0 0.3em" },
