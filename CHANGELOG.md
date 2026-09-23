@@ -34,6 +34,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - `/setup` has the agent draft `.octave/config.toml` for a repository from what is there — its package file and lockfile, CI, Makefile, README — for you to read and fix; it runs nothing. A workspace of a repository with no such file has `Set up` at the foot of the window where the ▶ would be, which asks for the same.
 - The agent is told which branch this workspace was started from, so a diff, a rebase or a pull request it makes is against that branch.
 ### Changed
+- The window has one colour, a blue, and it is kept for the moments something happens: the main button in a dialog, a switch that is on, a choice that is picked, the ring round what the keyboard is on, a link, selected text. Everything else stays grey — the send button too, since it is on screen the whole time — so the blue always means the same thing.
 - Sentences you read are a step brighter than the grey of a timestamp or a label: the description under a dialog's title or a setting, a sign-in's instructions, what the agent was thinking once you open it, a message waiting its turn, a search hit's line. Before, they were the same grey as everything you only glance at, so the words that explain did not stand out from the ones that don't.
 - The names in a note's folded properties — `status`, `tags` — are in a grey you can read. They were faded below it, to less contrast than any text is owed.
 

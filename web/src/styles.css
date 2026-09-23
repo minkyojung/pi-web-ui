@@ -30,15 +30,24 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
+  /*
+   * The accent, #1F6BE0, and only where something is pressed, turned on,
+   * focused, followed or selected — the budget Linear keeps, where the chrome
+   * is grey and the colour means something is happening. Everything else in
+   * the window is the greys above and below. The steps are Radix's for this
+   * colour on this page (radix-ui.com/colors/custom): 9 the solid thing to
+   * press, which carries white at 4.96; 11 for the words, a link.
+   */
+  --primary: oklch(0.552 0.193 259.5);
+  --primary-foreground: oklch(1 0 0);
   /* Words you can follow, apart from --primary because the two jobs part as
      soon as --primary is a colour: a fill carries white words and wants to be
      dark, a link is words itself and has to clear 4.5 on the page — a solid
      blue that does the first does not do the second on a dark page (Radix
      gives text its steps 11 and 12, never 9, for this). The same as --primary
-     while that is black or white. */
-  --link: oklch(0.205 0 0);
+     while that is black or white. Step 11: 4.69 on pi's wash, the darkest
+     surface a link is put on. */
+  --link: oklch(0.537 0.193 259.6);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -83,8 +92,10 @@
      themes where it did; the other three were already clear. Down again now
      that a control can be focused on pi's floor as well as on the page: the
      figure is held to the lower of the two, which is what the rule already
-     was — this theme simply grew a second surface to keep it on. */
-  --ring: oklch(0.644 0 0);
+     was — this theme simply grew a second surface to keep it on. The accent's
+     own step 9 now, which is 4.59 on pi's floor: a ring the colour of the
+     button it is round, as Linear draws it. */
+  --ring: oklch(0.552 0.193 259.5);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -136,9 +147,11 @@
    *
    * Not --accent: in the light theme that is nearly the page colour, and a
    * selection that cannot be seen is not one. The text keeps its own colour,
-   * which is what a wash this light is for.
+   * which is what a wash this light is for. A wash of the accent, which is
+   * what selected text is on a Mac and in Linear: selecting is one of the
+   * things the accent is for.
    */
-  --selection: color-mix(in oklab, var(--foreground) 18%, transparent);
+  --selection: color-mix(in oklab, var(--primary) 22%, transparent);
   --selection-foreground: currentColor;
 }
 
@@ -164,9 +177,10 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.238 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --link: oklch(0.922 0 0);
+  --primary: oklch(0.552 0.193 259.5);
+  --primary-foreground: oklch(1 0 0);
+  /* Step 11 of the dark ramp. Step 9 as words reads 2.74 on pi's wash. */
+  --link: oklch(0.773 0.116 257.9);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -180,7 +194,11 @@
      that. --input keeps its own, being an edge you are meant to aim at. */
   --border: oklch(1 0 0 / 5%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  /* Step 11, not the button's 9: on a page this dark the solid step reads
+     2.74 on pi's wash, under the 3:1 a ring is owed. The one place the ring
+     and the button it is round part company. */
+  --ring: oklch(0.773 0.116 257.9);
+  --selection: color-mix(in oklab, var(--primary) 40%, transparent);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
