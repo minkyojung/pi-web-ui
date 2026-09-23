@@ -266,6 +266,11 @@
   --color-destructive: var(--destructive);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  /* Where a task stands (TaskGlyph.tsx), in the window's own colours: under
+     way is the warning, in review the success, done the accent. */
+  --color-status-progress: var(--warning);
+  --color-status-review: var(--success);
+  --color-status-done: var(--primary);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

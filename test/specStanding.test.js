@@ -37,6 +37,8 @@ test("문서마다 넷 중 하나다 — 승인됨·대기·써졌지만 승인 
   assert.equal(docStanding(half, "requirements.md"), "approved");
   assert.equal(docStanding(half, "design.md"), "waiting");
   assert.equal(docStanding(half, "tasks.md"), "unwritten");
+  const planned = spec("planned", { approved: 2, written: ["requirements.md", "design.md", "tasks.md"] });
+  assert.equal(docStanding(planned, "tasks.md"), "ready", "작업 목록은 승인이 아니라 준비다");
 });
 
 test("스펙을 대표하는 문서는 기다리는 것이고, 없으면 지금 와 있는 자리다", () => {
@@ -44,10 +46,10 @@ test("스펙을 대표하는 문서는 기다리는 것이고, 없으면 지금 
     doc: "design.md",
     standing: "waiting",
   });
-  assert.deepEqual(standingOf(spec("a", { approved: 3, written: ["requirements.md", "design.md", "tasks.md"] })), {
+  assert.deepEqual(standingOf(spec("a", { approved: 2, written: ["requirements.md", "design.md", "tasks.md"] })), {
     doc: "tasks.md",
-    standing: "approved",
-  }, "셋 다 승인됐으면 마지막 문서를 말한다");
+    standing: "ready",
+  }, "둘 다 승인되고 작업이 쓰였으면 마지막 문서를 말한다");
   assert.deepEqual(standingOf(spec("a", { approved: 1, written: ["requirements.md"] })), {
     doc: "design.md",
     standing: "unwritten",
@@ -79,17 +81,17 @@ test("사람에게 보일 말", () => {
   assert.equal(docTitle("requirements.md"), "Requirements");
   assert.equal(standingWord("unwritten"), "Not written yet");
   assert.equal(stateWords(spec("a", { waiting: "requirements.md" })), "Requirements waiting");
-  assert.equal(stateWords(spec("a", { approved: 3, written: ["requirements.md", "design.md", "tasks.md"] })), "Tasks approved");
+  assert.equal(stateWords(spec("a", { approved: 2, written: ["requirements.md", "design.md", "tasks.md"] })), "Tasks ready");
   assert.equal(stateWords(spec("a", { approved: 1, written: ["requirements.md"] })), "Design not written yet");
   assert.equal(waitingLine("design.md"), "Design waiting for your approval");
 });
 
-test("셋 다 승인되면 버튼의 말은 진행이다 — 끝난 수 / 전체, 다 끝나면 done", () => {
+test("둘 다 승인되고 작업이 쓰이면 버튼의 말은 진행이다 — 끝난 수 / 전체, 다 끝나면 done", () => {
   const all = ["requirements.md", "design.md", "tasks.md"];
-  assert.equal(stateWords(spec("a", { approved: 3, written: all, tasks: { total: 8, done: 3, next: "2.2" } })), "3 / 8");
-  assert.equal(stateWords(spec("a", { approved: 3, written: all, tasks: { total: 8, done: 8, next: null } })), "8 / 8 done");
-  assert.equal(stateWords(spec("a", { approved: 3, written: all, tasks: { total: 0, done: 0, next: null } })), "Tasks approved", "작업이 하나도 없으면 셀 것이 없다");
-  assert.equal(stateWords(spec("a", { approved: 3, written: all })), "Tasks approved", "서버가 아직 세지 못했으면 그 전의 말");
-  assert.equal(stateWords(spec("a", { approved: 2, waiting: "tasks.md", written: all, tasks: { total: 8, done: 0, next: "1" } })), "Tasks waiting", "승인 전에는 진행이 아니라 대기");
+  assert.equal(stateWords(spec("a", { approved: 2, written: all, tasks: { total: 8, done: 3, cancelled: 0, next: "2.2", review: [] } })), "3 / 8");
+  assert.equal(stateWords(spec("a", { approved: 2, written: all, tasks: { total: 8, done: 8, cancelled: 0, next: null, review: [] } })), "8 / 8 done");
+  assert.equal(stateWords(spec("a", { approved: 2, written: all, tasks: { total: 0, done: 0, cancelled: 0, next: null, review: [] } })), "Tasks ready", "작업이 하나도 없으면 셀 것이 없다");
+  assert.equal(stateWords(spec("a", { approved: 2, written: all })), "Tasks ready", "서버가 아직 세지 못했으면 그 전의 말");
+  assert.equal(stateWords(spec("a", { approved: 1, waiting: "design.md", written: ["requirements.md", "design.md"], tasks: { total: 8, done: 0, cancelled: 0, next: "1", review: [] } })), "Design waiting", "승인 전에는 진행이 아니라 대기");
   assert.equal(progressWords(spec("a", { approved: 1, written: ["requirements.md"] })), null);
 });

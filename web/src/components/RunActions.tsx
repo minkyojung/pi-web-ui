@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { PlayIcon } from "lucide-react";
 
-import { SPEC_DOCS, isSpec, specNameOf } from "../../../documentKinds.ts";
+import { APPROVED_DOCS, isSpec, specNameOf } from "../../../documentKinds.ts";
 import { chooseRunOn, pickedStore, runOnOf, runOnStore } from "../runOn";
 import { commandsStore, configStore, specsStore } from "../serverState";
 import { RUN, runBlocked, runMessage, runWhy } from "../specRun.ts";
@@ -9,10 +9,11 @@ import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { ModelPicker } from "./ModelPicker";
 import { Button } from "./ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
- * Over a spec's tasks.md, once all three documents are approved: what its
- * tasks run on.
+ * In the header of a spec's tasks.md, once its documents are approved: what
+ * its tasks run on, and the run of what is selected.
  *
  * The one setting the running of tasks has, and the line where the tasks are
  * run from (taskStart.ts) is the line to make it on. A choice and nothing
@@ -34,10 +35,12 @@ import { Button } from "./ui/button";
  * with the numbers on it; they run one after another, each as the one
  * before it is committed (spec.ts).
  *
- * Outside the page rather than in it, like the approval's line (SpecBar), so
- * it does not scroll away from a long list.
+ * With the header's other controls (NoteHeader actions), drawn as they are:
+ * no fill, the picker's own size. It was a line of its own over the list
+ * once, a row of the window for a picker; which task is next, that line
+ * said, is said by the list's own title now.
  */
-export function TaskBar({ path }: { path: string | null }) {
+export function RunActions({ path }: { path: string | null }) {
 	const specs = useSyncExternalStore(specsStore.subscribe, specsStore.get);
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
@@ -59,7 +62,7 @@ export function TaskBar({ path }: { path: string | null }) {
 
 	const name = path !== null && isSpec(path) && path.endsWith("/tasks.md") ? specNameOf(path) : null;
 	const spec = name === null ? null : (specs?.find((entry) => entry.name === name) ?? null);
-	if (!name || !spec || spec.approved < SPEC_DOCS.length || !config) return null;
+	if (!name || !spec || spec.approved < APPROVED_DOCS.length || !spec.written.includes("tasks.md") || !config) return null;
 
 	const chosen = runOnOf(choices, name);
 	const numbers = picked?.spec === name ? picked.numbers : [];
@@ -74,17 +77,13 @@ export function TaskBar({ path }: { path: string | null }) {
 	});
 	const reason = runWhy(stop);
 	return (
-		<div id="taskBar" className="flex h-9 shrink-0 items-center gap-2 border-b bg-muted px-4 text-xs">
-			<span className="min-w-0 flex-1 truncate text-muted-foreground">
-				Run tasks on
-				{!chosen && <span> · the session's model</span>}
-			</span>
+		<>
 			{numbers.length > 0 && (
 				<Button
 					id="runPicked"
-					variant="outline"
+					variant="soft"
 					size="sm"
-					className="h-7 max-w-64 gap-1.5 text-xs"
+					className="h-7 max-w-64 gap-1.5 px-2 text-xs text-status-progress"
 					disabled={stop !== null}
 					title={reason ?? undefined}
 					onClick={() => {
@@ -96,14 +95,21 @@ export function TaskBar({ path }: { path: string | null }) {
 					<span className="min-w-0 truncate">Run {numbers.join(", ")}</span>
 				</Button>
 			)}
-			<ModelPicker
-				id="runOn"
-				model={chosen?.model ?? config.model}
-				level={chosen?.level ?? null}
-				models={config.models}
-				disabled={!online}
-				onChoose={(choice) => chooseRunOn(name, choice)}
-			/>
-		</div>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<span className="flex min-w-0 shrink">
+						<ModelPicker
+							id="runOn"
+							model={chosen?.model ?? config.model}
+							level={chosen?.level ?? null}
+							models={config.models}
+							disabled={!online}
+							onChoose={(choice) => chooseRunOn(name, choice)}
+						/>
+					</span>
+				</TooltipTrigger>
+				<TooltipContent side="bottom">Run tasks on{chosen ? "" : " · the session's model"}</TooltipContent>
+			</Tooltip>
+		</>
 	);
 }

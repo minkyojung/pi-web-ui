@@ -50,11 +50,12 @@ import { join, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { writeAtomic } from "./atomic.ts";
-import { APP_DIR_NAME, APPROVALS, SPEC_DOCS, type SpecDoc, SPECS_DIR } from "./documentKinds.ts";
+import { APP_DIR_NAME, APPROVALS, APPROVED_DOCS, SPEC_DOCS, type SpecDoc, SPECS_DIR } from "./documentKinds.ts";
 import { CITIES } from "./electron/cities.js";
 import { CONFIG_FILE, DEFAULT_TIMEOUT, isConfig, readConfig } from "./electron/octaveConfig.js";
 import { approve, type SpecState, specState } from "./specApproval.ts";
-import { doneWhenOf, nextTask, parseTasks, runsOf, runsUnder, type Task, taskToRun, withDone, withParents } from "./specTasks.ts";
+import { taskResults } from "./specResults.ts";
+import { doneWhenOf, nextTask, parseTasks, runsOf, runsUnder, type Task, taskToRun, withBox, withDone, withParents } from "./specTasks.ts";
 
 /** A workspace's placeholder name: a city, or a city of a later round (`lisbon-v2`). */
 const PLACEHOLDER = new RegExp(`^(?:${CITIES.join("|")})(?:-v\\d+)?$`);
@@ -250,7 +251,8 @@ const TASKS_CHARGE =
 const TASKS_RULES = [
 	"A task is one commit's worth: when it is done the repository builds and its tests pass, and it could be reverted alone. One that would touch everything is several tasks; one that leaves nothing working on its own is part of another.",
 	"Each task builds on the ones before it, and the last ones wire things together. No code is left that nothing uses.",
-	"The line of a task is its objective and becomes its commit's subject: write it the way this repository writes its commits. Under it, as sub-bullets: what it involves, naming the files the design says it changes; the acceptance criteria it is for, by their numbers, on a line `_Requirements: 1.2, 3.3_`; and how it is known to be done, on a line `_Done when: …_` — a command to run and what it shows (`npm test -- greet` passes), or what to look at. Those two keys are written exactly so: they are read by name.",
+	"The line of a task is its objective and becomes its commit's subject: write it the way this repository writes its commits. Under it, as sub-bullets: what it involves, naming the files the design says it changes — one bullet, two at most, since the list is read at a glance and the reading is the line; the acceptance criteria it is for, by their numbers, on a line `_Requirements: 1.2, 3.3_`; how it is known to be done, on a line `_Done when: …_` — a command to run and what it shows (`npm test -- greet` passes), or what to look at; and, only when it must wait for a task that is not simply the one before it, `_After: 2.1_`. Those keys are written exactly so: they are read by name.",
+	"More than eight or so tasks go under `##` headings by area — the parts of the design they belong to — which the app draws as groups; fewer need none.",
 	"Test the way this repository tests: find out how first — its tests, its scripts, its AGENTS.md or CLAUDE.md — and follow it, the test written with the code it tests or before it. If it has no tests for this kind of thing, say so in the task rather than bring a framework of your own.",
 	"Every acceptance criterion is covered by some task. A task that is for none is left out, unless later tasks stand on it, and then it says so.",
 	"Only what a coding agent can do: writing, modifying and testing code. Leave out user testing, deployment, gathering metrics, running the app by hand to check it (an automated test that does is a task), and documentation for its own sake — what the repository asks of every change, a changelog line say, belongs to the task that makes the change.",
@@ -275,7 +277,12 @@ const TASKS_FORM = `\`\`\`md
   - _Requirements: 1.2, 2.1_
   - _Done when: […]_
 - [ ] 2.2 […]
+  - _After: 2.1_
 \`\`\``;
+
+/** How the tasks' turn ends: the same stop, but the tasks are not approved — they are read, and run. */
+const stopBeforeRun = (said: string) =>
+	`Then stop. Say in a line or two what you ${said}, and point out what needs their decision. Do not ask them to approve it: they read it, and run its tasks themselves with /spec-run. Do not start on the tasks.`;
 
 /** How every document's turn ends: stopped, told, and not asked. */
 const stop = (said: string, onward: string) =>
@@ -327,7 +334,7 @@ export function nextPrompt({ name, next, redo }: { name: string; next: "design.m
 						"1. Read the requirements, the design and the tasks, and find where the tasks no longer fit them.",
 						"2. Change the tasks there, and only there, with edit: add, change or remove tasks, keeping their form, their numbering and the requirements they are for right. A task checked as done stays as it is; if what it built has to change, add a task for that. If nothing needs to change, change nothing.",
 						"3. If the design or the requirements now miss something, do not change them: say what, and offer to go back.",
-						`4. ${stop("changed, or that nothing needed to change", "Do not start on the tasks.")}`,
+						`4. ${stopBeforeRun("changed, or that nothing needed to change")}`,
 					]
 				: [
 						`The person approved the design of the spec "${name}": ${dir}design.md, on ${dir}requirements.md.`,
@@ -345,7 +352,7 @@ export function nextPrompt({ name, next, redo }: { name: string; next: "design.m
 							...TASKS_RULES.map((rule) => `- ${rule}`),
 						].join("\n"),
 						"3. If writing them shows that the design or the requirements miss something, do not change them: say what, and offer to go back.",
-						`4. ${stop("wrote", "Do not start on the tasks.")}`,
+						`4. ${stopBeforeRun("wrote")}`,
 					];
 	return [...steps, "", "Do not narrate these steps; do them."].join("\n");
 }
@@ -415,7 +422,7 @@ export function taskPrompt({ spec, task, title }: TaskMark): string {
 		"In order:",
 		...steps.map((step, i) => `${i + 1}. ${step}`),
 		"",
-		`Leave ${dir}tasks.md alone: the task is checked off for you when this turn ends, and changing the plan is something to go back to the person about. Do not commit and do not touch the branch or anything under .git — the commit for this task is made for you too.`,
+		`Leave ${dir}tasks.md alone: its boxes are the person's — this turn ends in a commit for them to look at, and they tick the box once they have — and changing the plan is something to go back to the person about. Do not commit and do not touch the branch or anything under .git — the commit for this task is made for you.`,
 		"",
 		"Do not narrate these steps; do them.",
 	].join("\n");
@@ -654,7 +661,12 @@ async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, c
 		ui.notify(`${mark.task} is not done: \`${blocked.name}\` refused it (exit ${BLOCKING_EXIT}). Nothing was checked off or committed; see ${APP_DIR_NAME}/runs/${mark.task}/.`, "warning");
 		return "blocked";
 	}
-	writeAtomic(file, withDone(text, withParents(parseTasks(text), new Set([...mark.done, mark.task]))));
+	// The box is the person's: a run ends in a commit, and the task waits to
+	// be looked at until they accept it (review; /spec-done). What the model
+	// checked on its way past is undone here — the boxes say what they said
+	// when the run began. With no repository there is no commit to look at,
+	// so the box is checked here, being the one record there is.
+	writeAtomic(file, withDone(text, withParents(parseTasks(text), new Set(repository ? mark.done : [...mark.done, mark.task]))));
 	if (!repository) {
 		ui.notify(`${mark.task} is done. There is no repository here, so nothing was committed.`, "warning");
 		return "checked";
@@ -677,13 +689,96 @@ async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, c
 		return "uncommitted";
 	}
 	const at = await git(["rev-parse", "--short", "HEAD"]);
-	const next = nextTask(parseTasks(readFileSync(file, "utf8")));
+	justRan.set(`${cwd}\0${mark.spec}`, new Set([...(justRan.get(`${cwd}\0${mark.spec}`) ?? []), mark.task]));
+	const next = nextTask(parseTasks(readFileSync(file, "utf8")), await reviewedOf(cwd, mark.spec));
 	const going = mark.then[0];
 	const failed = verified.filter((v) => v.exit !== 0);
 	const said = verified.length === 0 ? "" : failed.length === 0 ? ` ${verified.length === 1 ? `\`${verified[0]!.name}\` passed` : `${verified.length} checks passed`}.` : ` ${failed.map((v) => `\`${v.name}\` failed (exit ${v.exit})`).join(", ")} — see ${APP_DIR_NAME}/runs/${mark.task}/.`;
-	ui.notify(`${mark.task} is done${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}.${said} ${going ? `${going} starts next.` : next ? `Next is ${next.number} — /spec-run` : "That was the last task."}`, "info");
+	ui.notify(`${mark.task} is ready to look at${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}.${said} ${going ? `${going} starts next.` : next ? `Next is ${next.number} — /spec-run` : "That was the last task."}`, "info");
 	return "committed";
 }
+
+/**
+ * The person's word on a task, written as one box: `x` accepts it, once they
+ * have looked at what its run did (or done it by hand); `-` sets it aside;
+ * ` ` opens it again. `args` is the numbers, and the spec's name when there
+ * is more than one to mean. A heading is not accepted by itself — its
+ * sub-tasks are, and it follows (withParents) — but is set aside or opened
+ * with everything under it, since that is what the heading is. Nothing else
+ * in the file changes: the boxes are what the plan's fingerprint leaves out
+ * (specApproval.ts), so this never asks for the plan to be approved again.
+ */
+async function markTask({ cwd, ui, isIdle }: Speaking & { isIdle(): boolean }, args: string, box: "x" | "-" | " "): Promise<void> {
+	const verb = box === "x" ? "accept" : box === "-" ? "set aside" : "open again";
+	if (!isIdle()) {
+		ui.notify(`The agent is working. ${verb[0]!.toUpperCase()}${verb.slice(1)} the task when it has finished.`, "warning");
+		return;
+	}
+	const words = args.trim().split(/\s+/).filter(Boolean);
+	const numbers = [...new Set(words.filter((word) => /^\d+(?:\.\d+)?$/.test(word)))];
+	const given = words.find((word) => !numbers.includes(word)) ?? null;
+	const withTasks = takenSpecs(cwd).filter((name) => existsSync(join(cwd, SPECS_DIR, name, "tasks.md")));
+	const chosen = given ? (withTasks.includes(given) ? given : null) : withTasks.length === 1 ? withTasks[0]! : null;
+	if (!chosen) {
+		ui.notify(given ? `There is no spec called ${given} with tasks.` : withTasks.length === 0 ? "No spec has tasks yet." : `More than one spec has tasks: ${withTasks.join(", ")}. Say which: /spec-${box === "x" ? "done" : box === "-" ? "cancel" : "reopen"} ${withTasks[0]} ${numbers[0] ?? "1"}`, "info");
+		return;
+	}
+	if (numbers.length === 0) {
+		ui.notify(`Which task? Its number, as in tasks.md: /spec-${box === "x" ? "done" : box === "-" ? "cancel" : "reopen"} 2.1`, "info");
+		return;
+	}
+	const file = join(cwd, SPECS_DIR, chosen, "tasks.md");
+	let text = readFileSync(file, "utf8");
+	const tasks = parseTasks(text);
+	const missing = numbers.find((number) => !tasks.some((task) => task.number === number));
+	if (missing !== undefined) {
+		ui.notify(`${chosen} has no task ${missing}.`, "info");
+		return;
+	}
+	const children = (number: string) => tasks.filter((task) => task.number.startsWith(`${number}.`));
+	if (box === "x") {
+		const heading = numbers.find((number) => children(number).length > 0);
+		if (heading !== undefined) {
+			ui.notify(`${heading} is a heading: accept its sub-tasks, and it follows them.`, "info");
+			return;
+		}
+	}
+	for (const number of numbers) {
+		text = withBox(text, number, box);
+		// A heading set aside or opened takes what is under it along.
+		if (box !== "x") for (const child of children(number)) text = withBox(text, child.number, box);
+	}
+	// A heading whose sub-tasks are all accepted or set aside is accepted with them; one opened again is opened.
+	const now = parseTasks(text);
+	const done = withParents(now, new Set(now.filter((task) => task.done).map((task) => task.number)));
+	for (const task of now) {
+		if (children(task.number).length === 0) continue;
+		if (done.has(task.number) && !task.done) text = withBox(text, task.number, "x");
+		if (!done.has(task.number) && task.done && children(task.number).some((child) => numbers.includes(child.number))) text = withBox(text, task.number, " ");
+	}
+	writeAtomic(file, text);
+	const said = numbers.length === 1 ? numbers[0]! : `${numbers.slice(0, -1).join(", ")} and ${numbers.at(-1)}`;
+	const rest = nextTask(parseTasks(text));
+	ui.notify(`${said} ${numbers.length === 1 ? "is" : "are"} ${box === "x" ? "done" : box === "-" ? "set aside" : "open again"}.${box === "x" ? (rest ? ` Next is ${rest.number} — /spec-run` : " That was the last one.") : ""}`, "info");
+}
+
+/**
+ * The tasks of `spec` a run has ended in a commit for and the person has not
+ * accepted — waiting to be looked at. Git's answer (specResults.ts), read
+ * beside the list each time it is asked which task is next: the list alone
+ * says done or not, and a task in review is neither. Any of them named by
+ * the person runs again; none is picked by "next".
+ */
+async function reviewedOf(cwd: string, spec: string): Promise<Set<string>> {
+	const known = justRan.get(`${cwd}\0${spec}`) ?? new Set<string>();
+	try {
+		return new Set([...known, ...((await taskResults(cwd)).get(spec) ?? []).map((result) => result.task)]);
+	} catch {
+		return known;
+	}
+}
+/** The tasks whose runs ended in a commit in this process, by folder and spec: git's word on them may be a moment behind, and a queue moving on cannot wait for it. */
+const justRan = new Map<string, Set<string>>();
 
 /**
  * A session is opened for `mark`'s task, told what it is, and sent the line
@@ -742,7 +837,7 @@ async function runNext(session: RunSession, cwd: string, mark: TaskMark): Promis
 	const how = ended.get(endedKey(cwd, mark)) ?? "nothing";
 	ended.delete(endedKey(cwd, mark));
 	if (how === "nothing" || how === "uncommitted" || how === "blocked") {
-		session.ui.notify(`${mark.task} was not ${how === "nothing" ? "checked off" : how === "blocked" ? "let through by its checks" : "committed"}, so ${not}.`, "warning");
+		session.ui.notify(`${mark.task} was not ${how === "nothing" ? "committed, having changed nothing" : how === "blocked" ? "let through by its checks" : "committed"}, so ${not}.`, "warning");
 		return;
 	}
 	let tasks: Task[];
@@ -940,21 +1035,24 @@ export default function spec(pi: ExtensionAPI): void {
 			const specs = takenSpecs(ctx.cwd).map((name) => ({ name, ...specState(ctx.cwd, name) }));
 			// Somewhere to go on to: a document waiting, or one approved and the
 			// next not written — its turn was stopped before it wrote it.
-			const open = (spec: SpecState) => spec.waiting !== null || (spec.approved > 0 && spec.approved < SPEC_DOCS.length);
+			// Somewhere to go on to: a document waiting, one approved and the next not written, or both approved and the tasks not written yet — the tasks are not approved, only written and then run.
+			const open = (spec: SpecState & { name: string }) => spec.waiting !== null || (spec.approved > 0 && spec.approved < APPROVED_DOCS.length) || (spec.approved === APPROVED_DOCS.length && !existsSync(join(ctx.cwd, SPECS_DIR, spec.name, "tasks.md")));
 			const candidates = given ? specs.filter((spec) => spec.name === given) : specs.filter(open);
 			const chosen = candidates[0];
 			if (!chosen) {
-				ctx.ui.notify(given ? `There is no spec called ${given}.` : "Nothing is waiting for your approval. A spec starts with /spec and a line of what to build.", "info");
+				// Nothing to go on to: a spec whose tasks are written is ready, and said so; else there is nothing.
+				const done = specs.filter((spec) => spec.approved === APPROVED_DOCS.length && existsSync(join(ctx.cwd, SPECS_DIR, spec.name, "tasks.md")));
+				ctx.ui.notify(given ? `There is no spec called ${given}.` : done.length === 1 ? `The spec ${done[0]!.name} is ready: its requirements and design are approved, and its tasks are written — read them, and /spec-run.` : "Nothing is waiting for your approval. A spec starts with /spec and a line of what to build.", "info");
 				return;
 			}
 			if (candidates.length > 1) {
 				ctx.ui.notify(`More than one spec is waiting: ${candidates.map((spec) => spec.name).join(", ")}. Say which: /spec-approve ${chosen.name}`, "info");
 				return;
 			}
-			const ready = `The spec ${chosen.name} is ready: its requirements, design and tasks are approved.`;
+			const ready = `The spec ${chosen.name} is ready: its requirements and design are approved, and its tasks are written — read them, and /spec-run.`;
 			const idle = `Nothing of ${chosen.name} is waiting for your approval.`;
 			if (!open(chosen)) {
-				ctx.ui.notify(chosen.approved === SPEC_DOCS.length ? ready : idle, "info");
+				ctx.ui.notify(chosen.approved === APPROVED_DOCS.length ? ready : idle, "info");
 				return;
 			}
 			// Where the next document is: after the one approved now, or after the
@@ -967,10 +1065,6 @@ export default function spec(pi: ExtensionAPI): void {
 					return;
 				}
 				at = SPEC_DOCS.indexOf(approved) + 1;
-				if (at === SPEC_DOCS.length) {
-					ctx.ui.notify(ready, "info");
-					return;
-				}
 			}
 			const next = SPEC_DOCS[at] as "design.md" | "tasks.md";
 			const redo = existsSync(join(ctx.cwd, SPECS_DIR, chosen.name, next));
@@ -980,6 +1074,19 @@ export default function spec(pi: ExtensionAPI): void {
 		},
 	});
 
+	// The person's own word on a task, one box at a time — see markTask.
+	pi.registerCommand("spec-done", {
+		description: "Accept a task whose run you have looked at: its box is ticked, and a heading's when all under it are",
+		handler: (args, ctx) => markTask(ctx, args, "x"),
+	});
+	pi.registerCommand("spec-cancel", {
+		description: "Set a task aside: it is not run, and a heading's sub-tasks go with it",
+		handler: (args, ctx) => markTask(ctx, args, "-"),
+	});
+	pi.registerCommand("spec-reopen", {
+		description: "Open a task again — one accepted or set aside — so it is to do",
+		handler: (args, ctx) => markTask(ctx, args, " "),
+	});
 	pi.registerCommand("spec-run", {
 		description: "Run the next task of a spec you have approved: a session of its own, one task, one commit",
 		handler: async (args, ctx) => {
@@ -1003,7 +1110,7 @@ export default function spec(pi: ExtensionAPI): void {
 				}
 			}
 			const specs = takenSpecs(ctx.cwd).map((name) => ({ name, ...specState(ctx.cwd, name) }));
-			const ready = (spec: SpecState) => spec.approved === SPEC_DOCS.length;
+			const ready = (spec: SpecState & { name: string }) => spec.approved === APPROVED_DOCS.length && existsSync(join(ctx.cwd, SPECS_DIR, spec.name, "tasks.md"));
 			const run = specs.filter(ready);
 			// The ready ones when there are any, and otherwise all of them, so
 			// that the one spec there is says what it is waiting for rather than
@@ -1030,26 +1137,27 @@ export default function spec(pi: ExtensionAPI): void {
 			}
 			const text = readFileSync(join(ctx.cwd, SPECS_DIR, chosen.name, "tasks.md"), "utf8");
 			const tasks = parseTasks(text);
+			const reviewed = await reviewedOf(ctx.cwd, chosen.name);
 			// Every number named is looked at before any is started: a queue with
 			// a task that is not there, or is done, is a question to go back with,
 			// not a run to stop halfway. A heading is its sub-tasks still to do,
 			// all of them in order — Kiro's Start on a heading — and numbers that
 			// overlap mean each run once, in the order the list stands: a task
 			// builds on the ones before it (runsOf).
-			const { runs, missing } = runsOf(tasks, numbers);
+			const { runs, missing } = runsOf(tasks, numbers, reviewed);
 			if (missing !== null) {
 				ctx.ui.notify(`${chosen.name} has no task ${missing}.`, "info");
 				return;
 			}
-			const finished = numbers.find((number) => runsUnder(tasks, number)?.length === 0);
+			const finished = numbers.find((number) => runsUnder(tasks, number, reviewed)?.length === 0);
 			if (finished !== undefined) {
 				ctx.ui.notify(`${finished} is already done. To have it done again, clear its box in ${SPECS_DIR}${chosen.name}/tasks.md first.`, "info");
 				return;
 			}
-			const queue = numbers.length > 0 ? runs : [nextTask(tasks)].filter((task): task is Task => task !== null);
+			const queue = numbers.length > 0 ? runs : [nextTask(tasks, reviewed)].filter((task): task is Task => task !== null);
 			const [task, ...then] = queue;
 			if (!task) {
-				ctx.ui.notify(`Every task of ${chosen.name} is done.`, "info");
+				ctx.ui.notify(reviewed.size > 0 && tasks.some((t) => reviewed.has(t.number) && !t.done) ? `Every task of ${chosen.name} has run; what is left is yours to look at — /spec-done to accept one, or name it to run it again.` : `Every task of ${chosen.name} is done.`, "info");
 				return;
 			}
 			if (await dirty(pi, ctx, ctx.cwd, "Nothing was started")) return;

@@ -52,7 +52,7 @@ test("CRLF 파일에서도 같은 줄이다", () => {
   assert.deepEqual(tasksBetween(crlf, from, from).map((task) => task.number), ["2.2"]);
 });
 
-const ready = { name: "email-auth", own: true, approved: 3, waiting: null, waitingAt: null, written: ["requirements.md", "design.md", "tasks.md"], tasks: { total: 3, done: 1, next: "1" } };
+const ready = { name: "email-auth", own: true, approved: 2, waiting: null, waitingAt: null, written: ["requirements.md", "design.md", "tasks.md"], tasks: { total: 3, done: 1, next: "1" } };
 const fine = { online: true, streaming: false, compacting: false, hasCommand: true, spec: ready, count: 1, sent: false };
 
 test("막을 이유가 없으면 막지 않는다; 이유는 가까운 것부터, 사람의 말로", () => {
@@ -62,12 +62,13 @@ test("막을 이유가 없으면 막지 않는다; 이유는 가까운 것부터
   assert.equal(runBlocked({ ...fine, streaming: true }), "busy", "명령은 큐에 들어가지 않는다");
   assert.equal(runBlocked({ ...fine, compacting: true }), "busy");
   assert.equal(runBlocked({ ...fine, hasCommand: false }), "no-command");
-  assert.equal(runBlocked({ ...fine, spec: { ...ready, approved: 2 } }), "not-approved", "셋 다 승인 전에는 돌지 않는다");
+  assert.equal(runBlocked({ ...fine, spec: { ...ready, approved: 1 } }), "not-approved", "요구사항과 설계가 승인되기 전에는 돌지 않는다");
+  assert.equal(runBlocked({ ...fine, spec: { ...ready, written: ["requirements.md", "design.md"] } }), "not-approved", "작업이 쓰이기 전에도");
   assert.equal(runBlocked({ ...fine, spec: null }), "not-approved");
   assert.equal(runBlocked({ ...fine, count: 0 }), "nothing");
   assert.equal(runBlocked({ ...fine, sent: true }), "sent");
   assert.equal(runBlocked({ ...fine, online: false, streaming: true, count: 0 }), "offline");
-  assert.equal(runWhy("not-approved"), "Approve all three documents first");
+  assert.equal(runWhy("not-approved"), "Approve the requirements and the design first, and have the tasks written");
   assert.equal(runWhy("nothing"), "No task here left to run");
   assert.equal(runWhy("sent"), "Starting…");
 });

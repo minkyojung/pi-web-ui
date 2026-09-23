@@ -5,14 +5,16 @@ import { layoutStorage, prefs } from "./prefs.ts";
 
 import { Editor } from "./components/Editor";
 import { Pi } from "./components/Pi";
-import { PiToggle, SidebarToggle } from "./components/PanelHeader";
+import { ModeToggle, PiToggle, SidebarToggle } from "./components/PanelHeader";
 import { Sidebar, Steps } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
 import { WhyCard } from "./components/WhyCard";
 import { Title } from "./components/Title";
+import { isTasks } from "../../documentKinds.ts";
 import { Boundary } from "./components/Boundary";
+import { TaskList } from "./components/TaskList";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -20,6 +22,7 @@ import { UpdateToast } from "./components/UpdateToast";
 import { pageNamed, type Place } from "../../links.ts";
 import { hashForNote, noteFromHash } from "./noteSync";
 import { pageOf, whatsNewPath } from "./pages";
+import { modeOf, modeStore, switchMode } from "./readMode";
 import { toOpen } from "./specTabs";
 import type { SpecInfo } from "../../protocol.ts";
 import { pageAskedStore, updateStore } from "./update";
@@ -35,8 +38,8 @@ const Code = lazy(() => import("./components/Code"));
 const Commit = lazy(() => import("./components/Commit"));
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
-import { SpecBar } from "./components/SpecBar";
-import { TaskBar } from "./components/TaskBar";
+import { ApproveAction } from "./components/ApproveAction";
+import { RunActions } from "./components/RunActions";
 import { SpecButton } from "./components/SpecButton";
 import { bump, forget, readRecent, writeRecent } from "./recent";
 import { back as stepBack, canBack, canForward, forget as forgetStep, forward as stepForward, go, here, type Left, type Nav, read as readNav, remember, replace, write as writeNav } from "./nav";
@@ -316,6 +319,11 @@ export function App() {
 	// idea of which note is open — is told there is none.
 	const page = pageOf(open);
 	const note = page ? null : open;
+	// Read or written — of the markdown in front, and of nothing else: a PDF,
+	// a file of the repository and the app's own pages are read whatever
+	// anybody chooses.
+	const modes = useSyncExternalStore(modeStore.subscribe, modeStore.get);
+	const mode = modeOf(modes, note);
 
 	// What is new, on the first run of a version (the shell says so, once, until
 	// it is told it has been seen) and whenever Help asks.
@@ -430,6 +438,13 @@ export function App() {
 			if ((e.key === "d" || e.key === "D") && e.shiftKey && mod) {
 				e.preventDefault();
 				setRaw((on) => !on);
+			}
+			// Reading and writing, as in Obsidian. The window's rather than the
+			// editor's, so it is heard while the cursor is in the agent's box or
+			// in the list — the file in front is the one it is about either way.
+			if ((e.key === "e" || e.key === "E") && mod && !e.shiftKey && !e.altKey) {
+				e.preventDefault();
+				switchMode(note);
 			}
 			if (e.key === "\\" && mod) {
 				e.preventDefault();
@@ -623,14 +638,7 @@ export function App() {
 					    offers what can be done to a file, which is to find it, not to
 					    rename it (noteActions.ts). A PDF is left out: its viewer
 					    reaches the top of the column, and the words there are its own. */}
-					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} onOpen={setOpen} trailing={<PiToggle open={piOpen} onToggle={togglePi} />} />
-					{/* Under the header and over the page, so it stays while a long
-					    document scrolls — and `note` is null for anything that is not
-					    a note or a spec, which keeps it off a PDF and off a page. */}
-					<SpecBar path={note} />
-					{/* And over a spec's tasks, what they run on — the one setting
-					    the running of them has. */}
-					<TaskBar path={note} />
+					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} onOpen={setOpen} actions={<><ApproveAction path={note} /><RunActions path={note} /></>} trailing={<>{note && <ModeToggle mode={mode} onSwitch={() => switchMode(note)} />}<PiToggle open={piOpen} onToggle={togglePi} /></>} />
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
@@ -674,8 +682,15 @@ export function App() {
 							    the steps and the checks all look up, and it should be there
 							    whether or not what it holds could be drawn. */}
 							<Boundary name="note" hint="What you had typed was written to the file.">
-								<Title path={open} />
-								<Editor key={noteIdentity(open)} path={open} place={place} left={left} onLeave={onLeave} onOpen={setOpen} />
+								{/* A spec's tasks, read, are the list of them (TaskList.tsx); ⌘E is the markdown. */}
+								{mode === "read" && isTasks(open) ? (
+									<TaskList key={open} path={open} onOpen={setOpen} />
+								) : (
+									<>
+										<Title path={open} mode={mode} />
+										<Editor key={noteIdentity(open)} path={open} mode={mode} place={place} left={left} onLeave={onLeave} onOpen={setOpen} />
+									</>
+								)}
 							</Boundary>
 						</div>
 					) : (

@@ -52,10 +52,10 @@ test("쓰면 기다리고, 승인하면 다음 차례 — 세 문서를 차례�
   assert.equal(spec.approve(), "design.md");
   assert.deepEqual(spec.record()["design.md"], [print("# Requirements Document\n"), print("# Design Document\n")], "그 문서와 앞 문서들의 지문");
 
+  assert.deepEqual(spec.state(), { approved: 2, waiting: null }, "다 됐다 — 작업 목록은 승인하지 않는다");
   spec.write("tasks.md", "# Implementation Plan\n");
-  assert.deepEqual(spec.state(), { approved: 2, waiting: "tasks.md" });
-  assert.equal(spec.approve(), "tasks.md");
-  assert.deepEqual(spec.state(), { approved: 3, waiting: null }, "다 됐다");
+  assert.deepEqual(spec.state(), { approved: 2, waiting: null }, "쓰여도 기다리지 않는다: 읽고, 돌리는 것이다");
+  assert.equal(spec.approve(), null, "승인할 것이 없다");
 });
 
 test("승인한 문서를 고치면 그 문서와 뒤 문서의 승인이 풀린다 — 다시 승인하면 다음 문서가 기다린다", (t) => {
@@ -64,7 +64,7 @@ test("승인한 문서를 고치면 그 문서와 뒤 문서의 승인이 풀린
     spec.write(doc, `# ${doc}\n`);
     spec.approve();
   }
-  assert.deepEqual(spec.state(), { approved: 3, waiting: null });
+  assert.deepEqual(spec.state(), { approved: 2, waiting: null });
 
   spec.write("design.md", "# design.md\n\nMore.\n");
   assert.deepEqual(spec.state(), { approved: 1, waiting: "design.md" }, "요구사항은 그대로 승인");
@@ -75,7 +75,7 @@ test("승인한 문서를 고치면 그 문서와 뒤 문서의 승인이 풀린
   assert.equal(spec.approve(), "requirements.md");
   assert.deepEqual(spec.state(), { approved: 1, waiting: "design.md" }, "설계는 옛 요구사항에 대해 승인된 것이다");
   assert.equal(spec.approve(), "design.md", "설계를 그대로 두고 다시 승인할 수도 있다");
-  assert.deepEqual(spec.state(), { approved: 2, waiting: "tasks.md" }, "작업 목록도 옛 설계에 대해 승인된 것이다");
+  assert.deepEqual(spec.state(), { approved: 2, waiting: null }, "작업 목록은 승인 밖이라, 옛 설계에 쓰인 것은 다시 쓰라고 할 일이다");
 });
 
 test("공백 하나도 고친 것이다; 승인했던 글로 되돌리면 승인도 돌아온다", (t) => {
@@ -141,27 +141,15 @@ function planned(t) {
   spec.write("design.md", "# Design Document\n");
   spec.approve();
   spec.write("tasks.md", PLAN);
-  spec.approve();
-  assert.deepEqual(spec.state(), { approved: 3, waiting: null });
+  assert.deepEqual(spec.state(), { approved: 2, waiting: null });
   return spec;
 }
 
-test("작업을 끝내 칸을 체크해도 승인은 그대로다 — 승인한 것은 계획이지 진척이 아니다", (t) => {
+test("작업 목록은 승인 밖이다 — 칸을 체크하든 본문을 고치든 상태는 그대로고, 기록에도 없다", (t) => {
   const spec = planned(t);
-  spec.write("tasks.md", "# Implementation Plan\n\n- [x] 1. One\n- [ ] 2. Two\n");
-  assert.deepEqual(spec.state(), { approved: 3, waiting: null }, "하나 끝냄");
-  spec.write("tasks.md", "# Implementation Plan\n\n- [x] 1. One\n- [X] 2. Two\n");
-  assert.deepEqual(spec.state(), { approved: 3, waiting: null }, "전부 끝냄 — 대문자 X도 끝난 것");
-  spec.write("tasks.md", PLAN);
-  assert.deepEqual(spec.state(), { approved: 3, waiting: null }, "칸을 되돌려도");
-});
-
-test("작업 목록의 본문을 고치면 승인이 풀린다 — 칸만 예외다", (t) => {
-  const spec = planned(t);
-  spec.write("tasks.md", "# Implementation Plan\n\n- [x] 1. One\n- [ ] 2. Two and a half\n");
-  assert.deepEqual(spec.state(), { approved: 2, waiting: "tasks.md" }, "제목이 바뀌었다");
-  spec.write("tasks.md", "# Implementation Plan\n\n- [x] 1. One\n- [ ] 2. Two\n\n");
-  assert.deepEqual(spec.state(), { approved: 2, waiting: "tasks.md" }, "빈 줄 하나도 고친 것이다");
+  spec.write("tasks.md", "# Implementation Plan\n\n- [x] 1. One\n- [-] 2. Two and a half\n");
+  assert.deepEqual(spec.state(), { approved: 2, waiting: null });
+  assert.equal(spec.record()["tasks.md"], undefined, "기록에 작업 목록은 없다");
 });
 
 test("앞 두 문서는 칸이 있어도 그대로 엄격하다", (t) => {
@@ -170,15 +158,4 @@ test("앞 두 문서는 칸이 있어도 그대로 엄격하다", (t) => {
   spec.approve();
   spec.write("requirements.md", "- [x] 1. A box in the requirements\n");
   assert.deepEqual(spec.state(), { approved: 0, waiting: "requirements.md" });
-});
-
-test("기록에 적히는 작업 목록의 지문은 칸을 비운 글의 것이다", (t) => {
-  const spec = folder(t);
-  spec.write("requirements.md", "r");
-  spec.approve();
-  spec.write("design.md", "d");
-  spec.approve();
-  spec.write("tasks.md", "- [x] 1. Already done when it was approved\n");
-  spec.approve();
-  assert.equal(spec.record()["tasks.md"].at(-1), print("- [ ] 1. Already done when it was approved\n"));
 });

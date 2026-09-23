@@ -43,7 +43,7 @@
  * of it, in one order.
  */
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import { Compartment, type EditorState, type Extension, type Range, type RangeSet, RangeSetBuilder, type SelectionRange, StateEffect, StateField, type Transaction } from "@codemirror/state";
+import { Compartment, type EditorState, type Extension, Facet, type Range, type RangeSet, RangeSetBuilder, type SelectionRange, StateEffect, StateField, type Transaction } from "@codemirror/state";
 import { BlockWrapper, Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
 import { markerOf } from "./listTree.ts";
@@ -116,7 +116,11 @@ function isCalloutMark(state: EditorState, link: SyntaxNodeRef): boolean {
  * where the link is being edited, and there the rows are its own.
  */
 export function hidden(state: EditorState, from: number, to: number, ranges = state.selection.ranges): DecorationSet {
-	const builder = new RangeSetBuilder<Decoration>();
+	// Collected and sorted at the end rather than built in order: a node's
+	// closing mark comes after the marks of what it holds — code inside
+	// emphasis, emphasis inside a link — and those are found by walking on
+	// down, after the node's own marks are already in.
+	const out: Range<Decoration>[] = [];
 	const tree = ensureSyntaxTree(state, to, 50) ?? syntaxTree(state);
 	tree.iterate({
 		from,
@@ -125,9 +129,10 @@ export function hidden(state: EditorState, from: number, to: number, ranges = st
 			const marks = MARKUP[node.name];
 			if (!marks) return;
 			if (node.name === "Link" && isCalloutMark(state, node)) return false;
+			// Touched, the whole construct is shown as written, what it holds included.
 			if ((node.name === "Link" ? inside : touches)(ranges, node.from, node.to)) return false;
 			if (node.name === "Escape") {
-				builder.add(node.from, node.from + 1, hide);
+				out.push(hide.range(node.from, node.from + 1));
 				return false;
 			}
 			const aliased = node.name === "WikiLink" && node.node.getChild("WikiLinkAlias") !== null;
@@ -136,12 +141,13 @@ export function hidden(state: EditorState, from: number, to: number, ranges = st
 				if (!marks.has(c.name) && !target) continue;
 				let end = c.to;
 				if (c.name === "HeaderMark" && state.doc.sliceString(end, end + 1) === " ") end++;
-				builder.add(c.from, end, hide);
+				out.push(hide.range(c.from, end));
 			}
-			return false;
+			// And on into it: the marks of what it holds are hidden by the same rule.
+			return;
 		},
 	});
-	return builder.finish();
+	return Decoration.set(out, true);
 }
 
 /**
@@ -176,8 +182,22 @@ function mirrorFocus(view: EditorView, alive: () => boolean) {
 	});
 }
 
-/** The selection ranges the markup answers to: none while the editor is not focused. */
-const editing = (state: EditorState): readonly SelectionRange[] => (state.field(focused, false) ?? true ? state.selection.ranges : []);
+/**
+ * Reading: the markup answers to nothing, so none of it is ever shown as it
+ * was written.
+ *
+ * The rule is one this file already makes — an editor nobody is in hides all
+ * of its markup — said for a view nobody can type in. A facet and not a
+ * second compartment, because which extensions are on does not change: the
+ * same three functions run, over no ranges. What refuses the changes is the
+ * state's own readOnly, set beside this (Editor.tsx); the two are what a
+ * read mode is.
+ */
+export const reading = Facet.define<boolean, boolean>({ combine: (values) => values[values.length - 1] ?? false });
+
+/** The selection ranges the markup answers to: none while reading, and none while the editor is not focused. */
+export const editing = (state: EditorState): readonly SelectionRange[] =>
+	state.facet(reading) ? [] : (state.field(focused, false) ?? true ? state.selection.ranges : []);
 
 /** The decorations in the visible lines, `hidden` and `inline` together, and the widgets among them for the cursor to step over. */
 function build(view: EditorView): { deco: DecorationSet; atoms: DecorationSet } {
@@ -517,6 +537,7 @@ function taskToggle(state: EditorState, pos: number): { from: number; to: number
 
 /** Tick or untick the task on the line of every cursor — each line once, however many cursors are on it. */
 export const toggleTask = (view: EditorView) => {
+	if (view.state.readOnly) return false;
 	const lines = new Set<number>();
 	const changes = [];
 	for (const r of view.state.selection.ranges) {
@@ -556,6 +577,9 @@ const blockLayer: Extension = [
 		mousedown(event, view) {
 			const el = event.target;
 			if (!(el instanceof HTMLInputElement) || !el.classList.contains("cm-task")) return false;
+			// The box is drawn while reading too; it is only pressed where the
+			// document can be changed.
+			if (view.state.readOnly) return true;
 			event.preventDefault();
 			const change = taskToggle(view.state, view.posAtDOM(el));
 			if (change) view.dispatch({ changes: change, userEvent: "input" });

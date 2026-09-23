@@ -16,6 +16,7 @@
  */
 import type { SpecInfo } from "../../protocol.ts";
 import type { TaskResult } from "../../specResults.ts";
+import type { Progress } from "../../specTasks.ts";
 
 /** One line of the list: a task's last run, and how many runs it has had. */
 export interface ResultLine extends TaskResult {
@@ -63,9 +64,51 @@ export function listOf(results: readonly TaskResult[], seen: string | null): Res
 	};
 }
 
-/** The button's words: `5 tasks`, and `2 new` beside it when there are. */
-export const tasksWords = (list: Pick<ResultsList, "tasks">): string => `${list.tasks} ${list.tasks === 1 ? "task" : "tasks"}`;
-export const freshWords = (list: Pick<ResultsList, "fresh">): string | null => (list.fresh > 0 ? `${list.fresh} new` : null);
+/**
+ * The button's words: the one thing about the tasks that changes what the
+ * person does next, and no more. A task running — `2.1 running` — is the
+ * whole of it. Else what waits on them — `1 in review · 3 to do`, the review
+ * in the text's own colour (`strong`) while any of it is not yet looked at.
+ * Else how far along — `2 of 5 done`, or `5 done` at the end. Set aside is
+ * not here: it changes nothing anybody does, and is in the list's head.
+ *
+ * `progress` is the server's reading of tasks.md (Progress); null with no
+ * tasks.md, when all there is to say is how many results there are.
+ */
+export function footWords(progress: Progress | null, { fresh, running }: { fresh: number; running: string | null }, list: Pick<ResultsList, "tasks">): { text: string; strong: string | null } {
+	if (running !== null) return { text: `${running} running`, strong: null };
+	if (!progress) return { text: `${list.tasks} ${list.tasks === 1 ? "task" : "tasks"}`, strong: null };
+	const left = progress.total - progress.cancelled;
+	if (progress.review.length > 0) {
+		const head = `${progress.review.length} in review`;
+		const todo = left - progress.done - progress.review.length;
+		return { text: todo > 0 ? `${head} · ${todo} to do` : head, strong: fresh > 0 ? head : null };
+	}
+	return { text: progress.done === left ? `${progress.done} done` : `${progress.done} of ${left} done`, strong: null };
+}
+
+/** The list's head: everything counted, set aside with the rest — `1 done · 1 in review · 1 set aside · 3 to do`. */
+export function headWords(progress: Progress, running: string | null): string {
+	const review = progress.review.length;
+	const todo = progress.total - progress.done - progress.cancelled - review - (running === null ? 0 : 1);
+	const parts = [`${progress.done} done`, running !== null && "1 running", review > 0 && `${review} in review`, progress.cancelled > 0 && `${progress.cancelled} set aside`, `${todo} to do`];
+	return parts.filter((part): part is string => typeof part === "string").join(" · ");
+}
+
+/**
+ * How a result was checked, as one mark: what the app ran outranks what the
+ * run said. `passed` and `failed` are the app's own checks — the repository's
+ * and the task's `_Done when:` (Verified trailer) — `said` is the agent's
+ * word that it checked something, `none` that nobody did. The one rule for
+ * the list at the foot of the window and for the row in the plan, so the two
+ * cannot mark one task two ways.
+ */
+export type CheckMark = "passed" | "failed" | "said" | "none";
+
+export function checkMark(result: Pick<TaskResult, "checks" | "verified">): CheckMark {
+	if (result.verified.length > 0) return result.verified.every((v) => v.exit === 0) ? "passed" : "failed";
+	return result.checks !== null ? "said" : "none";
+}
 
 /**
  * The task a commit is the result of, among the results the window already

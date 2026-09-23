@@ -9,7 +9,7 @@ import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/sea
 import { drawSelection, dropCursor, EditorView, keymap, placeholder } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-import { isSpec, specNameOf } from "../../../documentKinds.ts";
+import { isSpec, isTasks, specNameOf } from "../../../documentKinds.ts";
 import { choose, chosenStore } from "../chosen";
 import { linkCompletion } from "../features/linkCompletion";
 import { indentListItem, listBackspace, listEnter, outdentListItem } from "../features/listEdit";
@@ -19,7 +19,7 @@ import { authors, clearAuthors, paintAuthors, showAuthorsStore } from "../featur
 import { blocked as startBlocked, chrome as startChrome, onStart, running as startRunning } from "../features/taskStart";
 import { chipChrome, commits as taskCommits, onCommit, taskCommit } from "../features/taskCommit";
 import { forget as forgetMoves, observe as observeMoves, take as takeMoves } from "../features/moves";
-import { livePreview, toggleLivePreview, toggleTask } from "../features/livePreview";
+import { livePreview, reading, toggleLivePreview, toggleTask } from "../features/livePreview";
 import { leaveTextUp } from "../features/pageMove";
 import { properties, propertiesField } from "../features/properties";
 import { fromServer, serverChange } from "../features/origin";
@@ -42,6 +42,7 @@ import { inlineCodeTag, noteSyntax, subscriptTag, superscriptTag } from "../../.
 import { bodyStart, type Properties as PropertiesRead } from "../../../properties.ts";
 import { tagTag } from "../../../tag.ts";
 import { tagsIn, type Place } from "../../../links.ts";
+import type { Mode } from "../readMode";
 import type { Left } from "../nav";
 import type { Edit } from "../types";
 import type { Authored } from "../../../protocol.ts";
@@ -69,8 +70,26 @@ const AUTOSAVE_MS = 600;
  */
 const startRoom = new Compartment();
 
-/** Whether a path is the tasks document of a spec, which is the one with Starts. */
-const isTasks = (path: string): boolean => isSpec(path) && path.endsWith("/tasks.md");
+/**
+ * Reading, in a compartment: the same editor, with its markup answering to
+ * nothing and its document refusing changes (livePreview.ts). A compartment
+ * rather than a second editor, so that ⌘E keeps the scroll, the history and
+ * the text where they are — the file is not opened again, it is looked at
+ * differently.
+ */
+const readRoom = new Compartment();
+const READING: Extension = [
+	EditorState.readOnly.of(true),
+	reading.of(true),
+	// No caret: nothing is being written where it would blink. Words can still
+	// be chosen and ⌘F still finds them — a page that could not be quoted from
+	// would be a worse reading view than one that blinks.
+	// The long way round, as the selection's rule above: CodeMirror shows the
+	// caret through `&.cm-focused > .cm-scroller > .cm-cursorLayer .cm-cursor`,
+	// and a shorter selector loses to it.
+	EditorView.theme({ "&.cm-focused > .cm-scroller > .cm-cursorLayer .cm-cursor, .cm-dropCursor": { display: "none" } }),
+];
+const roomFor = (mode: Mode): Extension => (mode === "read" ? READING : []);
 
 /**
  * How much note there is, for the strip at the foot of the window.
@@ -227,6 +246,7 @@ const markup = HighlightStyle.define([
  */
 export function Editor({
 	path,
+	mode = "edit",
 	place = null,
 	left = null,
 	onLeave,
@@ -234,6 +254,8 @@ export function Editor({
 	onOpen,
 }: {
 	path: string;
+	/** Read or written (readMode.ts); the editor is the same one either way. */
+	mode?: Mode;
 	/** Where the link that opened this note pointed inside it, if anywhere. */
 	place?: Place | null;
 	/** Where this step of the way back was being read, if it was read before. */
@@ -264,6 +286,22 @@ export function Editor({
 	// below send is read from here, not captured at mount.
 	const at = useRef(path);
 	at.current = path;
+	// Which way it is being looked at, for the closures below and for the state
+	// this editor is made with.
+	const looking = useRef(mode);
+	looking.current = mode;
+	/**
+	 * The note as it stands with pi's undecided changes put back, when there
+	 * are any: what the diff is against. Kept because reading puts the diff
+	 * away — a chunk kept or dropped is a change to the file, and reading makes
+	 * none — and leaving reading has to put it back without asking again.
+	 */
+	const original = useRef<string | null>(null);
+	/** The diff, where there is one to decide about and somewhere to decide it. */
+	const diffEffect = (from: string | null) => {
+		original.current = from;
+		return diffFor(looking.current === "read" ? null : from);
+	};
 	// The version on disk the doc was read from, the save in flight, and whether
 	// the doc has moved past what is saved. Refs: they change on every keystroke.
 	const base = useRef<number | null>(null);
@@ -401,6 +439,9 @@ export function Editor({
 			wrapSelection,
 			// Start beside each task still to do, on a spec's tasks.md only.
 			startRoom.of([]),
+			// Read or written, from the first paint: a note that opens read must
+			// not be editable for the moment before an effect says so.
+			readRoom.of(roomFor(looking.current)),
 		];
 		const state = EditorState.create({
 			doc: "",
@@ -429,7 +470,11 @@ export function Editor({
 					// them, which is Tab's work and done above.
 					{ key: "Mod-[", run: () => true },
 					{ key: "Mod-]", run: () => true },
-					{ key: "Mod-e", run: toggleLivePreview },
+					// ⌘E is reading and writing, as in Obsidian, and it is the
+					// window's (App.tsx) so it works wherever the focus is. Showing
+					// the markup as it was written is the older, rarer thing, and
+					// moves one key along.
+					{ key: "Alt-Mod-e", run: toggleLivePreview },
 					{ key: "Mod-b", run: toggleBold },
 					{ key: "Mod-i", run: toggleItalic },
 					// On a list item, the item is the unit: it nests, splits and ends
@@ -477,7 +522,7 @@ export function Editor({
 				EditorView.updateListener.of((u) => {
 					if (held.current.length > 0 && !u.view.composing) releaseHeld();
 					// What the selection covers of a spec's tasks, for the bar over
-					// them (TaskBar) — a cursor is its line's task: the bar is the one
+					// them (RunActions) — a cursor is its line's task: the bar is the one
 					// way to run, since the Start beside each line was turned off
 					// (two ways to run is "which one?" — spec-mode.md 6절).
 					if (u.selectionSet || u.docChanged) {
@@ -567,6 +612,13 @@ export function Editor({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [online, path]);
 
+	// Read or written. What is typed on the way out of reading is nothing, so
+	// there is nothing to save here; the diff goes and comes back with the
+	// mode, against the "before" the note last brought.
+	useEffect(() => {
+		view.current?.dispatch({ effects: [readRoom.reconfigure(roomFor(mode)), diffFor(mode === "read" ? null : original.current)] });
+	}, [mode]);
+
 	// The Starts beside a spec's tasks: on tasks.md only, pressable when the
 	// command can be sent (specRun.ts), and pressing sends it — the same as
 	// typing it. "Starting…" holds from the press until the agent is seen to
@@ -626,14 +678,14 @@ export function Editor({
 				// The task being run, when it is this spec's: its Start turns.
 				startRunning.of(config?.run?.spec === spec ? config.run.task : null),
 				onStart.of((number) => {
-					// On what the bar over the tasks chose (TaskBar), if anything.
+					// On what the header of the tasks chose (RunActions), if anything.
 					const on = runOnOf(runOn, spec);
 					send(runMessage(spec, [number], on ? { model: on.model, effort: on.level } : {}));
 					setStarting(number);
 				}),
 			]),
 		});
-	}, [path, online, streaming, config?.isCompacting, config?.run, commands, specs, starting, runOn]);
+	}, [path, mode, online, streaming, config?.isCompacting, config?.run, commands, specs, starting, runOn]);
 	// Gone from the page, the selection covers nothing.
 	useEffect(() => () => pickTasks(null), []);
 
@@ -662,7 +714,7 @@ export function Editor({
 			case "saved":
 				if (!decision.dirty) {
 					settle(note.text, note.modified, log?.lines ?? null);
-					v.dispatch({ effects: diffFor(log?.original ?? null) });
+					v.dispatch({ effects: diffEffect(log?.original ?? null) });
 					onDisk(note.text, log?.authored);
 				} else {
 					// The echo of the save; what was typed since is still owed.
@@ -673,13 +725,13 @@ export function Editor({
 					sent.current = null;
 					dirty.current = !local.current.empty;
 					setStatus(dirty.current ? "unsaved" : "saved");
-					v.dispatch({ effects: diffFor(log?.original ?? null) });
+					v.dispatch({ effects: diffEffect(log?.original ?? null) });
 					onDisk(note.text, log?.authored);
 				}
 				return;
 			case "same":
 				settle(note.text, note.modified, log?.lines ?? null);
-				v.dispatch({ effects: diffFor(log?.original ?? null) });
+				v.dispatch({ effects: diffEffect(log?.original ?? null) });
 				onDisk(note.text, log?.authored);
 				return;
 			case "replace": {
@@ -693,7 +745,7 @@ export function Editor({
 					changes: { from: 0, to: v.state.doc.length, insert: note.text },
 					annotations: serverChange,
 					selection: back ?? { anchor: first ? bodyStart(note.text) : Math.min(v.state.selection.main.head, note.text.length) },
-					effects: diffFor(log?.original ?? null),
+					effects: diffEffect(log?.original ?? null),
 				});
 				if (back) scrollBack(was.current!, v, page.current);
 				forgetMoves();
@@ -803,12 +855,12 @@ export function Editor({
 			sent.current = null;
 			dirty.current = !local.current.empty;
 			setStatus(dirty.current ? "unsaved" : "saved");
-			v.dispatch({ effects: diffFor(changed.original ?? null) });
+			v.dispatch({ effects: diffEffect(changed.original ?? null) });
 			onDisk(text, changed.authored);
 			return;
 		}
 		if (!dirty.current) {
-			v.dispatch({ changes: theirs, annotations: serverChange, effects: diffFor(changed.original ?? null) });
+			v.dispatch({ changes: theirs, annotations: serverChange, effects: diffEffect(changed.original ?? null) });
 			settle(text, changed.modified, changed.lines);
 			onDisk(text, changed.authored);
 			return;
@@ -819,7 +871,7 @@ export function Editor({
 			return;
 		}
 		// Their change, around the typing; the typing, over their text.
-		v.dispatch({ changes: fit.theirs, annotations: serverChange, effects: diffFor(changed.original ?? null) });
+		v.dispatch({ changes: fit.theirs, annotations: serverChange, effects: diffEffect(changed.original ?? null) });
 		saved.current = text;
 		base.current = changed.modified;
 		lines.current = changed.lines;
@@ -940,7 +992,7 @@ export function Editor({
 			    hides. Not before the text is here — an empty note is not a note with
 			    no properties yet — and not on a spec, which is in none of the lists
 			    properties are for and is written in a form of its own. */}
-			{status !== "loading" && !isSpec(path) && <Properties view={view.current} read={read} />}
+			{status !== "loading" && !isSpec(path) && mode === "edit" && <Properties view={view.current} read={read} />}
 			{status === "gone" && (
 				<div role="alert" className="sticky top-0 z-10 flex items-center gap-2 bg-muted px-4 py-2 text-xs">
 					<span className="flex-1">This note is no longer on disk. What is here is the only copy.</span>

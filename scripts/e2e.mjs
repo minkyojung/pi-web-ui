@@ -634,7 +634,7 @@ check("no drag region covers a control of one drawn before it, with the list of 
 	await folded(false);
 });
 
-check("a heading's marks are hidden until the cursor is on it, and ⌘E shows them all", async ({ app }) => {
+check("a heading's marks are hidden until the cursor is on it, and ⌥⌘E shows them all", async ({ app }) => {
 	// The cursor is on the first line after opening; move it off the heading.
 	await app.evaluate(`(() => { const box = document.querySelector('#editor .cm-content'); box.focus(); const v = box.cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
 	await until("the # to be hidden", async () => !(await shownText(app)).includes("# first") && (await shownText(app)).includes("first"));
@@ -642,10 +642,43 @@ check("a heading's marks are hidden until the cursor is on it, and ⌘E shows th
 	await until("the # to be back under the cursor", async () => (await shownText(app)).includes("# first"));
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); })()`);
 	await until("hidden again", async () => !(await shownText(app)).includes("# first"));
-	await app.press("e", { meta: true });
+	await app.press("e", { meta: true, alt: true });
 	await until("source mode", async () => (await shownText(app)).includes("# first"));
-	await app.press("e", { meta: true });
+	await app.press("e", { meta: true, alt: true });
 	await until("live preview again", async () => !(await shownText(app)).includes("# first"));
+});
+
+// The other half of ⌘E's old key: the file in front, read rather than written.
+// The same editor — the scroll, the history and the text stay — with its
+// markup answering to nothing and its document refusing every change.
+check("⌘E reads the note instead of writing in it: nothing can be typed, the marks stay hidden, and the name is fixed", async ({ app }) => {
+	const readonly = () => app.evaluate("document.querySelector('#editor .cm-content').getAttribute('aria-readonly')");
+	const cursorHome = () => app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 0 } }); })()`);
+	assert.equal(await readonly(), null, "a note opens ready to be written in");
+	assert.equal(await app.evaluate("document.getElementById('title').readOnly"), false);
+
+	const before = await editorText(app);
+	await app.press("e", { meta: true });
+	await until("the file being read", async () => (await readonly()) === "true");
+	assert.equal(await app.evaluate("document.querySelector('#toggleMode').getAttribute('aria-label')"), "Write in this file");
+	// The cursor on the heading: in writing that shows its marks, and here it does not.
+	await cursorHome();
+	assert.equal((await shownText(app)).includes("# first"), false, "the marks stay hidden under the cursor");
+	assert.equal(await app.evaluate("document.getElementById('title').readOnly"), true, "and the name is not changed here");
+	// Typed at: the browser inserts, the editor throws it away, and the file is as it was.
+	await type(app, "NOTTYPED ");
+	assert.equal(await editorText(app), before, "nothing typed reaches the document");
+
+	// Back, and it is the same editor rather than the file opened again.
+	await app.press("e", { meta: true });
+	await until("the editor again", async () => (await readonly()) === null);
+	assert.equal(await app.evaluate("document.querySelector('#toggleMode').getAttribute('aria-label')"), "Read this file");
+	assert.equal(await type(app, "TYPEDBACK "), true);
+	await until("the typing in the document", async () => (await editorText(app)).includes("TYPEDBACK"));
+	// Put back for the checks after this one, which read this note.
+	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf("TYPEDBACK "); v.dispatch({ changes: { from: at, to: at + "TYPEDBACK ".length } }); })()`);
+	await until("the note as it was", async () => (await editorText(app)) === before && (await editorStatus(app)) === "saved");
+	await cursorHome();
 });
 
 check("a selection is drawn as wide as the words, and shows marks only while the editor has focus", async ({ app }) => {
@@ -2231,7 +2264,7 @@ check("==words== are washed with colour, their marks hidden off the cursor", asy
 	await until("the marks back under the cursor", async () => (await shownText(app)).includes("==hi=="));
 });
 
-check("a note's front matter is hidden, out of the cursor's reach, shown by ⌘E, and the note opens under it", async ({ app, cwd }) => {
+check("a note's front matter is hidden, out of the cursor's reach, shown by ⌥⌘E, and the note opens under it", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "props.md"), "---\ntags: [x]\n---\n\n# body\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="props.md"]')`));
 	await app.evaluate(`document.querySelector('#notes button[data-path="props.md"]').click()`);
@@ -2247,9 +2280,9 @@ check("a note's front matter is hidden, out of the cursor's reach, shown by ⌘E
 	await app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; v.dispatch({ selection: { anchor: 0 } }); })()`);
 	assert.equal(await head(), 18, "the cursor is kept under the block");
 	assert.ok(!(await shownText(app)).includes("tags"), "still hidden");
-	await app.press("e", { meta: true });
+	await app.press("e", { meta: true, alt: true });
 	await until("the source", async () => (await shownText(app)).includes("---tags: [x]---") && (await shownText(app)).includes("# body"));
-	await app.press("e", { meta: true });
+	await app.press("e", { meta: true, alt: true });
 	assert.equal(readFileSync(join(cwd, "props.md"), "utf8"), "---\ntags: [x]\n---\n\n# body\n", "the file is untouched");
 });
 
@@ -3315,6 +3348,7 @@ check("a spec opens in the editor by its address, keeps no record of who wrote i
 	// What a note carries at its head and at the foot of the window, for the
 	// comparison below: a spec carries neither.
 	assert.equal(await app.evaluate("!!document.getElementById('add-property')"), true, "a note is offered properties");
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-content').getAttribute('aria-readonly')"), null, "and opens ready to be written in");
 	assert.equal(await app.evaluate("!!document.getElementById('count')"), true, "and its length is in the strip");
 
 	const path = ".octave/specs/e2e/requirements.md";
@@ -3340,6 +3374,12 @@ check("a spec opens in the editor by its address, keeps no record of who wrote i
 	assert.ok(items.includes("Copy path") && !items.includes("Rename") && !items.includes("Delete"), `the spec's items, got ${items.join()}`);
 	await app.press("Escape");
 	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
+
+	// A spec opens read: it is the agent's writing, put in front to be judged.
+	// Correcting it is a key away, and this is that key.
+	assert.equal(await app.evaluate("document.querySelector('#editor .cm-content').getAttribute('aria-readonly')"), "true", "a spec opens read");
+	await app.press("e", { meta: true });
+	await until("the spec open for writing", async () => (await app.evaluate("document.querySelector('#editor .cm-content').getAttribute('aria-readonly')")) === null);
 
 	// Typed: down to the disk, and no log beside it.
 	assert.equal(await type(app, "TYPED "), true);
@@ -3435,6 +3475,47 @@ check("the spec at the start of the row names what is waiting, opens its documen
 });
 
 // Approved to the end, the control says how far the tasks have got — read off
+
+
+// The plan, read: the document as the editor draws it, with what it cannot
+// say of itself drawn over its lines — each box the task's standing, a
+// heading's count of what is done under it, the two keys stepped back.
+check("a spec's tasks.md opens as the list of its tasks: each row its standing, a heading its count, and ⌘E the markdown", async ({ app, cwd }) => {
+	const dir = join(cwd, ".octave/specs/tree");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
+	writeFileSync(join(dir, "design.md"), "# Design\n");
+	writeFileSync(
+		join(dir, "tasks.md"),
+		"# The plan\n\nA line on what it is for.\n\n- [x] 1. First\n  - web/a.ts\n  - _Requirements: 1.1_\n  - _Done when: `npm test -- a` passes_\n\n## Later\n\n- [ ] 2. Heading\n- [x] 2.1 Second\n- [ ] 2.2 Third\n- [ ] 3. Fourth\n",
+	);
+	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
+	// The spec was written a moment ago, and a document that has just started
+	// waiting comes to the front by itself (specTabs.ts): the approvals landed
+	// before the watcher spoke, but if it speaks in two breaths the first opens
+	// the requirements over this. So the address is held to, as a person would
+	// click the tab again.
+	const want = "#.octave/specs/tree/tasks.md";
+	await app.evaluate(`location.hash = ${JSON.stringify(want)}`);
+	const standings = () => app.evaluate("[...document.querySelectorAll('#tasks [data-task]')].map((r) => r.dataset.task + ':' + r.dataset.standing)");
+	await until("the plan drawn", () => app.evaluate(`(() => { if (decodeURIComponent(location.hash) !== ${JSON.stringify(want)}) { location.hash = ${JSON.stringify(want)}; return false; } return document.querySelectorAll('#tasks [data-task]').length === 5; })()`));
+	assert.deepEqual(await standings(), ["1:done", "2:todo", "2.1:done", "2.2:todo", "3:todo"]);
+	assert.match(await app.evaluate("document.getElementById('next')?.textContent ?? ''"), /next is 2\.2/, "which runs next is the run's line, not a mark on a row");
+	assert.equal(await app.evaluate("document.querySelector('#tasks [data-task=\"2\"]').textContent.includes('1 / 2')"), true, "a heading counts its sub-tasks, on its own row");
+	assert.equal(await app.evaluate("[...document.querySelectorAll('#tasks h3')].map((h) => h.textContent).join(',')"), "Later", "the plan's heading is the group's");
+	assert.equal(await app.evaluate("!!document.querySelector('#editor .cm-content')"), false, "the list, not the editor");
+	// A row opens to what it involves and what proves it — its marks off.
+	await app.evaluate("document.querySelector('#tasks [data-task=\"1\"]').click()");
+	await until("the row open", () => app.evaluate("document.getElementById('tasks').textContent.includes('web/a.ts')"));
+	assert.equal(await app.evaluate("document.getElementById('tasks').textContent.includes('`')"), false, "no marks shown");
+	await app.shot("tasks-plan");
+	// ⌘E: the plain document, boxes and all; ⌘E again, the list.
+	await app.press("e", { meta: true });
+	await until("the plain document", () => app.evaluate("!!document.querySelector('#editor .cm-content') && document.querySelectorAll('#editor .cm-task').length === 5"));
+	await app.press("e", { meta: true });
+	await until("the list again", () => app.evaluate("document.querySelectorAll('#tasks [data-task]').length === 5"));
+});
+
 // tasks.md by the server, so a box checked on disk moves it.
 check("the spec at the start of the row says how far its tasks have got once all three documents are approved", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/count");
@@ -3450,6 +3531,9 @@ check("the spec at the start of the row says how far its tasks have got once all
 	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
 	// With none waiting, the control names the spec being read: this one, opened.
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/count/tasks.md")}`);
+	await until("the list", () => app.evaluate("!!document.querySelector('#tasks [data-task]')"));
+	// The markdown, as these work on the editor: ⌘E.
+	await app.press("e", { meta: true });
 	await until("the plan in front", async () => (await editorText(app)).includes("Heading"));
 	const button = () => app.evaluate("document.getElementById('spec')?.textContent ?? ''");
 	await until("the count", async () => (await button()).includes("count") && (await button()).includes("0 / 4"));
@@ -3468,7 +3552,7 @@ check("the spec at the start of the row says how far its tasks have got once all
 
 // A task is run from the bar over its document: the cursor on its line is
 // enough, and the Start that used to stand beside each line is off.
-check("a spec's task is run from the bar over the document: the cursor's line is the task, a heading is its sub-tasks still to do, and pressing runs it", async ({ app, cwd }) => {
+check("a spec's task is run from the document's header: the cursor's line is the task, a heading is its sub-tasks still to do, and pressing runs it", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/start");
 	mkdirSync(dir, { recursive: true });
 	const plan = (first) => `# Tasks\n\n- [${first}] 1. First\n- [ ] 2. Heading\n- [x] 2.1 Second\n- [ ] 2.2 Third\n`;
@@ -3477,6 +3561,9 @@ check("a spec's task is run from the bar over the document: the cursor's line is
 	writeFileSync(join(dir, "tasks.md"), plan(" "));
 	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/start/tasks.md")}`);
+	await until("the list", () => app.evaluate("!!document.querySelector('#tasks [data-task]')"));
+	// The markdown, as these work on the editor: ⌘E.
+	await app.press("e", { meta: true });
 	await until("the plan in front", async () => (await editorText(app)).includes("Heading"));
 	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-start').length"), 0, "no Start beside the lines");
 	const cursorOn = (word) => app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf(${JSON.stringify(word)}); v.dispatch({ selection: { anchor: at } }); })()`);
@@ -3503,26 +3590,22 @@ check("a spec's task is run from the bar over the document: the cursor's line is
 });
 
 // What the tasks run on is chosen once, over the list, and rides with each Start.
-check("a bar over a spec's tasks chooses what they run on, and a Start takes the choice with it", async ({ app, cwd, api }) => {
+check("the header of a spec's tasks chooses what they run on, and a Start takes the choice with it", async ({ app, cwd, api }) => {
 	const dir = join(cwd, ".octave/specs/runon");
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
 	writeFileSync(join(dir, "design.md"), "# Design\n");
 	writeFileSync(join(dir, "tasks.md"), "# Tasks\n\n- [ ] 1. First\n- [ ] 2. Second\n");
-	// The first two approved, the tasks waiting: the list opens by itself as
-	// the document waiting (specTabs.ts), with the approval's line over it
-	// and not this one — the bar is for running, and nothing runs before the
-	// approvals are done.
-	for (const name of readdirSync(join(cwd, ".octave/specs"))) if (name !== "runon") while (approve(cwd, name)) {}
-	approve(cwd, "runon");
-	approve(cwd, "runon");
+	// The two approved and the tasks written: the list opens by itself, as a
+	// document waiting does (specTabs.ts) — the tasks are not approved, they
+	// are read and run — with the run's bar over it.
+	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
+	await until("the list", () => app.evaluate("!!document.querySelector('#tasks [data-task]')"));
+	// The markdown, as these work on the editor: ⌘E.
+	await app.press("e", { meta: true });
 	await until("the plan in front", async () => (await editorText(app)).includes("Second"));
-	await until("the approval's line", () => app.evaluate("!!document.getElementById('specBar')"));
-	assert.equal(await app.evaluate("!!document.getElementById('taskBar')"), false, "no bar before the approvals");
-	approve(cwd, "runon");
-	await until("the bar", () => app.evaluate("!!document.getElementById('taskBar')"));
-	const bar = () => app.evaluate("document.getElementById('taskBar')?.textContent ?? ''");
-	assert.match(await bar(), /the session's model/, "nothing chosen yet: the session's");
+	await until("the picker in the header", () => app.evaluate("!!document.getElementById('runOn')"));
+	const bar = () => app.evaluate("document.getElementById('runOn')?.textContent ?? ''");
 	// Chosen: a model pi offers that is not the session's. The picker reports
 	// it to the bar and sets nothing — the message box's model is as it was.
 	const models = await (await fetch(`http://localhost:${api}/api/models`)).json();
@@ -3535,7 +3618,7 @@ check("a bar over a spec's tasks chooses what they run on, and a Start takes the
 	const other = models.find((m) => offered.some((text) => text.includes(m.name)) && !sessionModel.includes(m.name));
 	assert.ok(other, `a second model to choose among ${offered.join(", ")}`);
 	await app.evaluate(`[...document.querySelectorAll('[role=menuitemradio]')].find((i) => i.textContent.includes(${JSON.stringify(other.name)})).click()`);
-	await until("the choice on the bar", async () => (await bar()).includes(other.name) && !(await bar()).includes("session's model"));
+	await until("the choice on the picker", async () => (await bar()).includes(other.name));
 	assert.equal(await app.evaluate("document.getElementById('model')?.textContent ?? ''"), sessionModel, "the session's model is not touched");
 	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
 	await app.shot("task-bar");
@@ -3553,7 +3636,7 @@ check("a bar over a spec's tasks chooses what they run on, and a Start takes the
 });
 
 // Several tasks as one run: the selection says which, the bar runs them.
-check("tasks a selection covers are offered as one run over the list, by their numbers, and run in one command", async ({ app, cwd }) => {
+check("tasks a selection covers are offered as one run in the header, by their numbers, and run in one command", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/picked");
 	mkdirSync(dir, { recursive: true });
 	const plan = "# Tasks\n\n- [ ] 1. First\n- [ ] 2. Heading\n- [x] 2.1 Second\n- [ ] 2.2 Third\n- [ ] 3. Fourth\n";
@@ -3562,8 +3645,12 @@ check("tasks a selection covers are offered as one run over the list, by their n
 	writeFileSync(join(dir, "tasks.md"), plan);
 	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/picked/tasks.md")}`);
+	// The list, or — on a second try, the mode being the path's for the window's
+	// life — the editor this check left it in. The markdown is what it works on.
+	await until("the plan", async () => (await app.evaluate("!!document.querySelector('#tasks [data-task]')")) || (await editorText(app)).includes("Fourth"));
+	if (await app.evaluate("!!document.querySelector('#tasks [data-task]')")) await app.press("e", { meta: true });
 	await until("the plan in front", async () => (await editorText(app)).includes("Fourth"));
-	await until("the bar", () => app.evaluate("!!document.getElementById('taskBar')"));
+	await until("the picker in the header", () => app.evaluate("!!document.getElementById('runOn')"));
 	const select = (from, to) => app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: ${from}, head: ${to} } })`);
 	// A cursor on the title, which is no task: nothing is offered.
 	await select(0, 0);
@@ -3579,6 +3666,9 @@ check("tasks a selection covers are offered as one run over the list, by their n
 	await app.shot("task-picked");
 	// Pressed: the one command, the numbers on it, as the person would have typed it.
 	await app.evaluate("(() => { const send = WebSocket.prototype.send; window.__sent = []; WebSocket.prototype.send = function (data) { window.__sent.push(String(data)); return send.call(this, data); }; })()");
+	// Pressable: Run stays off for a few seconds after a press that started
+	// nothing, and the check before this one pressed it.
+	await until("the run pressable", () => app.evaluate("(() => { const b = document.getElementById('runPicked'); return !!b && !b.disabled; })()"));
 	await app.click("#runPicked");
 	await until("the line sent", () => app.evaluate("window.__sent.some((d) => d.includes('/spec-run picked '))"));
 	assert.equal(await app.evaluate("JSON.parse(window.__sent.find((d) => d.includes('/spec-run picked '))).text"), "/spec-run picked 1 2 3", "2 for all of it; the command unfolds it");
@@ -3901,6 +3991,9 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	writeFileSync(join(dir, "tasks.md"), "- [ ] 1. Add the door\n- [ ] 2. Hang the sign\n");
 	for (const name of readdirSync(join(cwd, ".octave/specs"))) while (approve(cwd, name)) {}
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/came/tasks.md")}`);
+	await until("the list", () => app.evaluate("!!document.querySelector('#tasks [data-task]')"));
+	// The markdown, as these work on the editor: ⌘E.
+	await app.press("e", { meta: true });
 	await until("the plan in front", async () => (await editorText(app)).includes("Hang the sign"));
 	assert.equal(await app.evaluate("!!document.getElementById('results')"), false, "nothing to say before a task has been run");
 
@@ -3915,11 +4008,11 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	};
 	task("1", "Add the door", "door.js", "export const door = 1;\n", "npm test — 4 passed");
 	const button = () => app.evaluate("document.getElementById('results')?.innerText.replace(/\\s+/g, ' ') ?? ''");
-	await until("the first result", async () => (await button()).includes("1 task · 1 new"));
+	await until("the first result", async () => (await button()).includes("1 of 2 done"));
 	// The second's check the app ran, and it failed: the one cross in the list.
 	const second = task("2", "Hang the sign", "sign.js", "export const sign = 1;\nexport const hung = true;\n", "none", "npm test -- sign — exit 1");
 	const again = task("1", "Add the door", "door.js", "export const door = 2;\n", "npm test — 5 passed");
-	await until("three runs, two tasks", async () => (await button()).includes("2 tasks · 2 new"));
+	await until("three runs, two tasks", async () => (await button()).includes("2 done"));
 
 	// In the plan itself, each task done says the commit it ended in at the end
 	// of its line — its last run's — drawn and not written: the file is as it was.
@@ -3963,7 +4056,7 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	await until("the commit's page", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(again)}`));
 	assert.equal(await app.evaluate("!!document.querySelector('[data-result]')"), false);
 	// Looked at: nothing is new, from whatever is in front — a commit's page here.
-	await until("nothing new", async () => (await button()) === "2 tasks");
+	await until("nothing new", async () => (await button()) === "2 done");
 	// The commit's tab is called by its task, not by its hash — read off the
 	// results the window already has — and every tab is one width, so a long
 	// name is cut rather than the row going ragged.
@@ -4000,24 +4093,24 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	await until("the other task's commit", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(second)}`));
 });
 
-// The other place the answer can be given: over the document being read.
-check("a document waiting for approval says so above itself, and the line goes once it is approved", async ({ app, cwd }) => {
+// The other place the answer can be given: in the header of the document being read.
+check("a document waiting for approval has Approve in its header, and it goes once it is approved", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/bar");
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(join(dir, "requirements.md"), "# Requirements\n\nBARWORD\n");
-	await until("the document in front with its line", async () => (await editorText(app)).includes("BARWORD") && (await app.evaluate("!!document.getElementById('specBar')")));
-	assert.match(await app.evaluate("document.getElementById('specBar').textContent"), /Requirements waiting for your approval/);
+	await until("the document in front with its button", async () => (await editorText(app)).includes("BARWORD") && (await app.evaluate("!!document.getElementById('approveSpec')")));
+	assert.match(await app.evaluate("document.getElementById('approveSpec').getAttribute('aria-label')"), /Requirements waiting for your approval/);
 
 	// About the document in front, not about the folder: on a note, nothing.
 	await pickNote(app, "first.md");
-	await until("the line gone", async () => !(await app.evaluate("!!document.getElementById('specBar')")));
+	await until("the button gone", async () => !(await app.evaluate("!!document.getElementById('approveSpec')")));
 
-	// Back to it, and answered from the line itself.
+	// Back to it, and answered from the header itself.
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/bar/requirements.md")}`);
 	await until("the button ready", () => app.evaluate("document.getElementById('approveSpec')?.disabled === false"));
 	assert.equal(await app.click("#approveSpec"), true);
 	await until("the record on disk", () => existsSync(join(dir, "approvals.json")));
-	await until("the line gone once it is approved", async () => !(await app.evaluate("!!document.getElementById('specBar')")));
+	await until("the button gone once it is approved", async () => !(await app.evaluate("!!document.getElementById('approveSpec')")));
 });
 
 check("the bench renders every scenario it knows", async ({ bench }) => {

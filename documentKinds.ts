@@ -44,6 +44,8 @@ export const SPECS_DIR = `${OCTAVE_DIR}/specs/`;
  * here with the rest of what both ends must agree on.
  */
 export const SPEC_DOCS = ["requirements.md", "design.md", "tasks.md"] as const;
+/** The two that wait for the person's approval before the next is written. The tasks are not approved: they are run, and running one is the person's word on it. */
+export const APPROVED_DOCS = ["requirements.md", "design.md"] as const;
 export type SpecDoc = (typeof SPEC_DOCS)[number];
 
 /** That record's name, in the spec's folder beside the documents. */
@@ -66,6 +68,9 @@ function specParts(path: string): string[] | null {
  * Read off the name, as documentType is; what the disk says is specAt's.
  */
 export const isSpec = (path: string): boolean => specParts(path) !== null && path.endsWith(".md");
+
+/** Whether a path is a spec's tasks document: the one with boxes, which the window can read as a plan (taskTree.ts) and which runs are read off. */
+export const isTasks = (path: string): boolean => isSpec(path) && path.endsWith("/tasks.md");
 
 /** The spec a path belongs to — the folder under SPECS_DIR it is in — or null. */
 export function specNameOf(path: string): string | null {
