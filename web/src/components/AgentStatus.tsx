@@ -121,7 +121,7 @@ function Line({ bare = false }: { bare?: boolean }) {
 				</Badge>
 			)}
 			<span key={`${line.what} ${line.detail}`} className="step-in flex min-w-0 items-center gap-1.5">
-				<span className="shrink-0 text-foreground/80">{line.what}</span>
+				<span className="shrink-0 text-subtle-foreground">{line.what}</span>
 				{line.detail && <span className="min-w-0 truncate">{line.detail}</span>}
 			</span>
 			{/* Behind the step rather than beside the box they were typed in: what

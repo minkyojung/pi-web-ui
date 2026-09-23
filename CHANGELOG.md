@@ -33,6 +33,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - The agent is told which branch this workspace was started from, so a diff, a rebase or a pull request it makes is against that branch.
 ### Changed
 - Sentences you read are a step brighter than the grey of a timestamp or a label: the description under a dialog's title or a setting, a sign-in's instructions, what the agent was thinking once you open it, a message waiting its turn, a search hit's line. Before, they were the same grey as everything you only glance at, so the words that explain did not stand out from the ones that don't.
+- The names in a note's folded properties — `status`, `tags` — are in a grey you can read. They were faded below it, to less contrast than any text is owed.
 
 ## [0.0.8] - 2026-09-22
 ### Added

@@ -126,7 +126,7 @@ export function ToolRow({ item }: { item: Item }) {
 				    the same account of what happened, not a footnote under it. The
 				    step down to a quieter row is made in colour alone — the name a
 				    shade off full contrast, the detail a shade further. */}
-				<span className="shrink-0 text-sm font-normal text-foreground/80">{item.name}</span>
+				<span className="shrink-0 text-sm font-normal text-subtle-foreground">{item.name}</span>
 				{detail && <span className="min-w-0 flex-1 truncate font-mono text-sm text-muted-foreground">{detail}</span>}
 				{/* What the row is not showing, next to what it is: a result that
 				    was cut short, or a search that stopped where it was told to. */}

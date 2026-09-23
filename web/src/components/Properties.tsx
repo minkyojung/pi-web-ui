@@ -190,7 +190,7 @@ function Summary({ items, onOpen }: { items: Pair[]; onOpen: () => void }) {
 					const value = toPlain(pair.value);
 					return (
 						<span key={name} className="flex shrink-0 items-center gap-1.5" data-said={name}>
-							<span className="text-xs opacity-60">{name}</span>
+							<span className="text-xs text-muted-foreground">{name}</span>
 							{Array.isArray(value) ? (
 								value.map((item, i) => (
 									<Badge key={`${String(item)}-${i}`} variant="secondary" className="font-normal">
@@ -198,7 +198,7 @@ function Summary({ items, onOpen }: { items: Pair[]; onOpen: () => void }) {
 									</Badge>
 								))
 							) : (
-								<span className="text-foreground/70">{asText(value) || "—"}</span>
+								<span className="text-subtle-foreground">{asText(value) || "—"}</span>
 							)}
 						</span>
 					);
