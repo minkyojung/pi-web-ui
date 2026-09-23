@@ -48,7 +48,7 @@ export function TabChip({
 	return (
 		<div
 			ref={ref}
-			className={cn("group/tab flex-none justify-start select-none", size === "sm" ? "h-6 max-w-32 gap-1 pr-0.5 pl-2 text-[11px] font-normal" : "w-48 pr-1 pl-3", className)}
+			className={cn("group/tab flex-none justify-start select-none", size === "sm" ? "h-6 max-w-32 gap-1 pr-0.5 pl-2 text-[10.5px] font-light data-[state=active]:text-subtle-foreground" : "w-48 pr-1 pl-3", className)}
 			{...rest}
 			// The wheel button: Radix already stops its default on mousedown.
 			onAuxClick={(e) => {
