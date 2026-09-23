@@ -34,7 +34,7 @@ import { Button } from "./ui/button";
  * with the numbers on it; they run one after another, each as the one
  * before it is committed (spec.ts).
  *
- * Outside the page rather than in it, so
+ * Outside the page rather than in it, like the approval's line (SpecBar), so
  * it does not scroll away from a long list.
  */
 export function TaskBar({ path }: { path: string | null }) {

@@ -38,7 +38,7 @@ const Code = lazy(() => import("./components/Code"));
 const Commit = lazy(() => import("./components/Commit"));
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
-import { ApproveButton } from "./components/ApproveButton";
+import { SpecBar } from "./components/SpecBar";
 import { TaskBar } from "./components/TaskBar";
 import { SpecButton } from "./components/SpecButton";
 import { bump, forget, readRecent, writeRecent } from "./recent";
@@ -633,7 +633,11 @@ export function App() {
 					    offers what can be done to a file, which is to find it, not to
 					    rename it (noteActions.ts). A PDF is left out: its viewer
 					    reaches the top of the column, and the words there are its own. */}
-					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} onOpen={setOpen} trailing={<><ApproveButton path={note} />{note && <ModeToggle mode={mode} onSwitch={() => switchMode(note)} />}<PiToggle open={piOpen} onToggle={togglePi} /></>} />
+					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} onOpen={setOpen} trailing={<>{note && <ModeToggle mode={mode} onSwitch={() => switchMode(note)} />}<PiToggle open={piOpen} onToggle={togglePi} /></>} />
+					{/* Under the header and over the page, so it stays while a long
+					    document scrolls — and `note` is null for anything that is not
+					    a note or a spec, which keeps it off a PDF and off a page. */}
+					<SpecBar path={note} />
 					{/* And over a spec's tasks, what they run on — the one setting
 					    the running of them has. */}
 					<TaskBar path={note} />
