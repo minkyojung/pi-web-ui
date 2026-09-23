@@ -92,7 +92,7 @@ export function listOf(text: string, { results, running }: { results: readonly T
 /** The groups a list falls into by standing, in the order a person works: what is running, what waits on them, what is to do, what is done, what was set aside. */
 export const GROUPS: { title: string; of: Standing[] }[] = [
 	{ title: "In progress", of: ["running"] },
-	{ title: "Review", of: ["review"] },
+	{ title: "In Review", of: ["review"] },
 	{ title: "To do", of: ["next", "todo"] },
 	{ title: "Done", of: ["done"] },
 	{ title: "Set aside", of: ["cancelled"] },

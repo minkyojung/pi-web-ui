@@ -4004,11 +4004,11 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	};
 	task("1", "Add the door", "door.js", "export const door = 1;\n", "npm test — 4 passed");
 	const button = () => app.evaluate("document.getElementById('results')?.innerText.replace(/\\s+/g, ' ') ?? ''");
-	await until("the first result", async () => (await button()).includes("1 task · 1 new"));
+	await until("the first result", async () => (await button()).includes("1 of 2 done"));
 	// The second's check the app ran, and it failed: the one cross in the list.
 	const second = task("2", "Hang the sign", "sign.js", "export const sign = 1;\nexport const hung = true;\n", "none", "npm test -- sign — exit 1");
 	const again = task("1", "Add the door", "door.js", "export const door = 2;\n", "npm test — 5 passed");
-	await until("three runs, two tasks", async () => (await button()).includes("2 tasks · 2 new"));
+	await until("three runs, two tasks", async () => (await button()).includes("2 done"));
 
 	// In the plan itself, each task done says the commit it ended in at the end
 	// of its line — its last run's — drawn and not written: the file is as it was.
@@ -4052,7 +4052,7 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	await until("the commit's page", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(again)}`));
 	assert.equal(await app.evaluate("!!document.querySelector('[data-result]')"), false);
 	// Looked at: nothing is new, from whatever is in front — a commit's page here.
-	await until("nothing new", async () => (await button()) === "2 tasks");
+	await until("nothing new", async () => (await button()) === "2 done");
 	// The commit's tab is called by its task, not by its hash — read off the
 	// results the window already has — and every tab is one width, so a long
 	// name is cut rather than the row going ragged.

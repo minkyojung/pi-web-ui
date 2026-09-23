@@ -56,9 +56,9 @@ test("a plan with no headings is one section with no title", () => {
 	assert.equal(listOf("# Nothing yet\n", { results: [], running: null }).sections.length, 0);
 });
 
-test("by standing: the same tasks under In progress, Review, To do, Done, Set aside — headings' own rows left out, empty groups too", () => {
+test("by standing: the same tasks under In progress, In Review, To do, Done, Set aside — headings' own rows left out, empty groups too", () => {
 	const list = listOf(PLAN.replace("- [ ] 1.", "- [x] 1."), { results: [result("2.1", 3)], running: null });
-	assert.deepEqual(byStatus(list).map((s) => [s.title, s.rows.map((r) => r.number)]), [["Review", ["2.1"]], ["To do", ["2.2", "3"]], ["Done", ["1"]], ["Set aside", ["4"]]]);
+	assert.deepEqual(byStatus(list).map((s) => [s.title, s.rows.map((r) => r.number)]), [["In Review", ["2.1"]], ["To do", ["2.2", "3"]], ["Done", ["1"]], ["Set aside", ["4"]]]);
 });
 
 test("what can be said of a task depends on where it stands, and each word is a command with the spec and the number", () => {
