@@ -9,9 +9,10 @@
  * — a dashed ring waits on something, a ring filling up is under
  * way — three quarters for in review, which is nearly there — and a filled
  * disc is over, a tick for done and a cross for set aside. Colour is on the
- * disc alone and says how far along: amber under way, green in review, the
- * theme's own for done (--status-*, styles.css); to do and set aside are the
- * page's grey. Running keeps the spinner: motion says it better than a fraction.
+ * disc alone and says how far along, in the window's own colours: the
+ * warning under way, the success in review, the accent for done (the
+ * status-* names are aliases of those, styles.css); to do and set aside are
+ * the page's grey. Running keeps the spinner: motion says it better than a fraction.
  */
 import { cn } from "cn";
 

@@ -62,7 +62,7 @@ function Row({ row, spec, started, canRun, why, onOpen, flat }: { row: ListRow; 
 							data-standing={row.standing}
 							className={cn(
 								"flex h-8 cursor-default items-center gap-2.5 rounded-md px-2 hover:bg-accent/50",
-								row.standing === "running" && "bg-amber-500/[0.06] hover:bg-amber-500/[0.09]",
+								row.standing === "running" && "bg-status-progress/[0.06] hover:bg-status-progress/[0.09]",
 								!flat && row.depth > 0 && "ml-6",
 							)}
 						>
