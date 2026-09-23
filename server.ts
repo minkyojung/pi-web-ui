@@ -721,7 +721,7 @@ function specs(): SpecsMsg {
 				waiting,
 				waitingAt: waiting ? writtenAt(join(dir, waiting)) : null,
 				written: SPEC_DOCS.filter((doc) => existsSync(join(dir, doc))),
-				tasks: tasksOf(join(dir, "tasks.md")),
+				tasks: tasksOf(join(dir, "tasks.md"), results.get(name) ?? []),
 				results: results.get(name) ?? [],
 			};
 		}),
@@ -776,10 +776,10 @@ function loadResultsSoon(): void {
 	}, 600);
 }
 
-/** How far a spec's tasks have got, or null while the file is not there. */
-function tasksOf(file: string): Progress | null {
+/** How far a spec's tasks have got, or null while the file is not there. A task a run has ended in a commit for is waiting to be looked at, and is not next. */
+function tasksOf(file: string, ran: TaskResult[]): Progress | null {
 	try {
-		return progressOf(parseTasks(readFileSync(file, "utf8")));
+		return progressOf(parseTasks(readFileSync(file, "utf8")), new Set(ran.map((result) => result.task)));
 	} catch {
 		return null;
 	}

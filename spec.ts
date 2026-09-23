@@ -54,6 +54,7 @@ import { APP_DIR_NAME, APPROVALS, SPEC_DOCS, type SpecDoc, SPECS_DIR } from "./d
 import { CITIES } from "./electron/cities.js";
 import { CONFIG_FILE, DEFAULT_TIMEOUT, isConfig, readConfig } from "./electron/octaveConfig.js";
 import { approve, type SpecState, specState } from "./specApproval.ts";
+import { taskResults } from "./specResults.ts";
 import { doneWhenOf, nextTask, parseTasks, runsOf, runsUnder, type Task, taskToRun, withDone, withParents } from "./specTasks.ts";
 
 /** A workspace's placeholder name: a city, or a city of a later round (`lisbon-v2`). */
@@ -654,7 +655,12 @@ async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, c
 		ui.notify(`${mark.task} is not done: \`${blocked.name}\` refused it (exit ${BLOCKING_EXIT}). Nothing was checked off or committed; see ${APP_DIR_NAME}/runs/${mark.task}/.`, "warning");
 		return "blocked";
 	}
-	writeAtomic(file, withDone(text, withParents(parseTasks(text), new Set([...mark.done, mark.task]))));
+	// The box is the person's: a run ends in a commit, and the task waits to
+	// be looked at until they accept it (review; /spec-done). What the model
+	// checked on its way past is undone here — the boxes say what they said
+	// when the run began. With no repository there is no commit to look at,
+	// so the box is checked here, being the one record there is.
+	writeAtomic(file, withDone(text, withParents(parseTasks(text), new Set(repository ? mark.done : [...mark.done, mark.task]))));
 	if (!repository) {
 		ui.notify(`${mark.task} is done. There is no repository here, so nothing was committed.`, "warning");
 		return "checked";
@@ -677,13 +683,32 @@ async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, c
 		return "uncommitted";
 	}
 	const at = await git(["rev-parse", "--short", "HEAD"]);
-	const next = nextTask(parseTasks(readFileSync(file, "utf8")));
+	justRan.set(`${cwd}\0${mark.spec}`, new Set([...(justRan.get(`${cwd}\0${mark.spec}`) ?? []), mark.task]));
+	const next = nextTask(parseTasks(readFileSync(file, "utf8")), await reviewedOf(cwd, mark.spec));
 	const going = mark.then[0];
 	const failed = verified.filter((v) => v.exit !== 0);
 	const said = verified.length === 0 ? "" : failed.length === 0 ? ` ${verified.length === 1 ? `\`${verified[0]!.name}\` passed` : `${verified.length} checks passed`}.` : ` ${failed.map((v) => `\`${v.name}\` failed (exit ${v.exit})`).join(", ")} — see ${APP_DIR_NAME}/runs/${mark.task}/.`;
-	ui.notify(`${mark.task} is done${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}.${said} ${going ? `${going} starts next.` : next ? `Next is ${next.number} — /spec-run` : "That was the last task."}`, "info");
+	ui.notify(`${mark.task} is ready to look at${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}.${said} ${going ? `${going} starts next.` : next ? `Next is ${next.number} — /spec-run` : "That was the last task."}`, "info");
 	return "committed";
 }
+
+/**
+ * The tasks of `spec` a run has ended in a commit for and the person has not
+ * accepted — waiting to be looked at. Git's answer (specResults.ts), read
+ * beside the list each time it is asked which task is next: the list alone
+ * says done or not, and a task in review is neither. Any of them named by
+ * the person runs again; none is picked by "next".
+ */
+async function reviewedOf(cwd: string, spec: string): Promise<Set<string>> {
+	const known = justRan.get(`${cwd}\0${spec}`) ?? new Set<string>();
+	try {
+		return new Set([...known, ...((await taskResults(cwd)).get(spec) ?? []).map((result) => result.task)]);
+	} catch {
+		return known;
+	}
+}
+/** The tasks whose runs ended in a commit in this process, by folder and spec: git's word on them may be a moment behind, and a queue moving on cannot wait for it. */
+const justRan = new Map<string, Set<string>>();
 
 /**
  * A session is opened for `mark`'s task, told what it is, and sent the line
@@ -742,7 +767,7 @@ async function runNext(session: RunSession, cwd: string, mark: TaskMark): Promis
 	const how = ended.get(endedKey(cwd, mark)) ?? "nothing";
 	ended.delete(endedKey(cwd, mark));
 	if (how === "nothing" || how === "uncommitted" || how === "blocked") {
-		session.ui.notify(`${mark.task} was not ${how === "nothing" ? "checked off" : how === "blocked" ? "let through by its checks" : "committed"}, so ${not}.`, "warning");
+		session.ui.notify(`${mark.task} was not ${how === "nothing" ? "committed, having changed nothing" : how === "blocked" ? "let through by its checks" : "committed"}, so ${not}.`, "warning");
 		return;
 	}
 	let tasks: Task[];
@@ -1030,26 +1055,27 @@ export default function spec(pi: ExtensionAPI): void {
 			}
 			const text = readFileSync(join(ctx.cwd, SPECS_DIR, chosen.name, "tasks.md"), "utf8");
 			const tasks = parseTasks(text);
+			const reviewed = await reviewedOf(ctx.cwd, chosen.name);
 			// Every number named is looked at before any is started: a queue with
 			// a task that is not there, or is done, is a question to go back with,
 			// not a run to stop halfway. A heading is its sub-tasks still to do,
 			// all of them in order — Kiro's Start on a heading — and numbers that
 			// overlap mean each run once, in the order the list stands: a task
 			// builds on the ones before it (runsOf).
-			const { runs, missing } = runsOf(tasks, numbers);
+			const { runs, missing } = runsOf(tasks, numbers, reviewed);
 			if (missing !== null) {
 				ctx.ui.notify(`${chosen.name} has no task ${missing}.`, "info");
 				return;
 			}
-			const finished = numbers.find((number) => runsUnder(tasks, number)?.length === 0);
+			const finished = numbers.find((number) => runsUnder(tasks, number, reviewed)?.length === 0);
 			if (finished !== undefined) {
 				ctx.ui.notify(`${finished} is already done. To have it done again, clear its box in ${SPECS_DIR}${chosen.name}/tasks.md first.`, "info");
 				return;
 			}
-			const queue = numbers.length > 0 ? runs : [nextTask(tasks)].filter((task): task is Task => task !== null);
+			const queue = numbers.length > 0 ? runs : [nextTask(tasks, reviewed)].filter((task): task is Task => task !== null);
 			const [task, ...then] = queue;
 			if (!task) {
-				ctx.ui.notify(`Every task of ${chosen.name} is done.`, "info");
+				ctx.ui.notify(reviewed.size > 0 && tasks.some((t) => reviewed.has(t.number) && !t.done) ? `Every task of ${chosen.name} has run; what is left is yours to look at — /spec-done to accept one, or name it to run it again.` : `Every task of ${chosen.name} is done.`, "info");
 				return;
 			}
 			if (await dirty(pi, ctx, ctx.cwd, "Nothing was started")) return;
