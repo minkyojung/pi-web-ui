@@ -53,11 +53,14 @@ const until = (what, timeout = 10_000) =>
 
 function open(id) {
 	const ws = new WebSocket(`ws://127.0.0.1:${port}/pty?folder=${encodeURIComponent(cwd)}&id=${id}`);
-	const state = { ws, bytes: 0, text: "", control: [], closed: null };
+	// A screen that draws what it is sent and says so — unless a check is
+	// about what happens when it does not.
+	const state = { ws, bytes: 0, text: "", control: [], closed: null, draws: true };
 	ws.on("message", (data, isBinary) => {
 		if (isBinary) {
 			state.bytes += data.length;
 			state.text += data.toString("utf8");
+			if (state.draws) ws.send(JSON.stringify({ type: "ack", bytes: data.length }));
 		} else state.control.push(JSON.parse(data.toString()));
 	});
 	ws.on("close", (code, reason) => (state.closed = { code, reason: reason.toString() }));
@@ -87,15 +90,16 @@ try {
 	//    HIGH and one read's worth arrives. The marks are computed by the
 	//    shell so that the echo of the typed line does not stand in for them.
 	const before = a.bytes;
+	a.draws = false;
 	type(a, "head -c 1048576 /dev/zero | tr '\\0' 'x'; echo; echo BURST-$((40+2))\r");
 	await new Promise((r) => setTimeout(r, 1500));
 	const held = a.bytes - before;
 	check("a burst is held back with nothing drawn", held <= HIGH + 64 * 1024 && held > 0, `${held} bytes arrived`);
 	check("the end of the burst has not come yet", !a.text.includes("BURST-42"), `${a.bytes - before} bytes`);
 	// The screen drew it all: the rest comes.
-	const drain = setInterval(() => say(a, { type: "ack", bytes: 512 * 1024 }), 50);
+	a.draws = true;
+	say(a, { type: "ack", bytes: held });
 	await until(() => a.text.includes("BURST-42"), 20_000).catch(() => {});
-	clearInterval(drain);
 	check("once acknowledged, the rest of the burst comes", a.text.includes("BURST-42"), `${a.bytes - before} bytes in all; tail: ${JSON.stringify(a.text.slice(-120))}`);
 
 	// 4. A second socket takes the terminal; the first is told.
@@ -106,11 +110,27 @@ try {
 	await until(() => /still-23\r?\n/.test(b.text)).catch(() => {});
 	check("it is the same shell", /still-23\r?\n/.test(b.text), `b got ${b.bytes} bytes; tail: ${JSON.stringify(b.text.slice(-160))}`);
 
-	// 5. `close` ends the shell and its exit is reported.
-	say(b, { type: "close" });
-	await until(() => b.control.some((m) => m.type === "exit"));
-	check("close ends the shell and its exit is reported", true, JSON.stringify(b.control));
+	// 4b. What was printed while nobody looked is on the screen the next
+	//     socket is handed first — after the shell is resized small enough
+	//     that the earlier burst has scrolled out of what is kept.
+	type(b, "clear; echo kept-$((100+1))\r");
+	await until(() => /kept-101\r?\n/.test(b.text));
 	b.ws.close();
+	await until(() => b.closed !== null);
+	const e = await open("check");
+	await until(() => e.bytes > 0);
+	await new Promise((r) => setTimeout(r, 300));
+	check("a socket that attaches later is first shown what the screen kept", /kept-101/.test(e.text) && /% /.test(e.text), JSON.stringify(e.text.slice(0, 200)));
+	type(e, "echo after-$((1+1))\r");
+	await until(() => /after-2\r?\n/.test(e.text)).catch(() => {});
+	check("and the shell goes on from there", /after-2\r?\n/.test(e.text), JSON.stringify(e.text.slice(-120)));
+	const b2 = e;
+
+	// 5. `close` ends the shell and its exit is reported.
+	say(b2, { type: "close" });
+	await until(() => b2.control.some((m) => m.type === "exit"));
+	check("close ends the shell and its exit is reported", true, JSON.stringify(b2.control));
+	b2.ws.close();
 
 	// 6. A shell that exits on its own reports its code.
 	const c = await open("exits");

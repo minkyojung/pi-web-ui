@@ -11,15 +11,17 @@
  * when the shell ends.
  *
  * The pty outlives the socket: a tab that reloads, or a window that moves
- * to another workspace and back, attaches again to the same shell. One
- * socket at a time — a second attaching takes the terminal from the first,
- * which is closed and told so.
+ * to another workspace and back, attaches again to the same shell, and is
+ * first handed what its screen shows (screen.ts) before the bytes go on.
+ * One socket at a time — a second attaching takes the terminal from the
+ * first, which is closed and told so.
  */
 import { existsSync } from "node:fs";
 import { spawn as spawnPty } from "node-pty";
 import type { WebSocket } from "ws";
 import { shellEnvFor } from "./env.ts";
 import { acked, idle, sent, type Flow } from "./flow.ts";
+import { createScreen } from "./screen.ts";
 import { ensureSpawnHelper } from "./spawnHelper.ts";
 
 export type Terminal = {
@@ -41,6 +43,7 @@ export function createTerminal({ cwd, env, onExit }: { cwd: string; env: NodeJS.
 	ensureSpawnHelper();
 	// encoding null: the pty's bytes as they come, not decoded to strings.
 	const pty = spawnPty(shellOf(env), ["-l"], { cwd, env: shellEnvFor(env), cols: 80, rows: 24, name: "xterm-256color", encoding: null });
+	const screen = createScreen({ cols: 80, rows: 24 });
 	let ws: WebSocket | null = null;
 	let flow: Flow = idle;
 	let exited = false;
@@ -53,17 +56,24 @@ export function createTerminal({ cwd, env, onExit }: { cwd: string; env: NodeJS.
 		ws = null;
 	};
 
-	pty.onData((chunk) => {
-		const bytes = chunk as unknown as Buffer;
+	/** To the screen that is looking, counted against what it has drawn. */
+	const show = (bytes: Buffer) => {
 		if (!ws || ws.readyState !== ws.OPEN) return;
 		ws.send(bytes, { binary: true });
 		const s = sent(flow, bytes.length);
 		flow = s.flow;
 		if (s.pause) pty.pause();
+	};
+
+	pty.onData((chunk) => {
+		const bytes = chunk as unknown as Buffer;
+		screen.write(bytes);
+		show(bytes);
 	});
 	pty.onExit(({ exitCode }) => {
 		exited = true;
 		if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "exit", code: exitCode }));
+		screen.dispose();
 		onExit(exitCode);
 	});
 
@@ -71,6 +81,8 @@ export function createTerminal({ cwd, env, onExit }: { cwd: string; env: NodeJS.
 		if (ws && ws !== socket) ws.close(1000, "another tab took the terminal");
 		detach();
 		ws = socket;
+		// What the screen showed while nobody was looking, before anything new.
+		show(screen.snapshot());
 		socket.on("message", (data, isBinary) => {
 			if (ws !== socket) return;
 			if (isBinary) {
@@ -86,7 +98,10 @@ export function createTerminal({ cwd, env, onExit }: { cwd: string; env: NodeJS.
 			if (msg.type === "resize" && Number.isInteger(msg.cols) && Number.isInteger(msg.rows)) {
 				const cols = Math.min(500, Math.max(2, msg.cols as number));
 				const rows = Math.min(300, Math.max(1, msg.rows as number));
-				if (!exited) pty.resize(cols, rows);
+				if (!exited) {
+					pty.resize(cols, rows);
+					screen.resize(cols, rows);
+				}
 			} else if (msg.type === "ack" && typeof msg.bytes === "number" && msg.bytes >= 0) {
 				const a = acked(flow, msg.bytes);
 				flow = a.flow;
