@@ -921,7 +921,12 @@ export const PromptInput = ({
         ref={formRef}
         {...props}
       >
-        <InputGroup className="overflow-hidden">{children}</InputGroup>
+        {/* Focused, the box's edge goes a step darker in the window's ink
+            rather than taking the accent's ring: it is where the cursor
+            lives, and blue is kept for what is pressed, turned on or
+            chosen — Linear's and ChatGPT's reply boxes say focus this way.
+            Still an edge that moves, so the keyboard can see where it is. */}
+        <InputGroup className="overflow-hidden has-[[data-slot=input-group-control]:focus-visible]:border-foreground/25 has-[[data-slot=input-group-control]:focus-visible]:ring-0">{children}</InputGroup>
       </form>
     </>
   );
