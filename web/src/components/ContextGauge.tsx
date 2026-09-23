@@ -107,7 +107,7 @@ export function ContextGauge({ status = "idle" }: { status?: Glyph }) {
         <span
           aria-hidden
           data-dot={status}
-          className={`absolute top-0.5 right-0.5 size-2 rounded-full ring-2 ring-sidebar ${status === "waiting" ? "bg-warning" : "bg-blue-500"}`}
+          className={`absolute top-0.5 right-0.5 size-2 rounded-full ring-2 ring-sidebar ${status === "waiting" ? "bg-warning" : "bg-primary"}`}
         />
       )}
     </span>
