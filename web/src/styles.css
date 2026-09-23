@@ -44,6 +44,15 @@
      lands on is no longer --muted: pi's conversation sits on the frame now, so
      a hovered row under it is --sidebar-accent, a step below that again. */
   --muted-foreground: oklch(0.531 0 0);
+  /* The step between the two: words that are read rather than glanced at but
+     are not the thing itself — a dialog's description, a setting's hint, what
+     the agent was thinking. Three text steps is what Linear, Apple and
+     Atlassian all keep (Atlassian names this one text.subtle); two left every
+     sentence under a heading at the same grey as a timestamp. It cannot go
+     below --muted-foreground, which is already at AA's floor on the darkest
+     surface, so it is placed above it — about half the distance again, the
+     spacing Linear's own text steps keep. */
+  --subtle-foreground: oklch(0.37 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -145,6 +154,7 @@
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
+  --subtle-foreground: oklch(0.87 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
@@ -191,6 +201,7 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
