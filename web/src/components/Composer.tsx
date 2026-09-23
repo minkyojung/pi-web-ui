@@ -304,9 +304,10 @@ export function Composer({ note }: { note: string | null }) {
 		// In the window's ink, not its accent: it is on screen the whole time,
 		// and the accent is kept for what is pressed, turned on, focused or
 		// followed — the one solid colour always showing would be this, and it
-		// would say nothing. Linear's reply button is the same.
+		// would say nothing. Linear's reply button is the same, and round, as
+		// this one is: the one control in the box that is not a line of text.
 		<PromptInputSubmit
-			className="bg-foreground text-background hover:bg-foreground/90"
+			className="rounded-full bg-foreground text-background hover:bg-foreground/90"
 			aria-label={streaming ? "Queue" : "Submit"}
 			disabled={!online}
 			status="ready"
