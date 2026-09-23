@@ -3552,7 +3552,7 @@ check("the spec at the start of the row says how far its tasks have got once all
 
 // A task is run from the bar over its document: the cursor on its line is
 // enough, and the Start that used to stand beside each line is off.
-check("a spec's task is run from the bar over the document: the cursor's line is the task, a heading is its sub-tasks still to do, and pressing runs it", async ({ app, cwd }) => {
+check("a spec's task is run from the document's header: the cursor's line is the task, a heading is its sub-tasks still to do, and pressing runs it", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/start");
 	mkdirSync(dir, { recursive: true });
 	const plan = (first) => `# Tasks\n\n- [${first}] 1. First\n- [ ] 2. Heading\n- [x] 2.1 Second\n- [ ] 2.2 Third\n`;
@@ -3590,7 +3590,7 @@ check("a spec's task is run from the bar over the document: the cursor's line is
 });
 
 // What the tasks run on is chosen once, over the list, and rides with each Start.
-check("a bar over a spec's tasks chooses what they run on, and a Start takes the choice with it", async ({ app, cwd, api }) => {
+check("the header of a spec's tasks chooses what they run on, and a Start takes the choice with it", async ({ app, cwd, api }) => {
 	const dir = join(cwd, ".octave/specs/runon");
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
@@ -3604,9 +3604,8 @@ check("a bar over a spec's tasks chooses what they run on, and a Start takes the
 	// The markdown, as these work on the editor: ⌘E.
 	await app.press("e", { meta: true });
 	await until("the plan in front", async () => (await editorText(app)).includes("Second"));
-	await until("the bar", () => app.evaluate("!!document.getElementById('taskBar')"));
-	const bar = () => app.evaluate("document.getElementById('taskBar')?.textContent ?? ''");
-	assert.match(await bar(), /the session's model/, "nothing chosen yet: the session's");
+	await until("the picker in the header", () => app.evaluate("!!document.getElementById('runOn')"));
+	const bar = () => app.evaluate("document.getElementById('runOn')?.textContent ?? ''");
 	// Chosen: a model pi offers that is not the session's. The picker reports
 	// it to the bar and sets nothing — the message box's model is as it was.
 	const models = await (await fetch(`http://localhost:${api}/api/models`)).json();
@@ -3619,7 +3618,7 @@ check("a bar over a spec's tasks chooses what they run on, and a Start takes the
 	const other = models.find((m) => offered.some((text) => text.includes(m.name)) && !sessionModel.includes(m.name));
 	assert.ok(other, `a second model to choose among ${offered.join(", ")}`);
 	await app.evaluate(`[...document.querySelectorAll('[role=menuitemradio]')].find((i) => i.textContent.includes(${JSON.stringify(other.name)})).click()`);
-	await until("the choice on the bar", async () => (await bar()).includes(other.name) && !(await bar()).includes("session's model"));
+	await until("the choice on the picker", async () => (await bar()).includes(other.name));
 	assert.equal(await app.evaluate("document.getElementById('model')?.textContent ?? ''"), sessionModel, "the session's model is not touched");
 	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
 	await app.shot("task-bar");
@@ -3637,7 +3636,7 @@ check("a bar over a spec's tasks chooses what they run on, and a Start takes the
 });
 
 // Several tasks as one run: the selection says which, the bar runs them.
-check("tasks a selection covers are offered as one run over the list, by their numbers, and run in one command", async ({ app, cwd }) => {
+check("tasks a selection covers are offered as one run in the header, by their numbers, and run in one command", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/picked");
 	mkdirSync(dir, { recursive: true });
 	const plan = "# Tasks\n\n- [ ] 1. First\n- [ ] 2. Heading\n- [x] 2.1 Second\n- [ ] 2.2 Third\n- [ ] 3. Fourth\n";
@@ -3650,7 +3649,7 @@ check("tasks a selection covers are offered as one run over the list, by their n
 	// The markdown, as these work on the editor: ⌘E.
 	await app.press("e", { meta: true });
 	await until("the plan in front", async () => (await editorText(app)).includes("Fourth"));
-	await until("the bar", () => app.evaluate("!!document.getElementById('taskBar')"));
+	await until("the picker in the header", () => app.evaluate("!!document.getElementById('runOn')"));
 	const select = (from, to) => app.evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.dispatch({ selection: { anchor: ${from}, head: ${to} } })`);
 	// A cursor on the title, which is no task: nothing is offered.
 	await select(0, 0);

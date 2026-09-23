@@ -148,7 +148,7 @@ export function treeOf(text: string): Tree {
  * Review is a run's commit the person has not accepted — git's word, handed
  * in as `reviewed`. The rest is to do; which of those runs next is the
  * plan's order and not a standing of its own — the first open row from the
- * top, and the run's line says its number (TaskBar.tsx).
+ * top, and the list's title says its number (TaskList.tsx).
  */
 export type Standing = "running" | "done" | "cancelled" | "review" | "todo";
 

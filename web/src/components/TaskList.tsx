@@ -201,6 +201,8 @@ export function TaskList({ path, onOpen }: { path: string; onOpen: (path: string
 			<div className="mx-auto w-full max-w-[68ch] px-6 py-5">
 				<div className="mb-4 flex items-center gap-2">
 					{list.head && <h1 className="min-w-0 flex-1 truncate text-base font-semibold">{list.head.replace(/^#+\s*/, "").split("\n")[0]}</h1>}
+					{/* Which task /spec-run would start, from the server's reading of the plan (Progress.next): no row is marked as next. */}
+					{spec?.tasks?.next && <span id="next" className="shrink-0 text-xs text-muted-foreground">next is {spec.tasks.next}</span>}
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<Button id="grouping" variant="ghost" size="icon-xs" className="ml-auto text-muted-foreground" aria-label={grouping === "plan" ? "Group by standing" : "In the plan's order"} onClick={() => groupingStore.set(grouping === "plan" ? "status" : "plan")}>

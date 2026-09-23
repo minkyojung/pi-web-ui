@@ -522,7 +522,7 @@ export function Editor({
 				EditorView.updateListener.of((u) => {
 					if (held.current.length > 0 && !u.view.composing) releaseHeld();
 					// What the selection covers of a spec's tasks, for the bar over
-					// them (TaskBar) — a cursor is its line's task: the bar is the one
+					// them (RunActions) — a cursor is its line's task: the bar is the one
 					// way to run, since the Start beside each line was turned off
 					// (two ways to run is "which one?" — spec-mode.md 6절).
 					if (u.selectionSet || u.docChanged) {
@@ -678,7 +678,7 @@ export function Editor({
 				// The task being run, when it is this spec's: its Start turns.
 				startRunning.of(config?.run?.spec === spec ? config.run.task : null),
 				onStart.of((number) => {
-					// On what the bar over the tasks chose (TaskBar), if anything.
+					// On what the header of the tasks chose (RunActions), if anything.
 					const on = runOnOf(runOn, spec);
 					send(runMessage(spec, [number], on ? { model: on.model, effort: on.level } : {}));
 					setStarting(number);

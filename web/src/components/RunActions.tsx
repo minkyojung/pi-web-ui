@@ -9,10 +9,11 @@ import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { ModelPicker } from "./ModelPicker";
 import { Button } from "./ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
- * Over a spec's tasks.md, once all three documents are approved: what its
- * tasks run on.
+ * In the header of a spec's tasks.md, once its documents are approved: what
+ * its tasks run on, and the run of what is selected.
  *
  * The one setting the running of tasks has, and the line where the tasks are
  * run from (taskStart.ts) is the line to make it on. A choice and nothing
@@ -34,10 +35,12 @@ import { Button } from "./ui/button";
  * with the numbers on it; they run one after another, each as the one
  * before it is committed (spec.ts).
  *
- * Outside the page rather than in it, like the approval's line (SpecBar), so
- * it does not scroll away from a long list.
+ * With the header's other controls (NoteHeader actions), drawn as they are:
+ * no fill, the picker's own size. It was a line of its own over the list
+ * once, a row of the window for a picker; which task is next, that line
+ * said, is said by the list's own title now.
  */
-export function TaskBar({ path }: { path: string | null }) {
+export function RunActions({ path }: { path: string | null }) {
 	const specs = useSyncExternalStore(specsStore.subscribe, specsStore.get);
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
@@ -74,19 +77,13 @@ export function TaskBar({ path }: { path: string | null }) {
 	});
 	const reason = runWhy(stop);
 	return (
-		<div id="taskBar" className="flex h-10 shrink-0 items-center gap-3 border-b px-4 text-xs">
-			<span className="min-w-0 flex-1 truncate text-muted-foreground">
-				Run tasks on
-				{!chosen && <span> · the session's model</span>}
-				{/* Which task /spec-run would start, from the server's reading of the plan (Progress.next): the list marks no row as next. */}
-				{spec.tasks?.next && <span id="next"> · next is {spec.tasks.next}</span>}
-			</span>
+		<>
 			{numbers.length > 0 && (
 				<Button
 					id="runPicked"
-					variant="outline"
+					variant="ghost"
 					size="sm"
-					className="h-7 max-w-64 gap-1.5 text-xs"
+					className="h-7 max-w-64 gap-1.5 px-2 text-xs"
 					disabled={stop !== null}
 					title={reason ?? undefined}
 					onClick={() => {
@@ -98,14 +95,21 @@ export function TaskBar({ path }: { path: string | null }) {
 					<span className="min-w-0 truncate">Run {numbers.join(", ")}</span>
 				</Button>
 			)}
-			<ModelPicker
-				id="runOn"
-				model={chosen?.model ?? config.model}
-				level={chosen?.level ?? null}
-				models={config.models}
-				disabled={!online}
-				onChoose={(choice) => chooseRunOn(name, choice)}
-			/>
-		</div>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<span className="flex min-w-0 shrink">
+						<ModelPicker
+							id="runOn"
+							model={chosen?.model ?? config.model}
+							level={chosen?.level ?? null}
+							models={config.models}
+							disabled={!online}
+							onChoose={(choice) => chooseRunOn(name, choice)}
+						/>
+					</span>
+				</TooltipTrigger>
+				<TooltipContent side="bottom">Run tasks on{chosen ? "" : " · the session's model"}</TooltipContent>
+			</Tooltip>
+		</>
 	);
 }
