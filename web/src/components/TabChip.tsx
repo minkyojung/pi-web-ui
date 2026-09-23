@@ -48,7 +48,10 @@ export function TabChip({
 	return (
 		<div
 			ref={ref}
-			className={cn("group/tab flex-none justify-start select-none", size === "sm" ? "h-6 max-w-32 gap-1 pr-0.5 pl-2 text-[10.5px] font-light data-[state=active]:text-subtle-foreground" : "w-48 pr-1 pl-3", className)}
+			// The trigger's own classes arrive in `className` (Radix's Slot joins
+			// them to ours as a string, with no merging), so ours go last: what
+			// the chip says about its size is what stands, over the kit's.
+			className={cn(className, "group/tab flex-none justify-start select-none", size === "sm" ? "h-6 max-w-32 gap-1 pr-0.5 pl-2 text-[10.5px] font-light data-[state=active]:text-subtle-foreground" : "w-48 pr-1 pl-3")}
 			{...rest}
 			// The wheel button: Radix already stops its default on mousedown.
 			onAuxClick={(e) => {
