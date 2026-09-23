@@ -12,7 +12,9 @@ import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
 import { WhyCard } from "./components/WhyCard";
 import { Title } from "./components/Title";
+import { isTasks } from "../../documentKinds.ts";
 import { Boundary } from "./components/Boundary";
+import { TaskList } from "./components/TaskList";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -682,8 +684,15 @@ export function App() {
 							    the steps and the checks all look up, and it should be there
 							    whether or not what it holds could be drawn. */}
 							<Boundary name="note" hint="What you had typed was written to the file.">
-								<Title path={open} mode={mode} />
-								<Editor key={noteIdentity(open)} path={open} mode={mode} place={place} left={left} onLeave={onLeave} onOpen={setOpen} />
+								{/* A spec's tasks, read, are the list of them (TaskList.tsx); ⌘E is the markdown. */}
+								{mode === "read" && isTasks(open) ? (
+									<TaskList key={open} path={open} onOpen={setOpen} />
+								) : (
+									<>
+										<Title path={open} mode={mode} />
+										<Editor key={noteIdentity(open)} path={open} mode={mode} place={place} left={left} onLeave={onLeave} onOpen={setOpen} />
+									</>
+								)}
 							</Boundary>
 						</div>
 					) : (

@@ -39,6 +39,9 @@ export interface TaskRow extends Task {
 	requirements: string[];
 	/** `_Done when: …_`, whole; null when the line is not there. The command in it is doneWhenOf's (specTasks.ts). */
 	doneWhen: string | null;
+	/** `_After: 2.1, 3_`, as numbers: the tasks this one waits on that are not simply the one before it; empty when the line is not there. */
+	after: string[];
+	afterLine: number | null;
 }
 
 /** A line between tasks that is not one and not a task's bullet — a heading over a group of them, or a sentence. Its text, marks off. */
@@ -61,6 +64,8 @@ export interface Tree {
 const BULLET = /^\s*[-*+]\s+(.*)$/;
 const REQUIREMENTS = /^_Requirements:\s*([^_]*)_\s*$/;
 const DONE_WHEN = /^_Done when:\s*([^_]*)_\s*$/;
+/** `_After: 2.1_`, the tasks this one waits on, as the form has it. */
+const AFTER = /^_After:\s*([^_]*)_\s*$/;
 const HEADING = /^#{1,6}\s+(.*?)\s*#*\s*$/;
 
 export function treeOf(text: string): Tree {
@@ -86,6 +91,8 @@ export function treeOf(text: string): Tree {
 				involves: [],
 				requirements: [],
 				doneWhen: null,
+				after: [],
+				afterLine: null,
 			};
 			rows.push(current);
 			return;
@@ -101,12 +108,16 @@ export function treeOf(text: string): Tree {
 		const bullet = BULLET.exec(line);
 		// A box with no number is a task the form missed, not a bullet of the
 		// task above: shown as a line of its own, where it can be seen and fixed.
-		const boxed = bullet !== null && /^\[[ xX]\]\s/.test(bullet[1]!);
+		const boxed = bullet !== null && /^\[[ xX-]\]\s/.test(bullet[1]!);
 		if (bullet && current && !boxed) {
 			const item = bullet[1]!.trim();
 			const requirements = REQUIREMENTS.exec(item);
 			const doneWhen = DONE_WHEN.exec(item);
-			if (requirements) {
+			const after = AFTER.exec(item);
+			if (after) {
+				current.after = after[1]!.split(",").map((s) => s.trim()).filter((s) => s !== "");
+				current.afterLine = number;
+			} else if (requirements) {
 				current.requirements = requirements[1]!.split(",").map((s) => s.trim()).filter((s) => s !== "");
 				current.requirementsLine = number;
 			} else if (doneWhen) {
@@ -121,7 +132,7 @@ export function treeOf(text: string): Tree {
 			return;
 		}
 		const heading = HEADING.exec(line);
-		rows.push({ kind: "section", line: number, text: heading ? heading[1]! : boxed ? bullet![1]!.replace(/^\[[ xX]\]\s+/, "") : line.trim() });
+		rows.push({ kind: "section", line: number, text: heading ? heading[1]! : boxed ? bullet![1]!.replace(/^\[[ xX-]\]\s+/, "") : line.trim() });
 		// A section closes the task before it: a bullet after a heading is the heading's, not the task's.
 		current = null;
 	});

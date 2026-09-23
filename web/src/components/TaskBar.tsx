@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { PlayIcon } from "lucide-react";
 
-import { SPEC_DOCS, isSpec, specNameOf } from "../../../documentKinds.ts";
+import { APPROVED_DOCS, isSpec, specNameOf } from "../../../documentKinds.ts";
 import { chooseRunOn, pickedStore, runOnOf, runOnStore } from "../runOn";
 import { commandsStore, configStore, specsStore } from "../serverState";
 import { RUN, runBlocked, runMessage, runWhy } from "../specRun.ts";
@@ -59,7 +59,7 @@ export function TaskBar({ path }: { path: string | null }) {
 
 	const name = path !== null && isSpec(path) && path.endsWith("/tasks.md") ? specNameOf(path) : null;
 	const spec = name === null ? null : (specs?.find((entry) => entry.name === name) ?? null);
-	if (!name || !spec || spec.approved < SPEC_DOCS.length || !config) return null;
+	if (!name || !spec || spec.approved < APPROVED_DOCS.length || !spec.written.includes("tasks.md") || !config) return null;
 
 	const chosen = runOnOf(choices, name);
 	const numbers = picked?.spec === name ? picked.numbers : [];
