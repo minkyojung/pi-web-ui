@@ -82,7 +82,7 @@ export function Sidebar({
 				// Until the shell answers, the room it will take, so the foot stays put.
 				workspaces ? <Repositories list={workspaces} choices={config ? { Picker: ModelMenu, model: config.model, models: config.models } : undefined} /> : <div className="flex-1" />
 			) : files.length === 0 ? (
-				<div className="flex flex-1 items-center justify-center p-4 text-center text-sm text-muted-foreground">
+				<div className="flex flex-1 items-center justify-center p-4 text-center text-sm text-subtle-foreground">
 					No notes in this folder yet
 				</div>
 			) : (

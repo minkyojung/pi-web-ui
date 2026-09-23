@@ -10,8 +10,8 @@ const C = 2 * Math.PI * R;
 const TONE: Record<Tone, string> = {
   unknown: "text-muted-foreground/60",
   ok: "text-muted-foreground",
-  warn: "text-amber-500",
-  danger: "text-red-500",
+  warn: "text-warning",
+  danger: "text-destructive",
 };
 
 /** What each mark says to somebody who cannot see it. The ring's own words follow. */
@@ -107,7 +107,7 @@ export function ContextGauge({ status = "idle" }: { status?: Glyph }) {
         <span
           aria-hidden
           data-dot={status}
-          className={`absolute top-0.5 right-0.5 size-2 rounded-full ring-2 ring-sidebar ${status === "waiting" ? "bg-amber-500" : "bg-blue-500"}`}
+          className={`absolute top-0.5 right-0.5 size-2 rounded-full ring-2 ring-sidebar ${status === "waiting" ? "bg-warning" : "bg-primary"}`}
         />
       )}
     </span>

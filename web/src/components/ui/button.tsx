@@ -17,7 +17,7 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
-        link: "text-primary underline-offset-4 hover:underline",
+        link: "text-link underline-offset-4 hover:underline",
         // Tinted: the text's own colour, thinly, behind it — set the colour
         // with a text-* class and the fill follows. Radix's "soft".
         soft: "bg-current/10 hover:bg-current/15 dark:bg-current/15 dark:hover:bg-current/20",

@@ -95,7 +95,7 @@ function AskingAgain() {
 	if (!asking) return null;
 
 	return (
-		<div className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+		<div className="mb-2 flex items-center gap-1.5 text-xs text-subtle-foreground">
 			<PencilIcon className="size-3 shrink-0" />
 			<span className="min-w-0 flex-1 truncate">Asking again: {asking.text}</span>
 			<Button
@@ -300,9 +300,19 @@ export function Composer({ note }: { note: string | null }) {
 		// it are for people who can see them, and a screen reader is read the
 		// label alone — which said "Submit" mid-run, the one thing a press then
 		// does not do.
+		//
+		// In the window's ink, not its accent: it is on screen the whole time,
+		// and the accent is kept for what is pressed, turned on, focused or
+		// followed — the one solid colour always showing would be this, and it
+		// would say nothing. Linear's reply button is the same, and round, as
+		// this one is: the one control in the box that is not a line of text.
 		<PromptInputSubmit
+			className="rounded-full bg-foreground text-background hover:bg-foreground/90"
 			aria-label={streaming ? "Queue" : "Submit"}
-			disabled={!online}
+			// Off while there is nothing to send, which is what submit() already
+			// holds: a button that looks pressable and does nothing is the one
+			// thing a control must not be.
+			disabled={!online || !text.trim()}
 			status="ready"
 			onClick={(e) => {
 				if (streaming && (e.metaKey || e.ctrlKey)) steering.current = true;

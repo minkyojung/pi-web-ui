@@ -576,7 +576,12 @@ export function App() {
 						<Sidebar open={page?.kind === "document" ? page.path : note} onOpen={setOpen} />
 					</Boundary>
 				</ResizablePanel>
-				<ResizableHandle />
+				{/* In the frame's gap rather than on a wall between two flats: the
+				    card beside it has an edge of its own, so this one only shows
+				    where it is taken hold of, as VS Code's and Figma's do. shadcn's
+				    handle draws its line always, which is right where the handle is
+				    the one thing between two panes — pi's is. */}
+				<ResizableHandle className="bg-transparent transition-colors hover:bg-border active:bg-border" />
 				<ResizablePanel id="content" className="flex min-w-0 flex-col">
 					{/* With the list folded away this column begins at the window's
 					    edge, under the strip. The tabs start clear of it: the strip is
@@ -717,7 +722,12 @@ export function App() {
 						</div>
 					)}
 					</ResizablePanel>
-					<ResizableHandle />
+					{/* The one line between the note and pi: shadcn's handle as it
+					    comes, drawn always, since nothing else says where the one
+					    column ends and the other begins. With pi folded away it would
+					    lie on the card's own rim and draw it twice, so there it only
+					    shows when taken hold of, as the list's does. */}
+					<ResizableHandle className={piOpen ? undefined : "bg-transparent transition-colors hover:bg-border active:bg-border"} />
 					<ResizablePanel
 						id="pi"
 						panelRef={pi}
@@ -731,14 +741,17 @@ export function App() {
 							setPiWidth(size.inPixels);
 						}}
 					>
-						{/* A floor of its own — --panel steps off the note, up in a dark
-						    window and down in a light one — met at the divider, as two
-						    panes of one window meet: one line between them, and what
-						    runs across the note's column (the bars over a spec) ends
-						    where the conversation begins. It used to be a card inset
-						    eight pixels inside this one, which left a strip of page
-						    between a bar's end and the conversation's edge. */}
-						<div className="surface-panel flex min-h-0 flex-1 flex-col overflow-hidden border-l">
+						{/* The other half of the card, as the note is the first: up
+						    against the line between them, with no gap or rim of its own —
+						    a pane of a split view, as VS Code's and Zed's are, rather than
+						    a panel laid on the note's page. Its words keep the inset they
+						    carry themselves (p-3 down this side, the header's own padding),
+						    which is what lines its header up with the note's.
+
+						    .surface-panel still rebinds the page to --panel, which is the
+						    page's own value now: kept so that pi can be given a floor of
+						    its own again by the tokens alone. */}
+						<div className="surface-panel flex min-h-0 flex-1 flex-col overflow-hidden">
 							<Boundary name="conversation">
 								{/* A PDF in front is what the message is beside, as a note is:
 								    the agent is told which, and what was chosen on its pages. */}

@@ -78,7 +78,7 @@ export const QueueItemContent = ({
       "line-clamp-1 grow break-words",
       completed
         ? "text-muted-foreground/50 line-through"
-        : "text-muted-foreground",
+        : "text-subtle-foreground",
       className
     )}
     {...props}

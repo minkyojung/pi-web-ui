@@ -92,7 +92,7 @@ export function ContextCard({
 					</div>
 					<div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
 						<div
-							className={`h-full rounded-full transition-[width] duration-500 ${!b ? "" : b.percent >= 90 ? "bg-red-500" : b.percent >= 70 ? "bg-amber-500" : "bg-foreground/70"}`}
+							className={`h-full rounded-full transition-[width] duration-500 ${!b ? "" : b.percent >= 90 ? "bg-destructive" : b.percent >= 70 ? "bg-warning" : "bg-foreground/70"}`}
 							style={{ width: `${b ? Math.min(b.percent, 100) : 0}%` }}
 						/>
 					</div>
@@ -104,7 +104,7 @@ export function ContextCard({
 							))}
 						</>
 					) : (
-						<div className="text-xs text-muted-foreground">No estimate yet — the agent counts after each response.</div>
+						<div className="text-xs text-subtle-foreground">No estimate yet — the agent counts after each response.</div>
 					)}
 				</Section>
 
