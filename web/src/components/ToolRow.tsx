@@ -74,8 +74,8 @@ function Diff({ diff }: { diff: string }) {
 					key={i}
 					className={cn(
 						"px-2 whitespace-pre",
-						line.startsWith("+") && "bg-green-500/10 text-green-700 dark:text-green-400",
-						line.startsWith("-") && "bg-red-500/10 text-red-700 dark:text-red-400",
+						line.startsWith("+") && "bg-success/15",
+						line.startsWith("-") && "bg-destructive/15",
 					)}
 				>
 					{line || " "}
@@ -137,8 +137,8 @@ export function ToolRow({ item }: { item: Item }) {
 				))}
 				{stat && (
 					<span className="ml-auto shrink-0 text-xs tabular-nums">
-						<span className="text-green-600 dark:text-green-500">+{stat.added}</span>{" "}
-						<span className="text-red-600 dark:text-red-500">−{stat.removed}</span>
+						<span className="text-success">+{stat.added}</span>{" "}
+						<span className="text-destructive">−{stat.removed}</span>
 					</span>
 				)}
 				{item.isError && <CircleAlertIcon className="ml-auto size-3.5 shrink-0 text-destructive" />}

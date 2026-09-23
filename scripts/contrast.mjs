@@ -196,6 +196,8 @@ const WASHES = [
 	["--foreground", 0.14, "--background", "--foreground", ".cm-searchMatch"],
 	["--foreground", 0.28, "--background", "--foreground", ".cm-searchMatch-selected"],
 	["--foreground", 0.1, "--background", "--foreground", ".cm-selectionMatch"],
+	["--success", 0.15, "--panel", "--foreground", "an added line of a diff"],
+	["--destructive", 0.15, "--panel", "--foreground", "a removed line of a diff"],
 ];
 
 /** Focus rings are UI, not text: WCAG 1.4.11 asks 3.0. */

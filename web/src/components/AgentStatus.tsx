@@ -52,7 +52,7 @@ function NoGitHub() {
 			type="button"
 			variant="ghost"
 			size="sm"
-			className="h-5 shrink-0 px-1.5 text-[11px] font-normal text-amber-600 dark:text-amber-500"
+			className="h-5 shrink-0 px-1.5 text-[11px] font-normal text-warning"
 			title="The agent has no GitHub sign-in to push with. Sign in under Settings › Accounts."
 			onClick={() => openSettings("Accounts")}
 		>
@@ -96,7 +96,7 @@ function Line({ bare = false }: { bare?: boolean }) {
 	// keeps for something having gone wrong, because neither of these has.
 	if (line.kind === "trouble") {
 		return (
-			<span id="agentLine" className="min-w-0 truncate px-1.5 text-amber-600 dark:text-amber-500">
+			<span id="agentLine" className="min-w-0 truncate px-1.5 text-warning">
 				{line.text}
 			</span>
 		);
