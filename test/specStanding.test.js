@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { docPath, docStanding, docTitle, progressWords, speaksFor, standingOf, standingWord, stateWords, waitingLine, waitingSpec } from "../web/src/specStanding.ts";
+import { docPath, docStanding, docTitle, mine, progressWords, speaksFor, standingOf, standingWord, stateWords, waitingLine, waitingSpec } from "../web/src/specStanding.ts";
 
 /** A spec as the server describes it (SpecInfo). */
-const spec = (name, { approved = 0, waiting = null, waitingAt = waiting ? 1000 : null, written = waiting ? [waiting] : [], tasks = null } = {}) => ({
+const spec = (name, { own = true, approved = 0, waiting = null, waitingAt = waiting ? 1000 : null, written = waiting ? [waiting] : [], tasks = null } = {}) => ({
   name,
+  own,
   approved,
   waiting,
   waitingAt,
@@ -61,6 +62,17 @@ test("이름표가 가리키는 스펙: 기다리는 것 → 읽고 있는 것 �
   const waiting = [list[0], spec("second", { waiting: "design.md" })];
   assert.equal(speaksFor(waiting, ".octave/specs/first/requirements.md").name, "second", "기다리는 것이 읽고 있는 것을 이긴다");
   assert.equal(speaksFor([], null), null);
+});
+
+test("다른 브랜치가 시작한 스펙은 이 창이 대변하지 않는다", () => {
+  // main에서 딸려온 스펙: 폴더에는 있지만 이 워크스페이스의 일이 아니다.
+  const theirs = spec("airbnb-clone-page", { own: false, waiting: "design.md", waitingAt: 2000 });
+  const ours = spec("stay-reservation", { waiting: "requirements.md", waitingAt: 1000 });
+  assert.deepEqual(mine([theirs, ours]).map((s) => s.name), ["stay-reservation"]);
+  assert.equal(waitingSpec([theirs, ours]).name, "stay-reservation", "남의 것이 더 새것이어도");
+  assert.equal(speaksFor([theirs, ours], null).name, "stay-reservation");
+  assert.equal(speaksFor([theirs], ".octave/specs/airbnb-clone-page/design.md"), null, "그 문서를 읽고 있어도 이 창이 말할 것은 아니다");
+  assert.equal(speaksFor([theirs], null), null, "이 워크스페이스가 시작한 스펙이 없으면 이름표도 없다");
 });
 
 test("사람에게 보일 말", () => {

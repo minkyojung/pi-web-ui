@@ -5,12 +5,13 @@
 <title>Octave</title>
 <script>
 /* Before the first paint, so the window is never drawn in the theme it is about
-   to leave. The same resolution as web/src/theme.ts — inline because a module
-   import would run after the page has been shown. */
+   to leave. The same resolution as web/src/theme.ts, read from where prefs.ts
+   reads it — inline because a module import would run after the page has been
+   shown. */
 try {
-  var t = localStorage.getItem("theme");
+  var t = window.pi && window.pi.prefs ? window.pi.prefs.get("theme") : localStorage.getItem("theme");
   document.documentElement.dataset.theme =
-    t === "light" || t === "dark" || t === "perplexity-light" || t === "perplexity-dark"
+    t === "light" || t === "dark" || t === "octave-light" || t === "octave-dark"
       ? t
       : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 } catch (e) {

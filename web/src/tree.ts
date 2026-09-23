@@ -10,6 +10,7 @@
  * know when asking.
  */
 import { createStore } from "./serverState.ts";
+import { keyFor } from "./workspace.ts";
 
 export type Node =
 	| { kind: "folder"; name: string; path: string; children: Node[] }
@@ -83,11 +84,11 @@ export function toggle(open: ReadonlySet<string>, folder: string): ReadonlySet<s
 // ---------------------------------------------------------------------------
 // The open folders outlive the window, as the widths of the columns do.
 
-const KEY = "open-folders";
+const KEY = () => keyFor("open-folders");
 
 function readOpen(): ReadonlySet<string> {
 	try {
-		const raw = JSON.parse(localStorage.getItem(KEY) ?? "[]");
+		const raw = JSON.parse(localStorage.getItem(KEY()) ?? "[]");
 		return new Set(Array.isArray(raw) ? raw.filter((p): p is string => typeof p === "string") : []);
 	} catch {
 		return new Set();
@@ -100,7 +101,7 @@ export const openFoldersStore = createStore<ReadonlySet<string>>(readOpen());
 export function setOpenFolders(open: ReadonlySet<string>): void {
 	if (open === openFoldersStore.get()) return;
 	try {
-		localStorage.setItem(KEY, JSON.stringify([...open]));
+		localStorage.setItem(KEY(), JSON.stringify([...open]));
 	} catch {
 		// A window with storage blocked forgets which folders were open, which is all that is lost.
 	}

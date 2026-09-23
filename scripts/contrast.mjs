@@ -70,8 +70,8 @@ const over = (src, alpha, dst) =>
 const THEMES = {
 	"neutral light": /^:root \{$/m,
 	"neutral dark": /^:root\[data-theme="dark"\] \{$/m,
-	"perplexity light": /^:root\[data-theme="perplexity-light"\] \{$/m,
-	"perplexity dark": /^:root\[data-theme="perplexity-dark"\] \{$/m,
+	"octave light": /^:root\[data-theme="octave-light"\] \{$/m,
+	"octave dark": /^:root\[data-theme="octave-dark"\] \{$/m,
 };
 
 /** The declarations of one :root block, comments and all the rest dropped. */

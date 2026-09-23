@@ -65,8 +65,15 @@ which the window reconnects on its own.
 The app is a window over the same server, started as a child process on a port
 it picks — one server for each workspace, kept by the shell (`electron/`), so
 moving to another workspace points the window at that one's server and nothing
-restarts. One nobody has used for ten minutes is stopped, and started again on
-the same port when it is opened, since a page keeps its tabs by its address.
+restarts. One nobody has used for ten minutes is stopped, and started again
+when it is opened. What a page keeps in the browser about a workspace — its
+tabs, its way back, its recent notes — is kept by the workspace's folder,
+which the server writes into the page as it serves it (`folderMeta.ts`,
+`web/src/workspace.ts`); what it keeps about the window — the theme, the
+columns' widths — the shell keeps once, for every page (`electron/prefs.js`).
+Neither goes by the page's address, which is a port handed out afresh each
+run. A page names its own folder when it asks the shell for anything, since
+the one in front is where the window is going, not where a page still up is.
 With no workspace open, the window is on a start page the shell serves itself
 (`octave://app/start.html`), since there is no folder for a server to work in;
 it lists the repositories, which is all the shell knows. A workspace is made

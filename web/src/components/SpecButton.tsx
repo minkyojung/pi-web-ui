@@ -5,7 +5,7 @@ import { SPEC_DOCS } from "../../../documentKinds.ts";
 import type { SpecInfo } from "../../../protocol.ts";
 import { commandsStore, configStore, specsStore } from "../serverState";
 import { APPROVE, approveMessage, blocked, why } from "../specApprove.ts";
-import { docPath, docStanding, docTitle, progressWords, speaksFor, standingOf, standingWord, stateWords } from "../specStanding.ts";
+import { docPath, docStanding, docTitle, mine, progressWords, speaksFor, standingOf, standingWord, stateWords } from "../specStanding.ts";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { Button } from "./ui/button";
@@ -23,10 +23,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
  * being there is itself the news that one has started.
  *
  * It names one spec: the one waiting, since that is the one with something to
- * do; else the one being read. Its menu holds every spec, so with two of them
- * nothing is hidden, and each document says what has become of it. A document
- * the agent has not written is not offered — opening it would put a file in
- * front of the person that does not exist.
+ * do; else the one being read. Its menu holds every spec this workspace
+ * started (specStanding.ts mine), so with two of them nothing of the work
+ * here is hidden — and nothing of another branch's, which the folder is full
+ * of, is put in front of the person as though it were. Each document says
+ * what has become of it. A document the agent has not written is not offered
+ * — opening it would put a file in front of the person that does not exist.
  *
  * Approving from here sends the command the person would type (specApprove.ts).
  * The menu is where it belongs as well as the bar over the document: the bar
@@ -81,7 +83,7 @@ export function SpecButton({ open, onOpen }: { open: string | null; onOpen: (pat
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="start" className="min-w-56">
-				{specs.map((spec, at) => (
+				{mine(specs).map((spec, at) => (
 					<Fragment key={spec.name}>
 						{at > 0 && <DropdownMenuSeparator />}
 						<DropdownMenuGroup>

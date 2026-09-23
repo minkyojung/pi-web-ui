@@ -48,13 +48,14 @@ test("작업마다 커밋 하나 — 번호, 제목, 검사, 그리고 스펙 �
   assert.equal(one.short, first.slice(0, one.short.length));
   assert.equal(one.title, "Add the greeting");
   assert.equal(one.checks, "inline check — passed");
-  assert.equal(one.verified, null, "앱이 돌린 것이 없으면 없다");
+  assert.deepEqual(one.verified, [], "앱이 돌린 것이 없으면 없다");
   assert.equal(typeof one.at, "number");
   assert.deepEqual(one.files, [{ path: "greeting.js", added: 1, deleted: 0 }], "tasks.md와 세 문서는 작업의 일이 아니다");
   assert.deepEqual([one.added, one.deleted], [1, 0]);
 
   assert.equal(two.commit, second);
   assert.equal(two.checks, null, "Checks: none은 검사가 없다는 말이다");
+  assert.deepEqual(two.verified, [], "Verified 줄이 없다");
   assert.deepEqual(two.files.map((file) => [file.path, file.added, file.deleted]).sort(), [["greeting.js", 1, 0], ["greeting.test.js", 2, 0]]);
   assert.deepEqual([two.added, two.deleted], [3, 0]);
 });
@@ -100,10 +101,10 @@ test("저장소가 아니거나 작업이 아직 없으면 빈 것이다", async
   assert.equal((await taskResults(repo.cwd)).size, 0, "작업의 커밋이 없다");
 });
 
-test("the Verified trailer is read back as the command and how it ended, and only in that shape", async () => {
+test("the Verified trailers are read back one a check, in order, and a value not in that shape is left out", async () => {
   const { verifiedOf } = await import("../specResults.ts");
-  assert.deepEqual(verifiedOf("npm test -- greet — exit 0"), { command: "npm test -- greet", exit: 0 });
-  assert.deepEqual(verifiedOf("  npm run typecheck — exit 2 "), { command: "npm run typecheck", exit: 2 });
-  assert.equal(verifiedOf(""), null);
-  assert.equal(verifiedOf("npm test"), null);
+  assert.deepEqual(verifiedOf("unit — exit 0\x1dnpm run typecheck — exit 2"), [{ name: "unit", exit: 0 }, { name: "npm run typecheck", exit: 2 }]);
+  assert.deepEqual(verifiedOf("  npm test -- greet — exit 1 "), [{ name: "npm test -- greet", exit: 1 }]);
+  assert.deepEqual(verifiedOf(""), []);
+  assert.deepEqual(verifiedOf("npm test"), []);
 });

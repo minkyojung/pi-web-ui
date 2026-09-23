@@ -21,7 +21,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1291,6 +1291,32 @@ check("⌘P offers the rest of the repository, and a file that is not a note ope
 	await app.keys("XXX");
 	assert.equal((await text()).includes("XXX"), false, "a file here is read-only");
 	assert.equal(readFileSync(join(cwd, "tool.ts"), "utf8"), "// what it answers\nexport const answer = 42;\n");
+});
+
+check("a log the repository's commands printed opens at its end and follows it as it grows, unless the reader has scrolled up", async ({ app, cwd }) => {
+	mkdirSync(join(cwd, ".pi", "runs"), { recursive: true });
+	const lines = (n, from = 0) => Array.from({ length: n }, (_, i) => `line ${from + i + 1}`).join("\n");
+	writeFileSync(join(cwd, ".pi", "runs", "dev.log"), `$ npm run dev\n${lines(200)}\n`);
+	await app.evaluate("location.hash = '#.pi/runs/dev.log'");
+	await until("the log in front", () => app.evaluate(`!!document.querySelector('#page[data-code=".pi/runs/dev.log"]')`));
+	const text = () => app.evaluate("document.querySelector('#page .cm-content')?.textContent ?? ''");
+	await until("its text", async () => (await text()).includes("line 200"));
+	const scroller = "document.querySelector('#page .cm-scroller')";
+	const atEnd = () => app.evaluate(`(() => { const s = ${scroller}; return s.scrollTop + s.clientHeight >= s.scrollHeight - 4; })()`);
+	await until("opened at its end", atEnd);
+	// It grows: still at the end.
+	appendFileSync(join(cwd, ".pi", "runs", "dev.log"), `${lines(50, 200)}\n`);
+	await until("the new lines", async () => (await text()).includes("line 250"));
+	assert.equal(await atEnd(), true, "reading the end, the new lines are what is wanted");
+	// Scrolled up to read something earlier: it grows, and the page does not jump.
+	// Only the lines in view are drawn, so growth is read off the scroll height.
+	await app.evaluate(`${scroller}.scrollTop = 0`);
+	const height = await app.evaluate(`${scroller}.scrollHeight`);
+	appendFileSync(join(cwd, ".pi", "runs", "dev.log"), `${lines(50, 250)}\n`);
+	await until("the newer lines", async () => (await app.evaluate(`${scroller}.scrollHeight`)) > height);
+	assert.equal(await app.evaluate(`${scroller}.scrollTop`), 0, "scrolled up, it stays");
+	await app.shot("run-log");
+	await app.evaluate("location.hash = ''");
 });
 
 check("a file says where it is in the line above it, and its ⋯ offers what can be done to a file", async ({ app }) => {
@@ -3162,6 +3188,7 @@ check("a version ready to install is offered in the corner, × leaves a dot, Abo
 			check: async () => window.__update.calls.push("check"),
 			restart: async () => window.__update.calls.push("restart"),
 			seen: async () => window.__update.calls.push("seen"),
+			dismiss: async (version) => window.__update.calls.push("dismiss " + version),
 		}, onOpenSettings: (l) => { window.__update.opens.push(l); return () => {}; }, onOpenPage: (l) => { window.__update.pages.push(l); return () => {}; } };
 		}`);
 	try {
@@ -3563,7 +3590,7 @@ check("tasks a selection covers are offered as one run over the list, by their n
 // What a task changed is its commit, and the commit is read here.
 // The new spec dialog, from the sidebar's +. The shell is stood in for: what
 // it is asked to make is written down, and it refuses the first time.
-check("the + beside a repository opens the new spec dialog: a line, the model and effort, and ⌘↵ asks for the workspace", async ({ app, api }) => {
+check("the + beside a repository opens the new spec dialog: a line, the model and effort, and ⌘↵ asks for the workspace", async ({ app, api, cwd }) => {
 	const models = await (await fetch(`http://localhost:${api}/api/models`)).json();
 	const stopStanding = await app.onNewDocument(`
 		if (sessionStorage.getItem("stand-in-for-the-list") === "1") {
@@ -3571,7 +3598,7 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
 			repositories: { issues: async (root) => (root === "/r/other" ? [{ number: 12, title: "Sign in with email", body: "A link, not a password." }, { number: 9, title: "No body", body: "" }] : null) },
 			onNewSpec: (listen) => { window.__newSpec = listen; return () => {}; },
-			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/other", name: "other", worktrees: [] }, { path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo", status: { state: "open", number: 12, url: "https://github.com/o/r/pull/12", review: "", checks: { total: 2, pending: 0, failed: 0 } } }, { path: "/w/lima", name: "lima", branch: "me/done", status: { state: "merged", number: 9 } }, { path: "/w/oslo", name: "oslo", branch: "me/oslo", status: { state: "local" } }] }] }),
+			workspaces: { list: async () => ({ projects: [{ path: "/r/other", name: "other", worktrees: [] }, { path: "/r/demo", name: "demo", worktrees: [{ path: ${JSON.stringify(cwd)}, name: "tokyo", branch: "me/tokyo", status: { state: "open", number: 12, url: "https://github.com/o/r/pull/12", review: "", checks: { total: 2, pending: 0, failed: 0 } } }, { path: "/w/lima", name: "lima", branch: "me/done", status: { state: "merged", number: 9 } }, { path: "/w/oslo", name: "oslo", branch: "me/oslo", status: { state: "local" } }] }] }),
 				create: async (root, first, from) => { window.__created.push({ root, first, from }); return window.__created.length === 1 ? { error: "The remote said no." } : {}; },
 				branches: async (root) => (root === "/r/other" ? { branches: ["me/email-auth", "main"], base: "main" } : null),
 				open: async () => {}, onChange: () => () => {}, first: async () => null } };
@@ -3595,7 +3622,7 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		// for a merged one, nothing for a branch that is only here.
 		await until("the rows' dots", () => app.evaluate("[...document.querySelectorAll('[data-workspace]')].map((r) => r.querySelector('[data-status]')?.dataset.status ?? '-').join(',') === 'open,merged,-'"));
 		assert.equal(await app.evaluate("document.querySelector('[data-workspace=\"/w/lima\"] [data-status]').getAttribute('aria-label')"), "Pull request #9 was merged");
-		// And at the foot of the window, for the workspace in front (tokyo, #12):
+		// And at the foot of the window, for this page's workspace (tokyo, whose folder is the suite's, #12):
 		// the chip, and what its checks came to. The folder is the suite's,
 		// which is a repository with notes uncommitted in it, so git's side is
 		// changes — but a pull request outranks that: the item is the pull
@@ -3668,39 +3695,50 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 	}
 });
 
-// Removing a workspace, from its row. The shell is stood in for: it says how
-// many changes the folder holds, and holds one more by the time it is asked.
-check("a workspace's row removes it from a right click: what stays is said, the changes that would be lost are counted, and a count that moved is asked about again", async ({ app }) => {
+// Archiving a workspace, from its row, and bringing one back. The shell is
+// stood in for: it says how many changes the folder holds, and holds one more
+// by the time it is asked.
+check("a workspace's row archives it from a right click: what stays is said, the changes that would be lost are counted, and a count that moved is asked about again", async ({ app }) => {
 	const stopStanding = await app.onNewDocument(`
-		if (sessionStorage.getItem("stand-in-for-removing") === "1") {
-		window.__removes = [];
+		if (sessionStorage.getItem("stand-in-for-archiving") === "1") {
+		window.__archives = []; window.__restores = [];
 		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
-			workspaces: { list: async () => ({ current: "/w/tokyo", projects: [{ path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }, { path: "/w/lima", name: "lima", branch: "me/email-auth" }] }] }),
+			workspaces: { list: async () => ({ projects: [{ path: "/r/demo", name: "demo", worktrees: [{ path: "/w/tokyo", name: "tokyo", branch: "me/tokyo" }, { path: "/w/lima", name: "lima", branch: "me/email-auth" }, { path: "/w/oslo", name: "oslo", branch: "me/oslo", state: "archived" }] }] }),
 				create: async () => ({}), open: async () => {}, onChange: () => () => {}, first: async () => null,
 				changes: async () => 1,
-				remove: async (path, seen) => { window.__removes.push({ path, seen }); return seen === 2 ? {} : { changes: 2 }; } } };
+				restore: async (path) => { window.__restores.push(path); return {}; },
+				archive: async (path, seen) => { window.__archives.push({ path, seen }); return seen === 2 ? {} : { changes: 2 }; } } };
 		}`);
 	try {
-		await app.evaluate(`sessionStorage.setItem("stand-in-for-removing", "1"); location.reload()`);
+		await app.evaluate(`sessionStorage.setItem("stand-in-for-archiving", "1"); location.reload()`);
 		await until("the rows", () => app.evaluate("document.querySelectorAll('[data-workspace]').length === 2"));
 		await app.evaluate(`(() => { const row = document.querySelector('[data-workspace="/w/lima"]'); const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: r.x + 8, clientY: r.y + 8 })); })()`);
-		await until("the menu", () => app.evaluate("[...document.querySelectorAll('[role=menuitem]')].some((i) => i.textContent.includes('Remove workspace'))"));
-		await app.evaluate("[...document.querySelectorAll('[role=menuitem]')].find((i) => i.textContent.includes('Remove workspace')).click()");
-		await until("the count", () => app.evaluate("document.getElementById('remove-workspace-changes')?.textContent === '1 uncommitted change in it will be lost.'"));
-		const said = await app.evaluate("document.getElementById('remove-workspace').innerText");
-		assert.match(said, /^Remove email-auth\?/, "by the name its row has");
+		await until("the menu", () => app.evaluate("[...document.querySelectorAll('[role=menuitem]')].some((i) => i.textContent.includes('Archive workspace'))"));
+		await app.evaluate("[...document.querySelectorAll('[role=menuitem]')].find((i) => i.textContent.includes('Archive workspace')).click()");
+		await until("the count", () => app.evaluate("document.getElementById('archive-workspace-changes')?.textContent === '1 uncommitted change in it will be lost.'"));
+		const said = await app.evaluate("document.getElementById('archive-workspace').innerText");
+		assert.match(said, /^Archive email-auth\?/, "by the name its row has");
 		assert.match(said, /The branch and its commits stay/);
-		await app.shot("remove-workspace");
-		await app.click("#remove-workspace-confirm");
-		await until("the count that moved", () => app.evaluate("document.getElementById('remove-workspace-changes')?.textContent === '2 uncommitted changes in it will be lost.'"));
-		await app.click("#remove-workspace-confirm");
-		await until("the dialog gone", async () => !(await app.evaluate("!!document.getElementById('remove-workspace')")));
-		assert.deepEqual(JSON.parse(await app.evaluate("JSON.stringify(window.__removes)")), [{ path: "/w/lima", seen: 1 }, { path: "/w/lima", seen: 2 }]);
+		await app.shot("archive-workspace");
+		await app.click("#archive-workspace-confirm");
+		await until("the count that moved", () => app.evaluate("document.getElementById('archive-workspace-changes')?.textContent === '2 uncommitted changes in it will be lost.'"));
+		await app.click("#archive-workspace-confirm");
+		await until("the dialog gone", async () => !(await app.evaluate("!!document.getElementById('archive-workspace')")));
+		assert.deepEqual(JSON.parse(await app.evaluate("JSON.stringify(window.__archives)")), [{ path: "/w/lima", seen: 1 }, { path: "/w/lima", seen: 2 }]);
+
+		// The archived one is not among the rows you can open; it is under
+		// Archived, folded, and a click on it asks for it back.
+		assert.equal(await app.evaluate("document.querySelector('[data-archived=\"/r/demo\"]').innerText.replace(/\\s+/g, ' ').trim()"), "Archived 1");
+		assert.equal(await app.evaluate("!!document.querySelector('[data-archived-workspace]')"), false, "folded until it is asked for");
+		await app.click('[data-archived="/r/demo"]');
+		await until("the archived row", () => app.evaluate("!!document.querySelector('[data-archived-workspace=\"/w/oslo\"]')"));
+		await app.click('[data-archived-workspace="/w/oslo"]');
+		await until("it was asked for back", () => app.evaluate("JSON.stringify(window.__restores) === '[\"/w/oslo\"]'"));
 	} finally {
 		await app.press("Escape");
 		await stopStanding();
-		await app.evaluate(`sessionStorage.removeItem("stand-in-for-removing"); location.reload()`);
-		await until("the page back", () => app.evaluate("!window.__removes && !!document.getElementById('chat')"));
+		await app.evaluate(`sessionStorage.removeItem("stand-in-for-archiving"); location.reload()`);
+		await until("the page back", () => app.evaluate("!window.__archives && !!document.getElementById('chat')"));
 	}
 });
 
@@ -3900,7 +3938,7 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	assert.equal(lines, "2 Hang the sign new +2 −0 || 1 Add the door new +1 −1", lines);
 	// The mark at the left is the checks: said, or none — with the run's words behind the one that has them.
 	const marks = await app.evaluate("[...document.querySelectorAll('[data-result] [data-checks]')].map((m) => m.dataset.checks + ':' + m.title).join(' || ')");
-	assert.equal(marks, "failed:npm test -- sign — exit 1 || said:agent: npm test — 5 passed", "what the app ran outranks what the run said");
+	assert.equal(marks, "failed:npm test -- sign — exit 1 · click for what it printed || said:agent: npm test — 5 passed", "what the app ran outranks what the run said");
 	// Not yet looked at is the line in bold, and still while the list is being read.
 	assert.equal(await app.evaluate("document.querySelectorAll('[data-result][data-fresh]').length"), 2);
 	assert.equal(await app.evaluate("[...document.querySelectorAll('[data-result][data-fresh] .font-semibold')].length"), 2);
@@ -3908,6 +3946,18 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	assert.match(await app.evaluate("document.querySelector('[data-result=\"1\"]').title"), /^[0-9a-f]{7} · .* · run 2 times, this is the last$/, "and that it was run again, which is not a mark on the line");
 	assert.doesNotMatch(await app.evaluate("document.querySelector('[data-result=\"2\"]').title"), /run \d+ times/);
 	await app.shot("task-results");
+	// The cross opens what the check printed, in a tab, and not the commit; the circle opens nothing of its own.
+	mkdirSync(join(cwd, ".pi", "runs", "2"), { recursive: true });
+	writeFileSync(join(cwd, ".pi", "runs", "2", "npm_test_--_sign.log"), "$ npm test -- sign\nnot ok 1 - sign\n(exit 1)\n");
+	assert.equal(await app.evaluate("document.querySelector('[data-result=\"2\"] [data-checks]').dataset.log"), ".pi/runs/2/npm_test_--_sign.log");
+	assert.equal(await app.evaluate("document.querySelector('[data-result=\"1\"] [data-checks]').dataset.log ?? null"), null, "the circle has no log");
+	await app.evaluate("document.querySelector('[data-result=\"2\"] [data-checks]').click()");
+	await until("the check's log in a tab", () => app.evaluate(`document.querySelector('#page[data-code=".pi/runs/2/npm_test_--_sign.log"]') !== null`));
+	await until("its words", () => app.evaluate("document.querySelector('#page .cm-content')?.textContent.includes('not ok 1 - sign')"));
+	assert.equal(await app.evaluate("!!document.querySelector('[data-result]')"), false, "the list goes with it");
+	await app.shot("check-log");
+	await app.click("#results");
+	await until("the list again", () => app.evaluate("document.querySelectorAll('[data-result]').length === 2"));
 	// A line opens that task's commit, and the list goes.
 	await app.evaluate("document.querySelector('[data-result=\"1\"]').click()");
 	await until("the commit's page", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(again)}`));

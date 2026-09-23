@@ -1,8 +1,9 @@
 /**
  * Git, run as the person would run it: the git on their PATH (shellEnv.js),
- * with their configuration and their credentials, and never waiting on a
- * prompt — a fetch that would ask for a password fails instead, since there
- * is no terminal for it to ask in.
+ * with their configuration and their credentials — their gh sign-in among
+ * them, handed down since git cannot find it on its own (credentials.js) —
+ * and never waiting on a prompt: a fetch that would ask for a password fails
+ * instead, since there is no terminal for it to ask in.
  *
  * A workspace is a worktree of a repository on a branch of its own, made the
  * way Conductor makes one: fetched first, so it starts from the latest commit
@@ -14,14 +15,16 @@ import { mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { pickCity } from "./cities.js";
+import { gitEnv } from "./credentials.js";
 
 /** Git's answer, trimmed; its own words when it refuses. */
-export function git(cwd, args, { timeoutMs = 60_000 } = {}) {
+export async function git(cwd, args, { timeoutMs = 60_000 } = {}) {
+	const env = { ...process.env, ...(await gitEnv()) };
 	return new Promise((resolve, reject) => {
 		execFile(
 			"git",
 			args,
-			{ cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 },
+			{ cwd, env, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 },
 			(err, stdout, stderr) => {
 				if (err) reject(new Error(String(stderr).trim() || err.message));
 				else resolve(String(stdout).trim());
@@ -102,10 +105,12 @@ export async function addWorktree(root, { path, branch, start }) {
  * A new workspace of the repository at `root`, in the folder `into` — a
  * city's name, on the branch `{owner}/{city}`, or `{city}` with no owner to
  * name — started from the remote's default branch, or from its branch
- * `start` when one is asked for (spec-mode.md 6절). A city is not reused while its folder is there or a branch still
- * carries its name, so a workspace never lands on another's leftovers.
+ * `start` when one is asked for (spec-mode.md 6절). A city is not reused while its folder is there, a branch still
+ * carries its name, or it is among the `retired` — the names of workspaces
+ * removed before (workspaces.js) — so a workspace never lands on another's
+ * leftovers, nor on its conversations.
  */
-export async function makeWorkspace(root, { into, owner, start: from = null }) {
+export async function makeWorkspace(root, { into, owner, start: from = null, retired = [] }) {
 	let folders = [];
 	try {
 		folders = readdirSync(into);
@@ -113,7 +118,7 @@ export async function makeWorkspace(root, { into, owner, start: from = null }) {
 		// Nothing made here yet.
 	}
 	const branches = (await git(root, ["branch", "--list", "--format=%(refname:short)"]).catch(() => "")).split("\n").filter(Boolean);
-	const name = pickCity([...folders, ...branches.map((branch) => branch.slice(branch.lastIndexOf("/") + 1))]);
+	const name = pickCity([...folders, ...branches.map((branch) => branch.slice(branch.lastIndexOf("/") + 1)), ...retired]);
 	const branch = owner ? `${owner}/${name}` : name;
 	const path = join(into, name);
 	await fetchOrigin(root);
@@ -137,6 +142,21 @@ export async function makeWorkspace(root, { into, owner, start: from = null }) {
 export async function changesIn(path) {
 	const out = await git(path, ["status", "--porcelain", "--untracked-files=all"]);
 	return out.split("\n").filter((line) => line && !/^.. "?\.pi\//.test(line)).length;
+}
+
+/** The commit a workspace stands on, for its row to remember it by once the folder is gone. Null when git cannot say. */
+export async function headOf(path) {
+	return await git(path, ["rev-parse", "HEAD"]).catch(() => null);
+}
+
+/**
+ * An archived workspace's folder made again, where it stood, on the branch it
+ * was on. The branch is not made — it is the one that stayed behind when the
+ * folder went — so git refuses what is not there, or what another workspace
+ * has checked out, in its own words.
+ */
+export async function addBranchWorktree(root, { path, branch }) {
+	await git(root, ["worktree", "add", path, branch]);
 }
 
 /**

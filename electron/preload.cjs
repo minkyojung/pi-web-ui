@@ -12,7 +12,23 @@
  */
 const { contextBridge, ipcRenderer } = require("electron");
 
+/**
+ * What the page keeps about the window — the theme, the columns' widths —
+ * held once by the shell (prefs.js) and read here before the page runs, so
+ * the theme is known before the first paint. A set is written through and
+ * kept here too, so what this page reads back is what it wrote.
+ */
+const prefs = ipcRenderer.sendSync("prefs");
+
 contextBridge.exposeInMainWorld("pi", {
+	prefs: {
+		get: (key) => (Object.hasOwn(prefs, key) ? prefs[key] : null),
+		set: (key, value) => {
+			if (value === null) delete prefs[key];
+			else prefs[key] = value;
+			ipcRenderer.send("prefs:set", key, value);
+		},
+	},
 	/** Show a file in the Finder. Takes the whole path; the page knows it. */
 	reveal: (path) => ipcRenderer.invoke("file:reveal", path),
 	/** The models a spec can be started on, for the first screen: `{ model, models }` as the server's config has them, or null when pi could not be asked. */
@@ -23,13 +39,37 @@ contextBridge.exposeInMainWorld("pi", {
 	 * answers `{ error }` when it cannot be done, and a Finder choice
 	 * cancelled answers null. `github` is the signed-in person's repositories
 	 * and `issues` the open issues of one on the list — `[{ number, title,
-	 * body }]` — each null when gh cannot say.
+	 * body }]` — each null when gh cannot say. `reorder` puts the list in the
+	 * order `paths` names, which is the one the person dragged them into, and
+	 * `remove` takes one off the list without touching anything on the disk,
+	 * answering `{ error }` when it will not just now.
 	 */
 	repositories: {
 		openLocal: () => ipcRenderer.invoke("repository:open"),
 		clone: (source) => ipcRenderer.invoke("repository:clone", source),
+		reorder: (paths) => ipcRenderer.invoke("repositories:reorder", paths),
+		remove: (root) => ipcRenderer.invoke("repository:remove", root),
 		github: () => ipcRenderer.invoke("github:repositories"),
 		issues: (root) => ipcRenderer.invoke("github:issues", root),
+	},
+	/**
+	 * The person's GitHub account, for Settings › Accounts — gh's, so the
+	 * terminal is signed in too. `standing` answers `{ state }` — `missing`
+	 * (no gh), `signed-out`, or `signed-in` with `login` — and `signIn` runs
+	 * until GitHub says yes, saying the one-time code through `onCode` as
+	 * `{ userCode, verificationUri }` on the way; it and `signOut` answer
+	 * `{ ok }` or `{ error }`, and a sign-in `cancel` gave up, `{ cancelled }`.
+	 */
+	github: {
+		standing: () => ipcRenderer.invoke("github:standing"),
+		signIn: () => ipcRenderer.invoke("github:signIn"),
+		cancel: () => ipcRenderer.invoke("github:cancel"),
+		signOut: () => ipcRenderer.invoke("github:signOut"),
+		onCode: (listen) => {
+			const handler = (_event, code) => listen(code);
+			ipcRenderer.on("github:code", handler);
+			return () => ipcRenderer.off("github:code", handler);
+		},
 	},
 	/**
 	 * The editors this machine has, and a file opened in one at a line — see
@@ -45,21 +85,35 @@ contextBridge.exposeInMainWorld("pi", {
 	 * a new workspace of a repository for the spec `first` starts — `{ line,
 	 * model, effort }`, started from the remote's branch `from` when one of
 	 * `branches` is chosen, answered with `{ error }` when it could not be made —
-	 * what this page's workspace was made to be told first, given once, a
-	 * workspace put in front, and one removed — `changes` says how many
-	 * uncommitted changes it holds, and `remove` takes the number the person
-	 * was told and answers `{ changes }` instead when it no longer holds. `onChange` says
-	 * the list is to be asked for again, and returns the way to stop listening.
+	 * what the workspace at `folder` — this page's own, which the server told
+	 * it — was made to be told first, given once, a
+	 * workspace put in front, and one archived — `changes` says how many
+	 * uncommitted changes it holds, and `archive` takes the number the person
+	 * was told and answers `{ changes }` instead when it no longer holds, or
+	 * `{ warning }` when it was archived but its archive command failed.
+	 * `restore` makes an archived workspace's folder again, from the branch it
+	 * kept, and opens it — `{ error }` when git will not have it. `setup`
+	 * runs the repository's setup command again in a workspace (`{ ran }`, or
+	 * `{ error }`), and `onSetup` says when one's setup is running (`"running"`)
+	 * or has ended (null). `onChange` says the list is to be asked for again;
+	 * the listeners return the way to stop listening.
 	 * The list is null in a dev run, where the dev server owns the folder.
 	 */
 	workspaces: {
 		list: () => ipcRenderer.invoke("workspaces"),
 		create: (root, first, from) => ipcRenderer.invoke("workspace:new", root, first, from),
 		branches: (root) => ipcRenderer.invoke("workspace:branches", root),
-		first: () => ipcRenderer.invoke("workspace:first"),
+		first: (folder) => ipcRenderer.invoke("workspace:first", folder),
 		open: (path) => ipcRenderer.invoke("workspace:open", path),
 		changes: (path) => ipcRenderer.invoke("workspace:changes", path),
-		remove: (path, seen) => ipcRenderer.invoke("workspace:remove", path, seen),
+		archive: (path, seen) => ipcRenderer.invoke("workspace:archive", path, seen),
+		restore: (path) => ipcRenderer.invoke("workspace:restore", path),
+		setup: (path) => ipcRenderer.invoke("workspace:setup", path),
+		onSetup: (listen) => {
+			const handler = (_event, path, stage) => listen(path, stage);
+			ipcRenderer.on("workspace:setup", handler);
+			return () => ipcRenderer.off("workspace:setup", handler);
+		},
 		onChange: (listen) => {
 			const handler = () => listen();
 			ipcRenderer.on("workspaces:changed", handler);
@@ -72,6 +126,27 @@ contextBridge.exposeInMainWorld("pi", {
 	 * shell says the state as it changes; `onState` returns the way to stop
 	 * listening. The page decides when what is new has been seen.
 	 */
+	/**
+	 * The repository's own run command in this window's workspace — the
+	 * default of its `[scripts.run.*]` — started and stopped from the foot of
+	 * the window (Scripts.tsx). `state` is `{ configured, runs, run, logs }` —
+	 * whether the repository has `.octave/config.toml` at all, the ids of its
+	 * runs, the one running or last ended as `{ running, id, port, exit }` (the
+	 * default's id when none has), and the logs the commands left in
+	 * `.pi/runs/` as `{ name, path, exit, modified }`; `start(path, id?)` starts
+	 * the run named, else the default, one at a time, and answers `{ state }` or
+	 * `{ error }`; `onChange` says when it changed, and returns the way to stop listening.
+	 */
+	runs: {
+		state: (path) => ipcRenderer.invoke("run:state", path),
+		start: (path, id) => ipcRenderer.invoke("run:start", path, id),
+		stop: (path) => ipcRenderer.invoke("run:stop", path),
+		onChange: (listen) => {
+			const handler = (_event, path, state) => listen(path, state);
+			ipcRenderer.on("run:changed", handler);
+			return () => ipcRenderer.off("run:changed", handler);
+		},
+	},
 	update: {
 		state: () => ipcRenderer.invoke("update:state"),
 		onState: (listen) => {
@@ -82,6 +157,7 @@ contextBridge.exposeInMainWorld("pi", {
 		check: () => ipcRenderer.invoke("update:check"),
 		restart: () => ipcRenderer.invoke("update:restart"),
 		seen: () => ipcRenderer.invoke("update:seen"),
+		dismiss: (version) => ipcRenderer.invoke("update:dismiss", version),
 	},
 	/** The shell asking for a page of the app's own to be opened — Help › What's New. */
 	onOpenPage: (listen) => {

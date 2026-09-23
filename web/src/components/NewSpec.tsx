@@ -46,8 +46,9 @@ type Create = (root: string, first: { line: string; model: string | null; effort
  *
  * Create makes the workspace and the window moves into it, where the line is
  * sent as `/spec` (firstSpec.ts). Making one fetches from the remote, so it
- * takes a moment: the dialog is not walked away from meanwhile, and when it
- * could not be made says why, with the line still there.
+ * takes a moment — and its setup, when the repository has one, minutes: the
+ * dialog is not walked away from meanwhile, and when it could not be made,
+ * or set up, says why, with the line still there.
  */
 export function NewSpec({
 	repository,
@@ -55,6 +56,7 @@ export function NewSpec({
 	onRepository,
 	onClose,
 	create,
+	setup,
 	branches,
 	issues,
 	choices,
@@ -66,6 +68,8 @@ export function NewSpec({
 	onRepository: (repository: { path: string; name: string }) => void;
 	onClose: () => void;
 	create: Create;
+	/** The shell saying a workspace's setup — the repository's own command — is running, or has ended; see preload.cjs `onSetup`. */
+	setup?: (listen: (path: string, stage: "running" | null) => void) => () => void;
 	/** The branches a repository's workspace can start from — see TargetBranch.tsx. */
 	branches: (root: string) => Promise<Branches | null>;
 	/** The repository's open issues — see FromIssue.tsx. */
@@ -77,7 +81,10 @@ export function NewSpec({
 	/** The remote's branch to start from, or null for the default one. */
 	const [from, setFrom] = useState<string | null>(null);
 	const [making, setMaking] = useState(false);
+	/** Whether what is being made is at its setup, which can take minutes — the button says so. */
+	const [settingUp, setSettingUp] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	useEffect(() => setup?.((_path, stage) => setSettingUp(stage === "running")), [setup]);
 
 	// Each time it is opened it is for a new spec; the model chosen stays, as
 	// it does in the box this one is shaped after. Opened, not pointed at
@@ -170,7 +177,7 @@ export function NewSpec({
 					)}
 					<Button id="new-spec-create" size="sm" disabled={!ready} onClick={run}>
 						{making && <Spinner />}
-						Create
+						{making && settingUp ? "Setting up…" : "Create"}
 						<Kbd>⌘↵</Kbd>
 					</Button>
 				</div>

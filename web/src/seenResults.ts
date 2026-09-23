@@ -10,8 +10,9 @@
  * Read and written as a whole map. It holds a handful of names.
  */
 import { createStore } from "./serverState.ts";
+import { keyFor } from "./workspace.ts";
 
-const KEY = "seen-results";
+const KEY = () => keyFor("seen-results");
 
 /** What is stored, read: a map of spec name to commit, or empty for anything else found there. */
 export function readSeen(raw: string | null): Record<string, string> {
@@ -26,7 +27,7 @@ export function readSeen(raw: string | null): Record<string, string> {
 
 function stored(): Record<string, string> {
 	try {
-		return readSeen(localStorage.getItem(KEY));
+		return readSeen(localStorage.getItem(KEY()));
 	} catch {
 		return {};
 	}
@@ -42,7 +43,7 @@ export function sawResults(spec: string, commit: string): void {
 	const next = { ...store.get(), [spec]: commit };
 	store.set(next);
 	try {
-		localStorage.setItem(KEY, JSON.stringify(next));
+		localStorage.setItem(KEY(), JSON.stringify(next));
 	} catch {
 		// A window with storage blocked forgets, which is all that is lost.
 	}

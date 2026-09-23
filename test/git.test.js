@@ -7,7 +7,7 @@ import test from "node:test";
 
 import { CITIES, pickCity } from "../electron/cities.js";
 import { branchOf, changesIn, fetchOrigin, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf, startOf } from "../electron/git.js";
-import { login } from "../electron/github.js";
+import { deviceCodeFrom, login, signIn, standing } from "../electron/github.js";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
 
@@ -115,14 +115,51 @@ test("a repository is named by its clone's folder, from the clone and from any o
 	assert.equal(await repositoryOf(realpathSync(mkdtempSync(join(tmpdir(), "octave-none-")))), null);
 });
 
-test("with no gh to ask, there is no one signed in", async () => {
+test("with no gh to ask, there is no one signed in, and the standing is that gh is missing", async () => {
 	const path = process.env.PATH;
 	process.env.PATH = "";
 	try {
 		assert.equal(await login(), null);
+		assert.deepEqual(await standing(), { state: "missing" });
 	} finally {
 		process.env.PATH = path;
 	}
+});
+
+/** A gh of our own first on PATH, made of `script`, for as long as `run` runs. */
+async function withGh(script, run) {
+	const dir = mkdtempSync(join(tmpdir(), "octave-gh-"));
+	writeFileSync(join(dir, "gh"), `#!/bin/sh\n${script}\n`, { mode: 0o755 });
+	const path = process.env.PATH;
+	process.env.PATH = `${dir}:${path}`;
+	try {
+		return await run();
+	} finally {
+		process.env.PATH = path;
+	}
+}
+
+test("gh's one-time code and the address for it are read as they come, and not before both are there", () => {
+	assert.equal(deviceCodeFrom("! First copy your one-time code: AB12"), null);
+	assert.deepEqual(deviceCodeFrom("! First copy your one-time code: AB12-CD34\nOpen this URL to continue in your web browser: https://github.com/login/device\n"), { userCode: "AB12-CD34", verificationUri: "https://github.com/login/device" });
+	assert.deepEqual(deviceCodeFrom("! One-time code (AB12-CD34) copied to clipboard\nOpen this URL to continue in your web browser: https://github.com/login/device"), { userCode: "AB12-CD34", verificationUri: "https://github.com/login/device" });
+});
+
+test("signing in shows gh's code as gh says it, and ends as gh ends — well, or in its own words", async () => {
+	const said = [];
+	const ok = await withGh('case "$*" in *--version*) echo "gh version 0";; *"auth login"*) echo "! First copy your one-time code: AB12-CD34" >&2; echo "Open this URL to continue in your web browser: https://github.com/login/device" >&2; exit 0;; *) exit 1;; esac', () => signIn({ onCode: (code) => said.push(code) }));
+	assert.deepEqual(ok, { ok: true });
+	assert.deepEqual(said, [{ userCode: "AB12-CD34", verificationUri: "https://github.com/login/device" }]);
+	const bad = await withGh('echo "error connecting to github.com" >&2; exit 1', () => signIn({ onCode: () => assert.fail("no code was said") }));
+	assert.deepEqual(bad, { error: "error connecting to github.com" });
+	const giving = new AbortController();
+	const gone = withGh("sleep 30", () => signIn({ onCode: () => {}, signal: giving.signal }));
+	giving.abort();
+	assert.deepEqual(await gone, { cancelled: true });
+	const standings = await withGh('case "$*" in *--version*) echo "gh version 0";; *"api user"*) echo "someone";; esac', async () => [await standing()]);
+	assert.deepEqual(standings, [{ state: "signed-in", login: "someone" }]);
+	const out = await withGh('case "$*" in *--version*) echo "gh version 0";; *) exit 1;; esac', () => standing());
+	assert.deepEqual(out, { state: "signed-out" });
 });
 
 test("a clone is asked for by owner/name or by a GitHub address, and nothing else", async () => {

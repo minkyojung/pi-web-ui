@@ -44,7 +44,7 @@
  * A file of its own with nothing of Octave's in it but the name of the folder,
  * so the same command runs in pi's terminal: `pi -e spec.ts`.
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -52,6 +52,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@e
 import { writeAtomic } from "./atomic.ts";
 import { APP_DIR_NAME, APPROVALS, SPEC_DOCS, type SpecDoc, SPECS_DIR } from "./documentKinds.ts";
 import { CITIES } from "./electron/cities.js";
+import { CONFIG_FILE, DEFAULT_TIMEOUT, isConfig, readConfig } from "./electron/octaveConfig.js";
 import { approve, type SpecState, specState } from "./specApproval.ts";
 import { doneWhenOf, nextTask, parseTasks, runsOf, runsUnder, type Task, taskToRun, withDone, withParents } from "./specTasks.ts";
 
@@ -554,37 +555,66 @@ export async function finishTask(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: 
  * confirm the work is in the commit that is the work — in the clone and on
  * the PR, read with `git log` and nothing else (task-runs.md "결과는 커밋에").
  */
-export function trailersOf({ spec, task }: Pick<TaskMark, "spec" | "task">, checks: string | null, verified: Verified | null = null): string {
-	return [`Spec: ${spec}`, `Task: ${task}`, `Checks: ${checks ?? "none"}`, ...(verified ? [`Verified: ${verified.command} — exit ${verified.exit}`] : [])].join("\n");
+export function trailersOf({ spec, task }: Pick<TaskMark, "spec" | "task">, checks: string | null, verified: readonly Verified[] = []): string {
+	return [`Spec: ${spec}`, `Task: ${task}`, `Checks: ${checks ?? "none"}`, ...verified.map((v) => `Verified: ${v.name} — exit ${v.exit}`)].join("\n");
 }
 
-/** What the app ran for a task, and how it ended — the `Verified:` trailer, beside the run's own `Checks:`. */
+/** What the app ran for a task, and how it ended — one `Verified:` trailer each, beside the run's own `Checks:`. */
 export interface Verified {
+	/** The check's name from config.toml, or the command itself for the task's own `_Done when:`. */
+	name: string;
 	command: string;
 	exit: number;
 }
 
+/** A check's exit code that stops the commit — Claude Code's rule for a hook: 2 blocks, anything else does not. */
+export const BLOCKING_EXIT = 2;
+
+/** As many lines of what a check printed as are kept, at its end — where the reason usually is. */
+const LOG_TAIL = 40;
+
 /**
- * The task's `_Done when:` command, run by the app in the workspace: the
- * one check that is not the agent's word (task-results.md). Ten minutes,
- * as a test suite may take; what it printed is not kept — the commit says
- * how it ended, and a person who wants the output runs it. A task with no
- * command, or a plan that cannot be read, is verified by nothing.
+ * The checks run by the app in the workspace, in order: the repository's own
+ * (config.toml), then the task's `_Done when:` — the
+ * checks that are not the agent's word (task-results.md). Each on its own
+ * clock, config's or ten minutes; what each printed is kept only at its
+ * tail, in `.pi/runs/{task}/{name}.log`, since the commit says how it ended
+ * and the tail is where the reason usually is. A task with no command and a
+ * repository with no checks are verified by nothing.
  */
-async function verify(pi: ExtensionAPI, cwd: string, file: string, task: string): Promise<Verified | null> {
-	let command: string | null;
+async function verifyAll(pi: ExtensionAPI, cwd: string, file: string, task: string): Promise<Verified[]> {
+	const config = readConfig(cwd) as { check?: { name: string; command: string; timeout: number }[]; error?: string };
+	const checks: { name: string; command: string; timeout: number }[] = isConfig(config) && config.check ? [...config.check] : [];
 	try {
-		command = doneWhenOf(readFileSync(file, "utf8"), task);
+		const own = doneWhenOf(readFileSync(file, "utf8"), task);
+		if (own) checks.push({ name: own, command: own, timeout: DEFAULT_TIMEOUT });
 	} catch {
-		return null;
+		// No plan to read: nothing of the task's own to run.
 	}
-	if (!command) return null;
-	try {
-		const ran = await pi.exec("/bin/bash", ["-lc", command], { cwd, timeout: 600_000 });
-		return { command, exit: ran.killed ? 124 : ran.code };
-	} catch {
-		return { command, exit: 127 };
+	const ran: Verified[] = [];
+	for (const check of checks) {
+		let exit: number;
+		let printed = "";
+		try {
+			const result = await pi.exec("/bin/bash", ["-lc", check.command], { cwd, timeout: check.timeout * 1000 });
+			exit = result.killed ? 124 : result.code;
+			printed = `${result.stdout ?? ""}${result.stderr ? `\n${result.stderr}` : ""}`;
+		} catch (err) {
+			exit = 127;
+			printed = err instanceof Error ? err.message : String(err);
+		}
+		try {
+			const dir = join(cwd, APP_DIR_NAME, "runs", task);
+			mkdirSync(dir, { recursive: true });
+			const tail = printed.replace(/\s+$/, "").split("\n").slice(-LOG_TAIL).join("\n");
+			writeFileSync(join(dir, `${check.name.replace(/[^\w.-]+/g, "_")}.log`), `$ ${check.command}\n${tail}\n(exit ${exit})\n`);
+		} catch {
+			// The log is a convenience; the commit is the record.
+		}
+		ran.push({ name: check.name, command: check.command, exit });
+		if (exit === BLOCKING_EXIT) break;
 	}
+	return ran;
 }
 
 /**
@@ -593,7 +623,7 @@ async function verify(pi: ExtensionAPI, cwd: string, file: string, task: string)
  * the instance made for its session, and the chain that started it runs on
  * the one before — both are this module, loaded once.
  */
-type Ended = "committed" | "checked" | "nothing" | "uncommitted";
+type Ended = "committed" | "checked" | "nothing" | "uncommitted" | "blocked";
 const ended = new Map<string, Ended>();
 const endedKey = (cwd: string, { spec, task }: TaskMark) => `${cwd}\0${spec}\0${task}`;
 
@@ -615,8 +645,15 @@ async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, c
 		ui.notify(`${where} is not there, so ${mark.task} could not be checked off.`, "warning");
 		return "nothing";
 	}
-	// Before the box and the commit: the plan as approved names the check.
-	const verified = await verify(pi, cwd, file, mark.task);
+	// Before the box and the commit: the repository's checks, then the plan's.
+	const verified = await verifyAll(pi, cwd, file, mark.task);
+	const blocked = verified.find((v) => v.exit === BLOCKING_EXIT);
+	if (blocked) {
+		// A check that asked for it stops everything: no box, no commit. The
+		// work stays in the folder for the person, or the agent, to go on with.
+		ui.notify(`${mark.task} is not done: \`${blocked.name}\` refused it (exit ${BLOCKING_EXIT}). Nothing was checked off or committed; see ${APP_DIR_NAME}/runs/${mark.task}/.`, "warning");
+		return "blocked";
+	}
 	writeAtomic(file, withDone(text, withParents(parseTasks(text), new Set([...mark.done, mark.task]))));
 	if (!repository) {
 		ui.notify(`${mark.task} is done. There is no repository here, so nothing was committed.`, "warning");
@@ -642,7 +679,8 @@ async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, c
 	const at = await git(["rev-parse", "--short", "HEAD"]);
 	const next = nextTask(parseTasks(readFileSync(file, "utf8")));
 	const going = mark.then[0];
-	const said = verified ? (verified.exit === 0 ? ` \`${verified.command}\` passed.` : ` \`${verified.command}\` failed (exit ${verified.exit}).`) : "";
+	const failed = verified.filter((v) => v.exit !== 0);
+	const said = verified.length === 0 ? "" : failed.length === 0 ? ` ${verified.length === 1 ? `\`${verified[0]!.name}\` passed` : `${verified.length} checks passed`}.` : ` ${failed.map((v) => `\`${v.name}\` failed (exit ${v.exit})`).join(", ")} — see ${APP_DIR_NAME}/runs/${mark.task}/.`;
 	ui.notify(`${mark.task} is done${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}.${said} ${going ? `${going} starts next.` : next ? `Next is ${next.number} — /spec-run` : "That was the last task."}`, "info");
 	return "committed";
 }
@@ -703,8 +741,8 @@ async function runNext(session: RunSession, cwd: string, mark: TaskMark): Promis
 	const not = `${left} ${rest.length > 0 ? "were" : "was"} not started`;
 	const how = ended.get(endedKey(cwd, mark)) ?? "nothing";
 	ended.delete(endedKey(cwd, mark));
-	if (how === "nothing" || how === "uncommitted") {
-		session.ui.notify(`${mark.task} was not ${how === "nothing" ? "checked off" : "committed"}, so ${not}.`, "warning");
+	if (how === "nothing" || how === "uncommitted" || how === "blocked") {
+		session.ui.notify(`${mark.task} was not ${how === "nothing" ? "checked off" : how === "blocked" ? "let through by its checks" : "committed"}, so ${not}.`, "warning");
 		return;
 	}
 	let tasks: Task[];
@@ -802,6 +840,49 @@ async function branchIn(pi: ExtensionAPI, cwd: string): Promise<string | null> {
 	}
 }
 
+/**
+ * The hidden message /setup is told by: what the file is for, its shape,
+ * and where to find out what goes in it — the repository's own files, not
+ * a guess. The app runs the commands and understands none of them, so the
+ * draft is the agent's and the file is the person's: they read it and fix it.
+ */
+export function setupPrompt({ existing }: { existing: boolean }): string {
+	return [
+		`The person asked with /setup for this repository's own commands to be written down for Octave, in ${CONFIG_FILE}.${existing ? " The file is there already: read it, and change only what is wrong or missing." : ""}`,
+		"",
+		"Octave runs these commands and understands none of them. Each is a line of bash, run in a workspace of this repository — a git worktree, which has only the committed files — at one of four moments:",
+		"- `copy`, a list of files kept beside the code and out of git — `.env*` unless the list says otherwise — brought over from the repository's own folder into every new workspace before anything runs. Name only what is not committed; a committed file is there already.",
+		"- `setup`, once a workspace is made, before it opens: what a fresh clone needs to be worked in — dependencies installed. Nothing else; not the copying, which `copy` does.",
+		"- `[scripts.run.<id>]`, when the person presses ▶ at the foot of the window: a dev server or a watcher, on the port in `$OCTAVE_PORT` — so two workspaces can run at once — for as long as they leave it. The first one is the ▶.",
+		"- `[[scripts.check]]`, after every task the agent finishes, before its commit: each in order, each with `name`, `command`, and a `description` of what a failure means. Exit 0 passes; exit 2 stops the commit; any other exit is written down as a failure and the commit is made anyway. What CI runs is what goes here, in CI's order, the fast ones first.",
+		"- `archive`, before a workspace is removed: a database dropped, a tunnel closed. Leave it out where there is nothing to undo.",
+		"",
+		"The whole shape:",
+		"```toml",
+		"[scripts]",
+		'copy = [".env", ".env.local"]',
+		'setup = "npm ci"',
+		"",
+		"[scripts.run.dev]",
+		'command = "PORT=$OCTAVE_PORT npm run dev"',
+		"",
+		"[[scripts.check]]",
+		'name = "unit"',
+		'command = "npm test"',
+		'description = "A unit test fails: the change broke behaviour a test pins down."',
+		"",
+		"[[scripts.check]]",
+		'name = "types"',
+		'command = "npm run typecheck"',
+		'description = "The types do not hold together."',
+		"```",
+		"",
+		"Find out, do not guess: package.json and its lockfile (which says npm, pnpm, yarn or bun), pyproject.toml and uv.lock, Cargo.toml, go.mod, the Makefile, the CI workflows, README, CONTRIBUTING and AGENTS.md. Name only commands that exist there; invent none. Read; run nothing that installs or changes anything — the person will, by making a workspace.",
+		"",
+		`Write ${CONFIG_FILE} with write — it is not a note, so not note_write. Then stop, and say in a line or two what you wrote and what you were unsure of, and end with this, as it is: "Commit it and every new workspace runs it. For this one, use Run setup again in the ▶ menu at the foot of the window." Do not ask them to approve it: the file is theirs, and they will read it and fix it.`,
+	].join("\n");
+}
+
 export default function spec(pi: ExtensionAPI): void {
 	/** The specs there were when /spec ran, until its run is over: one made since is the one it wrote. */
 	let before: Set<string> | null = null;
@@ -832,6 +913,18 @@ export default function spec(pi: ExtensionAPI): void {
 			// Queued first: "nextTurn" goes with the next message sent, which is the line below.
 			pi.sendMessage({ customType: "spec", content: specPrompt({ line, prefix: unnamed(branch), branch, taken }), display: false }, { deliverAs: "nextTurn" });
 			pi.sendUserMessage(`/spec ${line}`);
+		},
+	});
+
+	pi.registerCommand("setup", {
+		description: "Have the agent draft this repository's own commands for Octave — setup, run, checks — in .octave/config.toml, for you to read and fix",
+		handler: async (_args, ctx) => {
+			if (!ctx.isIdle()) {
+				ctx.ui.notify("The agent is working. Ask for the setup when it has finished.", "warning");
+				return;
+			}
+			pi.sendMessage({ customType: "spec", content: setupPrompt({ existing: existsSync(join(ctx.cwd, CONFIG_FILE)) }), display: false }, { deliverAs: "nextTurn" });
+			pi.sendUserMessage("/setup");
 		},
 	});
 

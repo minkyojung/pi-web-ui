@@ -198,9 +198,12 @@ export function resolveNote(root: string, path: string): string | null {
  * Placed as a note is — inside the folder once resolved, on the disk's
  * spelling — and then refused for exactly two names, at any depth: `.git`,
  * which is git's own working parts and not a thing to read as text, and the
- * app's own `.pi/`. Every other dot-folder is part of the repository and
- * opens, which is the whole difference from fileAt: that one refuses them all
- * because the notes' lists must not hold `.obsidian`, and this list is git's
+ * app's own `.pi/` — but for `.pi/runs/`, where the app leaves what the
+ * repository's commands printed (electron/runs.js, scripts.js, spec.ts):
+ * those are for the person to read, and a tab is where they are read.
+ * Every other dot-folder is part of the repository and opens, which is the
+ * whole difference from fileAt: that one refuses them all because the
+ * notes' lists must not hold `.obsidian`, and this list is git's
  * (repoFiles.ts), where `.github/workflows` and `.octave/specs` belong.
  *
  * Says nothing about what the file is. Whether a path opens as a note, a
@@ -210,8 +213,13 @@ export function resolveNote(root: string, path: string): string | null {
 export function codeAt(root: string, given: string): { path: string; full: string } | null {
 	if (isAbsolute(given)) return null;
 	const file = inFolder(root, given);
-	return file && !file.path.split("/").some((part) => part === ".git" || part === APP_DIR_NAME) ? file : null;
+	if (!file) return null;
+	if (file.path.startsWith(`${RUNS_DIR}/`)) return file;
+	return file.path.split("/").some((part) => part === ".git" || part === APP_DIR_NAME) ? null : file;
 }
+
+/** Where the app leaves what the repository's commands printed, under its own folder. */
+export const RUNS_DIR = `${APP_DIR_NAME}/runs`;
 
 /** How much of a file is read into a tab. Past this it is not a file anyone is reading; see CodeMsg. */
 export const CODE_MAX = 1_000_000;
@@ -245,7 +253,18 @@ export function readCode(root: string, given: string): CodeRead {
 		return { ok: false, reason: "missing" };
 	}
 	if (bytes.subarray(0, 8000).includes(0)) return { ok: false, reason: "binary" };
-	return { ok: true, path: found.path, text: bytes.subarray(0, CODE_MAX).toString("utf8"), modified, truncated: bytes.length > CODE_MAX };
+	// A file is read from its start; a log the commands printed from its end,
+	// where the news is — a run left on for a day is read as `tail` reads it,
+	// from the first whole line that fits.
+	const truncated = bytes.length > CODE_MAX;
+	const kept = !truncated ? bytes : found.path.startsWith(`${RUNS_DIR}/`) ? afterLine(bytes.subarray(bytes.length - CODE_MAX)) : bytes.subarray(0, CODE_MAX);
+	return { ok: true, path: found.path, text: kept.toString("utf8"), modified, truncated };
+}
+
+/** What follows the first newline, so a tail begins on a whole line; all of it when there is none. */
+function afterLine(bytes: Buffer): Buffer {
+	const at = bytes.indexOf(0x0a);
+	return at === -1 ? bytes : bytes.subarray(at + 1);
 }
 
 /**

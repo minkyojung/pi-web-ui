@@ -54,9 +54,10 @@ import { documents } from "./documents.ts";
 import { MAX_BYTES, saveAttachment, type Saved } from "./attach.ts";
 import { documentType, SPEC_DOCS, SPECS_DIR } from "./documentKinds.ts";
 import { specState } from "./specApproval.ts";
+import { inheritedSpecs } from "./specOrigin.ts";
 import { parseTasks, progressOf, type Progress } from "./specTasks.ts";
 import { type TaskResult, taskResults } from "./specResults.ts";
-import { baseLine, baseOf, standingIn } from "./standing.ts";
+import { baseLine, baseOf, githubLine, standingIn, takeCredentials } from "./standing.ts";
 import { readCommit } from "./commitRead.ts";
 import { decide, type Change, historyOf, type Holed, logNames, mapThrough, moveHistory, type Origin, reconcile, record, readHistory, trashLog, undecided, wroteIn } from "./history.ts";
 import { answering, asked, under, type Ask, type AskOutcome } from "./ask.ts";
@@ -70,6 +71,7 @@ import { isPropertyType } from "./propertyTypes.ts";
 import { backlinksOf, retarget } from "./links.ts";
 import { search } from "./search.ts";
 import { sectionFor } from "./changelog.mjs";
+import { folderMeta } from "./folderMeta.ts";
 import type {
 	Authored,
 	BranchesMsg,
@@ -218,7 +220,8 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 	// Once, as the session opens: the base does not move under a session, and
 	// a line in the system prompt is cached with it where a message each turn
 	// would not be.
-	const base = baseLine(await baseOf(cwd));
+	const base = await baseOf(cwd);
+	const said = [WORKSPACE_PROMPT, baseLine(base), githubLine(base, process.env.GH_TOKEN)].filter((line): line is string => line !== null);
 	const services = await createAgentSessionServices({
 		cwd,
 		modelRuntime,
@@ -228,7 +231,7 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
 			// pi's own system prompt stands — a coding agent's, which is what
 			// this is — and after it, where the agent is and the few rules that
 			// are this app's: see guard.ts.
-			appendSystemPrompt: base ? [WORKSPACE_PROMPT, base] : [WORKSPACE_PROMPT],
+			appendSystemPrompt: said,
 			extensionFactories: [
 				// The guard first: a blocked call never reaches anything after it.
 				{ name: "guard", factory: guard(CWD, () => openNote) },
@@ -699,8 +702,13 @@ function spec(path: string): SpecMsg | null {
  * so it is also told when each waiting document was written — of two specs
  * waiting at once, the newer is the one the person has just been given — and
  * which documents are there at all, which the approvals alone cannot say.
+ *
+ * Every spec in the folder, and which of them this workspace started — a
+ * workspace made from the base has the base's specs on its disk, and only
+ * git can tell those from the work here (specOrigin.ts).
  */
 function specs(): SpecsMsg {
+	const inherited = inheritedNow();
 	return {
 		type: "specs",
 		specs: takenSpecs(CWD).map((name) => {
@@ -708,6 +716,7 @@ function specs(): SpecsMsg {
 			const { approved, waiting } = specState(CWD, name);
 			return {
 				name,
+				own: !inherited.has(name),
 				approved,
 				waiting,
 				waitingAt: waiting ? writtenAt(join(dir, waiting)) : null,
@@ -733,7 +742,19 @@ function specs(): SpecsMsg {
 let results = new Map<string, TaskResult[]>();
 let resultsSoon: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * The specs this workspace did not start (specOrigin.ts). Git's answer too,
+ * and read beside the results because the two move together: what the base
+ * had when this branch left it changes on a fetch or a rebase, and not on
+ * anything the person does to the documents. Read at once the first time it
+ * is asked, so no spec is ever named as this workspace's before it is known
+ * whose it is.
+ */
+let inherited: Set<string> | null = null;
+const inheritedNow = (): Set<string> => (inherited ??= inheritedSpecs(CWD));
+
 async function loadResults(): Promise<void> {
+	inherited = inheritedSpecs(CWD);
 	results = await taskResults(CWD);
 	saySpecs();
 	// A task's commit moves the branch too.
@@ -1173,6 +1194,10 @@ const logins = createLoginBridge(
 	(provider, method, interaction) => modelRuntime.login(provider, method, interaction),
 	process.send ? (url) => process.send!({ ask: "open", url }) : null,
 );
+
+// The person's GitHub sign-in, changed in Settings while this server runs:
+// what git and gh run with from now on — see standing.ts.
+process.on("message", takeCredentials);
 
 /**
  * After a sign-in: bring the models up to date, and — when the session was on
@@ -1741,7 +1766,9 @@ const server = createServer(async (req, res) => {
 	}
 	const ext = file.pathname.slice(file.pathname.lastIndexOf("."));
 	res.writeHead(200, { "content-type": CONTENT_TYPES[ext] ?? "application/octet-stream" });
-	res.end(body);
+	// The page is told which folder it is a window on before any of it runs —
+	// see web/src/workspace.ts for why a page cannot go by its address.
+	res.end(pathname === "/" ? folderMeta(body.toString("utf8"), CWD) : body);
 });
 
 const wss = new WebSocketServer({ server });

@@ -1,6 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type PanelImperativeHandle, useDefaultLayout } from "react-resizable-panels";
 
+import { layoutStorage, prefs } from "./prefs.ts";
+
 import { Editor } from "./components/Editor";
 import { Pi } from "./components/Pi";
 import { PiToggle, SidebarToggle } from "./components/PanelHeader";
@@ -216,12 +218,8 @@ const RAIL = "strip-width";
 const SIDEBAR = "22%";
 
 function readRail(): number | null {
-	try {
-		const kept = Number(localStorage.getItem(RAIL));
-		return kept > 0 ? kept : null;
-	} catch {
-		return null;
-	}
+	const kept = Number(prefs.get(RAIL));
+	return kept > 0 ? kept : null;
 }
 
 /**
@@ -249,8 +247,8 @@ export function App() {
 	// Two groups, because the window divides twice and the divisions are not
 	// peers: the sidebar is cut off from everything else, and what is left is
 	// cut again into the note and pi. Each keeps its own widths.
-	const columns = useDefaultLayout({ id: "columns", storage: localStorage, panelIds: ["sidebar", "content"] });
-	const panes = useDefaultLayout({ id: "panes", storage: localStorage, panelIds: ["main", "pi"] });
+	const columns = useDefaultLayout({ id: "columns", storage: layoutStorage, panelIds: ["sidebar", "content"] });
+	const panes = useDefaultLayout({ id: "panes", storage: layoutStorage, panelIds: ["main", "pi"] });
 	// Opening only, for the folded ring at the foot of the window: it is only
 	// ever pressed with the column away, and a press that could also fold it
 	// would be a guess about which way the column was.
@@ -268,12 +266,7 @@ export function App() {
 	// width the column had rather than following it to nothing.
 	const [railWidth, setRailWidth] = useState<number | null>(readRail);
 	useEffect(() => {
-		if (railWidth === null) return;
-		try {
-			localStorage.setItem(RAIL, String(railWidth));
-		} catch {
-			// A window with storage blocked forgets, which is all that is lost.
-		}
+		if (railWidth !== null) prefs.set(RAIL, String(railWidth));
 	}, [railWidth]);
 	// The width is said outright rather than left to expand(). The panel answers
 	// isCollapsed() on a comparison rounded to three places and acts on expand()

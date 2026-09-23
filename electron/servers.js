@@ -79,6 +79,10 @@ export function createServers({ start, onCrash, graceMs = 3000 }) {
 		stopAll,
 		/** The folders with a server running or starting. */
 		folders: () => [...running.keys()],
+		/** Every server there is once it has started; one that failed to is skipped. */
+		each: async (fn) => {
+			for (const entry of await Promise.allSettled([...running.values()])) if (entry.status === "fulfilled") fn(entry.value);
+		},
 		/** How many are running or starting. */
 		get size() {
 			return running.size;

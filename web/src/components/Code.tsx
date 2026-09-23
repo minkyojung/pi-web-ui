@@ -7,6 +7,7 @@ import { drawSelection, EditorView, keymap, lineNumbers } from "@codemirror/view
 
 import { choose, chosenStore } from "../chosen";
 import { code } from "../codeLook";
+import { isRunLog, stuckToEnd } from "../logTail";
 import { say as sayInFront } from "../inFront";
 import { codeStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
@@ -135,14 +136,18 @@ export default function Code({ path }: { path: string }) {
 	// The text, each time the server says what it is — first ask, and every
 	// write to it since. Replaced whole: there is nothing here to preserve,
 	// and the alternative is the note's change-set machinery for a view that
-	// cannot be typed in.
+	// cannot be typed in. A log the commands printed is read at its end, and
+	// kept there while it grows unless the reader has scrolled up (logTail.ts).
 	useEffect(() => {
 		const editor = view.current;
 		if (!editor) return;
 		const text = mine?.type === "code" ? mine.text : "";
 		if (editor.state.doc.toString() === text) return;
+		const log = isRunLog(path);
+		const follow = log && (editor.state.doc.length === 0 || stuckToEnd(editor.scrollDOM));
 		editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: text } });
-	}, [mine]);
+		if (follow) editor.scrollDOM.scrollTop = editor.scrollDOM.scrollHeight;
+	}, [mine, path]);
 
 	const gone = mine?.type === "code_gone" ? mine : null;
 	return (
@@ -154,7 +159,7 @@ export default function Code({ path }: { path: string }) {
 				</p>
 			)}
 			{mine?.type === "code" && mine.truncated && (
-				<p className="border-t px-3 py-1.5 text-xs text-muted-foreground">Too long to show whole — this is the beginning of it.</p>
+				<p className="border-t px-3 py-1.5 text-xs text-muted-foreground">{isRunLog(path) ? "Too long to show whole — this is the end of it." : "Too long to show whole — this is the beginning of it."}</p>
 			)}
 		</div>
 	);

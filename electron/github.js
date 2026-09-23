@@ -9,6 +9,8 @@
  */
 import { execFile } from "node:child_process";
 
+import { gitEnv } from "./credentials.js";
+
 /** gh's answer, trimmed, or null when there is no gh, no sign-in, or no answer. */
 function gh(args, { timeoutMs = 15_000, cwd } = {}) {
 	return new Promise((resolve) => {
@@ -21,6 +23,68 @@ function gh(args, { timeoutMs = 15_000, cwd } = {}) {
 /** The signed-in person's GitHub name, which starts their branch names — or null. */
 export function login() {
 	return gh(["api", "user", "--jq", ".login"]);
+}
+
+/**
+ * Where the person stands with GitHub, for Settings › Accounts: `missing`
+ * when there is no gh to ask, `signed-out` when it has no one — or its
+ * keyring is locked, which it cannot tell from no one — and `signed-in` with
+ * their name.
+ */
+export async function standing() {
+	if ((await gh(["--version"])) === null) return { state: "missing" };
+	const name = await login();
+	return name ? { state: "signed-in", login: name } : { state: "signed-out" };
+}
+
+/**
+ * What gh says on its way in, read for the page: the one-time code and the
+ * address to enter it at, each once it appears. gh writes both to stderr —
+ * `! First copy your one-time code: ABCD-1234` and `Open this URL to
+ * continue in your web browser: https://github.com/login/device` — and,
+ * with no terminal to wait on, goes straight to polling for the approval.
+ */
+export function deviceCodeFrom(text) {
+	const code = /one-time code[ :(]+([A-Z0-9]{4}-[A-Z0-9]{4})/i.exec(text)?.[1] ?? null;
+	const url = /(https:\/\/\S+\/login\/device\S*)/.exec(text)?.[1] ?? null;
+	return code && url ? { userCode: code, verificationUri: url } : null;
+}
+
+/**
+ * Sign in to github.com with gh, as `gh auth login --web` does in a terminal
+ * but with none: gh gets a code from GitHub and says it, `onCode` shows it,
+ * the person enters it in their browser, and gh waits for GitHub to say so
+ * and keeps the token in its own keyring — where `credentials.js` finds it
+ * from then on, for the app and for the terminal alike. Resolves `{ ok }`
+ * when gh ends well, `{ error }` with gh's own words when not, and
+ * `{ cancelled }` when `signal` gave up — the person's own doing, not news.
+ */
+export function signIn({ onCode, signal }) {
+	return new Promise((resolve) => {
+		const args = ["auth", "login", "--web", "--hostname", "github.com", "--git-protocol", "https", "--skip-ssh-key"];
+		const child = execFile("gh", args, { env: { ...process.env, GH_PROMPT_DISABLED: "1" }, timeout: 15 * 60_000, signal }, (err, _stdout, stderr) => {
+			if (!err) resolve({ ok: true });
+			else if (err.name === "AbortError") resolve({ cancelled: true });
+			else resolve({ error: String(stderr).replace(/^[!✓]\s*/gm, "").trim() || err.message });
+		});
+		child.stdin?.end();
+		let said = "";
+		let told = false;
+		child.stderr?.on("data", (chunk) => {
+			if (told) return;
+			said += chunk;
+			const code = deviceCodeFrom(said);
+			if (code) {
+				told = true;
+				onCode(code);
+			}
+		});
+	});
+}
+
+/** Sign out of github.com in gh: the token goes from its keyring, and so from the app. */
+export async function signOut() {
+	return (await gh(["auth", "logout", "--hostname", "github.com"])) === null ? { error: "gh could not sign out." } : { ok: true };
 }
 
 /**
@@ -68,8 +132,9 @@ export async function clone({ owner, name }, into) {
 	const [command, args] = (await login())
 		? ["gh", ["repo", "clone", `${owner}/${name}`, into]]
 		: ["git", ["clone", `https://github.com/${owner}/${name}.git`, into]];
+	const env = { ...process.env, ...(await gitEnv()), GH_PROMPT_DISABLED: "1" };
 	await new Promise((resolve, reject) => {
-		execFile(command, args, { env: { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" }, timeout: 10 * 60_000 }, (err, _stdout, stderr) => {
+		execFile(command, args, { env, timeout: 10 * 60_000 }, (err, _stdout, stderr) => {
 			if (err) reject(new Error(String(stderr).trim() || err.message));
 			else resolve();
 		});

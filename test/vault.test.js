@@ -388,6 +388,12 @@ test("코드의 문은 저장소의 아무 파일이나 열고, .git과 .pi만 �
   assert.equal(codeAt(DIR, ".git/config"), null);
   assert.equal(codeAt(DIR, "deep/.git/HEAD"), null, "깊은 곳의 .git도 git의 것이다");
   assert.equal(codeAt(DIR, ".pi/links.json"), null);
+  put(".pi/runs/dev.log", 100);
+  put(".pi/runs/3/unit.log", 100);
+  assert.equal(codeAt(DIR, ".pi/runs/dev.log").path, ".pi/runs/dev.log", "명령이 찍은 것은 읽으라고 남긴 것이다");
+  assert.equal(codeAt(DIR, ".pi/runs/3/unit.log").path, ".pi/runs/3/unit.log");
+  assert.equal(codeAt(DIR, ".pi/runs/../settings.json"), null, "runs를 거쳐 나가는 길은 없다");
+  assert.equal(codeAt(DIR, ".pi/trash/x.md"), null);
   assert.equal(codeAt(DIR, "../outside.ts"), null, "폴더 밖은 폴더 밖이다");
   assert.equal(codeAt(DIR, join(DIR, "server.ts")), null, "절대 경로로는 부르지 않는다");
 });
@@ -407,4 +413,13 @@ test("읽기는 글자와 쓰인 시각을 주고, 글자가 아닌 것은 그�
   assert.equal(long.ok, true);
   assert.equal(long.text.length, CODE_MAX);
   assert.equal(long.truncated, true);
+
+  // A log the commands printed is read from its end, on a whole line.
+  mkdirSync(join(DIR, ".pi", "runs"), { recursive: true });
+  writeFileSync(join(DIR, ".pi", "runs", "dev.log"), `$ npm run dev\n${"early line\n".repeat(100_000)}last line\n(exit 0)\n`);
+  const log = readCode(DIR, ".pi/runs/dev.log");
+  assert.equal(log.truncated, true);
+  assert.ok(log.text.length <= CODE_MAX);
+  assert.match(log.text, /^early line\n/, "begins on a whole line");
+  assert.match(log.text, /last line\n\(exit 0\)\n$/, "and ends with the end");
 });

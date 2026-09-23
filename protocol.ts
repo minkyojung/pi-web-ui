@@ -598,6 +598,16 @@ export interface SpecMsg {
 export interface SpecInfo {
 	/** The spec's folder under .octave/specs/. */
 	name: string;
+	/**
+	 * Whether this workspace started the spec, or found it on the disk because
+	 * a workspace is made from the base and a spec's documents are committed
+	 * like anything else (specOrigin.ts). What the window says of itself — the
+	 * spec it names, the document it opens by itself — is the work here, which
+	 * is the work a pull request from this branch would carry; the rest is
+	 * another branch's, and still opens from the files like any other note.
+	 * True for every spec where git cannot say.
+	 */
+	own: boolean;
 	/** How many of SPEC_DOCS, from the first, are approved as the files are now. */
 	approved: number;
 	/** The document written and waiting for the person, or null when none is. */
@@ -863,7 +873,7 @@ export interface CodeMsg {
 	path: string;
 	text: string;
 	modified: number;
-	/** The file is longer than a tab will read, and `text` is its first part (vault.ts's CODE_MAX). */
+	/** The file is longer than a tab will read, and `text` is its first part — its last, for a log under `.pi/runs/` (vault.ts's CODE_MAX). */
 	truncated: boolean;
 }
 

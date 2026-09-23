@@ -53,3 +53,30 @@ export async function standingIn(cwd: string): Promise<GitStanding | null> {
  */
 export const baseLine = (base: string | null): string | null =>
 	base ? `This branch was started from ${base}, the repository's target branch: a diff, a rebase or a pull request is against it, not against whatever branch happens to be checked out elsewhere.` : null;
+
+/**
+ * What the agent is told of GitHub, after the base: nothing when the shell
+ * handed a sign-in down (electron/credentials.js) or there is no remote to
+ * reach; else that none was found — git may still have credentials of its
+ * own, so not that a push will fail, but what to do when one does.
+ */
+export const githubLine = (base: string | null, token: string | undefined): string | null =>
+	base && !token
+		? "Octave found no GitHub sign-in to hand you: nobody has run `gh auth login` on this machine. Git may still have credentials of its own; if a push, a fetch or `gh` fails for want of them, say so and ask the person to sign in with `gh auth login`, rather than trying again."
+		: null;
+
+/**
+ * The shell saying the person's GitHub sign-in changed — `{ credentials: {
+ * unset, set } }`, see electron/main.js tellCredentials — taken into this
+ * process's environment, which is what every git and gh the agent runs from
+ * now on starts with. Anything else the shell says is not this and is left
+ * alone. True when it was taken.
+ */
+export function takeCredentials(message: unknown): boolean {
+	const m = message as { credentials?: { unset?: unknown; set?: unknown } } | null;
+	const given = m?.credentials;
+	if (!given || typeof given !== "object") return false;
+	if (Array.isArray(given.unset)) for (const key of given.unset) if (typeof key === "string") delete process.env[key];
+	if (given.set && typeof given.set === "object") for (const [key, value] of Object.entries(given.set)) if (typeof value === "string") process.env[key] = value;
+	return true;
+}

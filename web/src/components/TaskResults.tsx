@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { CheckIcon, FileTextIcon, XIcon } from "lucide-react";
 
+import { checkLogPath } from "../checkLog";
 import { commitPath } from "../pages";
 import { type ResultLine, freshWords, listOf, tasksWords } from "../resultsList.ts";
 import { sawResults, seenStore } from "../seenResults.ts";
@@ -94,7 +95,7 @@ export function TaskResults({ open: inFront, onOpen }: { open: string | null; on
 									onSelect={() => go(commitPath(line.commit))}
 									className="gap-2"
 								>
-									<Line line={line} />
+									<Line line={line} onLog={go} />
 								</CommandItem>
 							))}
 						</CommandGroup>
@@ -131,21 +132,38 @@ export function TaskResults({ open: inFront, onOpen }: { open: string | null; on
  * Not yet looked at is the line in bold, as unread mail is: nothing to
  * learn, and it leaves the one mark to mean one thing.
  */
-function Line({ line }: { line: ResultLine }) {
+function Line({ line, onLog }: { line: ResultLine; onLog: (path: string) => void }) {
 	const checked = line.checks !== null;
 	// What the app ran outranks what the run said: a tick or a cross where
 	// there is a Verified trailer, the circle for the agent's word otherwise.
-	const ran = line.verified;
-	const mark = ran ? (ran.exit === 0 ? "passed" : "failed") : checked ? "said" : "none";
-	const title = ran ? `${ran.command} — ${ran.exit === 0 ? "passed" : `exit ${ran.exit}`}${checked ? ` · agent: ${line.checks}` : ""}` : checked ? `agent: ${line.checks}` : "The run checked nothing";
+	const ran = line.verified.length > 0 ? line.verified : null;
+	const failed = ran?.filter((v) => v.exit !== 0) ?? [];
+	const mark = ran ? (failed.length === 0 ? "passed" : "failed") : checked ? "said" : "none";
+	const title = ran
+		? `${ran.map((v) => `${v.name} — ${v.exit === 0 ? "passed" : `exit ${v.exit}`}`).join(" · ")}${checked ? ` · agent: ${line.checks}` : ""}`
+		: checked
+			? `agent: ${line.checks}`
+			: "The run checked nothing";
 	return (
 		<>
+			{/* A tick or a cross opens what the check printed — the first one that
+			    failed, else the first — in a tab: the commit says how it ended, the
+			    log says why. Its click is its own, not the line's. */}
 			<span
-				className="flex w-3 shrink-0 justify-center"
+				className={`flex w-3 shrink-0 justify-center${ran ? " cursor-default" : ""}`}
 				data-checks={mark}
-				title={title}
+				data-log={ran ? checkLogPath(line.task, (failed[0] ?? ran[0]!).name) : undefined}
+				onClick={
+					ran
+						? (e) => {
+								e.stopPropagation();
+								onLog(checkLogPath(line.task, (failed[0] ?? ran[0]!).name));
+							}
+						: undefined
+				}
+				title={ran ? `${title} · click for what it printed` : title}
 				role="img"
-				aria-label={ran ? `The app ran ${ran.command}: ${ran.exit === 0 ? "passed" : `failed, exit ${ran.exit}`}` : checked ? `The agent said it checked: ${line.checks}` : "No checks"}
+				aria-label={ran ? (failed.length === 0 ? `The app ran ${ran.length === 1 ? ran[0]!.name : `${ran.length} checks`}: passed` : `The app ran checks: ${failed.map((v) => v.name).join(", ")} failed`) : checked ? `The agent said it checked: ${line.checks}` : "No checks"}
 			>
 				{mark === "passed" ? (
 					<CheckIcon className="size-3" style={{ color: "var(--code-string)" }} />

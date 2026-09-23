@@ -6,7 +6,9 @@
  * the server because it is about this window's habit, not the vault — and
  * the list is short enough to lose without loss.
  */
-const KEY = "recent-notes";
+import { keyFor } from "./workspace.ts";
+
+const KEY = () => keyFor("recent-notes");
 const KEEP = 20;
 
 /** `path` moved to the front of `list`, the list cut to what is kept. */
@@ -24,7 +26,7 @@ export function forget(list: string[], path: string, replacement?: string): stri
 
 export function readRecent(): string[] {
 	try {
-		const raw = JSON.parse(localStorage.getItem(KEY) ?? "[]");
+		const raw = JSON.parse(localStorage.getItem(KEY()) ?? "[]");
 		return Array.isArray(raw) ? raw.filter((p): p is string => typeof p === "string") : [];
 	} catch {
 		return [];
@@ -33,7 +35,7 @@ export function readRecent(): string[] {
 
 export function writeRecent(list: string[]): void {
 	try {
-		localStorage.setItem(KEY, JSON.stringify(list));
+		localStorage.setItem(KEY(), JSON.stringify(list));
 	} catch {
 		// A window with storage blocked forgets, which is all that is lost.
 	}

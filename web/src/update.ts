@@ -20,6 +20,8 @@ export interface UpdateState {
 	progress: number | null;
 	error: string | null;
 	justUpdated: { from: string; to: string } | null;
+	/** The version whose offer was waved away, for as long as the app runs — it is one offer, whichever page is up. */
+	dismissed: string | null;
 }
 
 export interface UpdateBridge {
@@ -28,6 +30,7 @@ export interface UpdateBridge {
 	check: () => Promise<void>;
 	restart: () => Promise<void>;
 	seen: () => Promise<void>;
+	dismiss: (version: string) => Promise<void>;
 }
 
 type Shell = {
@@ -93,19 +96,5 @@ export function restartWhenIdle(pi: UpdateBridge = bridge()!): () => void {
 	};
 }
 
-/** Offers waved away, by version, for this window's life: a newer version is a new offer. */
-const DISMISSED = "update-dismissed";
-export const dismissed = (version: string): boolean => {
-	try {
-		return sessionStorage.getItem(DISMISSED) === version;
-	} catch {
-		return false;
-	}
-};
-export const dismiss = (version: string): void => {
-	try {
-		sessionStorage.setItem(DISMISSED, version);
-	} catch {
-		// Storage that cannot be written costs a dismissal its memory, nothing more.
-	}
-};
+/** Whether the offer of `version` was waved away: the shell's to remember, since the page is loaded again at every workspace and the offer is one. A newer version is a new offer. */
+export const dismissed = (update: UpdateState | null, version: string): boolean => update?.dismissed === version;

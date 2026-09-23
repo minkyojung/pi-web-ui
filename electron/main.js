@@ -18,13 +18,20 @@ import updater from "electron-updater";
 
 import { SCHEME, fileFor, pageUrl } from "./appScheme.js";
 import { reportUrl } from "./report.js";
+import { CONFIG_FILE, DEFAULT_TIMEOUT, isConfig, readConfig } from "./octaveConfig.js";
+import { prefsOf, withPref } from "./prefs.js";
+import { copyInto } from "./copies.js";
+import { runLogsIn } from "./runLogs.js";
+import { createRuns } from "./runs.js";
+import { runScript } from "./scripts.js";
 import { createServers, idle } from "./servers.js";
 import { shellEnv } from "./shellEnv.js";
-import { branchOf, changesIn, git, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
-import { clone, issues, login, pullRequests, repositories, repositoryName } from "./github.js";
+import { addBranchWorktree, branchOf, changesIn, git, headOf, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
+import { clone, issues, login, pullRequests, repositories, repositoryName, signIn, signOut, standing } from "./github.js";
+import { KEYS, forget, gitEnv } from "./credentials.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
-import { firstWorkspace, projectsOf, statusOf, withWorkspace, withoutWorkspace } from "./workspaces.js";
+import { firstWorkspace, hiddenRepository, projectsOf, reordered, statusOf, withWorkspace, workspaceState } from "./workspaces.js";
 
 // electron-updater is CommonJS and hands autoUpdater out through a getter,
 // which a named import cannot see.
@@ -104,8 +111,9 @@ async function askForRepository() {
  * exit code the shell would otherwise have to report.
  */
 async function startServer(workdir) {
-	// The port a folder had before, if it is free: a page keeps its tabs by its
-	// address, so a server started again after going idle is found where it was.
+	// The port a folder had before, if it is free: nothing of the page's is
+	// kept by it (web/src/workspace.ts), but a server started again after
+	// going idle is found where it was.
 	const port = await freePort(ports.get(workdir));
 	ports.set(workdir, port);
 	busy.set(workdir, false);
@@ -119,9 +127,12 @@ async function startServer(workdir) {
 	// a dev build) and go first on the server's PATH, which is where pi looks
 	// for them before it thinks of downloading its own.
 	const tools = app.isPackaged ? join(process.resourcesPath, "bin") : here("../build/bin");
+	// The person's GitHub sign-in goes with it, for the agent's git and gh —
+	// see credentials.js.
 	const child = spawn(process.execPath, [here("../dist-server/server.mjs")], {
 		env: {
 			...process.env,
+			...(await gitEnv()),
 			PATH: `${tools}:${process.env.PATH ?? ""}`,
 			ELECTRON_RUN_AS_NODE: "1",
 			PORT: String(port),
@@ -157,6 +168,8 @@ async function startServer(workdir) {
 
 /** Each folder's port for as long as the app runs. */
 const ports = new Map();
+/** Each folder's port for the repository's own run command — `OCTAVE_PORT`, kept the same for as long as the app runs, as the server's is. */
+const runPorts = new Map();
 /** Whether each folder's server is in the middle of a run. */
 const busy = new Map();
 /** When each folder was last in front or last finished a run. */
@@ -208,6 +221,35 @@ const servers = createServers({
  * same door: whatever goes wrong upstream, the shell will not throw away
  * something the person did not point this app at.
  */
+/** The sign-in under way, if one is; a second ask while it goes is the same one. */
+let signingIn = null;
+
+async function signInToGitHub(page) {
+	if (signingIn) return { error: "A sign-in is already under way." };
+	signingIn = new AbortController();
+	try {
+		const out = await signIn({ signal: signingIn.signal, onCode: (code) => !page.isDestroyed() && page.send("github:code", code) });
+		if (out.ok) await tellCredentials();
+		return out;
+	} finally {
+		signingIn = null;
+	}
+}
+
+/**
+ * The person's GitHub sign-in changed: every server running gets what git
+ * and gh are to run with from now on — the same variables it was started
+ * with (startServer), set anew — so the agent's next push has it without the
+ * workspace being reopened. The system prompt's line about it stands until
+ * the session is next made; it says what to do when a push fails, and one
+ * will not now.
+ */
+async function tellCredentials() {
+	forget();
+	const set = await gitEnv();
+	await servers.each((server) => server.child.connected && server.child.send({ credentials: { unset: KEYS, set } }));
+}
+
 function answerTrashAsks(server, workdir) {
 	const root = resolve(workdir) + sep;
 	server.on("message", async (message) => {
@@ -258,10 +300,10 @@ let quitting = false;
  * asked for afterwards finds none and goes through.
  */
 async function stopServers(event) {
-	if (quitting || servers.size === 0) return;
+	if (quitting) return;
 	quitting = true;
 	event?.preventDefault();
-	await servers.stopAll();
+	await Promise.all([servers.stopAll(), runs.stopAll()]);
 	app.quit();
 }
 
@@ -290,7 +332,7 @@ async function stopServers(event) {
 // The guides are files in the repository, read on GitHub: one copy, current with the latest release.
 const DOCS = "https://github.com/minkyojung/pi-web-ui/blob/main";
 
-let update = { current: app.getVersion(), phase: "idle", version: null, progress: null, error: null, justUpdated: null };
+let update = { current: app.getVersion(), phase: "idle", version: null, progress: null, error: null, justUpdated: null, dismissed: null };
 
 function sayUpdate(patch) {
 	update = { ...update, ...patch };
@@ -312,13 +354,17 @@ function serveUpdates() {
 	ipcMain.handle("update:check", () => (app.isPackaged ? autoUpdater.checkForUpdates().catch(() => {}) : null));
 	ipcMain.handle("update:restart", async () => {
 		quitting = true;
-		await servers.stopAll();
+		await Promise.all([servers.stopAll(), runs.stopAll()]);
 		autoUpdater.quitAndInstall();
 	});
 	ipcMain.handle("update:seen", () => {
 		writeSettings({ ...readSettings(), whatsNewSeen: app.getVersion() });
 		sayUpdate({ justUpdated: null });
 	});
+	// An offer waved away stays away for as long as the app runs, whichever
+	// page is up: the page is loaded again at every workspace, and a toast
+	// that came back at each would be asking again.
+	ipcMain.handle("update:dismiss", (_event, version) => sayUpdate({ dismissed: typeof version === "string" ? version : null }));
 }
 
 function watchForUpdates() {
@@ -372,9 +418,10 @@ let wanted = null;
  *
  * The page is loaded again rather than kept — one page, pointed at whichever
  * server is in front — while the servers behind it keep running, a turn and
- * all. What a page keeps in the browser (its tabs, where it was) is kept by
- * its server's address, which holds for as long as the app runs, so going
- * back finds them. Keeping every folder's page alive side by side would make
+ * all. What a page keeps in the browser about its workspace (its tabs, where
+ * it was) is kept by the workspace's folder (web/src/workspace.ts), and what
+ * it keeps about the window by the shell (prefs.js), so going back finds
+ * them. Keeping every folder's page alive side by side would make
  * the switch instant, at the price of the menu's reload, developer tools and
  * zoom — which act on the window's own page — and of the drag region the page
  * draws; this can become that when the reload is felt.
@@ -438,9 +485,13 @@ function workspacesChanged() {
  * what gets renamed once the work has a subject, by the agent or by hand.
  */
 async function workspaces() {
-	const projects = projectsOf(readSettings(), isCheckout);
+	// A repository taken off the list is still in the settings, so that adding
+	// it again brings back its workspaces — it is left out here (workspaces.js).
+	const projects = projectsOf(readSettings(), isCheckout).filter((project) => !project.hidden);
+	// Which of these a page is on is not said here: the page knows its own
+	// folder from its server, and the one in front is where the window is
+	// going, which a page still up while it goes there is not.
 	return {
-		current: front,
 		projects: await Promise.all(
 			projects.map(async (project) => {
 				const prs = await pullRequestsOf(project.path);
@@ -449,12 +500,15 @@ async function workspaces() {
 					name: basename(project.path),
 					worktrees: await Promise.all(
 						project.worktrees.map(async (worktree) => {
-							const branch = (await branchOf(worktree.path)) ?? worktree.branch;
+							// An archived workspace has no folder to read a branch out of;
+							// the name it was archived under is the one it kept.
+							const branch = (worktree.state ? null : await branchOf(worktree.path)) ?? worktree.branch;
 							// Where the branch stands, for the row to say: git's word, and
 							// GitHub's when gh can give it. A workspace whose branch git
-							// cannot read is listed as only here.
+							// cannot read is listed as only here. The clone is what is
+							// asked, so an archived row says it too.
 							const remote = await onRemote(project.path, branch).catch(() => false);
-							return { path: worktree.path, name: worktree.name, branch, status: statusOf({ onRemote: remote, pr: prs?.get(branch) ?? null }) };
+							return { path: worktree.path, name: worktree.name, branch, state: worktree.state ?? null, at: worktree.at ?? null, status: statusOf({ onRemote: remote, pr: prs?.get(branch) ?? null }) };
 						}),
 					),
 				};
@@ -520,9 +574,10 @@ function newWorkspace(root, first, from) {
 	const told = firstFrom(first);
 	if (!told) return Promise.resolve({ error: "Say what to build, in a line." });
 	const made = making.then(async () => {
-		if (!projectsOf(readSettings(), isCheckout).some((project) => project.path === root)) return { error: "That repository is no longer on the list." };
+		const project = projectsOf(readSettings(), isCheckout).find((project) => project.path === root);
+		if (!project) return { error: "That repository is no longer on the list." };
 		try {
-			const worktree = await makeWorkspace(root, { into: join(home(), "workspaces", basename(root)), owner: await login(), start: typeof from === "string" && from ? from : null });
+			const worktree = await makeWorkspace(root, { into: join(home(), "workspaces", basename(root)), owner: await login(), start: typeof from === "string" && from ? from : null, retired: [...project.retired, ...project.worktrees.map((worktree) => worktree.name)] });
 			writeSettings({ ...readSettings(), projects: withWorkspace(projectsOf(readSettings(), isCheckout), root, worktree) });
 			waiting.keep(worktree.path, told);
 			workspacesChanged();
@@ -532,10 +587,106 @@ function newWorkspace(root, first, from) {
 		}
 	});
 	making = made.then(() => {});
-	return made.then(({ worktree, error }) => {
-		if (worktree) void show(worktree.path);
-		return error ? { error } : {};
+	// Set up outside the one-at-a-time: an install can take minutes, and the
+	// list need not wait on it. Set up and failed, the workspace stays on the
+	// list with its first message, to be opened as it is or set up again.
+	return made.then(async ({ worktree, error }) => {
+		if (error) return { error };
+		const setup = await setUp(root, worktree.path);
+		if (setup.error) return { error: setup.error };
+		void show(worktree.path);
+		return {};
 	});
+}
+
+/** Tell the page a workspace's setup is running (`"running"`) or has ended (null) — the dialog says so while it waits. */
+function setupChanged(path, stage) {
+	if (window && !window.isDestroyed()) window.webContents.send("workspace:setup", path, stage);
+}
+
+/**
+ * The repository's own setup, run in a workspace: the command its
+ * `.octave/config.toml` names (octaveConfig.js), to its end, with the
+ * repository's folder in `OCTAVE_REPOSITORY` and the output's tail in the
+ * workspace's `.pi/runs/setup.log` (scripts.js), after the files the config
+ * says to copy from the clone are (copies.js). `{ ran: false }` where the
+ * file names no setup; `{ error }` — a config that could not be read, or a
+ * command that did not exit 0 — says why, with the log's place.
+ */
+async function setUp(root, path) {
+	const config = readConfig(path);
+	if (!isConfig(config)) return { error: config.error };
+	// What is kept beside the code and out of git comes over first, so the
+	// setup finds it there — an `.env` the install reads, say (copies.js).
+	copyInto(root, path, config.copy);
+	if (!config.setup) return { ran: false };
+	setupChanged(path, "running");
+	try {
+		const ran = await runScript({ name: "setup", command: config.setup, cwd: path, env: { ...process.env, OCTAVE_REPOSITORY: root }, timeout: DEFAULT_TIMEOUT });
+		if (ran.exit !== 0) return { error: `Setup failed (exit ${ran.exit})${ran.last ? `: ${ran.last}` : ""}. The whole of it is in .pi/runs/setup.log in the workspace.` };
+		return { ran: true };
+	} finally {
+		setupChanged(path, null);
+	}
+}
+
+/**
+ * The repository's own archive command run in a workspace about to be
+ * removed — a database dropped, a tunnel closed. Nothing stands in the
+ * removal's way: what went wrong is answered as a warning, since the folder,
+ * and the log in it, will be gone.
+ */
+async function archive(root, path) {
+	const config = readConfig(path);
+	if (!isConfig(config)) return `The workspace was removed without its archive command: ${config.error}`;
+	if (!config.archive) return null;
+	const ran = await runScript({ name: "archive", command: config.archive, cwd: path, env: { ...process.env, OCTAVE_REPOSITORY: root }, timeout: DEFAULT_TIMEOUT });
+	return ran.exit === 0 ? null : `The workspace was removed, but its archive command failed (exit ${ran.exit})${ran.last ? `: ${ran.last}` : ""}.`;
+}
+
+/** Tell the page how a workspace's run stands — see runs.js `stateOf`, and RunButton.tsx. */
+function runChanged(path, state) {
+	if (window && !window.isDestroyed()) window.webContents.send("run:changed", path, runState(path, state));
+}
+
+/** The repository's own runs in its workspaces, one each — see runs.js. */
+const runs = createRuns({ onChange: runChanged });
+
+/**
+ * What the foot of the window shows of the repository's commands, in a
+ * workspace: whether the repository has the file at all — without it the
+ * word there is `Set up` — the ids of its `[scripts.run.*]` (octaveConfig.js)
+ * for the menu, `run` as what runs.js says of the one running or last
+ * ended, under the default's id when none has run yet — the button's word —
+ * and the logs the commands have left there (runLogs.js), for the menu.
+ */
+function runState(path, state = runs.stateOf(path)) {
+	const configured = existsSync(join(path, CONFIG_FILE));
+	const config = readConfig(path);
+	const named = isConfig(config) ? config.run : [];
+	const fallback = named.find((r) => r.default) ?? null;
+	return { configured, runs: named.map((r) => r.id), run: fallback ? { ...state, id: state.id ?? fallback.id } : null, logs: runLogsIn(path) };
+}
+
+/** A run started in a listed workspace — the one named, else the default — on the port kept for it. One at a time in a workspace (runs.js). */
+async function startRun(path, id = null) {
+	const root = repositoryOfWorkspace(path);
+	if (!root) return { error: "That workspace is no longer on the list." };
+	const config = readConfig(path);
+	if (!isConfig(config)) return { error: config.error };
+	const run = id === null ? config.run.find((r) => r.default) : config.run.find((r) => r.id === id);
+	if (!run) return { error: id === null ? "This repository names no run command in .octave/config.toml." : `This repository names no run "${id}" in .octave/config.toml.` };
+	if (runs.stateOf(path).running) return { error: `${runs.stateOf(path).id} is running here. Stop it first: one run at a time in a workspace.` };
+	const port = await freePort(runPorts.get(path));
+	runPorts.set(path, port);
+	return { state: runState(path, runs.start(path, { id: run.id, command: run.command, port, env: { ...process.env, OCTAVE_REPOSITORY: root } })) };
+}
+
+/** Setup run again in a listed workspace, from its row — after it failed, or after the command was changed. */
+function setUpAgain(path) {
+	const root = repositoryOfWorkspace(path);
+	if (!root) return Promise.resolve({ error: "That workspace is no longer on the list." });
+	return setUp(root, path);
 }
 
 /** The repository a listed workspace is of, or null for a folder that is not one: the page does not name folders of its own. */
@@ -548,31 +699,47 @@ async function workspaceChanges(path) {
 }
 
 /**
- * A workspace removed: its server stopped, its folder and worktree taken
- * away, and its row off the list. The branch stays, and so does what was
- * said in it — pi keeps a conversation by its folder's path (spec-mode.md
- * 6절). `seen` is how many uncommitted changes the person was told would go
- * with it: when the folder holds another number by now, nothing is removed
- * and the number is answered instead, to be asked about again. Not while the
- * agent is working there. One at a time with making, which reads the same
- * folders. The window, if it was on this one, goes to the first screen.
+ * A workspace archived: its server stopped, its folder and worktree given
+ * back, and its row kept — Conductor's Archive. What is not the folder stays:
+ * the branch with every commit on it, the commit it stood on, written down
+ * for the row, and what was said in it, since pi keeps a conversation by its
+ * folder's path (spec-mode.md 6절). So it can be brought back (restoreWorkspace).
+ *
+ * `seen` is how many uncommitted changes the person was told would go with
+ * the folder — the one thing archiving does not keep: when the folder holds
+ * another number by now, nothing is done and the number is answered instead,
+ * to be asked about again. Not while the agent is working there. One at a
+ * time with making, which reads the same folders. The window, if it was on
+ * this one, goes to the first screen. The repository's own `archive`
+ * command, if it names one, runs in the folder first; one that fails does
+ * not keep the folder — `{ warning }` says how it went, with the archiving
+ * done.
+ *
+ * The row is marked `archiving` before the folder goes and `archived` after,
+ * so a shell that dies in between leaves a row that says what was happening
+ * rather than one that points at a folder nobody can find (finishArchiving).
  */
-function removeWorkspace(path, seen) {
+function archiveWorkspace(path, seen) {
 	const done = making.then(async () => {
 		const root = repositoryOfWorkspace(path);
 		if (!root) return { error: "That workspace is no longer on the list." };
-		if (busy.get(path)) return { error: "The agent is working there. Remove it when it has finished." };
+		if (busy.get(path)) return { error: "The agent is working there. Archive it when it has finished." };
 		try {
 			const changes = await changesIn(path);
 			if (changes !== seen) return { changes };
+			const commit = await headOf(path);
 			if (path === front || path === wanted) await showStart();
 			await servers.stop(path);
+			await runs.stop(path);
+			const warning = await archive(root, path);
+			writeSettings({ ...readSettings(), projects: workspaceState(projectsOf(readSettings(), isCheckout), path, "archiving", { commit }) });
 			await removeWorktree(root, path);
-			writeSettings({ ...readSettings(), projects: withoutWorkspace(projectsOf(readSettings(), isCheckout), path) });
+			writeSettings({ ...readSettings(), projects: workspaceState(projectsOf(readSettings(), isCheckout), path, "archived", { at: new Date().toISOString() }) });
 			waiting.take(path);
-			for (const kept of [ports, busy, since]) kept.delete(path);
+			for (const kept of [ports, runPorts, busy, since]) kept.delete(path);
+			runs.forget(path);
 			workspacesChanged();
-			return {};
+			return warning ? { warning } : {};
 		} catch (err) {
 			return { error: err.message };
 		}
@@ -581,9 +748,62 @@ function removeWorkspace(path, seen) {
 	return done;
 }
 
-/** A workspace from the list put in front. Only one on the list: the page does not name folders of its own. */
+/**
+ * An archived workspace brought back and opened: the worktree made again
+ * where it stood, on the branch it kept, then what the repository keeps out
+ * of git copied in and its setup run — a worktree has only what is committed
+ * — and the window put on it. The conversation is the one that was there,
+ * pi keeping it by the folder's path.
+ *
+ * Says why not in git's words: a branch deleted since, one another workspace
+ * has checked out, a folder in the way. Set up outside the one at a time, as
+ * a new workspace is, and a setup that fails leaves the workspace on the
+ * list to be opened as it is or set up again.
+ */
+function restoreWorkspace(path) {
+	const made = making.then(async () => {
+		const root = repositoryOfWorkspace(path);
+		if (!root) return { error: "That workspace is no longer on the list." };
+		const worktree = projectsOf(readSettings(), isCheckout).find((project) => project.path === root).worktrees.find((w) => w.path === path);
+		if (!worktree.state) return { error: "That workspace is not archived." };
+		if (existsSync(path)) return { error: `There is already a folder at ${path}.` };
+		try {
+			await addBranchWorktree(root, { path, branch: worktree.branch });
+			writeSettings({ ...readSettings(), projects: workspaceState(projectsOf(readSettings(), isCheckout), path, null) });
+			workspacesChanged();
+			return { root };
+		} catch (err) {
+			return { error: err.message };
+		}
+	});
+	making = made.then(() => {});
+	return made.then(async ({ root, error }) => {
+		if (error) return { error };
+		const setup = await setUp(root, path);
+		if (setup.error) return { error: setup.error };
+		void show(path);
+		return {};
+	});
+}
+
+/**
+ * Any workspace whose archiving was interrupted, finished at the next start:
+ * the folder taken away if it is still there, and the row marked archived.
+ * A row left saying `archiving` is the one thing a crash in the middle can
+ * leave behind, and this is the one place it is read.
+ */
+async function finishArchiving() {
+	for (const project of projectsOf(readSettings(), isCheckout)) {
+		for (const worktree of project.worktrees.filter((w) => w.state === "archiving")) {
+			await removeWorktree(project.path, worktree.path).catch(() => {});
+			writeSettings({ ...readSettings(), projects: workspaceState(projectsOf(readSettings(), isCheckout), worktree.path, "archived", { at: new Date().toISOString() }) });
+		}
+	}
+}
+
+/** A workspace from the list put in front. Only one on the list, and not an archived one, whose folder is not there: the page does not name folders of its own. */
 function openWorkspace(path) {
-	const known = projectsOf(readSettings(), isCheckout).some((project) => project.worktrees.some((worktree) => worktree.path === path));
+	const known = projectsOf(readSettings(), isCheckout).some((project) => project.worktrees.some((worktree) => worktree.path === path && !worktree.state));
 	if (known) void show(path);
 }
 
@@ -614,10 +834,49 @@ async function openLocalRepository() {
 /**
  * A repository's clone added to the list, and nothing more: no workspace is
  * made of it and the window stays where it is. A workspace is made, and
- * opened, when the person asks for one — spec-mode.md 6절.
+ * opened, when the person asks for one — spec-mode.md 6절. One that was taken
+ * off the list is on it again, with the workspaces and the place it had.
  */
 function addRepository(root) {
-	writeSettings({ ...readSettings(), projects: withWorkspace(projectsOf(readSettings(), isCheckout), root) });
+	const projects = withWorkspace(projectsOf(readSettings(), isCheckout), root);
+	writeSettings({ ...readSettings(), projects: hiddenRepository(projects, root, false) });
+	workspacesChanged();
+}
+
+/**
+ * A repository taken off the list. Nothing on the disk is touched — not the
+ * clone, which is the person's own folder and was theirs before the app saw
+ * it, and not the workspaces made from it: the row is hidden and everything
+ * it holds is kept, so adding the repository again brings all of it back
+ * (workspaces.js `hiddenRepository`), which is what Conductor's hidden
+ * repository does. Its workspaces' servers are stopped, since nothing is
+ * going to ask for them, and the window goes to the first screen if it was
+ * in one of them. Not while the agent is working in one: stopping its server
+ * under it would end the turn, and there is no hurry.
+ */
+async function removeRepository(root) {
+	const project = projectsOf(readSettings(), isCheckout).find((project) => project.path === root && !project.hidden);
+	if (!project) return { error: "That repository is no longer on the list." };
+	if (project.worktrees.some((worktree) => busy.get(worktree.path))) return { error: "The agent is working in one of its workspaces. Take the repository off the list when it has finished." };
+	if (project.worktrees.some((worktree) => worktree.path === front || worktree.path === wanted)) await showStart();
+	for (const worktree of project.worktrees) {
+		await servers.stop(worktree.path);
+		await runs.stop(worktree.path);
+	}
+	writeSettings({ ...readSettings(), projects: hiddenRepository(projectsOf(readSettings(), isCheckout), root, true) });
+	workspacesChanged();
+	return {};
+}
+
+/**
+ * The repositories put in the order the person dragged them into. The list is
+ * theirs and always was — a new one goes at the end (workspaces.js
+ * `withWorkspace`) — and this is the way to say so afterwards. Which is first
+ * is not only a look: a new spec asked for from the menu, with the window on
+ * no repository, opens over it.
+ */
+function reorderRepositories(paths) {
+	writeSettings({ ...readSettings(), projects: reordered(projectsOf(readSettings(), isCheckout), paths) });
 	workspacesChanged();
 }
 
@@ -663,10 +922,22 @@ async function openRepositoryFromMenu() {
 function serveFolders() {
 	ipcMain.handle("repository:open", () => (devUrl ? null : openLocalRepository()));
 	ipcMain.handle("repository:clone", (_event, source) => (devUrl ? null : cloneRepository(source)));
+	ipcMain.handle("repositories:reorder", (_event, paths) => (devUrl ? null : reorderRepositories(paths)));
+	ipcMain.handle("repository:remove", (_event, root) => (devUrl ? null : removeRepository(root)));
 	// What the clone dialog offers, or null when gh cannot say.
 	ipcMain.handle("github:repositories", () => (devUrl ? null : repositories()));
 	// The open issues of a repository on the list, for a spec to start from one.
 	ipcMain.handle("github:issues", (_event, root) => (devUrl || !projectsOf(readSettings(), isCheckout).some((project) => project.path === root) ? null : issues(root)));
+	// Settings › Accounts: where the person stands with GitHub, and signing in
+	// and out — gh's, with the code gh gets shown on the page (github.js).
+	ipcMain.handle("github:standing", () => standing());
+	ipcMain.handle("github:signIn", (event) => signInToGitHub(event.sender));
+	ipcMain.handle("github:cancel", () => signingIn?.abort());
+	ipcMain.handle("github:signOut", async () => {
+		const out = await signOut();
+		await tellCredentials();
+		return out;
+	});
 	// The list, and the two things done to it. In a dev run the dev server owns
 	// the folder, so there is no list to switch in.
 	ipcMain.handle("workspaces", () => (devUrl ? null : workspaces()));
@@ -678,11 +949,18 @@ function serveFolders() {
 	ipcMain.handle("workspace:branches", (_event, root) =>
 		devUrl || !projectsOf(readSettings(), isCheckout).some((project) => project.path === root) ? null : remoteBranches(root).catch(() => null),
 	);
-	// Asked by the page of the workspace in front, which is the one it is for.
-	ipcMain.handle("workspace:first", () => (front ? waiting.take(front) : null));
+	// Asked by a page for its own workspace, which it names: the one in front
+	// is where the window is going, and a page still up while it goes there
+	// would be given the wrong workspace's line.
+	ipcMain.handle("workspace:first", (_event, folder) => (typeof folder === "string" ? waiting.take(folder) : null));
 	ipcMain.handle("workspace:open", (_event, path) => (devUrl ? null : openWorkspace(path)));
 	ipcMain.handle("workspace:changes", (_event, path) => (devUrl ? null : workspaceChanges(path)));
-	ipcMain.handle("workspace:remove", (_event, path, seen) => (devUrl ? null : removeWorkspace(path, seen)));
+	ipcMain.handle("workspace:archive", (_event, path, seen) => (devUrl ? null : archiveWorkspace(path, seen)));
+	ipcMain.handle("workspace:restore", (_event, path) => (devUrl ? null : restoreWorkspace(path)));
+	ipcMain.handle("workspace:setup", (_event, path) => (devUrl ? null : setUpAgain(path)));
+	ipcMain.handle("run:state", (_event, path) => (devUrl ? null : runState(path)));
+	ipcMain.handle("run:start", (_event, path, id) => (devUrl ? null : startRun(path, typeof id === "string" ? id : null)));
+	ipcMain.handle("run:stop", (_event, path) => (devUrl ? null : runs.stop(path).then(() => runState(path))));
 	// A note in the Finder. The page is told the folder in full by the server
 	// (ConfigMsg.folder) and joins the note's path onto it, which is a better
 	// source than this process has: in a dev run the settings hold no workdir
@@ -716,6 +994,23 @@ function serveFolders() {
 		} catch (error) {
 			return { error: String(error?.message ?? error) };
 		}
+	});
+}
+
+/**
+ * What the page keeps about the window — see prefs.js. Given whole and at
+ * once as a page loads (sendSync, from the preload), since the theme is read
+ * before the first paint; a change is one key, written through.
+ */
+function servePrefs() {
+	ipcMain.on("prefs", (event) => {
+		event.returnValue = prefsOf(readSettings());
+	});
+	ipcMain.on("prefs:set", (_event, key, value) => {
+		const settings = readSettings();
+		const was = prefsOf(settings);
+		const next = withPref(was, key, value);
+		if (next !== was) writeSettings({ ...settings, prefs: next });
 	});
 }
 
@@ -819,6 +1114,7 @@ function markTrafficLights(window) {
 async function main() {
 	serveFolders();
 	serveUpdates();
+	servePrefs();
 	noteVersionRun();
 	// Before anything is started, so the servers and every command they run
 	// find what a terminal would — see shellEnv.js. A dev run was started from
@@ -833,6 +1129,7 @@ async function main() {
 		const file = fileFor(here("../dist"), request.url);
 		return file ? net.fetch(pathToFileURL(file).toString()) : new Response("Not found", { status: 404 });
 	});
+	if (!devUrl) await finishArchiving();
 	const settings = readSettings();
 	const first = devUrl ? null : firstWorkspace(projectsOf(settings, isCheckout), settings.workdir);
 	buildMenu(devUrl ? process.cwd() : null);

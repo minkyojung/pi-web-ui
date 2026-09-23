@@ -114,7 +114,7 @@ function fakePi(branch, branches = [], { remote = true } = {}) {
     registerCommand: (name, options) => (commands[name] = { name, ...options }),
     on: (event, fn) => (handlers[event] = fn),
     exec: async (command, args) => {
-      if (command === "/bin/bash") return (ran.push(args[1]), answer(args[1].includes("fail") ? 1 : 0));
+      if (command === "/bin/bash") return (ran.push(args[1]), answer(args[1].includes("block") ? 2 : args[1].includes("fail") ? 1 : 0, "some output\n"));
       if (branch === undefined) return answer(128);
       if (args[0] === "branch" && args[1] === "--show-current") return answer(0, `${branch}\n`);
       if (args[0] === "status") return answer(0, dirty.map((entry) => `${entry}\0`).join(""));
@@ -191,6 +191,10 @@ function fakePi(branch, branches = [], { remote = true } = {}) {
   const cleanup = () => rmSync(cwd, { recursive: true, force: true });
   const runTask = (args = "", { idle = true } = {}) => commands["spec-run"].handler(args, ctx(idle));
   /** A spec approved to the end, its tasks as given. */
+  const config = (text) => {
+    mkdirSync(join(cwd, ".octave"), { recursive: true });
+    writeFileSync(join(cwd, ".octave", "config.toml"), text);
+  };
   const plan = (name, text = PLAN) => {
     const dir = join(cwd, ".octave/specs", name);
     mkdirSync(dir, { recursive: true });
@@ -202,6 +206,7 @@ function fakePi(branch, branches = [], { remote = true } = {}) {
   return {
     command: () => commands.spec,
     commands,
+    ctx,
     done,
     notes,
     renamed,
@@ -214,6 +219,7 @@ function fakePi(branch, branches = [], { remote = true } = {}) {
     run,
     runTask,
     plan,
+    config,
     approve: approveCommand,
     write,
     start,
@@ -481,6 +487,28 @@ test("/spec-approve는 기다리는 문서를 승인하고, 같은 턴에 다음
   assert.deepEqual(spec.state(), { approved: 3, waiting: null });
   assert.deepEqual(pi.done, [], "마지막 문서 뒤에는 쓸 것이 없다 — 턴을 시작하지 않는다");
   assert.deepEqual(pi.notes, [{ text: "The spec email-auth is ready: its requirements, design and tasks are approved.", type: "info" }]);
+});
+
+test("/setup은 저장소의 명령을 에이전트가 초안하게 한다 — 숨긴 지시문은 파일의 모양과 네 시점을 말하고, 있는 파일은 고치라고 한다", async (t) => {
+  const pi = fakePi("minkyojung/tokyo");
+  t.after(pi.cleanup);
+  assert.ok(pi.commands.setup.description);
+  await pi.commands.setup.handler("", pi.ctx(false));
+  assert.equal(pi.notes[0].type, "warning");
+  assert.deepEqual(pi.done, [], "일하는 중이면 알리기만");
+  await pi.commands.setup.handler("", pi.ctx(true));
+  assert.equal(pi.done.length, 2);
+  const [hidden, sent] = pi.done;
+  assert.equal(hidden.sendMessage.display, false);
+  assert.deepEqual(hidden.options, { deliverAs: "nextTurn" });
+  assert.equal(sent.sendUserMessage, "/setup");
+  const prompt = hidden.sendMessage.content;
+  for (const said of [".octave/config.toml", "setup", "[scripts.run.<id>]", "[[scripts.check]]", "archive", "$OCTAVE_PORT", "exit 2", "description", "invent none", "run nothing that installs", "`copy`", "Commit it and every new workspace runs it", "Run setup again"]) assert.ok(prompt.includes(said), said);
+  assert.equal(prompt.includes("The file is there already"), false);
+  assert.equal(/\blanguage\b|in English|Korean/i.test(prompt), false, "언어는 말하지 않는다");
+  pi.config("[scripts]\nsetup = 'npm ci'\n");
+  await pi.commands.setup.handler("", pi.ctx(true));
+  assert.ok(pi.done[2].sendMessage.content.includes("The file is there already: read it, and change only what is wrong or missing."));
 });
 
 test("언어에 대한 말은 한 문장뿐이고 어느 언어에나 같다 — 영어를 시키지도, 다른 언어를 지켜 주지도 않는다", () => {
@@ -1030,7 +1058,7 @@ test("검사 한 줄은 마지막 답의 `Checks:` 줄에서 — 없으면 none,
   assert.equal(checksIn([]), null);
   assert.equal(trailersOf({ spec: "email-auth", task: "2.1" }, null), "Spec: email-auth\nTask: 2.1\nChecks: none");
   assert.equal(trailersOf({ spec: "email-auth", task: "2.1" }, "npm test — 9 passed"), "Spec: email-auth\nTask: 2.1\nChecks: npm test — 9 passed");
-  assert.equal(trailersOf({ spec: "email-auth", task: "2.1" }, null, { command: "npm test", exit: 1 }), "Spec: email-auth\nTask: 2.1\nChecks: none\nVerified: npm test — exit 1", "앱이 돌린 것은 제 이름으로");
+  assert.equal(trailersOf({ spec: "email-auth", task: "2.1" }, null, [{ name: "unit", command: "npm test", exit: 0 }, { name: "npm run typecheck", command: "npm run typecheck", exit: 1 }]), "Spec: email-auth\nTask: 2.1\nChecks: none\nVerified: unit — exit 0\nVerified: npm run typecheck — exit 1", "앱이 돌린 것은 검사마다 한 줄");
 });
 
 // --- /spec-run: one task, in a session of its own ---
@@ -1181,6 +1209,50 @@ test("작업의 _Done when:_ 명령은 앱이 커밋 전에 돌리고, 어떻게
   await none.settle();
   assert.deepEqual(none.ran, []);
   assert.equal(none.gits.at(-1).at(-1), "Spec: email-auth\nTask: 1\nChecks: none");
+});
+
+test("저장소의 검사(config.toml)가 작업의 것보다 먼저, 순서대로 돌고, 검사마다 Verified 한 줄 — exit 2는 커밋을 막고 칸도 두지 않는다", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.config('[[scripts.check]]\nname = "unit"\ncommand = "npm test"\n[[scripts.check]]\nname = "lint"\ncommand = "npm run lint-fail"\n');
+  pi.plan("email-auth", "# Plan\n\n- [ ] 1. Add the door\n  - _Done when: `npm test -- door`_\n- [ ] 2. Hang the sign\n");
+  pi.setDirty([" M door.js"]);
+  pi.setEntries([
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] } },
+    { type: "message", message: { role: "assistant", content: [{ type: "text", text: "Done.\nChecks: none" }] } },
+  ]);
+  await pi.settle();
+  assert.deepEqual(pi.ran, ["npm test", "npm run lint-fail", "npm test -- door"], "config의 task 검사들(approve는 아님) → 작업의 _Done when:_");
+  assert.equal(pi.gits.at(-1).at(-1), "Spec: email-auth\nTask: 1\nChecks: none\nVerified: unit — exit 0\nVerified: lint — exit 1\nVerified: npm test -- door — exit 0");
+  assert.match(pi.notes.at(-1).text, /`lint` failed \(exit 1\)/);
+  assert.match(readFileSync(join(pi.cwd, ".pi/runs/1/lint.log"), "utf8"), /^\$ npm run lint-fail\nsome output\n\(exit 1\)\n$/, "출력 꼬리가 .pi/runs에");
+  // exit 2 from a check: nothing after it runs, no box, no commit.
+  const blocked = fakePi("minkyojung/email-auth");
+  t.after(blocked.cleanup);
+  blocked.config('[[scripts.check]]\nname = "gate"\ncommand = "npm run block-gate"\n[[scripts.check]]\nname = "unit"\ncommand = "npm test"\n');
+  blocked.plan("email-auth");
+  blocked.setDirty([" M door.js"]);
+  blocked.setEntries([
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] } },
+    { type: "message", message: { role: "assistant", content: [{ type: "text", text: "Done.\nChecks: none" }] } },
+  ]);
+  await blocked.settle();
+  assert.deepEqual(blocked.ran, ["npm run block-gate"], "막힌 뒤의 검사는 돌지 않는다");
+  assert.deepEqual(blocked.gits, [], "커밋 없음");
+  assert.match(blocked.tasks("email-auth"), /- \[ \] 1\. Add the door/, "칸도 그대로");
+  assert.match(blocked.notes.at(-1).text, /`gate` refused it \(exit 2\)/);
+  // A wrong config.toml runs nothing of the repository's, and says nothing here — the task's own still runs.
+  const wrong = fakePi("minkyojung/email-auth");
+  t.after(wrong.cleanup);
+  wrong.config("[scripts\nbroken");
+  wrong.plan("email-auth", "# Plan\n\n- [ ] 1. Add the door\n  - _Done when: `npm test -- door`_\n");
+  wrong.setDirty([" M door.js"]);
+  wrong.setEntries([
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] } },
+    { type: "message", message: { role: "assistant", content: [{ type: "text", text: "Done.\nChecks: none" }] } },
+  ]);
+  await wrong.settle();
+  assert.deepEqual(wrong.ran, ["npm test -- door"]);
 });
 
 test("턴이 끝나면 표식을 보고 마무리한다 — 한 세션에 한 번뿐", async (t) => {
