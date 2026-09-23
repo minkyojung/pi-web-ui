@@ -1,4 +1,11 @@
 @import "tailwindcss";
+/* The window's typeface, Pretendard: Inter's Latin with a Hangul drawn to sit
+   beside it, one family for a line that is half of each — which notes and
+   conversations here are. The system face it replaces has no Hangul of its
+   own, so a Korean word came from Apple SD Gothic Neo in the middle of an SF
+   one. One variable file rather than the web's hundred subsets: the app reads
+   it off its own disk, where there is no network to save. */
+@import "pretendard/dist/web/variable/pretendardvariable.css";
 /* Rendered markdown goes through the prose classes. */
 @plugin "@tailwindcss/typography";
 /* Vite's root is web/, so pin the scan rather than rely on detection: when it
@@ -237,6 +244,7 @@
 }
 
 @theme inline {
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
