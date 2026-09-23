@@ -33,7 +33,10 @@ function stored(): Record<string, string> {
 	}
 }
 
-const store = createStore<Record<string, string>>(typeof localStorage === "undefined" ? {} : stored());
+const store = createStore<Record<string, string>>(typeof localStorage === "undefined" ? {} : stored(), { window: true });
+
+/** The window moved to another workspace: what was read there is read under its own key (switch.ts). */
+export const reloadSeen = (): void => store.set(stored());
 
 export const seenStore = { get: store.get, subscribe: store.subscribe };
 

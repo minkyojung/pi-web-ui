@@ -17,6 +17,7 @@ import { noteChangedStore } from "../serverState";
 import { blocksDom } from "./blocksDom.ts";
 import { sectionOf } from "./embed.ts";
 import { notesChanged } from "./links";
+import { forFolder } from "../workspace.ts";
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i;
 
@@ -37,7 +38,7 @@ const loaded = StateEffect.define<string>();
 function fetchNote(path: string, view: EditorView): void {
 	if (fetched.has(path)) return;
 	fetched.set(path, "loading");
-	fetch(`/api/note?path=${encodeURIComponent(path)}`)
+	fetch(forFolder(`/api/note?path=${encodeURIComponent(path)}`))
 		.then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
 		.then((note: { text: string }) => fetched.set(path, { text: note.text }))
 		.catch(() => fetched.set(path, "failed"))

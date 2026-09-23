@@ -7,6 +7,8 @@
  * Any other file goes into the folder instead and is named in the message,
  * the way a note is — see filesToAttach.
  */
+
+import { forFolder } from "./workspace.ts";
 export interface PastedImage {
 	data: string;
 	mimeType: string;
@@ -29,7 +31,7 @@ export function filesToAttach<F extends { type: string }>(files: Iterable<F>): F
  * the note. `name` is for the file that came without one worth keeping.
  */
 export async function attach(file: File, { name = file.name, from = "" }: { name?: string; from?: string } = {}): Promise<string> {
-	const res = await fetch(`/api/attachment?name=${encodeURIComponent(name)}&from=${encodeURIComponent(from)}`, {
+	const res = await fetch(forFolder(`/api/attachment?name=${encodeURIComponent(name)}&from=${encodeURIComponent(from)}`), {
 		method: "POST",
 		headers: { "content-type": "application/octet-stream" },
 		body: file,

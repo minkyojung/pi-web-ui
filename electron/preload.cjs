@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld("pi", {
 			ipcRenderer.send("prefs:set", key, value);
 		},
 	},
+	/** When this page was ready — socket, first state, drawn — for the shell's line about the switch; see web/src/landing.ts. */
+	landed: (marks) => ipcRenderer.send("switch:landed", marks),
 	/** Show a file in the Finder. Takes the whole path; the page knows it. */
 	reveal: (path) => ipcRenderer.invoke("file:reveal", path),
 	/** The models a spec can be started on, for the first screen: `{ model, models }` as the server's config has them, or null when pi could not be asked. */
@@ -105,6 +107,8 @@ contextBridge.exposeInMainWorld("pi", {
 		branches: (root) => ipcRenderer.invoke("workspace:branches", root),
 		first: (folder) => ipcRenderer.invoke("workspace:first", folder),
 		open: (path) => ipcRenderer.invoke("workspace:open", path),
+		// Its server started ahead of `open`, while the pointer rests on its row.
+		warm: (path) => ipcRenderer.invoke("workspace:warm", path),
 		changes: (path) => ipcRenderer.invoke("workspace:changes", path),
 		archive: (path, seen) => ipcRenderer.invoke("workspace:archive", path, seen),
 		restore: (path) => ipcRenderer.invoke("workspace:restore", path),
@@ -118,6 +122,12 @@ contextBridge.exposeInMainWorld("pi", {
 			const handler = () => listen();
 			ipcRenderer.on("workspaces:changed", handler);
 			return () => ipcRenderer.off("workspaces:changed", handler);
+		},
+		/** The window is on another workspace now, this page still up: `folder` is the one — see web/src/switch.ts. */
+		onShow: (listen) => {
+			const handler = (_event, folder) => listen(folder);
+			ipcRenderer.on("workspace:show", handler);
+			return () => ipcRenderer.off("workspace:show", handler);
 		},
 	},
 	/**

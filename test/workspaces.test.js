@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { firstWorkspace, hiddenRepository, projectsOf, reordered, statusOf, withWorkspace, workspaceState } from "../electron/workspaces.js";
+import { firstWorkspace, hiddenRepository, projectsOf, remembered, reordered, statusOf, withWorkspace, workspaceState } from "../electron/workspaces.js";
 
 const everywhere = () => true;
 const tree = (path, name = "trenton") => ({ path, branch: `me/${name}`, name });
@@ -147,4 +147,60 @@ test("a hidden repository is read back as it was written, and the app does not o
 	assert.equal(firstWorkspace(projects, "/a-1"), null, "its workspace is not the one in front");
 	assert.equal(firstWorkspace(projects, "/b-1"), "/b-1");
 	assert.equal(projectsOf({ projects: [{ path: "/a", worktrees: [], hidden: "yes" }] }, everywhere)[0].hidden, undefined, "hidden is a yes or nothing");
+});
+
+/** A clock and an asker under the test's hand, and what the cache said and when it called back. */
+function cache({ staleMs = 30 } = {}) {
+	let at = 0;
+	const asks = [];
+	const fresh = [];
+	const ask = (key) => new Promise((resolve, reject) => asks.push({ key, resolve, reject }));
+	const get = remembered({ ask, onFresh: (key) => fresh.push(key), now: () => at, staleMs });
+	return { get, asks, fresh, tick: (ms) => (at += ms), settle: () => new Promise((r) => setImmediate(r)) };
+}
+
+test("what is asked is answered at once with what was last known, and asked again only when that is stale", async () => {
+	const c = cache();
+	assert.equal(c.get("/a"), null, "nothing known yet is null, not a wait");
+	assert.equal(c.asks.length, 1, "and the ask is under way");
+	assert.equal(c.get("/a"), null);
+	assert.equal(c.asks.length, 1, "asked once, however many look while it is out");
+	c.asks[0].resolve("one");
+	await c.settle();
+	assert.deepEqual(c.fresh, ["/a"], "the answer landing is said, once");
+	assert.equal(c.get("/a"), "one");
+	c.tick(29);
+	assert.equal(c.get("/a"), "one");
+	assert.equal(c.asks.length, 1, "fresh enough is not asked again");
+	c.tick(1);
+	assert.equal(c.get("/a"), "one", "stale is still answered with what was known");
+	assert.equal(c.asks.length, 2, "and asked again behind it");
+});
+
+test("an ask that fails keeps what was known, says nothing, and is not asked again until the next stale", async () => {
+	const c = cache();
+	c.get("/a");
+	c.asks[0].resolve("one");
+	await c.settle();
+	c.tick(30);
+	c.get("/a");
+	c.asks[1].reject(new Error("gh is not signed in"));
+	await c.settle();
+	assert.equal(c.get("/a"), "one", "the last answer stands");
+	assert.deepEqual(c.fresh, ["/a"], "a failure is not news");
+	assert.equal(c.asks.length, 2, "and gh is left alone for a while");
+	c.tick(30);
+	c.get("/a");
+	assert.equal(c.asks.length, 3);
+});
+
+test("each key is remembered on its own", async () => {
+	const c = cache();
+	c.get("/a");
+	c.get("/b");
+	c.asks[1].resolve("bee");
+	await c.settle();
+	assert.equal(c.get("/a"), null);
+	assert.equal(c.get("/b"), "bee");
+	assert.deepEqual(c.fresh, ["/b"]);
 });

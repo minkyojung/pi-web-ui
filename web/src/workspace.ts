@@ -17,16 +17,47 @@
  * shell's (preload.cjs `prefs`).
  */
 import { FOLDER_META } from "../../folderMeta.ts";
+import { createStore } from "./serverState.ts";
 
 /** The key `name` is kept under for `folder`, or `name` itself with no folder. */
 export const keyed = (name: string, folder: string | null): string => (folder ? `${name}@${folder}` : name);
 
 /** The folder the server wrote into this page, or null where none did. */
-export function folderOf(): string | null {
+/** The folder as the page's head says it, or null where none was written. */
+function written(): string | null {
 	if (typeof document === "undefined") return null;
 	const content = document.querySelector(`meta[name="${FOLDER_META}"]`)?.getAttribute("content");
 	return content ? content : null;
 }
 
+/**
+ * The folder this page is a window on now. Seeded from the head, since the
+ * server wrote it there before anything ran; changed by the shell when the
+ * window moves to another workspace without the page being made again
+ * (switch.ts), and the head kept in step so that whatever reads it — a
+ * check driving the window — sees the same.
+ */
+export const folderStore = createStore<string | null>(written(), { window: true });
+
+export const folderOf = (): string | null => folderStore.get();
+
+export function setFolder(folder: string): void {
+	if (typeof document !== "undefined") document.querySelector(`meta[name="${FOLDER_META}"]`)?.setAttribute("content", folder);
+	folderStore.set(folder);
+}
+
 /** The key `name` is kept under in this page's browser storage. */
 export const keyFor = (name: string): string => keyed(name, folderOf());
+
+/**
+ * `url` with this page's folder on it, for what the server answers per
+ * folder — the socket, a note's text, a picture, an attachment. One server
+ * serves every workspace, and which folder a request means is the page's
+ * to say; a page with no folder written in asks as it always did, and the
+ * server answers for the folder it was started in.
+ */
+export function forFolder(url: string): string {
+	const folder = folderOf();
+	if (!folder) return url;
+	return `${url}${url.includes("?") ? "&" : "?"}folder=${encodeURIComponent(folder)}`;
+}

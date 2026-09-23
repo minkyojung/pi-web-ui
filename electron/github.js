@@ -166,34 +166,68 @@ export async function issues(root) {
 	return out === null ? null : issuesFrom(out);
 }
 
-/** gh's list of pull requests as the list takes them — by head branch, the newest first — or null for anything that is not such a list. */
-export function pullRequestsFrom(out) {
+/** How a commit's checks stand, from the rollup's contexts as GitHub gives them: a check run by its status and conclusion, a status by its state. */
+function checksOf(contexts) {
+	const checks = { total: contexts.length, pending: 0, failed: 0 };
+	for (const check of contexts) {
+		const state = String(check?.conclusion || check?.state || "").toUpperCase();
+		if (["", "PENDING", "QUEUED", "IN_PROGRESS", "EXPECTED", "WAITING", "REQUESTED"].includes(state) && String(check?.status || "").toUpperCase() !== "COMPLETED") checks.pending++;
+		else if (["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"].includes(state)) checks.failed++;
+	}
+	return checks;
+}
+
+/**
+ * One GraphQL query for the pull requests of exactly these branches — each
+ * its latest — with the checks of its last commit, rather than the
+ * repository's every pull request listed and the few wanted picked out:
+ * the listing was two seconds, nearly all of it pull requests nobody here
+ * is on. Conductor asks GitHub the same way. Pure, so what is asked can be
+ * read in a test.
+ */
+export function pullRequestsQuery(branches) {
+	const refs = branches
+		.map((branch, i) => `b${i}: ref(qualifiedName: ${JSON.stringify(`refs/heads/${branch}`)}) { ...pr }`)
+		.join("\n    ");
+	return `query($owner: String!, $repo: String!) {
+  repository(owner: $owner, name: $repo) {
+    ${refs}
+  }
+}
+fragment pr on Ref {
+  associatedPullRequests(first: 1, orderBy: { field: UPDATED_AT, direction: DESC }) {
+    nodes {
+      number state url isDraft reviewDecision headRefName
+      commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { ... on CheckRun { status conclusion } ... on StatusContext { state } } } } } } }
+    }
+  }
+}`;
+}
+
+/**
+ * GitHub's answer to pullRequestsQuery as the list takes it — by head
+ * branch, each branch's latest pull request — or null for anything that is
+ * not that answer. A branch GitHub does not have, or has no pull request
+ * for, is simply not in it.
+ */
+export function pullRequestsFromGraph(out, branches) {
 	try {
-		const list = JSON.parse(out);
-		if (!Array.isArray(list)) return null;
+		const repository = JSON.parse(out)?.data?.repository;
+		if (!repository || typeof repository !== "object") return null;
 		const byHead = new Map();
-		for (const pr of list) {
-			if (!pr || !Number.isInteger(pr.number) || typeof pr.headRefName !== "string" || typeof pr.state !== "string") continue;
-			if (byHead.has(pr.headRefName)) continue;
-			// The checks, folded to what the foot of the window says of them:
-			// gh gives each as a status (its own name for a check run) with a
-			// conclusion, or as a commit status with a state.
-			const rollup = Array.isArray(pr.statusCheckRollup) ? pr.statusCheckRollup : [];
-			const checks = { total: rollup.length, pending: 0, failed: 0 };
-			for (const check of rollup) {
-				const state = String(check?.conclusion || check?.state || "").toUpperCase();
-				if (["", "PENDING", "QUEUED", "IN_PROGRESS", "EXPECTED", "WAITING", "REQUESTED"].includes(state) && String(check?.status || "").toUpperCase() !== "COMPLETED") checks.pending++;
-				else if (["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"].includes(state)) checks.failed++;
-			}
-			byHead.set(pr.headRefName, {
+		branches.forEach((branch, i) => {
+			const pr = repository[`b${i}`]?.associatedPullRequests?.nodes?.[0];
+			if (!pr || !Number.isInteger(pr.number) || typeof pr.state !== "string") return;
+			const contexts = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes;
+			byHead.set(branch, {
 				number: pr.number,
 				state: pr.state,
 				url: typeof pr.url === "string" ? pr.url : null,
 				draft: pr.isDraft === true,
 				review: typeof pr.reviewDecision === "string" ? pr.reviewDecision : "",
-				checks,
+				checks: checksOf(Array.isArray(contexts) ? contexts : []),
 			});
-		}
+		});
 		return byHead;
 	} catch {
 		return null;
@@ -201,12 +235,13 @@ export function pullRequestsFrom(out) {
 }
 
 /**
- * The repository's pull requests, open and closed, by the branch each is
- * from — the newest first, so a branch with several is known by its latest
- * — or null when gh cannot say. One call for every workspace of the
- * repository, since the list is drawn a row at a time.
+ * The pull requests of these branches of the repository cloned at `root`,
+ * each its latest, by branch — or null when gh cannot say. One call for
+ * every workspace of the repository; gh reads which repository off the
+ * clone's remote, as it does in a terminal.
  */
-export async function pullRequests(root) {
-	const out = await gh(["pr", "list", "--state", "all", "--limit", "200", "--json", "number,state,headRefName,url,isDraft,reviewDecision,statusCheckRollup"], { cwd: root, timeoutMs: 30_000 });
-	return out === null ? null : pullRequestsFrom(out);
+export async function pullRequests(root, branches) {
+	if (branches.length === 0) return new Map();
+	const out = await gh(["api", "graphql", "-F", "owner={owner}", "-F", "repo={repo}", "-f", `query=${pullRequestsQuery(branches)}`], { cwd: root, timeoutMs: 30_000 });
+	return out === null ? null : pullRequestsFromGraph(out, branches);
 }

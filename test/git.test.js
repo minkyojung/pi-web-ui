@@ -244,17 +244,18 @@ test("a new workspace's branch is not on the remote until pushed — and never r
 	assert.equal(await onRemote(repo.root, made.branch), true);
 });
 
-test("gh's pull requests are read by head branch, the newest first, with their checks folded and the rest read strictly", async () => {
-	const { pullRequestsFrom } = await import("../electron/github.js");
-	const map = pullRequestsFrom(JSON.stringify([
-		{ number: 30, state: "OPEN", headRefName: "me/x", url: "https://x/30", isDraft: false, reviewDecision: "APPROVED", statusCheckRollup: [{ name: "test", status: "COMPLETED", conclusion: "SUCCESS" }, { name: "e2e", status: "IN_PROGRESS", conclusion: "" }, { context: "lint", state: "FAILURE" }] },
-		{ number: 12, state: "MERGED", headRefName: "me/x" },
-		{ number: 9, state: "CLOSED", headRefName: "me/y", statusCheckRollup: "nope" },
-		{ number: "3", state: "OPEN", headRefName: "me/z" },
-	]));
+test("GitHub's pull requests are read by branch, with their checks folded and the rest read strictly", async () => {
+	const { pullRequestsFromGraph } = await import("../electron/github.js");
+	const pr = (fields) => ({ associatedPullRequests: { nodes: [fields] } });
+	const map = pullRequestsFromGraph(JSON.stringify({ data: { repository: {
+		b0: pr({ number: 30, state: "OPEN", url: "https://x/30", isDraft: false, reviewDecision: "APPROVED", commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [{ status: "COMPLETED", conclusion: "SUCCESS" }, { status: "IN_PROGRESS", conclusion: "" }, { state: "FAILURE" }] } } } }] } }),
+		b1: pr({ number: 9, state: "CLOSED", commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: "nope" } } } }] } }),
+		b2: pr({ number: "3", state: "OPEN" }),
+		b3: { associatedPullRequests: { nodes: [] } },
+	} } }), ["me/x", "me/y", "me/z", "me/none"]);
 	assert.deepEqual([...map], [
 		["me/x", { number: 30, state: "OPEN", url: "https://x/30", draft: false, review: "APPROVED", checks: { total: 3, pending: 1, failed: 1 } }],
 		["me/y", { number: 9, state: "CLOSED", url: null, draft: false, review: "", checks: { total: 0, pending: 0, failed: 0 } }],
 	]);
-	assert.equal(pullRequestsFrom("nope"), null);
+	assert.equal(pullRequestsFromGraph("nope", ["me/x"]), null);
 });

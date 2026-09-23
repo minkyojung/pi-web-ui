@@ -25,7 +25,7 @@ export type GitHubBridge = {
 export const bridge: GitHubBridge | null = (window as unknown as { pi?: { github?: GitHubBridge } }).pi?.github ?? null;
 
 /** Where the person stands, or null until the shell has said. */
-export const githubStore = createStore<GitHubStanding | null>(null);
+export const githubStore = createStore<GitHubStanding | null>(null, { window: true });
 
 /** Ask the shell again, and keep what it says. */
 export async function refresh(): Promise<GitHubStanding | null> {

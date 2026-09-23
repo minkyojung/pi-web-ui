@@ -169,3 +169,33 @@ export function statusOf({ onRemote, pr }) {
 	}
 	return { state: onRemote ? "pushed" : "local" };
 }
+
+/**
+ * What was last learnt about each key, given at once, and learnt again when
+ * it is over `staleMs` old — `onFresh` says when a newer answer has landed,
+ * for the list to be drawn again. Stale-while-revalidate, as HTTP has it:
+ * whoever asks never waits, and what they get is the truth as of the last
+ * answer. Nothing learnt yet is null; an `ask` that fails keeps what was
+ * known and is not asked again until the next `staleMs`.
+ */
+export function remembered({ ask, onFresh, now = Date.now, staleMs }) {
+	/** key → what is known and when, and the ask under way if one is. */
+	const known = new Map();
+	return (key) => {
+		const had = known.get(key) ?? { at: -Infinity, answer: null, asking: null };
+		known.set(key, had);
+		if (!had.asking && now() - had.at >= staleMs) {
+			// Started now, not on the next tick, and a throw on the way out is a failed ask.
+			had.asking = new Promise((resolve) => resolve(ask(key)))
+				.catch(() => null)
+				.then((answer) => {
+					had.at = now();
+					had.asking = null;
+					if (answer === null) return;
+					had.answer = answer;
+					onFresh(key);
+				});
+		}
+		return had.answer;
+	};
+}
