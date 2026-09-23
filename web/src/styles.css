@@ -9,7 +9,7 @@
 @source "../../node_modules/streamdown/dist";
 
 /*
- * shadcn's neutral tokens, light in :root, the other three behind data-theme.
+ * shadcn's neutral tokens, light in :root and dark behind data-theme.
  *
  * The dark set used to live in @media (prefers-color-scheme: dark), which
  * followed the system with no JS at all. It cannot any more: a window told to
@@ -20,16 +20,7 @@
  * on the element. One block, and dark: utilities in vendored components follow
  * it through the custom variant below.
  */
-/* Two themes are dark, not one, and dark: has to mean both of them: it is what
-   turns the code block over to its dark syntax colours and reaches the handful
-   of vendored components that hardcode a light and a dark. Adding a selector
-   takes nothing away from the neutral dark, which still matches first. */
-@custom-variant dark (
-  &:where(
-    [data-theme="dark"], [data-theme="dark"] *,
-    [data-theme="octave-dark"], [data-theme="octave-dark"] *
-  )
-);
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 :root {
   color-scheme: light;
@@ -185,159 +176,6 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 5%);
   --sidebar-ring: oklch(0.556 0 0);
-}
-
-/*
- * Octave, in two. Generated rather than picked: Radix's custom-palette tool,
- * given the one colour this product is — #3E4798 — as the accent in both
- * appearances, with its default gray (#8B8D98, a slate that leans the same way
- * the accent does) and its default pages, white and #111111. That is twelve
- * accent steps and twelve grays per appearance, each step meaning a job rather
- * than a shade: 1 the page, 3 a filled control, 6 a rim, 9 the solid thing to
- * press, 11 second-rank text, 12 first-rank.
- *
- *   https://www.radix-ui.com/colors/custom?accent-dark=3E4798&accent-light=3E4798
- *
- * Radix gives the colours; this file gives the steps. The ladder below is the
- * one the neutral pair already declares — the frame 0.027 under the content,
- * a card 0.028 over it, pi's wash a step past that — and each token takes the
- * Radix rung that lands nearest the rung its neutral twin stands on. Where the
- * ramp has no rung there (its light grays bunch at the top), the value is
- * interpolated along the ramp and said so. A palette dropped in whole would
- * have moved the surfaces and taken the contrast promise with them; every pair
- * here is measured by scripts/contrast.mjs like the other two.
- *
- * Accent is spent where something is to be pressed, focused or selected, and
- * on the charts, where colour is the data. Rims, surfaces and the syntax
- * colours stay gray — a hairline is the last place to spend a brand colour,
- * and every panel edge in the window is one.
- */
-:root[data-theme="octave-light"] {
-  color-scheme: light;
-  /* gray 2 is the page, gray 1 and white above it, gray 3 the frame below —
-     Radix's own panel convention, and the order an inset layout needs. */
-  --background: oklch(0.983 0.003 286.4);
-  --foreground: oklch(0.24 0.01 276.7);
-  /* White stays the ceiling, as in every light window here: a raised thing is
-     white and says so with a shadow. */
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.24 0.01 276.7);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.24 0.01 276.7);
-  /* Accent 9, the step Radix reserves for the solid thing to press — which is
-     #3E4798 itself, unmoved, in both appearances. Its contrast colour is the
-     one the tool computed: white. */
-  --primary: oklch(0.436 0.131 274.8);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.955 0.004 271.4);
-  --secondary-foreground: oklch(0.24 0.01 276.7);
-  --muted: oklch(0.955 0.004 271.4);
-  /* Gray 11, which Radix defines as text that must clear AA on steps 1 to 3.
-     It lands under that here too, on gray 4 — the darkest surface second-rank
-     text is drawn on in this window. */
-  --muted-foreground: oklch(0.502 0.014 280.8);
-  --accent: oklch(0.955 0.004 271.4);
-  --accent-foreground: oklch(0.24 0.01 276.7);
-  /* The neutral light theme's red, unchanged: no red was asked of the tool,
-     and this one is already measured against a page this bright. */
-  --destructive: oklch(0.577 0.245 27.325);
-  /* Gray 4 and 5, which are 0.052 and 0.073 under the page — the distances the
-     neutral light theme holds for a rim and for an edge you aim at. Radix
-     names gray 6 the subtle border, but that is drawn for a white page; this
-     one is gray 2, so the rim comes up a step with it. */
-  --border: oklch(0.931 0.005 275);
-  --input: oklch(0.91 0.007 277.2);
-  /* Accent 9 again, not accent 8. A focus ring is a non-text indicator, which
-     WCAG asks 3:1 of, and step 8 — the rung Radix names for a ring — reads
-     2.0 on a page this light. The brand colour itself clears it, and a ring
-     that is the same colour as the button is what Linear draws. */
-  --ring: oklch(0.436 0.131 274.8);
-  /* The accent ramp, light to dark, the way the neutral ramp runs: steps 6, 8,
-     11, 9, 12. */
-  --chart-1: oklch(0.864 0.058 275.4);
-  --chart-2: oklch(0.729 0.096 274.4);
-  --chart-3: oklch(0.508 0.132 275.1);
-  --chart-4: oklch(0.436 0.131 274.8);
-  --chart-5: oklch(0.312 0.078 275.1);
-  /* Down to the frame, as in every light window here. */
-  --panel: oklch(0.955 0.004 271.4);
-  --panel-muted: oklch(0.931 0.005 275);
-  --sidebar: oklch(0.955 0.004 271.4);
-  --sidebar-foreground: oklch(0.24 0.01 276.7);
-  --sidebar-primary: oklch(0.436 0.131 274.8);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.931 0.005 275);
-  --sidebar-accent-foreground: oklch(0.24 0.01 276.7);
-  --sidebar-border: oklch(0.91 0.007 277.2);
-  --sidebar-ring: oklch(0.436 0.131 274.8);
-  /* The brand colour washed over the page, the words on it taken to accent 12
-     so a selection reads darker than it did unselected rather than lighter. */
-  --selection: color-mix(in oklab, var(--primary) 18%, transparent);
-  --selection-foreground: var(--chart-5);
-}
-
-:root[data-theme="octave-dark"] {
-  color-scheme: dark;
-  /* Gray 1 is the frame, gray 2 the page, gray 3 what is raised off it —
-     Radix's dark steps already run in the order this window needs. Gray 3 is
-     interpolated 0.006 down the ramp, to 0.250: as drawn it stands 0.042 over
-     the page and pi's floor is declared to reach 0.04, so the rung comes to
-     the ladder rather than the ladder to the rung. */
-  --background: oklch(0.214 0.004 286.1);
-  --foreground: oklch(0.95 0.003 286.3);
-  --card: oklch(0.25 0.004 264.5);
-  --card-foreground: oklch(0.95 0.003 286.3);
-  --popover: oklch(0.25 0.004 264.5);
-  --popover-foreground: oklch(0.95 0.003 286.3);
-  /* #3E4798 unmoved, as in the light theme: the tool keeps the given colour at
-     step 9 in both appearances, and computed white for the words on it. Dark
-     is where a brand colour goes wrong if it is used for text — for that, this
-     theme reaches step 11 below, which is a different colour entirely. */
-  --primary: oklch(0.436 0.131 274.8);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.286 0.007 274.7);
-  --secondary-foreground: oklch(0.95 0.003 286.3);
-  --muted: oklch(0.286 0.007 274.7);
-  --muted-foreground: oklch(0.769 0.014 281.5);
-  --accent: oklch(0.286 0.007 274.7);
-  --accent-foreground: oklch(0.95 0.003 286.3);
-  --destructive: oklch(0.704 0.191 22.216);
-  /* The paper at the neutral dark's own alphas, not gray 6: a rim on a raised
-     surface follows the surface it is drawn on, which an opaque step cannot. */
-  --border: oklch(0.95 0.003 286.3 / 5%);
-  --input: oklch(0.95 0.003 286.3 / 15%);
-  /* Accent 11, not the step 8 Radix names for a ring: on a page this dark
-     step 8 reads 2.58 on a card, under the 3:1 WCAG asks of a non-text
-     indicator. Step 11 is the rung that carries this page as text, and there
-     is nothing between the two — the ramp turns over at 9. */
-  --ring: oklch(0.769 0.118 274.3);
-  /* The dark ramp, light to dark: steps 12, 11, 8, 9, 5. */
-  --chart-1: oklch(0.913 0.042 273.7);
-  --chart-2: oklch(0.769 0.118 274.3);
-  --chart-3: oklch(0.506 0.15 274.8);
-  --chart-4: oklch(0.436 0.131 274.8);
-  --chart-5: oklch(0.359 0.118 275.1);
-  --code-keyword: oklch(0.78 0.14 330);
-  --code-type: oklch(0.8 0.1 250);
-  --code-string: oklch(0.8 0.1 145);
-  --code-name: oklch(0.78 0.1 285);
-  --code-number: oklch(0.8 0.12 60);
-  /* Raised, the step a card takes off this page; its wash one rung further. */
-  --panel: oklch(0.25 0.004 264.5);
-  --panel-muted: oklch(0.314 0.009 276.8);
-  --sidebar: oklch(0.179 0.004 286);
-  --sidebar-foreground: oklch(0.95 0.003 286.3);
-  --sidebar-primary: oklch(0.436 0.131 274.8);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.25 0.004 264.5);
-  --sidebar-accent-foreground: oklch(0.95 0.003 286.3);
-  --sidebar-border: oklch(0.95 0.003 286.3 / 5%);
-  --sidebar-ring: oklch(0.769 0.118 274.3);
-  /* The same as the light pair the other way up: the brand colour washed over
-     the page, and the words taken to accent 11 — the rung that carries a page
-     this dark — so the selection reads as the colour and not as a patch. */
-  --selection: color-mix(in oklab, var(--primary) 30%, transparent);
-  --selection-foreground: var(--chart-2);
 }
 
 @theme inline {

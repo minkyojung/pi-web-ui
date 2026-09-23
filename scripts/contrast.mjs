@@ -7,7 +7,7 @@
  * a memory — and so the surfaces can be moved (see .context/plans/
  * surface-elevation.md) without the promise quietly lapsing.
  *
- * Reads the four :root blocks straight out of styles.css. No dependencies:
+ * Reads the two :root blocks straight out of styles.css. No dependencies:
  * oklch to sRGB is forty lines, and a colour library would be a second place
  * for the truth to live.
  *
@@ -70,8 +70,6 @@ const over = (src, alpha, dst) =>
 const THEMES = {
 	"neutral light": /^:root \{$/m,
 	"neutral dark": /^:root\[data-theme="dark"\] \{$/m,
-	"octave light": /^:root\[data-theme="octave-light"\] \{$/m,
-	"octave dark": /^:root\[data-theme="octave-dark"\] \{$/m,
 };
 
 /** The declarations of one :root block, comments and all the rest dropped. */
@@ -336,5 +334,5 @@ if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.me
 		fail.forEach((f) => console.error(`  ${f}`));
 		process.exit(1);
 	}
-	console.log("\n\x1b[32mevery pair clears AA in all four themes\x1b[0m");
+	console.log("\n\x1b[32mevery pair clears AA in both themes\x1b[0m");
 }
