@@ -81,9 +81,9 @@ export function RunActions({ path }: { path: string | null }) {
 			{numbers.length > 0 && (
 				<Button
 					id="runPicked"
-					variant="ghost"
+					variant="soft"
 					size="sm"
-					className="h-7 max-w-64 gap-1.5 px-2 text-xs"
+					className="h-7 max-w-64 gap-1.5 px-2 text-xs text-status-progress"
 					disabled={stop !== null}
 					title={reason ?? undefined}
 					onClick={() => {

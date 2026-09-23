@@ -56,9 +56,9 @@ export function ApproveAction({ path }: { path: string | null }) {
 				<span className="flex shrink-0">
 					<Button
 						id="approveSpec"
-						variant="ghost"
+						variant="soft"
 						size="sm"
-						className="h-7 px-2 text-xs"
+						className="h-7 px-2 text-xs text-status-review"
 						aria-label={waitingLine(spec.waiting)}
 						disabled={stop !== null}
 						onClick={() => {
