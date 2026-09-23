@@ -81,6 +81,10 @@
   --code-string: oklch(0.48 0.12 145);
   --code-name: oklch(0.45 0.16 285);
   --code-number: oklch(0.5 0.14 60);
+  /* Where a task stands (TaskGlyph.tsx): under way, in review, done. */
+  --status-progress: oklch(0.72 0.16 75);
+  --status-review: oklch(0.6 0.14 160);
+  --status-done: oklch(0.55 0.16 275);
   /*
    * pi's side of the card. The note is the page; the conversation beside it is
    * not the same page, so it takes a surface of its own — and which way it
@@ -173,6 +177,9 @@
   --code-string: oklch(0.8 0.1 145);
   --code-name: oklch(0.78 0.1 285);
   --code-number: oklch(0.8 0.12 60);
+  --status-progress: oklch(0.8 0.15 80);
+  --status-review: oklch(0.72 0.14 160);
+  --status-done: oklch(0.65 0.15 275);
   /* Raised, the step a card takes off this page. */
   --panel: oklch(0.238 0 0);
   --panel-muted: oklch(0.302 0 0);
@@ -322,6 +329,9 @@
   --code-string: oklch(0.8 0.1 145);
   --code-name: oklch(0.78 0.1 285);
   --code-number: oklch(0.8 0.12 60);
+  --status-progress: oklch(0.8 0.15 80);
+  --status-review: oklch(0.72 0.14 160);
+  --status-done: oklch(0.65 0.15 275);
   /* Raised, the step a card takes off this page; its wash one rung further. */
   --panel: oklch(0.25 0.004 264.5);
   --panel-muted: oklch(0.314 0.009 276.8);
@@ -356,6 +366,9 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-status-progress: var(--status-progress);
+  --color-status-review: var(--status-review);
+  --color-status-done: var(--status-done);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

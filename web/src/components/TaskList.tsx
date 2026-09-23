@@ -6,7 +6,7 @@
  * A row is skimmed — a glyph for where the task stands, its title, and once
  * it has run the size of its commit and how its check ended — and opened to
  * be read: what it involves, the requirements it is for, what proves it,
- * what it waits on. Colour is on three things only: done, running, failed.
+ * what it waits on. Colour is on the glyph (TaskGlyph.tsx) and a failed check.
  * Nothing folds away; a task set aside or done stays where the plan put it,
  * dimmed, so the order the plan has is the order the eye reads. By standing
  * instead is a toggle, for the person who wants the review pile in one place.
@@ -17,44 +17,28 @@
  * taskList.ts's; this only draws them and sends the words.
  */
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { CheckIcon, CircleDashedIcon, CircleDotIcon, CircleIcon, ListIcon, LayersIcon, PlayIcon, XIcon } from "lucide-react";
+import { CheckIcon, CircleDashedIcon, ListIcon, LayersIcon, PlayIcon, XIcon } from "lucide-react";
 
 import { cn } from "cn";
 import { APPROVED_DOCS, specNameOf } from "../../../documentKinds.ts";
 import { checkLogPath } from "../checkLog";
 import { commitPath, spansOf } from "../pages";
-import { runOnOf, runOnStore } from "../runOn";
 import { commandsStore, configStore, createStore, noteStore, specsStore } from "../serverState";
 import { RUN, runBlocked, runMessage, runWhy } from "../specRun.ts";
 import { docPath } from "../specStanding.ts";
+import { TaskGlyph } from "./TaskGlyph";
 import { getConnection, subscribe } from "../store";
 import { byStatus, type ListRow, listOf, type Section, wordMessage, wordsFor } from "../taskList.ts";
-import type { Standing } from "../taskTree.ts";
 import { send } from "../ws";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
-import { Spinner } from "./ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** Whether the list is by the plan's headings or by standing — the window's choice, the same in every workspace. */
 const groupingStore = createStore<"plan" | "status">("plan", { window: true });
-
-function Glyph({ standing, blocked }: { standing: Standing; blocked: boolean }) {
-	const size = "size-4 shrink-0";
-	if (blocked && (standing === "todo" || standing === "next")) return <CircleDashedIcon className={cn(size, "text-muted-foreground/45")} strokeWidth={1.75} aria-label="waiting on another task" />;
-	switch (standing) {
-		case "todo": return <CircleIcon className={cn(size, "text-muted-foreground/45")} strokeWidth={1.75} />;
-		case "next": return <CircleDotIcon className={cn(size, "text-foreground")} strokeWidth={2} />;
-		// Half full: it has run, and is not accepted yet.
-		case "review": return <span className={cn(size, "rounded-full border-2 border-primary")} style={{ background: "linear-gradient(90deg, var(--primary) 50%, transparent 50%)" }} aria-label="ran — waiting to be looked at" />;
-		case "running": return <Spinner className={cn(size, "text-amber-500")} />;
-		case "done": return <span className={cn(size, "flex items-center justify-center rounded-full bg-primary text-primary-foreground")}><CheckIcon className="size-2.5" strokeWidth={3.5} /></span>;
-		case "cancelled": return <span className={cn(size, "flex items-center justify-center rounded-full bg-muted-foreground/35 text-background")}><XIcon className="size-2.5" strokeWidth={3} /></span>;
-	}
-}
 
 const chip = "h-5 cursor-default rounded px-1.5 font-normal text-[11px] tabular-nums text-muted-foreground hover:text-foreground";
 
@@ -82,7 +66,7 @@ function Row({ row, spec, started, canRun, why, onOpen, flat }: { row: ListRow; 
 								!flat && row.depth > 0 && "ml-6",
 							)}
 						>
-							<Glyph standing={row.standing} blocked={blocked} />
+							<TaskGlyph standing={row.standing} blocked={blocked} />
 							<span className={cn("min-w-0 flex-1 truncate text-sm", (muted || (blocked && !muted)) && "text-muted-foreground", row.standing === "cancelled" && "line-through", (row.standing === "next" || parent) && "font-medium")}>
 								{row.title}
 							</span>
@@ -194,7 +178,6 @@ export function TaskList({ path, onOpen }: { path: string; onOpen: (path: string
 	const specs = useSyncExternalStore(specsStore.subscribe, specsStore.get);
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const commands = useSyncExternalStore(commandsStore.subscribe, commandsStore.get);
-	const choices = useSyncExternalStore(runOnStore.subscribe, runOnStore.get);
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	const grouping = useSyncExternalStore(groupingStore.subscribe, groupingStore.get);
 	// Asked for whenever there is a socket to ask on, as the editor asks: the
@@ -212,7 +195,6 @@ export function TaskList({ path, onOpen }: { path: string; onOpen: (path: string
 	const canRun = stop === null;
 	const why = runWhy(stop);
 	const sections = grouping === "status" ? byStatus(list) : list.sections;
-	const on = runOnOf(choices, name);
 	const notReady = spec !== null && (spec.approved < APPROVED_DOCS.length || !spec.written.includes("tasks.md"));
 	return (
 		<div id="tasks" className="no-scrollbar edge-top flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -231,14 +213,6 @@ export function TaskList({ path, onOpen }: { path: string; onOpen: (path: string
 				{notReady && <p className="mb-4 text-xs text-muted-foreground">{why ?? "Approve the requirements and the design first."}</p>}
 				{sections.map((section, i) => <SectionView key={section.title ?? i} section={section} spec={name} started={list.started} canRun={canRun} why={why} onOpen={onOpen} flat={grouping === "status"} />)}
 				{list.sections.length === 0 && <p className="text-sm text-muted-foreground">No tasks yet.</p>}
-				<p className="mt-4 flex gap-3 text-xs text-muted-foreground">
-					<span>{list.counts.done} done</span>
-					{list.counts.review > 0 && <span className="text-primary">{list.counts.review} to look at</span>}
-					{list.counts.running > 0 && <span className="text-amber-600 dark:text-amber-500">{list.counts.running} running</span>}
-					{list.counts.cancelled > 0 && <span>{list.counts.cancelled} set aside</span>}
-					<span>{list.counts.todo + list.counts.next} to do</span>
-					{on && <span className="ml-auto">runs on {on.model.split("/").pop()}</span>}
-				</p>
 			</div>
 		</div>
 	);
