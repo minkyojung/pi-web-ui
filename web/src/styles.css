@@ -59,8 +59,14 @@
   /* The rim, at the distance from the page the dark themes keep theirs at,
      the other way up — a raised thing here is white and its edge is a shadow
      rather than a highlight. --input is left where it was: an edge you aim a
-     pointer at is not the same job as an edge that only has to be there. */
-  --border: oklch(0.948 0 0);
+     pointer at is not the same job as an edge that only has to be there.
+
+     Black at an alpha rather than a grey, for the reason the dark themes use
+     white at one: a rim is drawn on more than the page — pi's floor, a bar's
+     fill, a card — and an opaque grey is its 0.052 on white only. On pi's
+     floor it was 0.025, half a rim; at 7% it is 0.052 on every one of them.
+     Linear's translucent border and Apple's separator are alphas for this. */
+  --border: oklch(0 0 0 / 7%);
   --input: oklch(0.922 0 0);
   /* A focus ring is a non-text indicator, which WCAG asks 3:1 of. The figure
      shadcn ships reads 2.59 on a page this light — the only one of the four
@@ -107,10 +113,10 @@
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.958 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  /* Its own 0.052, measured from the frame rather than from the page: an
-     opaque rim cannot follow the surface it is drawn on the way an alpha can,
-     so the sidebar's is written out. */
-  --sidebar-border: oklch(0.921 0 0);
+  /* The same alpha as --border, and so the same 0.052 from the frame: it was
+     written out as its own grey only because an opaque rim cannot follow the
+     surface it is drawn on. */
+  --sidebar-border: oklch(0 0 0 / 7%);
   --sidebar-ring: oklch(0.653 0 0);
   /*
    * Selected text, one pair for the whole window: the layer CodeMirror draws

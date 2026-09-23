@@ -205,6 +205,8 @@ const RIMS = [
 	["--border", "--popover", "rim on a popover"],
 	["--sidebar-border", "--sidebar", "rim in the sidebar"],
 	["--border", "--panel", "rim round pi"],
+	["--border", "--muted", "a bar's edge"],
+	["--border", "--panel-muted", "a rule on pi's wash"],
 ];
 
 /* ── run ────────────────────────────────────────────────────────────────── */
@@ -294,10 +296,9 @@ export function ladder() {
 
 		// A rim is one distance from its own surface, and which side of it
 		// depends only on where the light is. Too far and it is a line again.
-		for (const [token, where] of [
-			["--border", "rim on content"],
-			["--sidebar-border", "rim in the sidebar"],
-		]) {
+		// Every surface one is drawn on, not only the page: an opaque grey
+		// holds its distance on the one surface it was measured against.
+		for (const { token, where } of rims) {
 			const d = Math.abs(rim(token, where));
 			if (d < 0.035 || d > 0.065) out.push(`${theme}: ${token} is ${d < 0.035 ? "too faint to be an edge" : "drawn as a line, not a rim"} — ${rim(token, where).toFixed(3)}, wants 0.035 to 0.065`);
 		}
