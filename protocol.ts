@@ -23,6 +23,7 @@ import type { SearchHit } from "./search";
 import type { Settings } from "./settings.ts";
 import type { CommitRead } from "./commitRead.ts";
 import type { TaskResult } from "./specResults.ts";
+import type { TaskRun } from "./specRuns.ts";
 import type { Progress } from "./specTasks.ts";
 
 /** Octave's own settings, for the client, which cannot import settings.ts for anything but its type. */
@@ -644,6 +645,13 @@ export interface SpecInfo {
 	 * has been run, and in a folder that is no repository.
 	 */
 	results: TaskResult[];
+	/**
+	 * The runs waiting to be looked at — a task each, its newest run, that no
+	 * commit has accepted yet (specRuns.ts): the sessions' word against the
+	 * commits'. What "in review" means, for the list and the tab row alike.
+	 * Oldest first. Empty until a task has been run.
+	 */
+	review: TaskRun[];
 }
 
 /** Where the folder's branch stands, as git knows it — see standing.ts. */

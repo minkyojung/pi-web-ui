@@ -59,6 +59,7 @@ const spec = (over: Partial<SpecInfo> = {}): SpecInfo => ({
 	written: ["requirements.md"],
 	tasks: null,
 	results: [],
+	review: [],
 	...over,
 });
 

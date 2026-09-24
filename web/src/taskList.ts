@@ -1,7 +1,8 @@
 /**
  * A spec's tasks as the list draws them: what the markdown holds (taskTree.ts)
- * joined with what git and the session know — which task each run ended in
- * a commit for, and which is running now — into rows with a standing each,
+ * joined with what the server knows — which tasks' runs wait to be looked
+ * at, what each accepted one came to, and which is running now — into rows
+ * with a standing each,
  * under the headings the plan has, or under the standings when asked.
  *
  * Pure, so a list can be pinned without a browser: the stores are read
@@ -10,6 +11,7 @@
  * (spec.ts /spec-done and the two beside it), as the approvals are.
  */
 import type { TaskResult } from "../../specResults.ts";
+import type { TaskRun } from "../../specRuns.ts";
 import type { ClientMsg } from "../../protocol.ts";
 import { progressUnder, type Standing, standingOf, type TaskRow, treeOf } from "./taskTree.ts";
 
@@ -44,7 +46,7 @@ export interface List {
 
 const STANDINGS: Standing[] = ["running", "review", "todo", "done", "cancelled"];
 
-export function listOf(text: string, { results, running }: { results: readonly TaskResult[]; running: string | null }): List {
+export function listOf(text: string, { results, review, running }: { results: readonly TaskResult[]; review: readonly TaskRun[]; running: string | null }): List {
 	const tree = treeOf(text);
 	// A heading right before the first task is the first section's, not the
 	// head's: the tree keeps everything before the first task whole, as it is
@@ -53,8 +55,8 @@ export function listOf(text: string, { results, running }: { results: readonly T
 	const first = /^#{2,6}\s+(.*\S)\s*$/.exec(headLines.at(-1) ?? "");
 	const head = (first ? headLines.slice(0, -1) : headLines).join("\n").trim();
 	const settled = (number: string) => tree.tasks.find((task) => task.number === number)?.done ?? false;
-	// Git's word: a task a run ended in a commit for. The person's `x` outranks it (standingOf).
-	const reviewed = new Set(results.map((result) => result.task));
+	// The server's word: a run no commit has accepted (SpecInfo.review). The person's `x` outranks it (standingOf).
+	const reviewed = new Set(review.map((run) => run.task));
 	const sections: Section[] = [];
 	let current: Section = { title: first ? first[1]! : null, rows: [], done: 0, total: 0 };
 	const counts = Object.fromEntries(STANDINGS.map((s) => [s, 0])) as Record<Standing, number>;

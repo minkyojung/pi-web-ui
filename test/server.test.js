@@ -1232,7 +1232,7 @@ it("스펙이 어디까지 왔는지 탭이 듣는다 — 문서가 써지면 �
   // is the one change the tabs would otherwise never hear.
   approve(cwd, "waiting");
   const after = await want("specs", (m) => m.specs.find((spec) => spec.name === "waiting")?.waiting === null);
-  assert.deepEqual(after.specs.find((spec) => spec.name === "waiting"), { name: "waiting", own: true, approved: 1, waiting: null, waitingAt: null, written: ["requirements.md"], tasks: null, results: [] });
+  assert.deepEqual(after.specs.find((spec) => spec.name === "waiting"), { name: "waiting", own: true, approved: 1, waiting: null, waitingAt: null, written: ["requirements.md"], tasks: null, results: [], review: [] });
   clear();
   // The next document, written on the approved one: waiting in its turn.
   putSpec(".octave/specs/waiting/design.md", "# Design\n");

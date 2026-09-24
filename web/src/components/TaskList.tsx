@@ -190,7 +190,7 @@ export function TaskList({ path, onOpen }: { path: string; onOpen: (path: string
 	const text = note?.path === path ? note.text : null;
 	if (name === null || text === null) return <div id="tasks" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>;
 	const running = config?.run?.spec === name ? config.run.task : null;
-	const list = listOf(text, { results: spec?.results ?? [], running });
+	const list = listOf(text, { results: spec?.results ?? [], review: spec?.review ?? [], running });
 	const stop = spec && config ? runBlocked({ online, streaming: config.isStreaming, compacting: config.isCompacting, hasCommand: commands.some((command) => command.name === RUN), spec, count: 1, sent: false }) : "offline";
 	const canRun = stop === null;
 	const why = runWhy(stop);

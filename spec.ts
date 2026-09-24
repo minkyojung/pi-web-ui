@@ -54,6 +54,8 @@ import { APP_DIR_NAME, APPROVALS, APPROVED_DOCS, SPEC_DOCS, type SpecDoc, SPECS_
 import { CITIES } from "./electron/cities.js";
 import { CONFIG_FILE, DEFAULT_TIMEOUT, isConfig, readConfig } from "./electron/octaveConfig.js";
 import { approve, type SpecState, specState } from "./specApproval.ts";
+import { taskResults } from "./specResults.ts";
+import { inReview, runSessions, TASK_MARK, type TaskMark, taskMark, taskRuns } from "./specRuns.ts";
 import { doneWhenOf, nextTask, parseTasks, runsOf, runsUnder, type Task, taskToRun, withBox, withDone, withParents } from "./specTasks.ts";
 
 /** A workspace's placeholder name: a city, or a city of a later round (`lisbon-v2`). */
@@ -358,34 +360,8 @@ export function nextPrompt({ name, next, redo }: { name: string; next: "design.m
 
 // ---- Running a task ----
 
-/** The hidden message a task's run is told by, and marked as, in its session. */
-const TASK_MARK = "spec-task";
-
-/** What a task's run is, carried in the session it runs in. */
-export interface TaskMark {
-	spec: string;
-	/** Its number in tasks.md — `2`, or `2.1`. */
-	task: string;
-	/** Its objective, which is its commit's subject. */
-	title: string;
-	/** The tasks already done when the run began. */
-	done: string[];
-	/**
-	 * The tasks to run after this one, in order — the rest of a `/spec-run 1
-	 * 2.1 2.2`. Each is started when the one before it is checked off, in a
-	 * session of its own like this one; empty for a run of one task.
-	 */
-	then: string[];
-	/**
-	 * The model to run it on, as `provider/id`, and its thinking level — or
-	 * null for whatever the session opens on. A spec is written by a strong
-	 * model and its tasks can be run by a cheaper one (spec-mode.md 3절 5);
-	 * the choice is made once, when the run is asked for, and carries down
-	 * the queue.
-	 */
-	model: string | null;
-	effort: string | null;
-}
+/** The mark a run carries, and its reading, live in specRuns.ts, where the server reads them from too. */
+export { type TaskMark, taskMark, taskMarkEntry } from "./specRuns.ts";
 
 /** pi's thinking levels, as words a person may put after /spec-run. */
 const EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
@@ -427,52 +403,10 @@ export function taskPrompt({ spec, task, title }: TaskMark): string {
 	].join("\n");
 }
 
-/** As much of a session's entry as the mark is read out of. */
-interface SessionEntry {
-	type?: string;
-	customType?: string;
-	details?: unknown;
-}
-
 /** Somewhere to say something to the person: the part of a context this uses. */
 interface Speaking {
 	cwd: string;
 	ui: { notify: (message: string, type?: "info" | "warning" | "error") => void };
-}
-
-/**
- * The task this session is a run of, read back out of the session, or null for
- * a session that is not one.
- *
- * Not remembered in a variable here: newSession makes the extension over —
- * the command runs in one of it and the end of the turn in the next, and what
- * the first wrote down is not there for the second. So it travels in the
- * session the command opened, on the message that carries the instructions,
- * which is also where it still is after a restart.
- */
-export function taskMark(entries: readonly unknown[]): TaskMark | null {
-	return taskMarkEntry(entries)?.mark ?? null;
-}
-
-/**
- * The same, with the entry's own id: what a host that watches the session
- * from outside tells one run from the next by, since the mark stays in the
- * session after its turn and the turns after it are conversation.
- */
-export function taskMarkEntry(entries: readonly unknown[]): { id: string; mark: TaskMark } | null {
-	for (let at = entries.length - 1; at >= 0; at--) {
-		const entry = entries[at] as (SessionEntry & { id?: string }) | null;
-		if (!entry || entry.type !== "custom_message" || entry.customType !== TASK_MARK) continue;
-		const details = entry.details as Partial<TaskMark> | undefined;
-		if (!details || typeof details.spec !== "string" || typeof details.task !== "string" || typeof details.title !== "string" || !Array.isArray(details.done)) return null;
-		const numbers = (given: unknown) => (Array.isArray(given) ? given.filter((number): number is string => typeof number === "string") : []);
-		const word = (given: unknown) => (typeof given === "string" ? given : null);
-		return {
-			id: typeof entry.id === "string" ? entry.id : "",
-			mark: { spec: details.spec, task: details.task, title: details.title, done: numbers(details.done), then: numbers(details.then), model: word(details.model), effort: word(details.effort) },
-		};
-	}
-	return null;
 }
 
 /**
@@ -585,7 +519,6 @@ export async function endRun(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: Task
 		ui.notify(`${mark.task} changed nothing, so there is nothing to look at; it is still to do.`, "warning");
 		return;
 	}
-	inReview.set(`${cwd}\0${mark.spec}`, new Set([...(inReview.get(`${cwd}\0${mark.spec}`) ?? []), mark.task]));
 	const going = mark.then[0];
 	ui.notify(`${mark.task} is ready to look at. When it is right, accept it with /spec-done ${mark.task}${repository ? " — that makes its commit" : ""}; if it is not, say what to change.${going ? ` ${going} starts once ${mark.task} is accepted.` : ""}`, "info");
 }
@@ -601,24 +534,8 @@ async function runOf(ctx: Pick<Accepting, "sessionManager">, cwd: string, spec: 
 	const here = ctx.sessionManager.buildContextEntries();
 	const mine = taskMark(here);
 	if (mine && mine.spec === spec && mine.task === task) return { report: reportIn(here), session: ctx.sessionManager.getSessionId(), mark: mine };
-	let sessions: { path: string; id: string; modified: Date }[];
-	try {
-		sessions = await SessionManager.list(cwd);
-	} catch {
-		return null;
-	}
-	for (const info of sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime())) {
-		try {
-			// Most sessions are not a task's: the file says so before it is read as one.
-			if (!readFileSync(info.path, "utf8").includes(`"${TASK_MARK}"`)) continue;
-			const entries = SessionManager.open(info.path).buildContextEntries();
-			const mark = taskMark(entries);
-			if (mark && mark.spec === spec && mark.task === task) return { report: reportIn(entries), session: info.id, mark };
-		} catch {
-			// A session that cannot be read is not the one.
-		}
-	}
-	return null;
+	const found = (await runSessions(cwd)).find((run) => run.mark.spec === spec && run.mark.task === task);
+	return found ? { report: reportIn(found.entries), session: found.id, mark: found.mark } : null;
 }
 
 /**
@@ -804,7 +721,6 @@ async function markTask(pi: ExtensionAPI, ctx: Accepting, args: string, box: "x"
 		ui.notify(`${number} is done, but git could not commit it: ${(made.stderr || made.stdout).trim()}`, "warning");
 		return;
 	}
-	inReview.get(`${cwd}\0${chosen}`)?.delete(number);
 	const at = await git(["rev-parse", "--short", "HEAD"]);
 	const failed = verified.filter((v) => v.exit !== 0);
 	const checked = verified.length === 0 ? "" : failed.length === 0 ? ` ${verified.length === 1 ? `\`${verified[0]!.name}\` passed` : `${verified.length} checks passed`}.` : ` ${failed.map((v) => `\`${v.name}\` failed (exit ${v.exit})`).join(", ")} — see ${APP_DIR_NAME}/runs/${number}/.`;
@@ -815,16 +731,16 @@ async function markTask(pi: ExtensionAPI, ctx: Accepting, args: string, box: "x"
 
 /**
  * The tasks of `spec` a run has ended for and the person has not accepted —
- * waiting to be looked at, their changes in the folder. Read beside the list
- * each time it is asked which task is next: the list alone says done or not,
- * and a task in review is neither. Any of them named by the person runs
- * again; none is picked by "next".
+ * waiting to be looked at, their changes in the folder. The sessions' word
+ * against the commits' (specRuns.ts), read each time it is asked which task
+ * is next: the list alone says done or not, and a task in review is neither.
+ * Any of them named by the person runs again; none is picked by "next".
  */
 async function reviewedOf(cwd: string, spec: string): Promise<Set<string>> {
-	return inReview.get(`${cwd}\0${spec}`) ?? new Set<string>();
+	const [runs, results] = await Promise.all([taskRuns(cwd), taskResults(cwd)]);
+	const accepted = new Set((results.get(spec) ?? []).map((result) => result.session).filter((session): session is string => session !== null));
+	return new Set(inReview(runs.filter((run) => run.spec === spec), accepted).map((run) => run.task));
 }
-/** The tasks whose runs ended in this process and are not yet accepted, by folder and spec. What is on disk says it too — the changes, and the run's session — and is what a window reads. */
-const inReview = new Map<string, Set<string>>();
 
 /**
  * A session is opened for `mark`'s task, told what it is, and sent the line

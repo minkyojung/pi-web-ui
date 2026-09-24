@@ -145,8 +145,8 @@ export function treeOf(text: string): Tree {
  * Running outranks everything: a heading is running while one of its
  * sub-tasks is, since that is what running the heading means (Kiro's Start on
  * a heading). Cancelled and done are the box, which the person sets (spec.ts).
- * Review is a run's commit the person has not accepted — git's word, handed
- * in as `reviewed`. The rest is to do; which of those runs next is the
+ * Review is a run the person has not accepted — the server's word
+ * (SpecInfo.review), handed in as `reviewed`. The rest is to do; which of those runs next is the
  * plan's order and not a standing of its own — the first open row from the
  * top, and the list's title says its number (TaskList.tsx).
  */
@@ -156,7 +156,7 @@ export function standingOf(task: Pick<Task, "number" | "done" | "cancelled">, at
 	if (at.running !== null && (at.running === task.number || at.running.startsWith(`${task.number}.`))) return "running";
 	if (task.cancelled) return "cancelled";
 	if (task.done) return "done";
-	// A run ended in a commit the person has not accepted yet: waiting to be looked at.
+	// A run the person has not accepted yet: waiting to be looked at.
 	if (at.reviewed?.has(task.number)) return "review";
 	return "todo";
 }

@@ -51,7 +51,7 @@ import {
 import { readSettings, updateSettings, type Settings } from "./settings.ts";
 import { askForName } from "./sessionName.ts";
 import { askUser } from "./askUser.ts";
-import specCommand, { takenSpecs, taskMarkEntry } from "./spec.ts";
+import specCommand, { takenSpecs } from "./spec.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { extensionUI } from "./extensionUI.ts";
 import { deleteSessionFile } from "./sessionDelete.ts";
@@ -89,6 +89,7 @@ import { specState } from "./specApproval.ts";
 import { inheritedSpecs } from "./specOrigin.ts";
 import { parseTasks, progressOf, type Progress } from "./specTasks.ts";
 import { type TaskResult, taskResults } from "./specResults.ts";
+import { inReview, type TaskRun, taskMarkEntry, taskRuns } from "./specRuns.ts";
 import {
 	baseLine,
 	baseOf,
@@ -775,8 +776,9 @@ export async function createWorkspace(cwd: string) {
 					waiting,
 					waitingAt: waiting ? writtenAt(join(dir, waiting)) : null,
 					written: SPEC_DOCS.filter((doc) => existsSync(join(dir, doc))),
-					tasks: tasksOf(join(dir, "tasks.md"), results.get(name) ?? []),
+					tasks: tasksOf(join(dir, "tasks.md"), reviewOf(name)),
 					results: results.get(name) ?? [],
+					review: reviewOf(name),
 				};
 			}),
 		};
@@ -795,6 +797,13 @@ export async function createWorkspace(cwd: string) {
 	 */
 	let results = new Map<string, TaskResult[]>();
 	let resultsSoon: ReturnType<typeof setTimeout> | null = null;
+	/** Every task's runs, as the sessions on disk last said — see specRuns.ts. Read beside the results: the two together say what is in review. */
+	let runs: TaskRun[] = [];
+	/** The runs of `name`'s tasks waiting to be looked at: not named by any commit of the spec's. */
+	function reviewOf(name: string): TaskRun[] {
+		const accepted = new Set((results.get(name) ?? []).map((result) => result.session).filter((session): session is string => session !== null));
+		return inReview(runs.filter((run) => run.spec === name), accepted);
+	}
 
 	/**
 	 * The specs this workspace did not start (specOrigin.ts). Git's answer too,
@@ -809,7 +818,7 @@ export async function createWorkspace(cwd: string) {
 
 	async function loadResults(): Promise<void> {
 		inherited = inheritedSpecs(CWD);
-		results = await taskResults(CWD);
+		[results, runs] = await Promise.all([taskResults(CWD), taskRuns(CWD)]);
 		saySpecs();
 		// A task's commit moves the branch too.
 		void sayStanding();
@@ -831,9 +840,9 @@ export async function createWorkspace(cwd: string) {
 	}
 
 	/** How far a spec's tasks have got, or null while the file is not there. A task a run has ended in a commit for is waiting to be looked at, and is not next. */
-	function tasksOf(file: string, ran: TaskResult[]): Progress | null {
+	function tasksOf(file: string, review: TaskRun[]): Progress | null {
 		try {
-			return progressOf(parseTasks(readFileSync(file, "utf8")), new Set(ran.map((result) => result.task)));
+			return progressOf(parseTasks(readFileSync(file, "utf8")), new Set(review.map((run) => run.task)));
 		} catch {
 			return null;
 		}

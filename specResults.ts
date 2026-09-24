@@ -1,9 +1,9 @@
 /**
  * What each task of a spec came to, read off the repository's history.
  *
- * A task's run ends in one commit, and that commit says whose it is: `Spec:`,
- * `Task:` and `Checks:` under its subject, in git's trailers (spec.ts,
- * task-runs.md "결과는 커밋에"). So nothing about a result is kept anywhere
+ * A task accepted is one commit, and that commit says whose it is: `Spec:`,
+ * `Task:`, `Checks:` and `Session:` under its subject, in git's trailers
+ * (spec.ts, task-runs.md "결과는 커밋에"). So nothing about a result is kept anywhere
  * else — what a task changed, by how much and how it was checked are asked of
  * git, and are the same in a fresh clone, on another machine, and for a task
  * run from the terminal. This is the asking.
@@ -48,6 +48,8 @@ export interface TaskResult {
 	checks: string | null;
 	/** What the app ran for it — the repository's checks, then the task's `_Done when:` — and how each ended; empty when it ran nothing. */
 	verified: { name: string; exit: number }[];
+	/** The session the run was, as the commit names it — what tells an accepted run from one waiting (specRuns.ts); null for a commit that does not say. */
+	session: string | null;
 	/** What it changed outside the spec's folder, and the sums of that. */
 	files: ChangedFile[];
 	added: number;
@@ -70,7 +72,7 @@ const FIELD = "\x1f";
  */
 export function taskResults(root: string): Promise<Map<string, TaskResult[]>> {
 	const trailer = (key: string, separator = "%x20") => `%(trailers:key=${key},valueonly,separator=${separator})`;
-	const format = [RECORD + "%H", "%h", "%s", "%ct", trailer("Spec"), trailer("Task"), trailer("Checks"), trailer("Verified", "%x1d")].join(FIELD) + FIELD;
+	const format = [RECORD + "%H", "%h", "%s", "%ct", trailer("Spec"), trailer("Task"), trailer("Checks"), trailer("Verified", "%x1d"), trailer("Session")].join(FIELD) + FIELD;
 	return new Promise((resolve) => {
 		execFile(
 			"git",
@@ -90,7 +92,7 @@ export function taskResults(root: string): Promise<Map<string, TaskResult[]>> {
 export function parseResults(out: string): Map<string, TaskResult[]> {
 	const bySpec = new Map<string, TaskResult[]>();
 	for (const record of out.split(RECORD).slice(1)) {
-		const [commit = "", short = "", title = "", seconds = "", spec = "", task = "", checks = "", verified = "", rest = ""] = record.split(FIELD);
+		const [commit = "", short = "", title = "", seconds = "", spec = "", task = "", checks = "", verified = "", session = "", rest = ""] = record.split(FIELD);
 		// `--grep` matches anywhere in the message; a result is a commit whose
 		// trailers say so, both of them.
 		if (!spec.trim() || !task.trim()) continue;
@@ -104,6 +106,7 @@ export function parseResults(out: string): Map<string, TaskResult[]> {
 			at: Number(seconds) * 1000,
 			checks: said && said.toLowerCase() !== "none" ? said : null,
 			verified: verifiedOf(verified),
+			session: session.trim() || null,
 			files,
 			added: files.reduce((sum, file) => sum + (file.added ?? 0), 0),
 			deleted: files.reduce((sum, file) => sum + (file.deleted ?? 0), 0),

@@ -21,9 +21,9 @@ function repository(t) {
   write("README.md", "# app\n");
   git("add", "-A");
   git("commit", "-q", "-m", "app");
-  const task = (spec, number, title, checks) => {
+  const task = (spec, number, title, checks, session = null) => {
     git("add", "-A");
-    git("commit", "-q", "-m", title, "-m", trailersOf({ spec, task: number }, checks));
+    git("commit", "-q", "-m", title, "-m", trailersOf({ spec, task: number }, checks, [], session));
     return git("rev-parse", "HEAD");
   };
   return { cwd, git, write, task };
@@ -34,7 +34,7 @@ test("작업마다 커밋 하나 — 번호, 제목, 검사, 그리고 스펙 �
   repo.write(".octave/specs/greeting/tasks.md", "- [x] 1. Add the greeting\n- [ ] 2. Test it\n");
   repo.write(".octave/specs/greeting/requirements.md", "# Requirements\n");
   repo.write("greeting.js", "export const greet = (name) => `Hello, ${name}!`;\n");
-  const first = repo.task("greeting", "1", "Add the greeting", "inline check — passed");
+  const first = repo.task("greeting", "1", "Add the greeting", "inline check — passed", "s-1");
   repo.write(".octave/specs/greeting/tasks.md", "- [x] 1. Add the greeting\n- [x] 2. Test it\n");
   repo.write("greeting.test.js", "import test from 'node:test';\ntest('greets', () => {});\n");
   repo.write("greeting.js", "export const greet = (name) => `Hello, ${name}!`;\nexport default greet;\n");
@@ -49,6 +49,7 @@ test("작업마다 커밋 하나 — 번호, 제목, 검사, 그리고 스펙 �
   assert.equal(one.title, "Add the greeting");
   assert.equal(one.checks, "inline check — passed");
   assert.deepEqual(one.verified, [], "앱이 돌린 것이 없으면 없다");
+  assert.equal(one.session, "s-1", "받아들인 실행의 세션 — Session 트레일러");
   assert.equal(typeof one.at, "number");
   assert.deepEqual(one.files, [{ path: "greeting.js", added: 1, deleted: 0 }], "tasks.md와 세 문서는 작업의 일이 아니다");
   assert.deepEqual([one.added, one.deleted], [1, 0]);
@@ -56,6 +57,7 @@ test("작업마다 커밋 하나 — 번호, 제목, 검사, 그리고 스펙 �
   assert.equal(two.commit, second);
   assert.equal(two.checks, null, "Checks: none은 검사가 없다는 말이다");
   assert.deepEqual(two.verified, [], "Verified 줄이 없다");
+  assert.equal(two.session, null, "세션을 말하지 않는 커밋");
   assert.deepEqual(two.files.map((file) => [file.path, file.added, file.deleted]).sort(), [["greeting.js", 1, 0], ["greeting.test.js", 2, 0]]);
   assert.deepEqual([two.added, two.deleted], [3, 0]);
 });
