@@ -1,13 +1,9 @@
-import { Fragment, useState, useSyncExternalStore } from "react";
+import { Fragment, useSyncExternalStore } from "react";
 import { ChevronDownIcon } from "lucide-react";
 
 import { SPEC_DOCS } from "../../../documentKinds.ts";
-import type { SpecInfo } from "../../../protocol.ts";
-import { commandsStore, configStore, specsStore } from "../serverState";
-import { APPROVE, approveMessage, blocked, why } from "../specApprove.ts";
-import { docPath, docStanding, docTitle, mine, progressWords, speaksFor, standingOf, standingWord, stateWords } from "../specStanding.ts";
-import { getConnection, subscribe } from "../store";
-import { send } from "../ws";
+import { specsStore } from "../serverState";
+import { docPath, docStanding, docTitle, mine, speaksFor, standingOf, standingWord, stateWords } from "../specStanding.ts";
 import { Button } from "./ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 
@@ -23,44 +19,27 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
  * being there is itself the news that one has started.
  *
  * It names one spec: the one waiting, since that is the one with something to
- * do; else the one being read. Its menu holds every spec this workspace
- * started (specStanding.ts mine), so with two of them nothing of the work
- * here is hidden — and nothing of another branch's, which the folder is full
- * of, is put in front of the person as though it were. Each document says
- * what has become of it. A document the agent has not written is not offered
- * — opening it would put a file in front of the person that does not exist.
+ * do; else the one being read. Its menu is that spec's three documents, each
+ * saying what has become of it — and nothing else: the spec's name is the
+ * workspace's, in the list beside, how far its tasks have got is the foot of
+ * the window's, and approving is the header's of the document waiting, which
+ * is read before it is approved. A document the agent has not written is not
+ * offered — opening it would put a file in front of the person that does not
+ * exist.
  *
- * Approving from here sends the command the person would type (specApprove.ts).
- * The menu is where it belongs as well as the bar over the document: the bar
- * needs the document open, and the answer is owed whether or not it is.
+ * A workspace can still hold more than one spec this workspace started
+ * (specStanding.ts mine); the menu then holds each, under its name, so that
+ * nothing of the work here is hidden — and nothing of another branch's, which
+ * the folder is full of, is put in front of the person as though it were.
  */
 export function SpecButton({ open, onOpen }: { open: string | null; onOpen: (path: string) => void }) {
 	const specs = useSyncExternalStore(specsStore.subscribe, specsStore.get);
-	const online = useSyncExternalStore(subscribe, getConnection) === "open";
-	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
-	const commands = useSyncExternalStore(commandsStore.subscribe, commandsStore.get);
-	// The one approval already sent, by spec and document. It clears itself:
-	// the next word from the server is a different document waiting, or none.
-	const [sent, setSent] = useState<string | null>(null);
-
 	const named = specs && speaksFor(specs, open);
 	if (!specs || !named) return null;
 
-	const stop = (spec: SpecInfo) =>
-		blocked({
-			online,
-			streaming: config?.isStreaming ?? false,
-			compacting: config?.isCompacting ?? false,
-			hasCommand: commands.some((command) => command.name === APPROVE),
-			sent: sent === mark(spec),
-		});
-	const approve = (spec: SpecInfo) => {
-		if (!spec.waiting) return;
-		send(approveMessage(spec.name));
-		setSent(mark(spec));
-	};
-
 	const { standing } = standingOf(named);
+	const here = mine(specs);
+	const several = here.length > 1;
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
@@ -71,32 +50,22 @@ export function SpecButton({ open, onOpen }: { open: string | null; onOpen: (pat
 					id="spec"
 					data-standing={standing}
 					aria-label={`${named.name}: ${stateWords(named)}`}
-					className="ml-1 h-8 max-w-64 shrink-0 gap-1.5 px-2 text-xs shadow-none"
+					className="ml-1 h-8 shrink-0 gap-1.5 px-2 text-xs shadow-none"
 				>
-					{/* The name gives up letters before the state does: half a name
-					    still says which spec, and half a state says nothing. */}
-					<span className="min-w-0 truncate" title={named.name}>
-						{named.name}
-					</span>
-					<span className="shrink-0 text-muted-foreground">{stateWords(named)}</span>
+					{/* Where the spec stands, not its name — which is the workspace's —
+					    and in the text's own colour while a document waits for the
+					    person, the one time it asks something of them. */}
+					<span className={standing === "waiting" ? "text-foreground" : "text-muted-foreground"}>{stateWords(named)}</span>
 					<ChevronDownIcon className="size-3 opacity-50" />
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="start" className="min-w-56">
-				{mine(specs).map((spec, at) => (
+				{here.map((spec, at) => (
 					<Fragment key={spec.name}>
 						{at > 0 && <DropdownMenuSeparator />}
 						<DropdownMenuGroup>
-							{/* Each spec's progress beside its name, so that with several the
-							    menu says where each has got to, not only the one in front. */}
-							<DropdownMenuLabel className="flex items-center gap-2">
-								<span className="min-w-0 truncate">{spec.name}</span>
-								{progressWords(spec) && (
-									<span className="ml-auto font-normal text-muted-foreground" data-progress={spec.name}>
-										{progressWords(spec)}
-									</span>
-								)}
-							</DropdownMenuLabel>
+							{/* Which spec, only where there is more than one to tell apart. */}
+							{several && <DropdownMenuLabel className="truncate">{spec.name}</DropdownMenuLabel>}
 							{SPEC_DOCS.map((doc) => {
 								const standing = docStanding(spec, doc);
 								return (
@@ -113,17 +82,6 @@ export function SpecButton({ open, onOpen }: { open: string | null; onOpen: (pat
 									</DropdownMenuItem>
 								);
 							})}
-							{/* Set apart from the three, being the one thing here that does
-							    something rather than opening something. An item, not a button
-							    inside one: a button in a menu item is not reachable from the
-							    keyboard. */}
-							{spec.waiting && <DropdownMenuSeparator />}
-							{spec.waiting && (
-								<DropdownMenuItem data-approve={spec.name} disabled={stop(spec) !== null} onSelect={() => approve(spec)}>
-									Approve {docTitle(spec.waiting).toLowerCase()}
-									{why(stop(spec)) && <span className="ml-auto text-muted-foreground">{why(stop(spec))}</span>}
-								</DropdownMenuItem>
-							)}
 						</DropdownMenuGroup>
 					</Fragment>
 				))}
@@ -131,6 +89,3 @@ export function SpecButton({ open, onOpen }: { open: string | null; onOpen: (pat
 		</DropdownMenu>
 	);
 }
-
-/** What was sent about, so that the same approval is not sent twice. */
-const mark = (spec: SpecInfo) => `${spec.name}/${spec.waiting}`;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { docPath, docStanding, docTitle, mine, progressWords, speaksFor, standingOf, standingWord, stateWords, waitingLine, waitingSpec } from "../web/src/specStanding.ts";
+import { docPath, docStanding, docTitle, mine, speaksFor, standingOf, standingWord, stateWords, waitingLine, waitingSpec } from "../web/src/specStanding.ts";
 
 /** A spec as the server describes it (SpecInfo). */
 const spec = (name, { own = true, approved = 0, waiting = null, waitingAt = waiting ? 1000 : null, written = waiting ? [waiting] : [], tasks = null } = {}) => ({
@@ -86,12 +86,9 @@ test("사람에게 보일 말", () => {
   assert.equal(waitingLine("design.md"), "Design waiting for your approval");
 });
 
-test("둘 다 승인되고 작업이 쓰이면 버튼의 말은 진행이다 — 끝난 수 / 전체, 다 끝나면 done", () => {
+test("버튼의 말은 진행이 아니라 문서와 그 자리다", () => {
   const all = ["requirements.md", "design.md", "tasks.md"];
-  assert.equal(stateWords(spec("a", { approved: 2, written: all, tasks: { total: 8, done: 3, cancelled: 0, next: "2.2", review: [] } })), "3 / 8");
-  assert.equal(stateWords(spec("a", { approved: 2, written: all, tasks: { total: 8, done: 8, cancelled: 0, next: null, review: [] } })), "8 / 8 done");
-  assert.equal(stateWords(spec("a", { approved: 2, written: all, tasks: { total: 0, done: 0, cancelled: 0, next: null, review: [] } })), "Tasks ready", "작업이 하나도 없으면 셀 것이 없다");
-  assert.equal(stateWords(spec("a", { approved: 2, written: all })), "Tasks ready", "서버가 아직 세지 못했으면 그 전의 말");
-  assert.equal(stateWords(spec("a", { approved: 1, waiting: "design.md", written: ["requirements.md", "design.md"], tasks: { total: 8, done: 0, cancelled: 0, next: "1", review: [] } })), "Design waiting", "승인 전에는 진행이 아니라 대기");
-  assert.equal(progressWords(spec("a", { approved: 1, written: ["requirements.md"] })), null);
+  const going = spec("a", { approved: 2, written: all, tasks: { total: 8, done: 3, cancelled: 0, next: "2.2", review: [] } });
+  assert.equal(stateWords(going), "Tasks ready", "작업이 진행 중이어도 버튼은 문서를 말한다");
+  assert.equal(stateWords(spec("a", { approved: 1, waiting: "design.md", written: ["requirements.md", "design.md"] })), "Design waiting");
 });

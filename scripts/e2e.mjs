@@ -3447,15 +3447,18 @@ check("a spec's document comes to the front as it starts waiting, and stays clos
 });
 
 // The control at the start of the row: what is waiting, from anywhere, and the
-// approval that would otherwise be a command typed into the box. By now the
-// folder holds other specs from the checks above, which is the case worth
-// having — the one that is waiting and newest is the one it names.
-check("the spec at the start of the row names what is waiting, opens its documents and approves them", async ({ app, cwd }) => {
+// way back to a spec's documents. By now the folder holds other specs from the
+// checks above, which is the case worth having — the one that is waiting and
+// newest is the one it names.
+check("the spec at the start of the row says what is waiting, opens its documents and hears them approved", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/menu");
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(join(dir, "requirements.md"), "# Requirements\n\nMENUWORD\n");
 	const button = () => app.evaluate("document.getElementById('spec')?.textContent ?? ''");
-	await until("the newest spec named", async () => (await button()).includes("menu") && (await button()).includes("Requirements waiting"));
+	// Where it stands, in words; which spec, in its label and its menu.
+	await until("the newest spec named", async () =>
+		(await app.evaluate("document.getElementById('spec')?.getAttribute('aria-label') ?? ''")) === "menu: Requirements waiting" && (await button()) === "Requirements waiting");
+	await app.shot("spec-waiting");
 	assert.equal(await app.evaluate("document.getElementById('spec').dataset.standing"), "waiting");
 
 	// It opened by itself (specTabs.ts); closed, the menu is the way back.
@@ -3474,21 +3477,16 @@ check("the spec at the start of the row names what is waiting, opens its documen
 	await app.evaluate("document.querySelector('[role=menu] [data-spec=\"menu\"][data-doc=\"requirements.md\"]').click()");
 	await until("the document back", async () => (await editorText(app)).includes("MENUWORD"));
 
-	// Approved from the menu: the same command, and the record it writes.
-	await app.click("#spec");
-	await until("the approval offered", () =>
-		app.evaluate("document.querySelector('[role=menu] [data-approve=\"menu\"]')?.getAttribute('aria-disabled') !== 'true'"));
-	await app.evaluate("document.querySelector('[role=menu] [data-approve=\"menu\"]').click()");
-	await until("the record on disk", () => {
-		const file = join(dir, "approvals.json");
-		return existsSync(file) && JSON.parse(readFileSync(file, "utf8"))["requirements.md"]?.length === 1;
-	});
-	// And the window hears it from the folder, as it heard the document: the
-	// menu is open while it changes under the pointer.
+	// Approved — from the document's header, as the command approves — and the
+	// window hears it from the folder, as it heard the document: the menu is
+	// open while it changes under the pointer. The menu is the three documents
+	// and nothing else: approving is the header's, how far the tasks have got
+	// the foot of the window's.
 	await app.click("#spec");
 	await until("the menu again", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitem]')"));
+	approve(cwd, "menu");
 	await until("the approval in the menu", async () => (await standings()) === "requirements.md:approved,design.md:unwritten,tasks.md:unwritten");
-	assert.equal(await app.evaluate("!!document.querySelector('[role=menu] [data-approve=\"menu\"]')"), false, "nothing of this spec is waiting now");
+	assert.equal(await app.evaluate("document.querySelectorAll('[role=menu] [data-approve], [role=menu] [data-progress]').length"), 0, "only the documents");
 	// Away, so the check after this one does not read a page with a menu over it.
 	await app.press("Escape");
 	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
@@ -3536,8 +3534,9 @@ check("a spec's tasks.md opens as the list of its tasks: each row its standing, 
 	await until("the list again", () => app.evaluate("document.querySelectorAll('#tasks [data-task]').length === 5"));
 });
 
-// tasks.md by the server, so a box checked on disk moves it.
-check("the spec at the start of the row says how far its tasks have got once all three documents are approved", async ({ app, cwd }) => {
+// Approved to the end, the button says the tasks are ready — and still does
+// as they are ticked off, since a task done is not a change to the plan.
+check("the spec at the start of the row says the tasks are ready once its documents are approved, and a task done leaves it so", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/count");
 	mkdirSync(dir, { recursive: true });
 	const plan = (first) => `# Tasks\n\n- [${first}] 1. First\n- [ ] 2. Heading\n- [ ] 2.1 Second\n- [ ] 2.2 Third\n`;
@@ -3555,17 +3554,21 @@ check("the spec at the start of the row says how far its tasks have got once all
 	// The markdown, as these work on the editor: ⌘E.
 	await app.press("e", { meta: true });
 	await until("the plan in front", async () => (await editorText(app)).includes("Heading"));
-	const button = () => app.evaluate("document.getElementById('spec')?.textContent ?? ''");
-	await until("the count", async () => (await button()).includes("count") && (await button()).includes("0 / 4"));
-	// A box checked, as the run's end checks it: the count moves, and the
-	// approval holds — a task done is not a change to the plan. Four, not
-	// three: the heading 2 has a box on the screen, so it is counted.
-	writeFileSync(join(dir, "tasks.md"), plan("x"));
-	await until("one done", async () => (await button()).includes("1 / 4"));
-	await app.shot("spec-progress");
+	// The button says where the spec stands, not how far: that is the foot of
+	// the window's.
+	await until("the tasks ready", async () =>
+		(await app.evaluate("document.getElementById('spec')?.getAttribute('aria-label') ?? ''")) === "count: Tasks ready");
 	await app.click("#spec");
 	await until("the menu", () => app.evaluate("!!document.querySelector('[role=menu] [role=menuitem]')"));
-	assert.equal(await app.evaluate("document.querySelector('[role=menu] [data-progress=\"count\"]')?.textContent"), "1 / 4", "the menu says it beside the name");
+	const standings = () =>
+		app.evaluate("[...document.querySelectorAll('[role=menu] [data-spec=\"count\"]')].map((i) => i.dataset.doc + ':' + i.dataset.standing).join(',')");
+	assert.equal(await standings(), "requirements.md:approved,design.md:approved,tasks.md:ready");
+	// A box checked, as the run's end checks it: the approval holds.
+	writeFileSync(join(dir, "tasks.md"), plan("x"));
+	await until("the box on the page", async () => (await editorText(app)).includes("[x] 1. First"));
+	assert.equal(await standings(), "requirements.md:approved,design.md:approved,tasks.md:ready");
+	assert.equal(await app.evaluate("document.getElementById('spec').textContent"), "Tasks ready", "and the button still says where it stands");
+	await app.shot("spec-progress");
 	await app.press("Escape");
 	await until("the menu gone", async () => !(await app.evaluate("!!document.querySelector('[role=menu]')")));
 });
