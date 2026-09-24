@@ -39,6 +39,7 @@ const Commit = lazy(() => import("./components/Commit"));
 const Task = lazy(() => import("./components/Task"));
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
+import { AcceptAction } from "./components/AcceptAction";
 import { ApproveAction } from "./components/ApproveAction";
 import { RunActions } from "./components/RunActions";
 import { SpecButton } from "./components/SpecButton";
@@ -639,7 +640,7 @@ export function App() {
 					    offers what can be done to a file, which is to find it, not to
 					    rename it (noteActions.ts). A PDF is left out: its viewer
 					    reaches the top of the column, and the words there are its own. */}
-					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} task={page?.kind === "task" ? { spec: page.spec, task: page.task } : null} onOpen={setOpen} actions={<><ApproveAction path={note} /><RunActions path={note} /></>} trailing={<>{note && <ModeToggle mode={mode} onSwitch={() => switchMode(note)} />}<PiToggle open={piOpen} onToggle={togglePi} /></>} />
+					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} task={page?.kind === "task" ? { spec: page.spec, task: page.task } : null} onOpen={setOpen} actions={<><ApproveAction path={note} /><RunActions path={note} /><AcceptAction task={page?.kind === "task" ? { spec: page.spec, task: page.task } : null} /></>} trailing={<>{note && <ModeToggle mode={mode} onSwitch={() => switchMode(note)} />}<PiToggle open={piOpen} onToggle={togglePi} /></>} />
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}

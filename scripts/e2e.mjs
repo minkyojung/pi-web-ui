@@ -4132,6 +4132,7 @@ check("a task in review opens as a page: the run's last answer, then its files f
 	// left is the only change — and what a first try of this left, taken out first.
 	rmSync(join(cwd, "look"), { recursive: true, force: true });
 	rmSync(join(dir, "notes.md"), { force: true });
+	rmSync(join(cwd, ".pi", "latch-ok"), { force: true });
 	git("add", "-A");
 	if (git("status", "--porcelain")) git("commit", "-q", "-m", "before the run");
 	mkdirSync(join(cwd, "look"), { recursive: true });
@@ -4144,7 +4145,8 @@ check("a task in review opens as a page: the run's last answer, then its files f
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
 	writeFileSync(join(dir, "design.md"), "# Design\n");
-	writeFileSync(join(dir, "tasks.md"), "- [ ] 1. Add the window\n- [ ] 2. Add the latch\n");
+	// Its own check refuses (exit 2) until the file it looks for is there — outside the commit, in the app's own folder.
+	writeFileSync(join(dir, "tasks.md"), "- [ ] 1. Add the window\n  - _Done when: `test -e .pi/latch-ok || exit 2`_\n- [ ] 2. Add the latch\n");
 	writeFileSync(join(dir, "notes.md"), "## 1. Add the window\n\n- The latch goes on the left.\n");
 	while (approve(cwd, "look")) {}
 	// The plan says the task is in review — the sessions' word, with no commit anywhere.
@@ -4181,12 +4183,31 @@ check("a task in review opens as a page: the run's last answer, then its files f
 	assert.equal(await app.evaluate("document.getElementById('crumbs')?.innerText.replace(/\\s+/g, ' ').trim()"), "look tasks Task 1");
 	await app.shot("task-review");
 
-	// Accepted, as spec.ts commits it: the box, and the commit naming the session. The page stays, now read off the commit.
-	writeFileSync(join(dir, "tasks.md"), "- [x] 1. Add the window\n- [ ] 2. Add the latch\n");
-	git("add", "look", ".octave/specs/look");
-	git("commit", "-q", "-m", "Add the window", "-m", "The window opens outward: the design did not say which way.\n\nI left the latch for task 2.", "-m", `Spec: look\nTask: 1\nChecks: npm test — 3 passed\nVerified: npm test — exit 0\nSession: ${session.getSessionId()}`);
-	const hash = git("rev-parse", "--short", "HEAD");
+	// Accepted from the header, where the page is read: the same command the
+	// plan's menu sends, run for real. The app's commit needs a name to give.
+	git("config", "user.name", "t");
+	git("config", "user.email", "t@example.invalid");
+	const before = git("rev-parse", "HEAD");
+	await until("Accept, ready", () => app.evaluate("document.getElementById('acceptTask')?.disabled === false"));
+	assert.equal(await app.evaluate("document.getElementById('acceptTask').getAttribute('aria-label')"), "Accept task 1");
+	// Refused by its check: said so, nothing committed, still in review — and the button back for another try.
+	assert.equal(await app.click("#acceptTask"), true);
+	await until("the refusal said", () => app.evaluate("document.getElementById('chat')?.innerText.includes('1 is not accepted')"));
+	await until("Accept, ready again", () => app.evaluate("document.getElementById('acceptTask')?.disabled === false"));
+	assert.equal(git("rev-parse", "HEAD"), before, "nothing committed");
+	assert.equal(await app.evaluate("document.getElementById('page')?.dataset.standing"), "review");
+	// Its check satisfied: accepted — the box, and the commit naming the session. The page stays, now read off the commit.
+	mkdirSync(join(cwd, ".pi"), { recursive: true });
+	writeFileSync(join(cwd, ".pi", "latch-ok"), "");
+	assert.equal(await app.click("#acceptTask"), true);
 	await until("the same page, accepted", () => app.evaluate("document.getElementById('page')?.dataset.task === '1' && document.getElementById('page')?.dataset.standing === 'done'"));
+	assert.equal(await app.evaluate("!!document.getElementById('acceptTask')"), false, "Accept goes once it is accepted");
+	const hash = git("rev-parse", "--short", "HEAD");
+	assert.equal(git("log", "-1", "--format=%s"), "Add the window", "the task's line, the commit's subject");
+	const trailers = git("log", "-1", "--format=%(trailers)");
+	assert.match(trailers, /Spec: look\nTask: 1\n/);
+	assert.match(trailers, new RegExp(`Session: ${session.getSessionId()}`));
+	assert.match(git("show", "HEAD:.octave/specs/look/tasks.md"), /- \[x\] 1\. Add the window/, "the box, in the same commit");
 	assert.equal(await head(), "Task 1 Add the window 1 file +1 −0", `the head: ${await head()}`);
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [role=img]')?.getAttribute('aria-label')"), "done");
 	assert.ok((await app.evaluate("document.querySelector('#taskHead [role=img]').parentElement.title")).includes(hash), "the commit is behind the mark, on hover");

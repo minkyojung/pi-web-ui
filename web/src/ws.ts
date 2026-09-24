@@ -32,6 +32,7 @@ import {
 	noteRenameFailedStore,
 	noteRenamedStore,
 	noteStore,
+	noticesStore,
 	promptsStore,
 	propertyNamesStore,
 	propertyTypesStore,
@@ -281,6 +282,7 @@ function receive(msg: ServerMsg): void {
 		case "error":
 			pushRaw(msg);
 			applyServerEvent(msg);
+			noticesStore.set(noticesStore.get() + 1);
 			return;
 	}
 }

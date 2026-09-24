@@ -186,6 +186,14 @@ export const commitStore = createStore<CommitMsg | CommitGoneMsg | null>(null);
 export const taskStore = createStore<TaskMsg | TaskGoneMsg | null>(null);
 
 /**
+ * How many notices and errors the server has said. A command sent for the
+ * person has no answer of its own, but every way one of spec.ts's ends says
+ * something — done, or why not — so a control waiting on one watches this
+ * move (AcceptAction.tsx).
+ */
+export const noticesStore = createStore(0);
+
+/**
  * Where each spec stands — what is approved, what is waiting for the person —
  * as the server last read it off the folder. Null until it has said, which is
  * not the same as a folder with no specs in it (SpecsMsg).
