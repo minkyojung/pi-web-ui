@@ -47,14 +47,13 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, SessionManager } from "@earendil-works/pi-coding-agent";
 
 import { writeAtomic } from "./atomic.ts";
 import { APP_DIR_NAME, APPROVALS, APPROVED_DOCS, SPEC_DOCS, type SpecDoc, SPECS_DIR } from "./documentKinds.ts";
 import { CITIES } from "./electron/cities.js";
 import { CONFIG_FILE, DEFAULT_TIMEOUT, isConfig, readConfig } from "./electron/octaveConfig.js";
 import { approve, type SpecState, specState } from "./specApproval.ts";
-import { taskResults } from "./specResults.ts";
 import { doneWhenOf, nextTask, parseTasks, runsOf, runsUnder, type Task, taskToRun, withBox, withDone, withParents } from "./specTasks.ts";
 
 /** A workspace's placeholder name: a city, or a city of a later round (`lisbon-v2`). */
@@ -414,7 +413,7 @@ export function taskPrompt({ spec, task, title }: TaskMark): string {
 		`Do task ${task} of ${dir}tasks.md — "${title}" — and only it. Do not build any part of another task, even one you can see it will need.`,
 		"Check what you built: run what the task names on its `_Done when: …_` line, if it has one, and read the acceptance criteria it names on its `_Requirements: …_` line, by their numbers in the requirements, against what you built.",
 		`Before you stop: if a task after this one should know something you found — a gotcha, a place the design was silent, a thing you left for it — append it to ${dir}notes.md, a line or two under a heading naming this task. Only what another task needs; nothing that is in your answer or your commit already. If there is nothing, write nothing.`,
-		"Then stop. Say in a line or two what you did and anything the person should look at, and end with one line beginning `Checks:` — the checks you ran and what they said (`Checks: npm test — 923 passed`), or `Checks: none` if you ran none. That line goes into the task's commit. Do not go on to the next task.",
+		"Then stop, with your answer. Your answer is the body of the task's commit, and the person reads it above the commit's diff to decide whether to accept the task — so do not tell them what the diff already does (the files you changed, what the code now does); tell them what it cannot: what you decided on your own, what the design or the requirements were silent on and which way you went, what you did not do or left for them to look at. If there is nothing of that kind, a line is enough. End with one line beginning `Checks:` — the checks you ran and what they said (`Checks: npm test — 923 passed`), or `Checks: none` if you ran none. Do not go on to the next task.",
 	];
 	return [
 		`The person asked for task ${task} of the spec "${spec}" to be run with /spec-run.`,
@@ -422,7 +421,7 @@ export function taskPrompt({ spec, task, title }: TaskMark): string {
 		"In order:",
 		...steps.map((step, i) => `${i + 1}. ${step}`),
 		"",
-		`Leave ${dir}tasks.md alone: its boxes are the person's — this turn ends in a commit for them to look at, and they tick the box once they have — and changing the plan is something to go back to the person about. Do not commit and do not touch the branch or anything under .git — the commit for this task is made for you.`,
+		`Leave ${dir}tasks.md alone: its boxes are the person's — what this turn leaves waits for them to look at, and accepting it is what ticks the box and makes the commit — and changing the plan is something to go back to the person about. Do not commit and do not touch the branch or anything under .git — the commit for this task is made for you when it is accepted.`,
 		"",
 		"Do not narrate these steps; do them.",
 	].join("\n");
@@ -477,15 +476,41 @@ export function taskMarkEntry(entries: readonly unknown[]): { id: string; mark: 
 }
 
 /**
- * The `Checks:` line of the run's last answer, or null when it ended without
- * one — the result is a commit either way; the line is what the commit says
- * about how the work was checked (task-runs.md "결과는 커밋에"). The last
- * text the assistant wrote is looked at — only that one, since the report is
- * the end of the run and an earlier turn's line is another task's — and in
- * it the last line that begins with the word, so a model that quoted the
- * instruction before answering is not taken at its quote.
+ * What the run said at its end: the last text the assistant wrote, as the
+ * report that goes into the task's commit — the body, and its `Checks:` line.
+ *
+ * The body is the answer less that line: what the diff cannot say, written
+ * for the person reading the commit (taskPrompt) — in the clone and on the
+ * PR, with `git log` and nothing else. The line is what the commit says
+ * about how the work was checked, and is a trailer of its own. Only the last
+ * text is looked at, since the report is the end of the run and an earlier
+ * turn's is another task's; and in it the last line that begins with the
+ * word, so a model that quoted the instruction before answering is not
+ * taken at its quote.
  */
-export function checksIn(entries: readonly unknown[]): string | null {
+export interface Report {
+	/** The answer without its `Checks:` line, or null when there was nothing else in it. */
+	body: string | null;
+	/** What followed `Checks:`, or null when the answer had no such line. */
+	checks: string | null;
+}
+
+export function reportIn(entries: readonly unknown[]): Report {
+	const text = lastAnswer(entries);
+	if (text === null) return { body: null, checks: null };
+	const lines = text.split("\n");
+	let at = lines.length - 1;
+	while (at >= 0 && !/^checks:/i.test(lines[at]!.trim())) at--;
+	const checks = at >= 0 ? lines[at]!.trim().slice("checks:".length).trim() || null : null;
+	const body = (at >= 0 ? [...lines.slice(0, at), ...lines.slice(at + 1)] : lines).join("\n").trim();
+	return { body: body || null, checks };
+}
+
+/**
+ * The last text the assistant wrote, or null. An answer that is only a tool
+ * call has no text and is not the report; the last one with words is.
+ */
+function lastAnswer(entries: readonly unknown[]): string | null {
 	for (let at = entries.length - 1; at >= 0; at--) {
 		const entry = entries[at] as { type?: string; message?: { role?: string; content?: unknown } } | null;
 		if (entry?.type !== "message" || entry.message?.role !== "assistant") continue;
@@ -498,17 +523,7 @@ export function checksIn(entries: readonly unknown[]): string | null {
 							.map((part) => (part && typeof part === "object" && (part as { type?: string }).type === "text" ? ((part as { text?: string }).text ?? "") : ""))
 							.join("\n")
 					: "";
-		// An answer that is only a tool call has no text and is not the report;
-		// the last one with words is, and it either has the line or does not.
-		if (text.trim() === "") continue;
-		const said = text
-			.split("\n")
-			.map((line) => line.trim())
-			.reverse()
-			.find((line) => /^checks:/i.test(line));
-		if (said === undefined) return null;
-		const rest = said.slice("checks:".length).trim();
-		return rest || null;
+		if (text.trim() !== "") return text;
 	}
 	return null;
 }
@@ -539,20 +554,71 @@ async function waitingToCommit(pi: ExtensionAPI, cwd: string): Promise<{ reposit
 }
 
 /**
- * The end of a task's run: one commit for what it changed, and its box in
- * tasks.md checked — both here rather than by the model. Not because the model
- * could not: on Plan it has no shell at all, and on Execution it has one, and a
- * task that is committed or not depending on the rung the person happens to be
- * on is not a unit of anything. A box and a commit that disagreed could not be
- * told apart afterwards either. Which boxes are
- * checked is written from what was done when the run began and the one task it
- * was for, so a box the model checked on its way past is not a task done.
+ * The end of a task's run: nothing is committed and no box is ticked. What
+ * the run made waits in the folder for the person — its last answer as the
+ * report, its changes under it (the window) — and the commit is made when
+ * they accept it (/spec-done, markTask). The commit is their word that it is
+ * right, as it is when they commit their own work; Kiro's and Conductor's
+ * way too, where the agent works and the person commits. Until then the same
+ * session is where to say what to change, and each answer of it replaces the
+ * last as the report.
  *
- * A run that changed nothing leaves nothing — no commit and no box, and the
- * same task is next again.
+ * Done here is what the model may have done on its way past: the boxes go
+ * back to what they were when the run began (they are the person's). A run
+ * that changed nothing is said to have, so it is not waited on.
  */
-export async function finishTask(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, checks: string | null = null): Promise<void> {
-	ended.set(endedKey(cwd, mark), await finish(pi, { cwd, ui }, mark, checks));
+export async function endRun(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark): Promise<void> {
+	const where = `${SPECS_DIR}${mark.spec}/tasks.md`;
+	const file = join(cwd, where);
+	let text: string;
+	try {
+		text = readFileSync(file, "utf8");
+	} catch {
+		ui.notify(`${where} is not there, so ${mark.task} has nowhere to be looked at from.`, "warning");
+		return;
+	}
+	writeAtomic(file, withDone(text, withParents(parseTasks(text), new Set(mark.done))));
+	const { repository, work } = await waitingToCommit(pi, cwd);
+	// A run that touched nothing outside the spec's folder did nothing, however
+	// much is waiting there: the documents were written before it.
+	if (repository && work.length === 0) {
+		ui.notify(`${mark.task} changed nothing, so there is nothing to look at; it is still to do.`, "warning");
+		return;
+	}
+	inReview.set(`${cwd}\0${mark.spec}`, new Set([...(inReview.get(`${cwd}\0${mark.spec}`) ?? []), mark.task]));
+	const going = mark.then[0];
+	ui.notify(`${mark.task} is ready to look at. When it is right, accept it with /spec-done ${mark.task}${repository ? " — that makes its commit" : ""}; if it is not, say what to change.${going ? ` ${going} starts once ${mark.task} is accepted.` : ""}`, "info");
+}
+
+/**
+ * The run a task is being accepted from: its last answer, which is the
+ * report, and its session. This session if it is the run — the person
+ * usually accepts where they were talking — and otherwise the newest on disk
+ * that carries the task's mark; null when none does, as when the changes are
+ * the person's own. The mark comes with it, for the rest of the queue.
+ */
+async function runOf(ctx: Pick<Accepting, "sessionManager">, cwd: string, spec: string, task: string): Promise<{ report: Report; session: string; mark: TaskMark } | null> {
+	const here = ctx.sessionManager.buildContextEntries();
+	const mine = taskMark(here);
+	if (mine && mine.spec === spec && mine.task === task) return { report: reportIn(here), session: ctx.sessionManager.getSessionId(), mark: mine };
+	let sessions: { path: string; id: string; modified: Date }[];
+	try {
+		sessions = await SessionManager.list(cwd);
+	} catch {
+		return null;
+	}
+	for (const info of sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime())) {
+		try {
+			// Most sessions are not a task's: the file says so before it is read as one.
+			if (!readFileSync(info.path, "utf8").includes(`"${TASK_MARK}"`)) continue;
+			const entries = SessionManager.open(info.path).buildContextEntries();
+			const mark = taskMark(entries);
+			if (mark && mark.spec === spec && mark.task === task) return { report: reportIn(entries), session: info.id, mark };
+		} catch {
+			// A session that cannot be read is not the one.
+		}
+	}
+	return null;
 }
 
 /**
@@ -561,9 +627,11 @@ export async function finishTask(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: 
  * spec; and the checks, in the run's own words, so that what was done to
  * confirm the work is in the commit that is the work — in the clone and on
  * the PR, read with `git log` and nothing else (task-runs.md "결과는 커밋에").
+ * And the session the run was, so the conversation behind the commit can be
+ * found — a reference only; the app's folder is not the repository's.
  */
-export function trailersOf({ spec, task }: Pick<TaskMark, "spec" | "task">, checks: string | null, verified: readonly Verified[] = []): string {
-	return [`Spec: ${spec}`, `Task: ${task}`, `Checks: ${checks ?? "none"}`, ...verified.map((v) => `Verified: ${v.name} — exit ${v.exit}`)].join("\n");
+export function trailersOf({ spec, task }: Pick<TaskMark, "spec" | "task">, checks: string | null, verified: readonly Verified[] = [], session: string | null = null): string {
+	return [`Spec: ${spec}`, `Task: ${task}`, `Checks: ${checks ?? "none"}`, ...verified.map((v) => `Verified: ${v.name} — exit ${v.exit}`), ...(session ? [`Session: ${session}`] : [])].join("\n");
 }
 
 /** What the app ran for a task, and how it ended — one `Verified:` trailer each, beside the run's own `Checks:`. */
@@ -625,80 +693,6 @@ async function verifyAll(pi: ExtensionAPI, cwd: string, file: string, task: stri
 }
 
 /**
- * How a task's run ended, for the queue it may be part of (runNext). Kept in
- * the module rather than the extension instance: the run's end is heard by
- * the instance made for its session, and the chain that started it runs on
- * the one before — both are this module, loaded once.
- */
-type Ended = "committed" | "checked" | "nothing" | "uncommitted" | "blocked";
-const ended = new Map<string, Ended>();
-const endedKey = (cwd: string, { spec, task }: TaskMark) => `${cwd}\0${spec}\0${task}`;
-
-async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, checks: string | null): Promise<Ended> {
-	const git = (args: string[]) => pi.exec("git", args, { cwd, timeout: 30_000 });
-	const where = `${SPECS_DIR}${mark.spec}/tasks.md`;
-	const file = join(cwd, where);
-	const { repository, work } = await waitingToCommit(pi, cwd);
-	// A run that touched nothing outside the spec's folder did nothing, however
-	// much is waiting there: the documents were written before it.
-	if (repository && work.length === 0) {
-		ui.notify(`${mark.task} changed nothing, so it is not checked off and there is no commit.`, "warning");
-		return "nothing";
-	}
-	let text: string;
-	try {
-		text = readFileSync(file, "utf8");
-	} catch {
-		ui.notify(`${where} is not there, so ${mark.task} could not be checked off.`, "warning");
-		return "nothing";
-	}
-	// Before the box and the commit: the repository's checks, then the plan's.
-	const verified = await verifyAll(pi, cwd, file, mark.task);
-	const blocked = verified.find((v) => v.exit === BLOCKING_EXIT);
-	if (blocked) {
-		// A check that asked for it stops everything: no box, no commit. The
-		// work stays in the folder for the person, or the agent, to go on with.
-		ui.notify(`${mark.task} is not done: \`${blocked.name}\` refused it (exit ${BLOCKING_EXIT}). Nothing was checked off or committed; see ${APP_DIR_NAME}/runs/${mark.task}/.`, "warning");
-		return "blocked";
-	}
-	// The box is the person's: a run ends in a commit, and the task waits to
-	// be looked at until they accept it (review; /spec-done). What the model
-	// checked on its way past is undone here — the boxes say what they said
-	// when the run began. With no repository there is no commit to look at,
-	// so the box is checked here, being the one record there is.
-	writeAtomic(file, withDone(text, withParents(parseTasks(text), new Set(repository ? mark.done : [...mark.done, mark.task]))));
-	if (!repository) {
-		ui.notify(`${mark.task} is done. There is no repository here, so nothing was committed.`, "warning");
-		return "checked";
-	}
-	// Everything the run left but the app's own folder, which belongs to no
-	// commit of the person's. Taken back out after, rather than left out with
-	// an exclude pathspec: a repository that ignores `.pi` — as many will, the
-	// folder being the app's — makes git add exit 1 for a pathspec that names
-	// an ignored path, exclude or not, and no task in it could be committed.
-	// Seen in a real window; taking it back out is right whether it is
-	// ignored, untracked or not there.
-	const staged = await git(["add", "-A"]);
-	const added = staged.code === 0 ? await git(["reset", "-q", "--", APP_DIR_NAME]) : staged;
-	// Committed whether the check passed or not: the commit is the unit that
-	// is read and reverted, and a failed try is a record too — the list at
-	// the foot of the window marks it (TaskResults).
-	const made = added.code === 0 ? await git(["commit", "-m", mark.title, "-m", trailersOf(mark, checks, verified)]) : added;
-	if (made.code !== 0) {
-		ui.notify(`${mark.task} is done, but git could not commit it: ${(made.stderr || made.stdout).trim()}`, "warning");
-		return "uncommitted";
-	}
-	const at = await git(["rev-parse", "--short", "HEAD"]);
-	justRan.set(`${cwd}\0${mark.spec}`, new Set([...(justRan.get(`${cwd}\0${mark.spec}`) ?? []), mark.task]));
-	const next = nextTask(parseTasks(readFileSync(file, "utf8")), await reviewedOf(cwd, mark.spec));
-	const going = mark.then[0];
-	const failed = verified.filter((v) => v.exit !== 0);
-	const said = verified.length === 0 ? "" : failed.length === 0 ? ` ${verified.length === 1 ? `\`${verified[0]!.name}\` passed` : `${verified.length} checks passed`}.` : ` ${failed.map((v) => `\`${v.name}\` failed (exit ${v.exit})`).join(", ")} — see ${APP_DIR_NAME}/runs/${mark.task}/.`;
-	ui.notify(`${mark.task} is ready to look at${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}.${said} ${going ? `${going} starts next.` : next ? `Next is ${next.number} — /spec-run` : "That was the last task."}`, "info");
-	return "committed";
-}
-
-/**
  * The person's word on a task, written as one box: `x` accepts it, once they
  * have looked at what its run did (or done it by hand); `-` sets it aside;
  * ` ` opens it again. `args` is the numbers, and the spec's name when there
@@ -708,7 +702,10 @@ async function finish(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: TaskMark, c
  * in the file changes: the boxes are what the plan's fingerprint leaves out
  * (specApproval.ts), so this never asks for the plan to be approved again.
  */
-async function markTask({ cwd, ui, isIdle }: Speaking & { isIdle(): boolean }, args: string, box: "x" | "-" | " "): Promise<void> {
+type Accepting = RunSession & { isIdle(): boolean; sessionManager: { buildContextEntries(): unknown[]; getSessionId(): string } };
+
+async function markTask(pi: ExtensionAPI, ctx: Accepting, args: string, box: "x" | "-" | " "): Promise<void> {
+	const { cwd, ui, isIdle } = ctx;
 	const verb = box === "x" ? "accept" : box === "-" ? "set aside" : "open again";
 	if (!isIdle()) {
 		ui.notify(`The agent is working. ${verb[0]!.toUpperCase()}${verb.slice(1)} the task when it has finished.`, "warning");
@@ -743,6 +740,30 @@ async function markTask({ cwd, ui, isIdle }: Speaking & { isIdle(): boolean }, a
 			return;
 		}
 	}
+	// Accepting what a run left is committing it: the folder's changes, under
+	// the task's line, with the run's last answer as the body and the checks
+	// as trailers (trailersOf) — the commit the run's end used to make, made
+	// now that the person has said it is right. One task at a time when there
+	// is something to commit: the changes cannot be told between two. Checked
+	// first, and a check that refuses (exit 2) leaves everything as it was.
+	let accepting: { number: string; title: string; run: Awaited<ReturnType<typeof runOf>>; verified: Verified[] } | null = null;
+	if (box === "x") {
+		const { repository, work } = await waitingToCommit(pi, cwd);
+		if (repository && work.length > 0) {
+			if (numbers.length > 1) {
+				ui.notify(`There are changes waiting to be committed. Accept the task they are for on its own — /spec-done ${numbers[0]} — and the others after.`, "info");
+				return;
+			}
+			const number = numbers[0]!;
+			const verified = await verifyAll(pi, cwd, file, number);
+			const blocked = verified.find((v) => v.exit === BLOCKING_EXIT);
+			if (blocked) {
+				ui.notify(`${number} is not accepted: \`${blocked.name}\` refused it (exit ${BLOCKING_EXIT}). Nothing was committed; see ${APP_DIR_NAME}/runs/${number}/.`, "warning");
+				return;
+			}
+			accepting = { number, title: tasks.find((task) => task.number === number)!.title, run: await runOf(ctx, cwd, chosen, number), verified };
+		}
+	}
 	for (const number of numbers) {
 		text = withBox(text, number, box);
 		// A heading set aside or opened takes what is under it along.
@@ -759,60 +780,71 @@ async function markTask({ cwd, ui, isIdle }: Speaking & { isIdle(): boolean }, a
 	writeAtomic(file, text);
 	const said = numbers.length === 1 ? numbers[0]! : `${numbers.slice(0, -1).join(", ")} and ${numbers.at(-1)}`;
 	const rest = nextTask(parseTasks(text));
-	ui.notify(`${said} ${numbers.length === 1 ? "is" : "are"} ${box === "x" ? "done" : box === "-" ? "set aside" : "open again"}.${box === "x" ? (rest ? ` Next is ${rest.number} — /spec-run` : " That was the last one.") : ""}`, "info");
+	if (!accepting) {
+		ui.notify(`${said} ${numbers.length === 1 ? "is" : "are"} ${box === "x" ? "done" : box === "-" ? "set aside" : "open again"}.${box === "x" ? (rest ? ` Next is ${rest.number} — /spec-run` : " That was the last one.") : ""}`, "info");
+		return;
+	}
+	const { number, title, run, verified } = accepting;
+	const git = (args: string[]) => pi.exec("git", args, { cwd, timeout: 30_000 });
+	// Everything the run left but the app's own folder, which belongs to no
+	// commit of the person's. Taken back out after, rather than left out with
+	// an exclude pathspec: a repository that ignores `.pi` — as many will, the
+	// folder being the app's — makes git add exit 1 for a pathspec that names
+	// an ignored path, exclude or not, and no task in it could be committed.
+	// Seen in a real window; taking it back out is right whether it is
+	// ignored, untracked or not there. The box, ticked above, goes in with it.
+	const staged = await git(["add", "-A"]);
+	const added = staged.code === 0 ? await git(["reset", "-q", "--", APP_DIR_NAME]) : staged;
+	// Subject, body, trailers — each its own -m, so git puts a blank line
+	// between them and reads the last paragraph as trailers whatever the
+	// body's own lines look like.
+	const body = run?.report.body ?? null;
+	const made = added.code === 0 ? await git(["commit", "-m", title, ...(body ? ["-m", body] : []), "-m", trailersOf({ spec: chosen, task: number }, run?.report.checks ?? null, verified, run?.session ?? null)]) : added;
+	if (made.code !== 0) {
+		ui.notify(`${number} is done, but git could not commit it: ${(made.stderr || made.stdout).trim()}`, "warning");
+		return;
+	}
+	inReview.get(`${cwd}\0${chosen}`)?.delete(number);
+	const at = await git(["rev-parse", "--short", "HEAD"]);
+	const failed = verified.filter((v) => v.exit !== 0);
+	const checked = verified.length === 0 ? "" : failed.length === 0 ? ` ${verified.length === 1 ? `\`${verified[0]!.name}\` passed` : `${verified.length} checks passed`}.` : ` ${failed.map((v) => `\`${v.name}\` failed (exit ${v.exit})`).join(", ")} — see ${APP_DIR_NAME}/runs/${number}/.`;
+	const going = run?.mark.then[0];
+	ui.notify(`${number} is done${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}.${checked} ${going ? `${going} starts next.` : rest ? `Next is ${rest.number} — /spec-run` : "That was the last one."}`, "info");
+	if (run && going) await runNext(ctx, cwd, run.mark);
 }
 
 /**
- * The tasks of `spec` a run has ended in a commit for and the person has not
- * accepted — waiting to be looked at. Git's answer (specResults.ts), read
- * beside the list each time it is asked which task is next: the list alone
- * says done or not, and a task in review is neither. Any of them named by
- * the person runs again; none is picked by "next".
+ * The tasks of `spec` a run has ended for and the person has not accepted —
+ * waiting to be looked at, their changes in the folder. Read beside the list
+ * each time it is asked which task is next: the list alone says done or not,
+ * and a task in review is neither. Any of them named by the person runs
+ * again; none is picked by "next".
  */
 async function reviewedOf(cwd: string, spec: string): Promise<Set<string>> {
-	const known = justRan.get(`${cwd}\0${spec}`) ?? new Set<string>();
-	try {
-		return new Set([...known, ...((await taskResults(cwd)).get(spec) ?? []).map((result) => result.task)]);
-	} catch {
-		return known;
-	}
+	return inReview.get(`${cwd}\0${spec}`) ?? new Set<string>();
 }
-/** The tasks whose runs ended in a commit in this process, by folder and spec: git's word on them may be a moment behind, and a queue moving on cannot wait for it. */
-const justRan = new Map<string, Set<string>>();
+/** The tasks whose runs ended in this process and are not yet accepted, by folder and spec. What is on disk says it too — the changes, and the run's session — and is what a window reads. */
+const inReview = new Map<string, Set<string>>();
 
 /**
  * A session is opened for `mark`'s task, told what it is, and sent the line
- * the person typed; when its turn ends and the task is checked off, the next
- * of `mark.then` is started the same way, in a session of its own.
- *
- * The chain lives on the context the new session hands back and nowhere
- * else. An event's context cannot open a session — only a command's can —
- * and the command's own is stale the moment the first session is replaced;
- * the one `withSession` gives is a command's for the session it made, and pi
- * resolves sendUserMessage only when that session's turn has ended and every
- * extension has heard agent_settled, which is when the box and the commit
- * are made (finishTask). So what is read afterwards is the file: the next
- * task starts only when this one's box is checked, and a run that changed
- * nothing, or could not be committed, stops the queue where it is rather
- * than stepping past what it did not do.
+ * the person typed. The rest of the queue, `mark.then`, rides on the mark:
+ * the next is started the same way when this task is accepted (markTask),
+ * since accepting is what commits it and the next builds on that commit.
  *
  * Started, not waited for: pi's sendUserMessage runs the turn to its end
  * before it resolves, and newSession does not return until withSession
  * does — so waiting here would hold the host on the session it just left for
- * the whole run, and the person would watch nothing happen until the commit
- * landed.
+ * the whole run, and the person would watch nothing happen until it ended.
  */
 async function startRun(ctx: Pick<ExtensionCommandContext, "newSession">, cwd: string, mark: TaskMark): Promise<void> {
 	if (mark.model || mark.effort) wanted.set(cwd, { model: mark.model, effort: mark.effort });
 	await ctx.newSession({
 		withSession: async (session) => {
 			await session.sendMessage({ customType: TASK_MARK, content: taskPrompt(mark), display: false, details: mark }, { deliverAs: "nextTurn" });
-			void session
-				.sendUserMessage(`/spec-run ${mark.task}`)
-				.then(() => runNext(session, cwd, mark))
-				.catch((error: unknown) => {
-					session.ui.notify(`The run of ${mark.task} stopped: ${error instanceof Error ? error.message : String(error)}`, "error");
-				});
+			void session.sendUserMessage(`/spec-run ${mark.task}`).catch((error: unknown) => {
+				session.ui.notify(`The run of ${mark.task} stopped: ${error instanceof Error ? error.message : String(error)}`, "error");
+			});
 		},
 	});
 }
@@ -821,25 +853,16 @@ async function startRun(ctx: Pick<ExtensionCommandContext, "newSession">, cwd: s
 type RunSession = Speaking & Pick<ExtensionCommandContext, "newSession">;
 
 /**
- * After `mark`'s turn: the next task of its queue, if its own was committed.
- *
- * Nothing here is asked of git or of the pi this was started from: that pi
- * is the instance made for the session before, and is stale once the
- * session was replaced. What the run left is read instead — how it ended,
- * from the module, and the list, from the file. A committed run leaves the
- * folder clean, which is what starting the next needs.
+ * After `mark`'s task is accepted: the next task of its queue, in a session
+ * of its own. The list is read from the file — what the queue was told at
+ * its start may be stale by now — and a task that is gone or done stops the
+ * queue where it is rather than stepping past it.
  */
 async function runNext(session: RunSession, cwd: string, mark: TaskMark): Promise<void> {
 	const [number, ...rest] = mark.then;
 	if (!number) return;
 	const left = [number, ...rest].join(", ");
 	const not = `${left} ${rest.length > 0 ? "were" : "was"} not started`;
-	const how = ended.get(endedKey(cwd, mark)) ?? "nothing";
-	ended.delete(endedKey(cwd, mark));
-	if (how === "nothing" || how === "uncommitted" || how === "blocked") {
-		session.ui.notify(`${mark.task} was not ${how === "nothing" ? "committed, having changed nothing" : how === "blocked" ? "let through by its checks" : "committed"}, so ${not}.`, "warning");
-		return;
-	}
 	let tasks: Task[];
 	try {
 		tasks = parseTasks(readFileSync(join(cwd, SPECS_DIR, mark.spec, "tasks.md"), "utf8"));
@@ -1076,19 +1099,19 @@ export default function spec(pi: ExtensionAPI): void {
 
 	// The person's own word on a task, one box at a time — see markTask.
 	pi.registerCommand("spec-done", {
-		description: "Accept a task whose run you have looked at: its box is ticked, and a heading's when all under it are",
-		handler: (args, ctx) => markTask(ctx, args, "x"),
+		description: "Accept a task whose run you have looked at: its changes are committed under its line, its box is ticked, and a heading's when all under it are",
+		handler: (args, ctx) => markTask(pi, ctx, args, "x"),
 	});
 	pi.registerCommand("spec-cancel", {
 		description: "Set a task aside: it is not run, and a heading's sub-tasks go with it",
-		handler: (args, ctx) => markTask(ctx, args, "-"),
+		handler: (args, ctx) => markTask(pi, ctx, args, "-"),
 	});
 	pi.registerCommand("spec-reopen", {
 		description: "Open a task again — one accepted or set aside — so it is to do",
-		handler: (args, ctx) => markTask(ctx, args, " "),
+		handler: (args, ctx) => markTask(pi, ctx, args, " "),
 	});
 	pi.registerCommand("spec-run", {
-		description: "Run the next task of a spec you have approved: a session of its own, one task, one commit",
+		description: "Run the next task of a spec you have approved: a session of its own, one task, then yours to look at and accept",
 		handler: async (args, ctx) => {
 			if (!ctx.isIdle()) {
 				ctx.ui.notify("The agent is working. Run the task when it has finished.", "warning");
@@ -1225,12 +1248,13 @@ export default function spec(pi: ExtensionAPI): void {
 
 	pi.on("agent_settled", async (_event, ctx) => {
 		// A session opened by /spec-run is the run of one task, and this is the
-		// end of it: the box and the commit. Later turns in it are conversation.
+		// end of it: ready to be looked at. Later turns in it are the person
+		// asking for changes; the report is always its last answer.
 		const mark = ranTask ? null : taskMark(ctx.sessionManager.buildContextEntries());
 		if (mark) {
 			ranTask = true;
 			waitedAtStart = null;
-			await finishTask(pi, ctx, mark, checksIn(ctx.sessionManager.buildContextEntries()));
+			await endRun(pi, ctx, mark);
 			return;
 		}
 		await nameBranch(ctx);
