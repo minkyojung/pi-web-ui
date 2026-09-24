@@ -4078,7 +4078,7 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	await app.evaluate("document.querySelector('[data-result=\"1\"]').click()");
 	await until("the task's page", () => app.evaluate("document.getElementById('page')?.dataset.task === '1' && document.getElementById('page')?.dataset.standing === 'done'"));
 	assert.equal(await app.evaluate("!!document.querySelector('[data-result]')"), false);
-	assert.ok((await app.evaluate("document.querySelector('#taskHead [role=img]').parentElement.title")).includes(again.slice(0, 7)), "the commit it was accepted in, behind the mark at the head");
+	assert.ok((await app.evaluate("document.getElementById('taskStanding').title")).includes(again.slice(0, 7)), "the commit it was accepted in, behind the standing in the header");
 	// Looked at: nothing is new, from whatever is in front — a task's page here.
 	await until("nothing new", async () => (await button()) === "2 done");
 	// The task's tab is called by its line, not by its number alone — read off
@@ -4182,13 +4182,12 @@ check("a task in review opens as a page: the run's last answer, then the files i
 
 	await app.evaluate(`location.hash = ${JSON.stringify("#octave://task/look/1")}`);
 	await until("the task's page, in review", () => app.evaluate("document.getElementById('page')?.dataset.task === '1' && document.getElementById('page')?.dataset.standing === 'review'"));
-	// One line: the standing at the left, the words are the line, the right end is the checks and the size.
+	// One line: the words are the line, the right end is the checks and the size.
 	const head = () => app.evaluate("document.getElementById('taskHead').innerText.replace(/\\s+/g, ' ').trim()");
-	assert.equal(await head(), "In review 1. Add the window 1 file +1 −0", `the head: ${await head()}`);
-	// The mark on the page's left edge, the report's words under it: the standing's padding is only for its pressed ground.
-	const inset = () => app.evaluate("Math.round(document.querySelector('#taskStanding svg').getBoundingClientRect().left - document.getElementById('taskReport').getBoundingClientRect().left)");
-	assert.equal(await inset(), 0, "the mark in line with the report");
-	assert.equal(await app.evaluate("document.querySelector('#taskHead [role=img]')?.getAttribute('aria-label')"), "in review");
+	assert.equal(await head(), "1. Add the window 1 file +1 −0", `the head: ${await head()}`);
+	// Where it stands is in the window's header, with what is to be done about the page in front.
+	assert.equal(await app.evaluate("document.getElementById('crumbs').parentElement.contains(document.getElementById('taskStanding'))"), true, "the standing in the header");
+	assert.equal(await app.evaluate("document.querySelector('#taskStanding [role=img]')?.getAttribute('aria-label')"), "in review");
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [data-checks]')?.dataset.checks"), "said", "the agent's word only, until the app runs its checks");
 	// The report whole, the Checks: line not in it — that is the head's.
 	const report = await app.evaluate("document.getElementById('taskReport').innerText");
@@ -4230,6 +4229,8 @@ check("a task in review opens as a page: the run's last answer, then the files i
 		await until("the standing, pressable", () => app.evaluate("document.getElementById('taskStanding')?.disabled === false"));
 		assert.equal(await app.click("#taskStanding"), true);
 		await until("Accept, ready", () => app.evaluate("document.getElementById('acceptTask')?.hasAttribute('data-disabled') === false"));
+		// Opened along the header's right edge, the way the button sits, not out past the window's.
+		assert.equal(await app.evaluate("Math.round(document.getElementById('taskStanding').getBoundingClientRect().right - document.getElementById('acceptTask').closest('[role=menu]').getBoundingClientRect().right)"), 0, "the menu's right edge on the button's");
 		assert.equal(await app.click("#acceptTask"), true);
 	};
 	// Refused by its check: said so, nothing committed, still in review — and the standing back for another try.
@@ -4250,10 +4251,9 @@ check("a task in review opens as a page: the run's last answer, then the files i
 	assert.match(trailers, /Spec: look\nTask: 1\n/);
 	assert.match(trailers, new RegExp(`Session: ${session.getSessionId()}`));
 	assert.match(git("show", "HEAD:.octave/specs/look/tasks.md"), /- \[x\] 1\. Add the window/, "the box, in the same commit");
-	assert.equal(await head(), "Done 1. Add the window 1 file +1 −0", `the head: ${await head()}`);
-	assert.equal(await inset(), 0, "and accepted, the same");
-	assert.equal(await app.evaluate("document.querySelector('#taskHead [role=img]')?.getAttribute('aria-label')"), "done");
-	assert.ok((await app.evaluate("document.querySelector('#taskHead [role=img]').parentElement.title")).includes(hash), "the commit is behind the mark, on hover");
+	assert.equal(await head(), "1. Add the window 1 file +1 −0", `the head: ${await head()}`);
+	assert.equal(await app.evaluate("document.querySelector('#taskStanding [role=img]')?.getAttribute('aria-label')"), "done");
+	assert.ok((await app.evaluate("document.getElementById('taskStanding').title")).includes(hash), "the commit is behind the standing, on hover");
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [data-checks]')?.dataset.checks"), "passed", "the app's check outranks the agent's word");
 	assert.match(await app.evaluate("document.getElementById('taskReport').innerText"), /I left the latch for task 2\./, "the report, from the commit now");
 	assert.equal(await files(), "look/window.js,.octave/specs/look/notes.md", "the same files, from the commit: the ticked box is in it and not shown");

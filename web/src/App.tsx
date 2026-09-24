@@ -41,6 +41,7 @@ import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
 import { ApproveAction } from "./components/ApproveAction";
 import { RunActions } from "./components/RunActions";
+import { TaskStanding } from "./components/TaskStanding";
 import { SpecButton } from "./components/SpecButton";
 import { bump, forget, readRecent, writeRecent } from "./recent";
 import { back as stepBack, canBack, canForward, forget as forgetStep, forward as stepForward, go, here, type Left, type Nav, read as readNav, remember, replace, write as writeNav } from "./nav";
@@ -644,7 +645,7 @@ export function App() {
 					    offers what can be done to a file, which is to find it, not to
 					    rename it (noteActions.ts). A PDF is left out: its viewer
 					    reaches the top of the column, and the words there are its own. */}
-					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} task={page?.kind === "task" ? { spec: page.spec, task: page.task } : null} onOpen={setOpen} actions={<><ApproveAction path={note} /><RunActions path={note} /></>} trailing={note && <ModeToggle mode={mode} onSwitch={() => switchMode(note)} />} />
+					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} task={page?.kind === "task" ? { spec: page.spec, task: page.task } : null} onOpen={setOpen} actions={<><ApproveAction path={note} /><RunActions path={note} /><TaskStanding task={page?.kind === "task" ? { spec: page.spec, task: page.task } : null} /></>} trailing={note && <ModeToggle mode={mode} onSwitch={() => switchMode(note)} />} />
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}

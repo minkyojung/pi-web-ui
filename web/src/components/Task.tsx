@@ -1,20 +1,13 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
-import { CheckIcon, ChevronDownIcon } from "lucide-react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import { SPECS_DIR } from "../../../documentKinds.ts";
-import type { TaskMsg } from "../../../protocol.ts";
-import { commandsStore, configStore, noticesStore, taskStore } from "../serverState";
+import { taskStore } from "../serverState";
 import { specsStore } from "../serverState";
-import { blocked, why } from "../specApprove.ts";
 import { getConnection, subscribe } from "../store";
-import { wordMessage } from "../taskList.ts";
 import { send } from "../ws";
 import { MessageResponse } from "./ai-elements/message";
 import { CheckMark } from "./CheckMark";
 import { counts, FileBlock, Size } from "./Commit";
-import { TaskGlyph } from "./TaskGlyph";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
-import { Spinner } from "./ui/spinner";
 
 /**
  * One task, looked at: what its run said, and what it changed.
@@ -33,12 +26,12 @@ import { Spinner } from "./ui/spinner";
  * deciding on this one. The rest of that folder is the app's bookkeeping —
  * the box ticked, the approvals — and is not shown; the commit's page has it.
  *
- * The head is one line in the plan's own grammar: the standing at the left,
- * the task's line as tasks.md writes it — its number, then its words — and
- * at the right the check mark and the size. The commit,
- * its time and the checks' words are behind the marks, on hover: the person
- * came to judge the work, and those are reference. The standing is also
- * where it is changed (StandingMenu).
+ * The head is one line in the plan's own grammar: the task's line as
+ * tasks.md writes it — its number, then its words — and at the right the
+ * check mark and the size, the checks' words behind the mark, on hover: the
+ * person came to judge the work, and those are reference. Where the task
+ * stands, and accepting it, are in the window's header, where what is to be
+ * done about the page in front always is (TaskStanding.tsx).
  *
  * Asked again whenever the specs move (a turn ending, an acceptance) — the
  * server says so with `specs`, and the report or the changes may have moved
@@ -74,13 +67,11 @@ export default function Task({ spec, task, onOpen }: { spec: string; task: strin
 	return (
 		<div id="page" data-task={task} data-standing={mine.standing} className="no-scrollbar edge-top min-h-0 flex-1 overflow-y-auto">
 			<div className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-5">
-				{/* One line, in the plan's own grammar (TaskList.tsx): the standing as
-				    the mark at the left, the line, and at the right how it was checked
-				    and how much changed. What is reference — the commit, when it was
-				    accepted, the app's word on the checks — is behind the marks, on hover. */}
+				{/* One line, in the plan's own grammar: the line, and at the right how
+				    it was checked and how much changed, the app's word on the checks
+				    behind the mark, on hover. The standing is the header's (TaskStanding.tsx). */}
 				{/* Further from what is under it than those are from each other: the head names the page, and the rest is read. */}
 				<header id="taskHead" className="mb-2 flex min-w-0 items-center gap-2">
-					<StandingMenu task={mine} />
 					<h1 className="min-w-0 flex-1 truncate text-base font-medium">
 						{/* As tasks.md numbers it: `1.` for a task, `2.1` for one under a heading. Dimmer than the words, which are what is read. */}
 						<span className="tabular-nums text-muted-foreground">{mine.task.includes(".") ? mine.task : `${mine.task}.`}</span> {mine.title}
@@ -121,86 +112,5 @@ export default function Task({ spec, task, onOpen }: { spec: string; task: strin
 				</section>
 			</div>
 		</div>
-	);
-}
-
-/**
- * The task's standing, and the one thing to be done from it: in review, a
- * menu that accepts it — the command the plan's menu sends (taskList.ts
- * wordMessage); /spec-done runs the checks, ticks the box and makes the
- * commit (spec.ts markTask). Accepted, the page turns to the commit and this
- * is the standing alone, the commit behind it on hover.
- *
- * Only accepting, and not setting aside or opening again as the plan's menu
- * can: the page reads its standing off the sessions and the commits
- * (taskRead.ts), not off the box, so after either it would go on saying
- * what it said before.
- *
- * "Accepting…" from the press until the command has said how it ended. The
- * checks can take as long as they take, and a check that refuses leaves the
- * task in review — so neither a timer nor the page moving will do; what does
- * is that every way the command ends says something (noticesStore). Pressed
- * again before that, a second acceptance would run beside the first.
- */
-function StandingMenu({ task }: { task: TaskMsg }) {
-	const notices = useSyncExternalStore(noticesStore.subscribe, noticesStore.get);
-	const online = useSyncExternalStore(subscribe, getConnection) === "open";
-	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
-	const commands = useSyncExternalStore(commandsStore.subscribe, commandsStore.get);
-	// The task pressed, and how many notices there had been then.
-	const [sent, setSent] = useState<{ mark: string; notices: number } | null>(null);
-	// What the command said while the socket was down is not coming.
-	useEffect(() => {
-		if (!online) setSent(null);
-	}, [online]);
-
-	// Pulled out by its own padding, so the mark stands on the page's left edge with the report under it, and only the pressed ground reaches past it.
-	const face = "-ml-1.5 flex h-6 shrink-0 items-center gap-1.5 rounded-md px-1.5 text-xs text-muted-foreground";
-	if (task.standing === "done") {
-		return (
-			<span id="taskStanding" className={face} title={`Accepted${task.commit ? ` in ${task.commit.short}, ${new Date(task.commit.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}` : ""}.`}>
-				<TaskGlyph standing="done" />
-				Done
-			</span>
-		);
-	}
-
-	const mark = `${task.spec}/${task.task}`;
-	const stop = blocked({
-		online,
-		streaming: config?.isStreaming ?? false,
-		compacting: config?.isCompacting ?? false,
-		hasCommand: commands.some((command) => command.name === "spec-done"),
-		sent: sent?.mark === mark && sent.notices === notices,
-	});
-	const accepting = stop === "sent";
-	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<button type="button" id="taskStanding" disabled={accepting} className={`${face} hover:bg-muted hover:text-foreground data-[state=open]:bg-muted data-[state=open]:text-foreground`}>
-					{accepting ? <Spinner className="size-3.5 text-status-review" aria-label="accepting" /> : <TaskGlyph standing="review" />}
-					{accepting ? "Accepting…" : "In review"}
-					<ChevronDownIcon className="size-3 opacity-60" />
-				</button>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="start" className="w-72">
-				<DropdownMenuLabel className="text-xs font-normal text-muted-foreground">The run has ended; its changes are in the folder, not committed.</DropdownMenuLabel>
-				<DropdownMenuSeparator />
-				<DropdownMenuItem
-					id="acceptTask"
-					disabled={stop !== null}
-					onSelect={() => {
-						send(wordMessage("done", task.spec, task.task));
-						setSent({ mark, notices });
-					}}
-				>
-					<CheckIcon />
-					<span className="flex flex-col">
-						Accept
-						<span className="text-xs text-muted-foreground">{why(stop) ?? "Run the checks, tick the box and commit"}</span>
-					</span>
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
 	);
 }
