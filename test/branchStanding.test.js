@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { pullRequestOf, workOf } from "../web/src/branchStanding.ts";
+import { offersPullRequest, pullRequestOf, workOf } from "../web/src/branchStanding.ts";
 
 const git = (over = {}) => ({ branch: "me/x", base: "main", changes: 0, ahead: 0, behind: 0, remote: null, ...over });
 const pr = (over = {}) => ({ state: "open", number: 29, url: "https://github.com/o/r/pull/29", review: "", checks: { total: 2, pending: 0, failed: 0 }, ...over });
@@ -74,4 +74,16 @@ test("the card lists what GitHub's merge box would: checks, conflicts, review, t
 	assert.deepEqual(sized.size, { added: 120, deleted: 30, commits: 5 });
 	assert.equal(pullRequestOf(git(), pr()).size, null, "not said, not drawn");
 	assert.equal(pullRequestOf(git(), pr({ method: "SQUASH" })).method, "SQUASH");
+});
+
+test("Create PR is offered only once GitHub has said there is none, with an origin, off the base, and something to put in it", () => {
+	assert.equal(offersPullRequest(git({ changes: 2 }), { state: "local" }), true);
+	assert.equal(offersPullRequest(git({ ahead: 3, remote: { ahead: 0, behind: 0 } }), { state: "pushed" }), true, "everything pushed, still no pull request");
+	assert.equal(offersPullRequest(git({ changes: 2 }), undefined), false, "GitHub not asked yet: one may be open");
+	assert.equal(offersPullRequest(git({ changes: 2 }), pr()), false, "there is one");
+	assert.equal(offersPullRequest(git({ changes: 2 }), pr({ state: "closed" })), false, "the closed one is what is said");
+	assert.equal(offersPullRequest(git(), { state: "pushed" }), false, "nothing the base lacks");
+	assert.equal(offersPullRequest(git({ changes: 2, base: null, ahead: null, behind: null }), { state: "local" }), false, "no origin");
+	assert.equal(offersPullRequest(git({ branch: "main", changes: 2 }), { state: "pushed" }), false, "the base itself");
+	assert.equal(offersPullRequest(null, { state: "local" }), false);
 });

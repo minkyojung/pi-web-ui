@@ -83,6 +83,20 @@ export function workOf(git: GitStanding | null): Work | null {
 	return { changes: git.changes, push, pull, published };
 }
 
+/**
+ * Whether the second item offers to open a pull request: GitHub has been
+ * asked and has none for the branch, there is an origin to open one on,
+ * the branch is not the base itself, and there is something for one to hold
+ * — files not committed, or commits the base lacks. Before GitHub has been
+ * asked there is no knowing a pull request is not already open, so nothing
+ * is offered.
+ */
+export function offersPullRequest(git: GitStanding | null, status: BranchStatus | undefined): boolean {
+	if (!git || !git.base || git.branch === git.base) return false;
+	if (status?.state !== "local" && status?.state !== "pushed") return false;
+	return git.changes > 0 || (git.ahead ?? 0) > 0;
+}
+
 /** Which of GitHub's pull request marks, and so which colour: open, draft, merged, closed (Primer's own four). */
 export type PullGlyph = "open" | "draft" | "merged" | "closed";
 

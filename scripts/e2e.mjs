@@ -3868,8 +3868,12 @@ check("the foot of the window says how many changes are not committed, from git,
 	if (!existsSync(join(cwd, ".git"))) git("init", "-q", "-b", "main");
 	// The window is asked to ask: a focus is what does it in the app.
 	await app.evaluate("dispatchEvent(new Event('focus'))");
-	await until("changes counted", async () => /^Changes \d+$/.test(await standing()));
-	const before = Number((await standing()).split(" ")[1]);
+	// What git says, counted as the server counts it — not the first figure on
+	// screen, which may be one said before the checks ahead of this one wrote
+	// their notes, with the answer to this focus still on its way.
+	const counted = () => git("status", "--porcelain", "--untracked-files=all").split("\n").filter((line) => line && !/^.. "?\.pi\//.test(line)).length;
+	const before = counted();
+	await until("changes counted", async () => (await standing()) === `Changes ${before}`);
 	writeFileSync(join(cwd, "one-more.txt"), "x\n");
 	await app.evaluate("dispatchEvent(new Event('focus'))");
 	await until("one more counted", async () => (await standing()) === `Changes ${before + 1}`);
@@ -3897,6 +3901,71 @@ check("the foot of the window says how many changes are not committed, from git,
 	git("commit", "-q", "-m", "everything");
 	await app.evaluate("dispatchEvent(new Event('focus'))");
 	await until("nothing to say", async () => (await standing()) === "");
+});
+
+// Before there is a pull request: the second item offers to open one, and
+// what it sends is /create-pr — the steps are the server's (pullRequest.ts,
+// tested on its own). An origin and a branch of its own are made for the
+// suite's folder for the length of the check, and the shell is stood in for,
+// saying GitHub has no pull request for the branch. What the button sends is
+// stopped at the wire: a turn here would be in every check after.
+check("before a pull request, Create PR at the foot of the window sends /create-pr, and its arrow a draft", async ({ app, cwd }) => {
+	const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
+	if (!existsSync(join(cwd, ".git"))) git("init", "-q", "-b", "main");
+	if (!git("rev-list", "--all", "--max-count=1")) git("commit", "-q", "--allow-empty", "-m", "start");
+	const was = git("branch", "--show-current");
+	const origin = mkdtempSync(join(tmpdir(), "octave-e2e-origin-"));
+	git("clone", "-q", "--bare", cwd, origin);
+	git("remote", "add", "origin", origin);
+	git("fetch", "-q", "origin");
+	git("remote", "set-head", "origin", was);
+	git("checkout", "-q", "-b", "me/pr");
+	writeFileSync(join(cwd, "for-the-pr.txt"), "x\n");
+	const stopStanding = await app.onNewDocument(`
+		if (sessionStorage.getItem("stand-in-for-a-pull-request") === "1") {
+		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
+			repositories: { issues: async () => null },
+			onNewSpec: () => () => {},
+			workspaces: { list: async () => ({ projects: [{ path: "/r/demo", name: "demo", worktrees: [{ path: ${JSON.stringify(cwd)}, name: "tokyo", branch: "me/pr", status: { state: "local" } }] }] }),
+				create: async () => ({}), branches: async () => null, open: async () => {}, onChange: () => () => {}, first: async () => null } };
+		window.__sent = [];
+		const send = WebSocket.prototype.send;
+		WebSocket.prototype.send = function (data) {
+			if (!this.url.endsWith("/ws")) return send.call(this, data);
+			const msg = JSON.parse(String(data));
+			if (msg.type === "prompt" && String(msg.text).startsWith("/create-pr")) return void window.__sent.push(msg);
+			return send.call(this, data);
+		};
+		}`);
+	const sent = () => app.evaluate("JSON.stringify(window.__sent.map((m) => [m.text, m.command]))");
+	const load = async () => {
+		await app.evaluate(`sessionStorage.setItem("stand-in-for-a-pull-request", "1"); location.reload()`);
+		await until("the page", () => app.evaluate("!!document.getElementById('chat')"));
+		await app.evaluate("dispatchEvent(new Event('focus'))");
+		await until("Create PR, pressable", () => app.evaluate("!!document.querySelector('#create-pr button:not([disabled])')"));
+	};
+	try {
+		await load();
+		assert.equal(await app.evaluate("!!document.getElementById('branch-standing')"), false, "no pull request's item beside it");
+		await app.click("#create-pr button");
+		await until("/create-pr sent", async () => (await sent()) === JSON.stringify([["/create-pr", true]]));
+		assert.equal(await app.evaluate("document.querySelector('#create-pr button').disabled"), true, "not twice");
+		await load();
+		await app.click("#create-pr button[aria-label='More ways to open a pull request']");
+		await until("the menu", () => app.evaluate("!!document.getElementById('create-draft-pr')"));
+		await app.click("#create-draft-pr");
+		await until("/create-pr draft sent", async () => (await sent()) === JSON.stringify([["/create-pr draft", true]]));
+	} finally {
+		await stopStanding();
+		await app.evaluate(`sessionStorage.removeItem("stand-in-for-a-pull-request"); location.reload()`);
+		await until("the page back", () => app.evaluate("!!document.getElementById('chat')"));
+		rmSync(join(cwd, "for-the-pr.txt"), { force: true });
+		git("checkout", "-q", was);
+		git("branch", "-q", "-D", "me/pr");
+		git("remote", "remove", "origin");
+		rmSync(origin, { recursive: true, force: true });
+		await app.evaluate("dispatchEvent(new Event('focus'))");
+	}
 });
 
 // The other end of the new spec dialog: the page of the workspace it made.

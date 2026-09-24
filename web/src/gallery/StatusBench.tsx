@@ -1,6 +1,10 @@
 import { type BranchStatus, type GitStanding, pullRequestOf, workOf } from "../branchStanding";
+import { CREATE_PR } from "../createPr";
+import { CreatePullRequest } from "../components/CreatePullRequest";
 import { PullRequestCard, PullRequestStanding } from "../components/PullRequestStanding";
 import { WorkStanding } from "../components/WorkStanding";
+import { commandsStore } from "../serverState";
+import { getConnection, setConnection, subscribe } from "../store";
 
 /**
  * A bench for the branch's two items at the foot of the window: every state
@@ -46,6 +50,14 @@ const PULLS: { name: string; git: GitStanding; status: BranchStatus }[] = [
 	{ name: "Closed", git: git(), status: pr({ state: "closed", merge: "UNKNOWN" }) },
 ];
 
+// Create PR is pressable only where pi has the command and the window is
+// connected; there is no server here, so the bench says both.
+commandsStore.set([{ name: CREATE_PR, description: "", source: "extension" }]);
+setConnection("open");
+subscribe(() => {
+	if (getConnection() !== "open") setConnection("open");
+});
+
 /** A stretch of the strip, as tall and as quiet as the real one (StatusBar.tsx). */
 function Strip({ children }: { children: React.ReactNode }) {
 	return <div className="flex h-11 items-center gap-0.5 rounded-md border px-2 text-xs text-muted-foreground">{children}</div>;
@@ -69,6 +81,12 @@ export function StatusBench() {
 				</section>
 				<section className="flex flex-col gap-3">
 					<h2 className="text-sm font-medium">The pull request, most in the way first</h2>
+					<div data-bench="No pull request yet" className="grid grid-cols-[12rem_16rem_1fr] items-start gap-4">
+						<span className="pt-3.5 text-xs text-muted-foreground">No pull request yet</span>
+						<Strip>
+							<CreatePullRequest />
+						</Strip>
+					</div>
 					{PULLS.map((row) => {
 						const view = pullRequestOf(row.git, row.status);
 						return (

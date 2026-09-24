@@ -1,9 +1,10 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-import { pullRequestOf, workOf } from "../branchStanding";
+import { offersPullRequest, pullRequestOf, workOf } from "../branchStanding";
 import { standingStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
+import { CreatePullRequest } from "./CreatePullRequest";
 import { loadList, usePageFolder, useWorkspaceList } from "./Repositories";
 import { PullRequestStanding } from "./PullRequestStanding";
 import { WorkStanding } from "./WorkStanding";
@@ -49,7 +50,7 @@ export function BranchStanding({ onOpen }: { onOpen: (path: string) => void }) {
 	return (
 		<>
 			{work && <WorkStanding work={work} onOpen={onOpen} />}
-			{pull && <PullRequestStanding view={pull} />}
+			{pull ? <PullRequestStanding view={pull} /> : offersPullRequest(git, status) && <CreatePullRequest />}
 		</>
 	);
 }

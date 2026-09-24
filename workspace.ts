@@ -54,6 +54,7 @@ import { readSettings, updateSettings, type Settings } from "./settings.ts";
 import { askForName } from "./sessionName.ts";
 import { askUser } from "./askUser.ts";
 import specCommand, { takenSpecs } from "./spec.ts";
+import pullRequestCommand from "./pullRequest.ts";
 import { createPromptBridge } from "./prompts.ts";
 import { extensionUI } from "./extensionUI.ts";
 import { deleteSessionFile } from "./sessionDelete.ts";
@@ -315,6 +316,9 @@ export async function createWorkspace(cwd: string) {
 					// `/spec` and a line: the requirements of a spec, written for the
 					// person to read — see spec.ts, which runs in pi's terminal too.
 					{ name: "spec", factory: specCommand },
+					// `/create-pr`: commit, push and open a pull request — the button at
+					// the foot of the window. See pullRequest.ts.
+					{ name: "pull-request", factory: pullRequestCommand },
 				],
 				// The extensions installed for the person's own pi — ~/.pi/agent/
 				// extensions, the packages in its settings — load here as they load
