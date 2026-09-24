@@ -28,6 +28,13 @@ export type Screen = {
 	resize(cols: number, rows: number): void;
 	/** What is on the screen now, as the bytes that would draw it on an empty terminal of the same size. */
 	snapshot(): Buffer;
+	/**
+	 * What is on the screen and above it, as words: the last `lines` of it,
+	 * without colours or the cursor, a line the terminal wrapped joined back
+	 * into one, and nothing after the last line with anything on it. For
+	 * the agent to read (terminalTool.ts).
+	 */
+	text(lines: number): string;
 	dispose(): void;
 };
 
@@ -39,6 +46,19 @@ export function createScreen({ cols, rows }: { cols: number; rows: number }): Sc
 		write: (bytes) => term.write(bytes),
 		resize: (cols, rows) => term.resize(cols, rows),
 		snapshot: () => Buffer.from(serializer.serialize(), "utf8"),
+		text: (lines) => {
+			const buffer = term.buffer.active;
+			const rows: string[] = [];
+			for (let y = 0; y < buffer.length; y++) {
+				const line = buffer.getLine(y);
+				if (!line) continue;
+				const words = line.translateToString(true);
+				if (line.isWrapped && rows.length > 0) rows[rows.length - 1] += words;
+				else rows.push(words);
+			}
+			while (rows.length > 0 && rows[rows.length - 1] === "") rows.pop();
+			return rows.slice(Math.max(0, rows.length - lines)).join("\n");
+		},
 		dispose: () => term.dispose(),
 	};
 }

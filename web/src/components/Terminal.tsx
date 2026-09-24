@@ -93,6 +93,9 @@ export function Terminal({
 	const box = useRef<HTMLDivElement>(null);
 	const term = useRef<Xterm | null>(null);
 	const channel = useRef<Channel | null>(null);
+	/** `open` as it is now, for the socket opening later than the render that set it. */
+	const openNow = useRef(open);
+	openNow.current = open;
 	useImperativeHandle(ref, () => ({ close: () => channel.current?.close() }), []);
 
 	useEffect(() => {
@@ -127,6 +130,7 @@ export function Terminal({
 			onOpen: () => {
 				xterm.reset();
 				link.resize(xterm.cols, xterm.rows);
+				if (openNow.current) link.front();
 				onReady?.();
 			},
 			onData: (bytes) => xterm.write(bytes, () => link.ack(bytes.length)),
@@ -170,9 +174,13 @@ export function Terminal({
 	}, [id]);
 
 	// Opened: the cursor goes to it, as it does to a terminal pulled up in
-	// VS Code. The fit follows on its own, from the box having a size.
+	// VS Code, and the server is told this is the one in front — what the
+	// agent reads unless it names another. The fit follows on its own,
+	// from the box having a size.
 	useEffect(() => {
-		if (open) term.current?.focus();
+		if (!open) return;
+		term.current?.focus();
+		channel.current?.front();
 	}, [open]);
 
 	// Not in front: hidden, not gone — xterm keeps its screen and is fitted

@@ -127,15 +127,20 @@ try {
 	const b2 = e;
 
 	// 4c. The folder says which terminals it has.
-	const listed = async () => (await (await fetch(`http://127.0.0.1:${port}/api/terminals?folder=${encodeURIComponent(cwd)}`)).json()).terminals;
+	const answered = async () => (await fetch(`http://127.0.0.1:${port}/api/terminals?folder=${encodeURIComponent(cwd)}`)).json();
+	const listed = async () => (await answered()).terminals;
 	const two = await open("second");
 	await until(() => two.bytes > 0);
 	const list = await listed();
 	check("the folder lists its terminals, by id and shell", list.length === 2 && list.every((t) => typeof t.shell === "string" && t.shell.length > 0) && list.map((t) => t.id).sort().join() === "check,second", JSON.stringify(list));
+	// The page says which is in front; the folder remembers, and forgets one that ends.
+	say(two, { type: "front" });
+	await until(async () => (await answered()).front === "second");
+	check("the one the page put in front is the folder's front", true);
 	say(two, { type: "close" });
 	await until(() => two.control.some((m) => m.type === "exit"));
 	await until(async () => (await listed()).length === 1);
-	check("a closed one is off the list", true);
+	check("a closed one is off the list, and is no longer the front", (await answered()).front === null, JSON.stringify(await answered()));
 	two.ws.close();
 
 	// 5. `close` ends the shell and its exit is reported.

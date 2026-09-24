@@ -7,8 +7,10 @@
  * reads arrives whole to the terminal drawing it, which keeps the UTF-8
  * state. What the socket sends in binary frames is typed and goes to the
  * shell; what it sends in text frames is JSON about the terminal:
- * `resize`, `ack` (bytes drawn — flow.ts), `close`. The socket hears `exit`
- * when the shell ends.
+ * `resize`, `ack` (bytes drawn — flow.ts), `close`, and `front` when the
+ * page has brought this one in front of the others, which is what the
+ * agent reads by default (terminalTool.ts). The socket hears `exit` when
+ * the shell ends.
  *
  * The pty outlives the socket: a tab that reloads, or a window that moves
  * to another workspace and back, attaches again to the same shell, and is
@@ -31,6 +33,8 @@ export type Terminal = {
 	readonly exited: boolean;
 	/** The shell's name — `zsh` — for a tab to be called by. */
 	readonly shell: string;
+	/** The last `lines` of what is on its screen, as words (screen.ts). */
+	text(lines: number): string;
 };
 
 /** After SIGHUP, how long a shell has to go before it is killed. */
@@ -42,7 +46,7 @@ function shellOf(env: NodeJS.ProcessEnv): string {
 	return "/bin/sh";
 }
 
-export function createTerminal({ cwd, env, onExit }: { cwd: string; env: NodeJS.ProcessEnv; onExit: (code: number) => void }): Terminal {
+export function createTerminal({ cwd, env, onExit, onFront }: { cwd: string; env: NodeJS.ProcessEnv; onExit: (code: number) => void; onFront?: () => void }): Terminal {
 	ensureSpawnHelper();
 	const shell = shellOf(env);
 	// encoding null: the pty's bytes as they come, not decoded to strings.
@@ -112,6 +116,8 @@ export function createTerminal({ cwd, env, onExit }: { cwd: string; env: NodeJS.
 				if (a.resume) pty.resume();
 			} else if (msg.type === "close") {
 				kill();
+			} else if (msg.type === "front") {
+				onFront?.();
 			}
 		});
 		socket.on("close", () => {
@@ -147,5 +153,6 @@ export function createTerminal({ cwd, env, onExit }: { cwd: string; env: NodeJS.
 			return exited;
 		},
 		shell: basename(shell),
+		text: (lines) => screen.text(lines),
 	};
 }

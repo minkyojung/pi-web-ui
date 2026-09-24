@@ -21,6 +21,8 @@ export type Channel = {
 	resize(cols: number, rows: number): void;
 	/** These many bytes were drawn. */
 	ack(bytes: number): void;
+	/** This terminal is in front of the others now. */
+	front(): void;
 	/** End the shell. */
 	close(): void;
 	/** Let go of the socket; the shell lives on for the next one. */
@@ -86,6 +88,7 @@ export function openTerminal(id: string, { onOpen, onData, onExit }: Handlers): 
 		write: (text) => send(encoder.encode(text).buffer as ArrayBuffer),
 		resize: (cols, rows) => send(JSON.stringify({ type: "resize", cols, rows })),
 		ack: (bytes) => send(JSON.stringify({ type: "ack", bytes })),
+		front: () => send(JSON.stringify({ type: "front" })),
 		close: () => {
 			done = true;
 			send(JSON.stringify({ type: "close" }));

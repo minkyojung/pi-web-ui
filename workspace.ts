@@ -24,6 +24,7 @@ import { bytes } from "./request.ts";
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import { type WebSocket } from "ws";
 import { createTerminal, type Terminal } from "./pty/terminal.ts";
+import { readTerminal } from "./terminalTool.ts";
 import {
 	createAgentSessionFromServices,
 	createAgentSessionRuntime,
@@ -306,6 +307,8 @@ export async function createWorkspace(cwd: string) {
 					// The bridge is reached when a question is asked, not now: it is
 					// made further down, after this first session is.
 					{ name: "ask", factory: askUser(() => prompts.ask) },
+					// pi reading what is on the person's terminal — see terminalTool.ts.
+					{ name: "terminal", factory: readTerminal(() => [...terminals].map(([id, t]) => ({ id, shell: t.shell, text: (n: number) => t.text(n) })), () => frontTerminal) },
 					// `/spec` and a line: the requirements of a spec, written for the
 					// person to read — see spec.ts, which runs in pi's terminal too.
 					{ name: "spec", factory: specCommand },
@@ -1228,6 +1231,8 @@ export async function createWorkspace(cwd: string) {
 	 * the page says `close`, or with the folder.
 	 */
 	const terminals = new Map<string, Terminal>();
+	/** The one the page has in front, as it last said; what the agent reads when it does not name one. */
+	let frontTerminal: string | null = null;
 	/** A socket that wants to be terminal `id`'s screen: attached to the shell there, or to a new one. */
 	function terminal(id: string, ws: WebSocket): void {
 		seen = Date.now();
@@ -1238,6 +1243,10 @@ export async function createWorkspace(cwd: string) {
 				env: process.env,
 				onExit: () => {
 					if (terminals.get(id) === made) terminals.delete(id);
+					if (frontTerminal === id) frontTerminal = null;
+				},
+				onFront: () => {
+					frontTerminal = id;
 				},
 			});
 			terminals.set(id, made);
@@ -1698,7 +1707,7 @@ export async function createWorkspace(cwd: string) {
 			// The terminals alive in this folder, for the page's row of tabs
 			// (Terminals.tsx): the page cannot know from its own storage which
 			// shells are still there after a reload.
-			if (pathname === "/api/terminals") return json(200, { terminals: [...terminals].map(([id, t]) => ({ id, shell: t.shell })) });
+			if (pathname === "/api/terminals") return json(200, { terminals: [...terminals].map(([id, t]) => ({ id, shell: t.shell })), front: frontTerminal });
 			// A note's text as it is on disk, for an embed of it in another note.
 			// Read only, and only a note in the folder (readNote → noteAt).
 			if (pathname === "/api/note") {
