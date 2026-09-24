@@ -4159,9 +4159,9 @@ check("a task in review opens as a page: the run's last answer, then its files f
 
 	await app.evaluate(`location.hash = ${JSON.stringify("#octave://task/look/1")}`);
 	await until("the task's page, in review", () => app.evaluate("document.getElementById('page')?.dataset.task === '1' && document.getElementById('page')?.dataset.standing === 'review'"));
-	// One line: the mark at the left says the standing, the words are the line, the right end is the checks and the size.
+	// One line: the standing at the left, the words are the line, the right end is the checks and the size.
 	const head = () => app.evaluate("document.getElementById('taskHead').innerText.replace(/\\s+/g, ' ').trim()");
-	assert.equal(await head(), "Task 1 Add the window 1 file +1 −0", `the head: ${await head()}`);
+	assert.equal(await head(), "In review Task 1 Add the window 1 file +1 −0", `the head: ${await head()}`);
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [role=img]')?.getAttribute('aria-label')"), "in review");
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [data-checks]')?.dataset.checks"), "said", "the agent's word only, until the app runs its checks");
 	// The report whole, the Checks: line not in it — that is the head's — and the files folded to their names.
@@ -4188,27 +4188,32 @@ check("a task in review opens as a page: the run's last answer, then its files f
 	git("config", "user.name", "t");
 	git("config", "user.email", "t@example.invalid");
 	const before = git("rev-parse", "HEAD");
-	await until("Accept, ready", () => app.evaluate("document.getElementById('acceptTask')?.disabled === false"));
-	assert.equal(await app.evaluate("document.getElementById('acceptTask').getAttribute('aria-label')"), "Accept task 1");
-	// Refused by its check: said so, nothing committed, still in review — and the button back for another try.
-	assert.equal(await app.click("#acceptTask"), true);
+	// The standing is the menu: opened, it says where the task stands and offers Accept.
+	const accept = async () => {
+		await until("the standing, pressable", () => app.evaluate("document.getElementById('taskStanding')?.disabled === false"));
+		assert.equal(await app.click("#taskStanding"), true);
+		await until("Accept, ready", () => app.evaluate("document.getElementById('acceptTask')?.hasAttribute('data-disabled') === false"));
+		assert.equal(await app.click("#acceptTask"), true);
+	};
+	// Refused by its check: said so, nothing committed, still in review — and the standing back for another try.
+	await accept();
 	await until("the refusal said", () => app.evaluate("document.getElementById('chat')?.innerText.includes('1 is not accepted')"));
-	await until("Accept, ready again", () => app.evaluate("document.getElementById('acceptTask')?.disabled === false"));
+	await until("in review again", () => app.evaluate("document.getElementById('taskStanding')?.innerText.trim() === 'In review'"));
 	assert.equal(git("rev-parse", "HEAD"), before, "nothing committed");
 	assert.equal(await app.evaluate("document.getElementById('page')?.dataset.standing"), "review");
 	// Its check satisfied: accepted — the box, and the commit naming the session. The page stays, now read off the commit.
 	mkdirSync(join(cwd, ".pi"), { recursive: true });
 	writeFileSync(join(cwd, ".pi", "latch-ok"), "");
-	assert.equal(await app.click("#acceptTask"), true);
+	await accept();
 	await until("the same page, accepted", () => app.evaluate("document.getElementById('page')?.dataset.task === '1' && document.getElementById('page')?.dataset.standing === 'done'"));
-	assert.equal(await app.evaluate("!!document.getElementById('acceptTask')"), false, "Accept goes once it is accepted");
+	assert.equal(await app.evaluate("document.getElementById('taskStanding').tagName"), "SPAN", "accepted, the standing is only said: nothing is left to do from it here");
 	const hash = git("rev-parse", "--short", "HEAD");
 	assert.equal(git("log", "-1", "--format=%s"), "Add the window", "the task's line, the commit's subject");
 	const trailers = git("log", "-1", "--format=%(trailers)");
 	assert.match(trailers, /Spec: look\nTask: 1\n/);
 	assert.match(trailers, new RegExp(`Session: ${session.getSessionId()}`));
 	assert.match(git("show", "HEAD:.octave/specs/look/tasks.md"), /- \[x\] 1\. Add the window/, "the box, in the same commit");
-	assert.equal(await head(), "Task 1 Add the window 1 file +1 −0", `the head: ${await head()}`);
+	assert.equal(await head(), "Done Task 1 Add the window 1 file +1 −0", `the head: ${await head()}`);
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [role=img]')?.getAttribute('aria-label')"), "done");
 	assert.ok((await app.evaluate("document.querySelector('#taskHead [role=img]').parentElement.title")).includes(hash), "the commit is behind the mark, on hover");
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [data-checks]')?.dataset.checks"), "passed", "the app's check outranks the agent's word");
