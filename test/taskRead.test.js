@@ -30,7 +30,7 @@ function folder(t) {
   /** A run's session: the mark, then what it said. */
   const ran = (task, ...said) => {
     const manager = SessionManager.create(cwd, sessionDir);
-    manager.appendCustomMessageEntry("spec-task", "run it", false, { spec: "greeting", task, title: `Task ${task}`, done: [], then: [] });
+    manager.appendCustomMessageEntry("spec-task", "run it", false, { spec: "greeting", task, title: `Task ${task}`, done: [] });
     for (const text of said) manager.appendMessage({ role: "assistant", content: [{ type: "text", text }], api: "x", provider: "x", model: "x", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() });
     return manager.getSessionId();
   };

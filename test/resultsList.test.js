@@ -61,7 +61,7 @@ test("커밋이 어느 작업의 것인지는 이미 받은 결과에서 찾는�
   assert.equal(taskOfCommit(null, "aaaaaaa"), null, "결과가 아직 안 왔다");
   assert.equal(commitTabTitle({ task: "2", title: "Test the greeting" }), "Task 2 · Test the greeting");
   // A task's tab: the run in review names it first, then the last result; a task with neither is its number.
-  const withReview = specs.map((spec) => ({ ...spec, review: spec.name === "greeting" ? [{ spec: "greeting", task: "3", title: "Ship it", then: [], session: "s", at: 1 }] : [] }));
+  const withReview = specs.map((spec) => ({ ...spec, review: spec.name === "greeting" ? [{ spec: "greeting", task: "3", title: "Ship it", session: "s", at: 1 }] : [] }));
   assert.equal(taskTabTitle(withReview, "greeting", "3"), "Task 3 · Ship it", "심사 중인 실행의 줄");
   assert.equal(taskTabTitle(withReview, "greeting", "2"), "Task 2 · Test the greeting", "받아들인 결과의 줄");
   assert.equal(taskTabTitle(withReview, "greeting", "9"), "Task 9", "아직 아무것도 없으면 번호");

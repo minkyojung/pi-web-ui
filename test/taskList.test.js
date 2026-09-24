@@ -23,7 +23,7 @@ const PLAN = `# Tasks — email-auth
 `;
 
 const result = (task, at, exit = 0) => ({ task, commit: `${task}-${at}`, short: `${task}${at}`, title: "", at, checks: null, verified: [{ name: "check", exit }], session: `s-${task}-${at}`, files: [], added: 10, deleted: 1 });
-const run = (task, at) => ({ spec: "email-auth", task, title: "", then: [], session: `s-${task}-${at}`, at });
+const run = (task, at) => ({ spec: "email-auth", task, title: "", session: `s-${task}-${at}`, at });
 
 test("rows fall under the plan's headings, each with a standing from the box, git and the session", () => {
 	const list = listOf(PLAN, { results: [result("1", 5), result("1", 9, 1)], review: [run("1", 12)], running: "2.1" });

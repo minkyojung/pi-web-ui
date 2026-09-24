@@ -74,7 +74,7 @@ const STATES: { id: string; name: string; path: string; specs: SpecInfo[]; confi
 	{ id: "approved", name: "Approved (nothing waiting)", path: docPath(SPEC, "requirements.md"), specs: [spec({ approved: 1, waiting: "design.md", written: ["requirements.md"] })], config: config() },
 	{ id: "tasks", name: "tasks.md, nothing picked", path: docPath(SPEC, "tasks.md"), specs: [spec(TASKS_READY)], config: config() },
 	{ id: "picked", name: "tasks.md, 2 picked", path: docPath(SPEC, "tasks.md"), specs: [spec(TASKS_READY)], config: config(), picked: "2" },
-	{ id: "running", name: "tasks.md, 2.1 running", path: docPath(SPEC, "tasks.md"), specs: [spec({ ...TASKS_READY, tasks: { total: 5, done: 1, cancelled: 0, next: "2.2", review: [] } })], config: config({ isStreaming: true, run: { spec: SPEC, task: "2.1", title: "POST /login validates and issues a token", then: [] } }) },
+	{ id: "running", name: "tasks.md, 2.1 running", path: docPath(SPEC, "tasks.md"), specs: [spec({ ...TASKS_READY, tasks: { total: 5, done: 1, cancelled: 0, next: "2.2", review: [] } })], config: config({ isStreaming: true, run: { spec: SPEC, task: "2.1", title: "POST /login validates and issues a token" } }) },
 	{ id: "note", name: "A plain note", path: "notes/today.md", specs: [spec()], config: config() },
 ];
 

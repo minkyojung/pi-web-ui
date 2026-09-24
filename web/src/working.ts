@@ -127,14 +127,13 @@ export function lastRun(items: Item[]): string | null {
 
 /**
  * The task a run is, as the server reads it off the session (ConfigMsg.run):
- * the number and the objective, and the numbers queued after it. The one
+ * the number and the objective. The one
  * thing the events alone cannot say: a tool call looks the same in a task's
  * run and in a conversation.
  */
 export interface Task {
 	task: string;
 	title: string;
-	then: string[];
 }
 
 /**
@@ -144,16 +143,11 @@ export interface Task {
  * sentence to read but the name of a line in the list, where that line's
  * Start is turning — so it is drawn as a chip, and the objective, which is
  * the longest thing here and the first to be cut, is left to the title.
- * What is queued after it is a count, `1 more`: how much is left is what a
- * strip is for, and which ones is in the title too.
  */
 export const taskLabel = (task: Pick<Task, "task">): string => `Task ${task.task}`;
 
-/** "1 more", or null with nothing queued — which is most runs, one Start pressed. */
-export const moreWords = (task: Pick<Task, "then">): string | null => (task.then.length > 0 ? `${task.then.length} more` : null);
-
-/** The whole of it, for the title: "Task 2.2 · Paint it — then 3, 4". */
-export const taskTitle = (task: Task): string => `Task ${task.task} · ${task.title}${task.then.length > 0 ? ` — then ${task.then.join(", ")}` : ""}`;
+/** The whole of it, for the title: "Task 2.2 · Paint it". */
+export const taskTitle = (task: Task): string => `Task ${task.task} · ${task.title}`;
 
 export function agentLine(state: {
 	connection: Connection;

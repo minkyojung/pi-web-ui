@@ -1329,7 +1329,7 @@ it("작업이 도는 동안 탭은 어느 작업인지 듣는다 — 세션의 �
     // while the check after this one is asking for a session of its own.
     send({ type: "prompt", text: `/spec-run ${name} 1`, command: true });
     const running = await want("config", (m) => m.run !== null, 60_000);
-    assert.deepEqual(running.run, { spec: name, task: "1", title: "Do the one thing", then: [] }, "무엇을 돌리는지, 뒤에 무엇이 남았는지");
+    assert.deepEqual(running.run, { spec: name, task: "1", title: "Do the one thing" }, "무엇을 돌리는지");
     assert.equal(running.isStreaming, true);
     send({ type: "abort" });
     await want("agent_settled", () => true, 60_000);

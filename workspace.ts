@@ -480,8 +480,8 @@ export async function createWorkspace(cwd: string) {
 		if (!s.isStreaming) return null;
 		const found = taskMarkEntry(s.sessionManager.buildContextEntries());
 		if (!found || found.id === runOver) return null;
-		const { spec, task, title, then } = found.mark;
-		return { spec, task, title, then };
+		const { spec, task, title } = found.mark;
+		return { spec, task, title };
 	}
 
 	/**

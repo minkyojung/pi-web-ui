@@ -28,7 +28,7 @@ import { bridge as githubBridge, githubStore } from "../github";
 import { configStore, promptsStore, standingStore } from "../serverState";
 import { openSettings } from "../settingsOpen";
 import { getConnection, getItems, subscribe } from "../store";
-import { agentLine, glyphOf, moreWords, nextUnseen, resultSeen, taskLabel, taskTitle } from "../working";
+import { agentLine, glyphOf, nextUnseen, resultSeen, taskLabel, taskTitle } from "../working";
 import { send } from "../ws";
 import { ContextCard } from "./ContextCard";
 import { ToolModes } from "./ToolModes";
@@ -114,7 +114,7 @@ function Line({ bare = false }: { bare?: boolean }) {
 			{/* The task before the step, when the run is one: which, then what it
 			    is doing. A chip, as Read-only is over a file — the number is the
 			    name of a line in the list, a value and not words to read — with
-			    the objective and the queue in its title (working.ts). */}
+			    the objective in its title (working.ts). */}
 			{line.task && (
 				<Badge id="agentTask" variant="secondary" className="h-4 shrink-0 px-1.5 text-[10px] font-normal tabular-nums" title={taskTitle(line.task)}>
 					{taskLabel(line.task)}
@@ -128,12 +128,6 @@ function Line({ bare = false }: { bare?: boolean }) {
 			    is queued is a fact about the run, and it is the run that will take
 			    them. The messages themselves are still listed above the box. */}
 			{line.queued > 0 && <span className="shrink-0">· {line.queued} queued</span>}
-			{/* And how many tasks are queued after this one, which are the run's too. */}
-			{line.task && moreWords(line.task) && (
-				<span id="agentMore" className="shrink-0 text-muted-foreground" title={taskTitle(line.task)}>
-					· {moreWords(line.task)}
-				</span>
-			)}
 		</span>
 	);
 }

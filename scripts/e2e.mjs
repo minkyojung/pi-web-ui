@@ -3575,7 +3575,7 @@ check("the spec at the start of the row says the tasks are ready once its docume
 
 // A task is run from the bar over its document: the cursor on its line is
 // enough, and the Start that used to stand beside each line is off.
-check("a spec's task is run from the document's header: the cursor's line is the task, a heading is its sub-tasks still to do, and pressing runs it", async ({ app, cwd }) => {
+check("a spec's task is run from the document's header: the cursor's line is the task, a heading is its first sub-task still to do, and pressing runs it", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/start");
 	mkdirSync(dir, { recursive: true });
 	const plan = (first) => `# Tasks\n\n- [${first}] 1. First\n- [ ] 2. Heading\n- [x] 2.1 Second\n- [ ] 2.2 Third\n`;
@@ -3591,7 +3591,7 @@ check("a spec's task is run from the document's header: the cursor's line is the
 	assert.equal(await app.evaluate("document.querySelectorAll('#editor .cm-start').length"), 0, "no Start beside the lines");
 	const cursorOn = (word) => app.evaluate(`(() => { const v = document.querySelector('#editor .cm-content').cmTile.root.view; const at = v.state.doc.toString().indexOf(${JSON.stringify(word)}); v.dispatch({ selection: { anchor: at } }); })()`);
 	const offered = () => app.evaluate("document.getElementById('runPicked')?.textContent ?? ''");
-	// 2 is a heading: its run is its sub-tasks still to do — 2.2, since 2.1 is done.
+	// 2 is a heading: its run is its first sub-task still to do — 2.2, since 2.1 is done.
 	await cursorOn("Heading");
 	await until("the heading's run offered", async () => (await offered()) === "Run 2");
 	await cursorOn("Second");
@@ -4163,7 +4163,7 @@ check("a task in review opens as a page: the run's last answer, then the files i
 	mkdirSync(join(cwd, "look"), { recursive: true });
 	// The run's session, as pi keeps one where the server reads them (PI_CODING_AGENT_DIR): the mark, and what it said.
 	const session = SessionManager.create(cwd);
-	session.appendCustomMessageEntry("spec-task", "run it", false, { spec: "look", task: "1", title: "Add the window", done: [], then: [] });
+	session.appendCustomMessageEntry("spec-task", "run it", false, { spec: "look", task: "1", title: "Add the window", done: [] });
 	session.appendMessage({ role: "assistant", content: [{ type: "text", text: "The window opens outward: the design did not say which way.\n\nI left the latch for task 2.\n\nChecks: npm test — 3 passed" }], api: "x", provider: "x", model: "x", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() });
 	// What it changed, uncommitted, and the plan it was run from.
 	writeFileSync(join(cwd, "look", "window.js"), "export const window = 'open';\n");

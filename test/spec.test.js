@@ -1015,7 +1015,7 @@ function ran(t, { plan = PLAN, name = "email-auth", repository = true } = {}) {
   };
   spec(pi);
   const ui = { notify: (text, type) => notes.push({ text, type }) };
-  const marked = (mark) => ({ spec: name, done: [], then: [], model: null, effort: null, ...mark });
+  const marked = (mark) => ({ spec: name, done: [], model: null, effort: null, ...mark });
   return {
     cwd,
     dir,
@@ -1157,18 +1157,19 @@ test("git이 아닌 폴더에서는 받아들일 때 체크만 하고, 커밋 �
 // --- which task a session is a run of ---
 
 test("표식은 세션의 숨긴 메시지에서 읽는다 — newSession이 확장을 다시 만들어 기억이 남지 않으므로", () => {
-  const mark = { spec: "email-auth", task: "2.1", title: "Cut the board", done: ["1"], then: ["2.2"], model: "faux/cheap", effort: "low" };
+  const mark = { spec: "email-auth", task: "2.1", title: "Cut the board", done: ["1"], model: "faux/cheap", effort: "low" };
   const entries = [
     { type: "message", message: { role: "user" } },
     { type: "custom_message", customType: "spec-waiting", details: undefined },
-    { type: "custom_message", customType: "spec-task", details: mark },
+    // An older run's mark names the tasks queued after it; there is no queue now, and it is not read.
+    { type: "custom_message", customType: "spec-task", details: { ...mark, then: ["2.2"] } },
     { type: "message", message: { role: "assistant" } },
   ];
   assert.deepEqual(taskMark(entries), mark);
   assert.equal(taskMark(entries.filter((entry) => entry.customType !== "spec-task")), null, "작업의 실행이 아닌 세션");
   assert.equal(taskMark([{ type: "custom_message", customType: "spec-task", details: { spec: "x" } }]), null, "모양이 다른 표식은 없는 것으로");
   const older = { spec: "email-auth", task: "1", title: "Add the door", done: [] };
-  assert.deepEqual(taskMark([{ type: "custom_message", customType: "spec-task", details: older }]), { ...older, then: [], model: null, effort: null }, "큐가 없던 표식은 하나짜리 큐다, 모델은 세션의 것");
+  assert.deepEqual(taskMark([{ type: "custom_message", customType: "spec-task", details: older }]), { ...older, model: null, effort: null }, "모델이 없던 표식은 세션의 모델로");
 });
 
 test("보고는 마지막 답이다 — 본문은 `Checks:` 줄을 뺀 것, 검사는 그 줄; 없으면 none, 인용한 지시문에는 속지 않는다", () => {
@@ -1206,12 +1207,12 @@ test("/spec-run은 새 세션을 열고, 그 안에 지시문과 표식과 친 �
   assert.equal(hidden.sendMessage.customType, "spec-task");
   assert.equal(hidden.sendMessage.display, false, "화면에는 안 보인다");
   assert.equal(hidden.options.deliverAs, "nextTurn");
-  assert.deepEqual(hidden.sendMessage.details, { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [], model: null, effort: null }, "표식은 세션이 들고 간다");
+  assert.deepEqual(hidden.sendMessage.details, { spec: "email-auth", task: "1", title: "Add the door", done: [], model: null, effort: null }, "표식은 세션이 들고 간다");
   assert.equal(shown.sendUserMessage, "/spec-run 1", "보이는 것은 친 명령");
 });
 
 test("지시문은 Kiro의 실행 규칙이다 — 세 문서를 먼저, 이 작업만, 요구사항에 비추어, 그리고 멈춤", () => {
-  const said = taskPrompt({ spec: "email-auth", task: "2.1", title: "Cut the board", done: ["1"], then: [], model: null, effort: null });
+  const said = taskPrompt({ spec: "email-auth", task: "2.1", title: "Cut the board", done: ["1"], model: null, effort: null });
   assert.match(said, /Then \.octave\/specs\/email-auth\/notes\.md, if it is there/, "앞 작업들이 남긴 메모를 읽는다");
   assert.match(said, /append it to \.octave\/specs\/email-auth\/notes\.md/, "뒤 작업이 알아야 할 것만 남긴다");
   assert.match(said, /If there is nothing, write nothing/);
@@ -1240,7 +1241,7 @@ test("승인이 끝나지 않은 스펙은 돌리지 않고, 무엇이 기다리
   assert.match(pi.notes[0].text, /\/spec-approve/);
 });
 
-test("번호를 주면 그 작업, 안 주면 다음 작업, 묶음을 주면 그 하위 — Kiro의 하위부터", async (t) => {
+test("번호를 주면 그 작업, 안 주면 다음 작업, 묶음을 주면 그 하위 중 남은 첫 것 — Kiro의 하위부터", async (t) => {
   const pi = fakePi("minkyojung/email-auth");
   t.after(pi.cleanup);
   pi.plan("email-auth", PLAN.replace("- [ ] 1.", "- [x] 1."));
@@ -1250,8 +1251,8 @@ test("번호를 주면 그 작업, 안 주면 다음 작업, 묶음을 주면 �
   await pi.runTask("2.2");
   assert.equal(pi.done[2].sendMessage.details.task, "2.2");
   await pi.runTask("2");
-  assert.equal(pi.done[4].sendMessage.details.task, "2.1", "묶음은 그 하위 전부 — 하위부터");
-  assert.deepEqual(pi.done[4].sendMessage.details.then, ["2.2"], "나머지 하위가 큐로 따라온다 (Kiro의 Start task on a heading)");
+  assert.equal(pi.done[4].sendMessage.details.task, "2.1", "묶음은 그 하위 중 남은 첫 것");
+  assert.equal("then" in pi.done[4].sendMessage.details, false, "하나만 — 나머지 하위는 사람이 차례로 돌린다");
 });
 
 test("없는 번호, 이미 끝난 작업, 전부 끝남 — 알리기만 한다", async (t) => {
@@ -1307,7 +1308,7 @@ test("작업의 _Done when:_ 명령은 받아들일 때 앱이 커밋 전에 돌
   pi.plan("email-auth", "# Plan\n\n- [ ] 1. Add the door\n  - _Done when: `npm test -- door` passes_\n- [ ] 2. Hang the sign\n  - _Done when: `npm run fail-check`_\n- [ ] 3. Paint it\n");
   pi.setDirty([" M door.js"]);
   pi.setEntries([
-    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] } },
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [] } },
     { type: "message", message: { role: "assistant", content: [{ type: "text", text: "Done.\nChecks: none" }] } },
   ]);
   await pi.settle();
@@ -1322,7 +1323,7 @@ test("작업의 _Done when:_ 명령은 받아들일 때 앱이 커밋 전에 돌
   again.plan("email-auth", "# Plan\n\n- [x] 1. Add the door\n- [ ] 2. Hang the sign\n  - _Done when: `npm run fail-check`_\n- [ ] 3. Paint it\n");
   again.setDirty([" M sign.js"]);
   again.setEntries([
-    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "2", title: "Hang the sign", done: ["1"], then: [] } },
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "2", title: "Hang the sign", done: ["1"] } },
     { type: "message", message: { role: "assistant", content: [{ type: "text", text: "Done.\nChecks: npm run fail-check — passed" }] } },
   ]);
   await again.settle();
@@ -1337,7 +1338,7 @@ test("작업의 _Done when:_ 명령은 받아들일 때 앱이 커밋 전에 돌
   none.plan("email-auth");
   none.setDirty([" M x.js"]);
   none.setEntries([
-    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] } },
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [] } },
     { type: "message", message: { role: "assistant", content: [{ type: "text", text: "Done.\nChecks: none" }] } },
   ]);
   await none.settle();
@@ -1353,7 +1354,7 @@ test("저장소의 검사(config.toml)가 작업의 것보다 먼저, 순서대�
   pi.plan("email-auth", "# Plan\n\n- [ ] 1. Add the door\n  - _Done when: `npm test -- door`_\n- [ ] 2. Hang the sign\n");
   pi.setDirty([" M door.js"]);
   pi.setEntries([
-    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] } },
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [] } },
     { type: "message", message: { role: "assistant", content: [{ type: "text", text: "Done.\nChecks: none" }] } },
   ]);
   await pi.settle();
@@ -1369,7 +1370,7 @@ test("저장소의 검사(config.toml)가 작업의 것보다 먼저, 순서대�
   blocked.plan("email-auth");
   blocked.setDirty([" M door.js"]);
   blocked.setEntries([
-    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] } },
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [] } },
     { type: "message", message: { role: "assistant", content: [{ type: "text", text: "Done.\nChecks: none" }] } },
   ]);
   await blocked.settle();
@@ -1385,7 +1386,7 @@ test("저장소의 검사(config.toml)가 작업의 것보다 먼저, 순서대�
   wrong.plan("email-auth", "# Plan\n\n- [ ] 1. Add the door\n  - _Done when: `npm test -- door`_\n");
   wrong.setDirty([" M door.js"]);
   wrong.setEntries([
-    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] } },
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [] } },
     { type: "message", message: { role: "assistant", content: [{ type: "text", text: "Done.\nChecks: none" }] } },
   ]);
   await wrong.settle();
@@ -1399,7 +1400,7 @@ test("턴이 끝나면 표식을 보고 볼 준비가 됐다고 한다 — 한 �
   pi.plan("email-auth");
   pi.setDirty([" M door.js"]);
   pi.setEntries([
-    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] } },
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [] } },
     { type: "message", message: { role: "assistant", content: [{ type: "text", text: "The door is in.\nChecks: npm test — 4 passed" }] } },
   ]);
   await pi.settle();
@@ -1410,7 +1411,7 @@ test("턴이 끝나면 표식을 보고 볼 준비가 됐다고 한다 — 한 �
 
   // The person asks for a change in the same session: another turn, another answer.
   pi.setEntries([
-    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: [] } },
+    { type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [] } },
     { type: "message", message: { role: "assistant", content: [{ type: "text", text: "The door is in.\nChecks: npm test — 4 passed" }] } },
     { type: "message", message: { role: "user", content: "Make it open outward." } },
     { type: "message", message: { role: "assistant", content: [{ type: "text", text: "It opens outward now.\nChecks: npm test — 5 passed" }] } },
@@ -1538,18 +1539,21 @@ test("실제 pi 세션에서 작업 셋을 이어서: 저마다 자기 세션에
   assert.ok(told > line, "지시문은 그 줄 뒤, 같은 턴에");
   for (const doc of ["requirements.md", "design.md", "tasks.md"]) assert.ok(texts[told].includes(`.octave/specs/email-auth/${doc}`), doc);
 
-  // The rest as one command: 2.1 and then 2.2, each in a session of its own,
-  // the second started when the first is accepted — no second /spec-run.
+  // 2.1, then 2.2, each in a session of its own and each run by the person:
+  // accepting one starts nothing — the next is asked for once it is in.
   assert.equal(runtime.session.model.id, "strong", "스펙의 세션은 강한 모델로");
-  await runtime.session.prompt("/spec-run 2.1 2.2 faux/cheap low");
+  await runtime.session.prompt("/spec-run 2.1 faux/cheap low");
   await until("2.1의 턴이 끝났다", () => answered("The board is cut."));
-  assert.equal(subjects().length, 2, "받아들이기 전에는 커밋도, 2.2도 없다");
+  assert.equal(subjects().length, 2, "받아들이기 전에는 커밋이 없다");
   await runtime.session.prompt("/spec-done 2.1");
-  await until("2.1을 받아들이자 2.2가 제 세션에서 돌아 끝났다", () => subjects().length === 3 && answered("It is painted."));
+  await until("2.1이 커밋됐다", () => subjects().length === 3);
+  assert.equal(answered("It is painted."), false, "받아들여도 2.2는 시작하지 않는다");
+  await runtime.session.prompt("/spec-run 2.2 faux/cheap low");
+  await until("2.2가 제 세션에서 돌아 끝났다", () => answered("It is painted."));
   await runtime.session.prompt("/spec-done 2.2");
   await until("2.2가 커밋됐다", () => subjects().length === 4);
 
-  assert.equal(runtime.session.model.id, "cheap", "작업의 세션은 청한 모델로 — 큐의 마지막 세션까지");
+  assert.equal(runtime.session.model.id, "cheap", "작업의 세션은 청한 모델로");
   assert.equal(runtime.session.thinkingLevel, "low", "청한 effort로");
 
   assert.deepEqual(subjects(), ["Paint it", "Cut the board", "Add the door", "app"], "2.1 뒤에 2.2, 각각 커밋 하나");
@@ -1566,89 +1570,68 @@ test("실제 pi 세션에서 작업 셋을 이어서: 저마다 자기 세션에
   assert.deepEqual(secondFiles, [".octave/specs/email-auth/tasks.md", "paint.js"], "마지막은 자기 것과 친 칸만");
 });
 
-// --- /spec-run with several tasks: a queue, each in a session of its own ---
+// --- one task a run: accepting one never starts another ---
 
-test("번호 여럿을 주면 차례로 — 앞 것을 받아들이면 다음이 제 세션에서 시작하고, 표식이 남은 줄을 들고 간다", async (t) => {
+test("받아들여도 다음은 시작하지 않는다 — 옛 실행의 표식이 다음 작업을 들고 있어도; 다음 차례만 말한다", async (t) => {
   const pi = fakePi("minkyojung/email-auth");
   t.after(pi.cleanup);
   pi.plan("email-auth");
-  // Each run writes something, as a task does: the fake's status says so
-  // from the turn on, and nothing once it is committed.
-  pi.eachTurnWrites([" M door.js"]);
-  await pi.runTask("1 2.1 2.2");
-  await pi.chained();
-  assert.equal(pi.sessions.length, 1, "받아들이기 전에는 다음이 시작하지 않는다");
-  assert.match(pi.notes[0].text, /1 is ready to look at/);
-  assert.match(pi.notes[0].text, /2\.1 starts once 1 is accepted/, "다음이 무엇을 기다리는지");
+  // A run from before there was one task a run: its mark still names the task after it.
+  pi.setEntries([{ type: "custom_message", customType: "spec-task", details: { spec: "email-auth", task: "1", title: "Add the door", done: [], then: ["2.1"] } }]);
+  pi.setDirty([" M door.js"]);
   await pi.mark("spec-done", "1");
   await pi.chained();
-  assert.equal(pi.sessions.length, 2);
-  assert.match(pi.notes[1].text, /1 is done, in commit abc1234\. 2\.1 starts next/, "받아들인 알림이 다음이 시작한다고 말한다");
-  await pi.mark("spec-done", "2.1");
-  await pi.chained();
-  await pi.mark("spec-done", "2.2");
-  await pi.chained();
-  assert.equal(pi.sessions.length, 3, "작업마다 세션 하나");
-  assert.deepEqual(pi.turns, ["/spec-run 1", "/spec-run 2.1", "/spec-run 2.2"], "차례로");
-  const marks = pi.done.filter((one) => one.sendMessage).map((one) => one.sendMessage.details);
-  assert.deepEqual(marks.map((mark) => [mark.task, mark.then, mark.done]), [
-    ["1", ["2.1", "2.2"], []],
-    ["2.1", ["2.2"], ["1"]],
-    ["2.2", [], ["1", "2.1"]],
-  ], "남은 줄과 그때까지 받아들여진 것");
-  assert.equal(pi.tasks("email-auth"), PLAN.replaceAll("- [ ]", "- [x]"), "셋 다 받아들여졌고 2가 따라갔다");
-  assert.deepEqual(pi.gits.filter((args) => args[0] === "commit").length, 3, "커밋 셋");
-  assert.match(pi.notes.at(-1).text, /last one/);
+  assert.equal(pi.gits.filter((args) => args[0] === "commit").length, 1, "받아들인 것은 커밋된다");
+  assert.deepEqual(pi.sessions, [], "새 세션은 없다 — 2.1은 사람이 돌린다");
+  assert.match(pi.notes.at(-1).text, /1 is done, in commit abc1234\. Next is 2\.1 — \/spec-run/);
 });
 
-test("바뀐 것이 없으면 볼 것이 없다고 하고 큐는 거기서 멈춘다 — 안 한 것을 지나치지 않는다", async (t) => {
+// --- /spec-run with several numbers: refused, one task a run ---
+
+test("번호 여럿은 하나씩이라고 말하고 아무것도 시작하지 않는다 — 작업은 보고 받아들인 뒤 다음을 돌린다", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  pi.plan("email-auth");
+  await pi.runTask("1 2.1 2.2");
+  assert.deepEqual(pi.sessions, []);
+  assert.match(pi.notes.at(-1).text, /One task at a time: \/spec-run email-auth 1\./);
+});
+
+test("바뀐 것이 없으면 볼 것이 없다고 하고 칸은 그대로다", async (t) => {
   const pi = fakePi("minkyojung/email-auth");
   t.after(pi.cleanup);
   pi.plan("email-auth");
   pi.eachTurnWrites([]);
-  await pi.runTask("1 2.1");
+  await pi.runTask("1");
   await pi.chained();
-  assert.equal(pi.sessions.length, 1, "두 번째는 시작하지 않았다");
+  assert.equal(pi.sessions.length, 1);
   assert.equal(pi.tasks("email-auth"), PLAN, "아무것도 체크되지 않았다");
   assert.equal(pi.notes.at(-1).type, "warning");
   assert.match(pi.notes.at(-1).text, /1 changed nothing, so there is nothing to look at/);
 });
 
-test("큐의 번호는 전부 먼저 본다 — 없거나 끝난 번호가 있으면 하나도 시작하지 않는다; 같은 번호는 한 번", async (t) => {
+test("하위가 다 끝난 묶음은 끝난 것이다", async (t) => {
   const pi = fakePi("minkyojung/email-auth");
   t.after(pi.cleanup);
-  pi.plan("email-auth", PLAN.replace("- [ ] 1.", "- [x] 1."));
-  await pi.runTask("2.1 9");
-  await pi.runTask("2.1 1");
-  assert.deepEqual(pi.sessions, []);
-  assert.match(pi.notes[0].text, /no task 9/i);
-  assert.match(pi.notes[1].text, /1 is already done/i);
   pi.plan("all-of-two", PLAN.replace("- [ ] 2.1", "- [x] 2.1").replace("- [ ] 2.2", "- [x] 2.2"));
   await pi.runTask("all-of-two 2");
-  assert.match(pi.notes[2].text, /2 is already done/i, "하위가 다 끝난 묶음도 끝난 것이다");
-  pi.notes.length = 2;
-  pi.eachTurnWrites([" M paint.js"]);
-  await pi.runTask("email-auth 2.2 2.2 2.1");
-  await pi.mark("spec-done", "email-auth 2.1");
-  await pi.chained();
-  assert.deepEqual(pi.done.filter((one) => one.sendMessage).map((one) => one.sendMessage.details.task), ["2.1", "2.2"], "문서의 순서로, 한 번씩 — 작업은 앞 작업 위에 쌓인다");
-  assert.match(pi.notes[3].text, /2\.2 starts next/);
+  assert.deepEqual(pi.sessions, []);
+  assert.match(pi.notes.at(-1).text, /2 is already done/i);
 });
 
 // --- the model and the effort a run is asked for ---
 
-test("모델과 effort는 명령의 낱말로 — 새 세션이 열리자마자 그 인스턴스가 맞추고, 큐를 따라 내려간다", async (t) => {
+test("모델과 effort는 명령의 낱말로 — 새 세션이 열리자마자 그 인스턴스가 맞춘다", async (t) => {
   const pi = fakePi("minkyojung/email-auth");
   t.after(pi.cleanup);
   pi.plan("email-auth");
   pi.eachTurnWrites([" M door.js"]);
-  await pi.runTask("faux/cheap 1 low 2.1");
-  await pi.mark("spec-done", "1");
+  await pi.runTask("faux/cheap 1 low");
   await pi.chained();
-  assert.equal(pi.sessions.length, 2);
-  assert.deepEqual(pi.set, ["faux/cheap", "low", "faux/cheap", "low"], "세션마다, 첫 턴 전에");
+  assert.equal(pi.sessions.length, 1);
+  assert.deepEqual(pi.set, ["faux/cheap", "low"], "첫 턴 전에");
   const marks = pi.done.filter((one) => one.sendMessage).map((one) => one.sendMessage.details);
-  assert.deepEqual(marks.map((mark) => [mark.task, mark.model, mark.effort]), [["1", "faux/cheap", "low"], ["2.1", "faux/cheap", "low"]], "표식이 들고 간다");
+  assert.deepEqual(marks.map((mark) => [mark.task, mark.model, mark.effort]), [["1", "faux/cheap", "low"]], "표식이 들고 간다");
   assert.deepEqual(pi.notes.filter((note) => note.type !== "info"), [], "군말 없이");
 });
 

@@ -29,17 +29,10 @@ export interface TaskMark {
 	/** The tasks already done when the run began. */
 	done: string[];
 	/**
-	 * The tasks to run after this one, in order — the rest of a `/spec-run 1
-	 * 2.1 2.2`. Each is started when the one before it is checked off, in a
-	 * session of its own like this one; empty for a run of one task.
-	 */
-	then: string[];
-	/**
 	 * The model to run it on, as `provider/id`, and its thinking level — or
 	 * null for whatever the session opens on. A spec is written by a strong
 	 * model and its tasks can be run by a cheaper one (spec-mode.md 3절 5);
-	 * the choice is made once, when the run is asked for, and carries down
-	 * the queue.
+	 * the choice is made when the run is asked for.
 	 */
 	model: string | null;
 	effort: string | null;
@@ -81,7 +74,7 @@ export function taskMarkEntry(entries: readonly unknown[]): { id: string; mark: 
 		const word = (given: unknown) => (typeof given === "string" ? given : null);
 		return {
 			id: typeof entry.id === "string" ? entry.id : "",
-			mark: { spec: details.spec, task: details.task, title: details.title, done: numbers(details.done), then: numbers(details.then), model: word(details.model), effort: word(details.effort) },
+			mark: { spec: details.spec, task: details.task, title: details.title, done: numbers(details.done), model: word(details.model), effort: word(details.effort) },
 		};
 	}
 	return null;
@@ -146,8 +139,6 @@ export interface TaskRun {
 	spec: string;
 	task: string;
 	title: string;
-	/** The tasks queued after it when it was started. */
-	then: string[];
 	/** The session's id, which the commit accepting it carries as `Session:`. */
 	session: string;
 	/** When the session was last written to, in milliseconds. */
@@ -183,7 +174,7 @@ export async function runSessions(cwd: string, sessionDir?: string): Promise<{ i
 
 /** The runs of every task, oldest first — the order the work was done in. */
 export async function taskRuns(cwd: string, sessionDir?: string): Promise<TaskRun[]> {
-	return (await runSessions(cwd, sessionDir)).reverse().map(({ id, at, mark }) => ({ spec: mark.spec, task: mark.task, title: mark.title, then: mark.then, session: id, at }));
+	return (await runSessions(cwd, sessionDir)).reverse().map(({ id, at, mark }) => ({ spec: mark.spec, task: mark.task, title: mark.title, session: id, at }));
 }
 
 /**

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { blankBoxes } from "../specTasks.ts";
 import test from "node:test";
 
-import { doneWhenOf, nextTask, parseTasks, progressOf, runsOf, runsUnder, taskToRun, withBox, withDone, withParents } from "../specTasks.ts";
+import { doneWhenOf, nextTask, parseTasks, progressOf, runsUnder, withBox, withDone, withParents } from "../specTasks.ts";
 
 /** Kiro's own example, from its spec prompt — the form our agent is told to write. */
 const KIRO = `# Implementation Plan
@@ -82,15 +82,6 @@ test("전부 끝나면 다음은 없다 — 묶음뿐인 상위가 열려 있어
   assert.equal(nextTask(parseTasks(done)), null);
 });
 
-test("번호로 고르면 그 작업, 묶음을 고르면 그 하위 중 남은 첫 번째", () => {
-  const tasks = parseTasks(KIRO);
-  assert.equal(taskToRun(tasks, "2.2").title, "Implement User model with validation");
-  assert.equal(taskToRun(tasks, "2").number, "2.1", "묶음은 일이 아니다 — 하위부터");
-  assert.equal(taskToRun(parseTasks(withDone(KIRO, new Set(["2.1"]))), "2").number, "2.2");
-  assert.equal(taskToRun(parseTasks(withDone(KIRO, new Set(["2.1", "2.2"]))), "2").number, "2", "하위가 다 끝났으면 묶음 그대로 — 이미 끝났다고 말할 수 있게");
-  assert.equal(taskToRun(tasks, "3"), null);
-});
-
 // --- writing the boxes back ---
 
 test("칸만 고친다 — 나머지는 한 바이트도 그대로", () => {
@@ -133,15 +124,6 @@ test("번호 하나가 뜻하는 실행 — 잎은 그것, 묶음은 남은 하�
   assert.equal(runsUnder(tasks, "9"), null);
 });
 
-test("번호 여럿은 겹쳐도 한 번씩, 문서의 순서로", () => {
-  const tasks = parseTasks(KIRO);
-  const numbers = (given) => runsOf(tasks, given).runs.map((task) => task.number);
-  assert.deepEqual(numbers(["2", "2.2"]), ["2.1", "2.2"], "2가 2.2를 품는다");
-  assert.deepEqual(numbers(["2.2", "1"]), ["1", "2.2"], "준 순서가 아니라 문서의 순서");
-  assert.deepEqual(numbers(["2.2", "2.2"]), ["2.2"]);
-  assert.deepEqual(runsOf(tasks, ["1", "9", "2"]), { runs: [], missing: "9" }, "없는 번호가 있으면 아무것도 없고 그 번호를 말한다");
-});
-
 test("끝났다는 기준의 줄(_Done when:_)은 작업이 아니다 — 작업은 번호가 있는 줄뿐", () => {
   const plan = "# 구현 계획\n\n- [ ] 1. 인사 함수를 더한다\n  - greet.js\n  - _Requirements: 1.1_\n  - _Done when: `npm test -- greet` passes_\n\n- [ ] 2. 화면에 잇는다\n- [x] 2.1 버튼\n  - _Done when: 버튼을 누르면 인사가 보인다_\n";
   assert.deepEqual(
@@ -179,8 +161,7 @@ test("검토 중인 작업 — 커밋은 있으나 사람이 받아들이지 않
   assert.deepEqual(progressOf(tasks, reviewed).next, "2.2");
   assert.deepEqual(progressOf(tasks, reviewed).review, ["1", "2.1"], "run and not marked: in review, by number");
   assert.deepEqual(progressOf(parseTasks(KIRO.replace("- [ ] 2.1", "- [x] 2.1")), reviewed).review, ["1"], "accepted, 2.1 is done and not in review");
-  assert.deepEqual(runsOf(tasks, ["2"], reviewed).runs.map((t) => t.number), ["2.2"]);
-  assert.equal(taskToRun(tasks, "2", reviewed).number, "2.2");
+  assert.deepEqual(runsUnder(tasks, "2", reviewed).map((t) => t.number), ["2.2"]);
   assert.equal(nextTask(tasks, new Set(["1", "2.1", "2.2"])), null, "전부 검토 중이면 다음은 없다");
 });
 

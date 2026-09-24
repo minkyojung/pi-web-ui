@@ -57,7 +57,7 @@ import { approve, type SpecState, specState } from "./specApproval.ts";
 import { inheritedSpecs } from "./specOrigin.ts";
 import { taskResults } from "./specResults.ts";
 import { inReview, type Report, reportIn, runSessions, TASK_MARK, type TaskMark, taskMark, taskRuns } from "./specRuns.ts";
-import { doneWhenOf, nextTask, parseTasks, runsOf, runsUnder, type Task, taskToRun, withBox, withDone, withParents } from "./specTasks.ts";
+import { doneWhenOf, nextTask, parseTasks, runsUnder, type Task, withBox, withDone, withParents } from "./specTasks.ts";
 
 /** A workspace's placeholder name: a city, or a city of a later round (`lisbon-v2`). */
 const PLACEHOLDER = new RegExp(`^(?:${CITIES.join("|")})(?:-v\\d+)?$`);
@@ -523,8 +523,7 @@ export async function endRun(pi: ExtensionAPI, { cwd, ui }: Speaking, mark: Task
 		ui.notify(`${mark.task} changed nothing, so there is nothing to look at; it is still to do.`, "warning");
 		return;
 	}
-	const going = mark.then[0];
-	ui.notify(`${mark.task} is ready to look at. When it is right, accept it with /spec-done ${mark.task}${repository ? " — that makes its commit" : ""}; if it is not, say what to change.${going ? ` ${going} starts once ${mark.task} is accepted.` : ""}`, "info");
+	ui.notify(`${mark.task} is ready to look at. When it is right, accept it with /spec-done ${mark.task}${repository ? " — that makes its commit" : ""}; if it is not, say what to change.`, "info");
 }
 
 /**
@@ -623,7 +622,7 @@ async function verifyAll(pi: ExtensionAPI, cwd: string, file: string, task: stri
  * in the file changes: the boxes are what the plan's fingerprint leaves out
  * (specApproval.ts), so this never asks for the plan to be approved again.
  */
-type Accepting = RunSession & { isIdle(): boolean; sessionManager: { buildContextEntries(): unknown[]; getSessionId(): string } };
+type Accepting = Speaking & { isIdle(): boolean; sessionManager: { buildContextEntries(): unknown[]; getSessionId(): string } };
 
 async function markTask(pi: ExtensionAPI, ctx: Accepting, args: string, box: "x" | "-" | " "): Promise<void> {
 	const { cwd, ui, isIdle } = ctx;
@@ -728,9 +727,8 @@ async function markTask(pi: ExtensionAPI, ctx: Accepting, args: string, box: "x"
 	const at = await git(["rev-parse", "--short", "HEAD"]);
 	const failed = verified.filter((v) => v.exit !== 0);
 	const checked = verified.length === 0 ? "" : failed.length === 0 ? ` ${verified.length === 1 ? `\`${verified[0]!.name}\` passed` : `${verified.length} checks passed`}.` : ` ${failed.map((v) => `\`${v.name}\` failed (exit ${v.exit})`).join(", ")} — see ${APP_DIR_NAME}/runs/${number}/.`;
-	const going = run?.mark.then[0];
-	ui.notify(`${number} is done${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}.${checked} ${going ? `${going} starts next.` : rest ? `Next is ${rest.number} — /spec-run` : "That was the last one."}`, "info");
-	if (run && going) await runNext(ctx, cwd, run.mark);
+	// Which is next, and no more: the person runs it, once they have this one.
+	ui.notify(`${number} is done${at.code === 0 ? `, in commit ${at.stdout.trim()}` : ""}.${checked} ${rest ? `Next is ${rest.number} — /spec-run` : "That was the last one."}`, "info");
 }
 
 /**
@@ -748,9 +746,9 @@ async function reviewedOf(cwd: string, spec: string): Promise<Set<string>> {
 
 /**
  * A session is opened for `mark`'s task, told what it is, and sent the line
- * the person typed. The rest of the queue, `mark.then`, rides on the mark:
- * the next is started the same way when this task is accepted (markTask),
- * since accepting is what commits it and the next builds on that commit.
+ * the person typed. One task: the next is the person's to run once this one
+ * is accepted (markTask), since accepting is what commits it and the next
+ * builds on that commit.
  *
  * Started, not waited for: pi's sendUserMessage runs the turn to its end
  * before it resolves, and newSession does not return until withSession
@@ -767,35 +765,6 @@ async function startRun(ctx: Pick<ExtensionCommandContext, "newSession">, cwd: s
 			});
 		},
 	});
-}
-
-/** The session a run was opened in, as much of it as the chain uses: pi's ReplacedSessionContext, which the package does not export. */
-type RunSession = Speaking & Pick<ExtensionCommandContext, "newSession">;
-
-/**
- * After `mark`'s task is accepted: the next task of its queue, in a session
- * of its own. The list is read from the file — what the queue was told at
- * its start may be stale by now — and a task that is gone or done stops the
- * queue where it is rather than stepping past it.
- */
-async function runNext(session: RunSession, cwd: string, mark: TaskMark): Promise<void> {
-	const [number, ...rest] = mark.then;
-	if (!number) return;
-	const left = [number, ...rest].join(", ");
-	const not = `${left} ${rest.length > 0 ? "were" : "was"} not started`;
-	let tasks: Task[];
-	try {
-		tasks = parseTasks(readFileSync(join(cwd, SPECS_DIR, mark.spec, "tasks.md"), "utf8"));
-	} catch {
-		session.ui.notify(`${SPECS_DIR}${mark.spec}/tasks.md is not there, so ${not}.`, "warning");
-		return;
-	}
-	const task = taskToRun(tasks, number);
-	if (!task || task.done) {
-		session.ui.notify(`${mark.spec} has no task ${number} left to run, so ${not}.`, "warning");
-		return;
-	}
-	await startRun(session, cwd, { spec: mark.spec, task: task.number, title: task.title, done: tasks.filter((other) => other.done).map((other) => other.number), then: rest, model: mark.model, effort: mark.effort });
 }
 
 /**
@@ -1091,24 +1060,26 @@ export default function spec(pi: ExtensionAPI): void {
 			const text = readFileSync(join(ctx.cwd, SPECS_DIR, chosen.name, "tasks.md"), "utf8");
 			const tasks = parseTasks(text);
 			const reviewed = await reviewedOf(ctx.cwd, chosen.name);
-			// Every number named is looked at before any is started: a queue with
-			// a task that is not there, or is done, is a question to go back with,
-			// not a run to stop halfway. A heading is its sub-tasks still to do,
-			// all of them in order — Kiro's Start on a heading — and numbers that
-			// overlap mean each run once, in the order the list stands: a task
-			// builds on the ones before it (runsOf).
-			const { runs, missing } = runsOf(tasks, numbers, reviewed);
-			if (missing !== null) {
-				ctx.ui.notify(`${chosen.name} has no task ${missing}.`, "info");
+			// One task a run: each is looked at and accepted before the next is
+			// run (markTask), and one working tree holds one task's changes.
+			if (numbers.length > 1) {
+				ctx.ui.notify(`One task at a time: /spec-run ${chosen.name} ${numbers[0]}. Run the next once you have accepted it.`, "info");
 				return;
 			}
-			const finished = numbers.find((number) => runsUnder(tasks, number, reviewed)?.length === 0);
-			if (finished !== undefined) {
-				ctx.ui.notify(`${finished} is already done. To have it done again, clear its box in ${SPECS_DIR}${chosen.name}/tasks.md first.`, "info");
+			// A heading named is its first sub-task still to do — Kiro's Start on
+			// a heading; a task named runs even when it is waiting to be looked
+			// at, which is running it again.
+			const named = numbers[0];
+			const runs = named === undefined ? null : runsUnder(tasks, named, reviewed);
+			if (named !== undefined && runs === null) {
+				ctx.ui.notify(`${chosen.name} has no task ${named}.`, "info");
 				return;
 			}
-			const queue = numbers.length > 0 ? runs : [nextTask(tasks, reviewed)].filter((task): task is Task => task !== null);
-			const [task, ...then] = queue;
+			if (named !== undefined && runs?.length === 0) {
+				ctx.ui.notify(`${named} is already done. To have it done again, clear its box in ${SPECS_DIR}${chosen.name}/tasks.md first.`, "info");
+				return;
+			}
+			const task = runs ? runs[0]! : nextTask(tasks, reviewed);
 			if (!task) {
 				ctx.ui.notify(reviewed.size > 0 && tasks.some((t) => reviewed.has(t.number) && !t.done) ? `Every task of ${chosen.name} has run; what is left is yours to look at — /spec-done to accept one, or name it to run it again.` : `Every task of ${chosen.name} is done.`, "info");
 				return;
@@ -1117,14 +1088,12 @@ export default function spec(pi: ExtensionAPI): void {
 			// A session of its own, as Kiro runs a task: the three documents are
 			// all it needs, and a dozen tasks in one conversation would not fit.
 			// The mark rides on the instructions, which is how the end of the turn
-			// knows what this session was — see taskMark. The rest of the queue
-			// rides with it, and is started task by task as each is checked off.
+			// knows what this session was — see taskMark.
 			await startRun(ctx, ctx.cwd, {
 				spec: chosen.name,
 				task: task.number,
 				title: task.title,
 				done: tasks.filter((other) => other.done).map((other) => other.number),
-				then: then.map((other) => other.number),
 				model,
 				effort,
 			});
