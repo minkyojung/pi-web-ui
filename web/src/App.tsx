@@ -256,7 +256,7 @@ export function App() {
 	const columns = useDefaultLayout({ id: "columns", storage: layoutStorage, panelIds: ["sidebar", "content"] });
 	const panes = useDefaultLayout({ id: "panes", storage: layoutStorage, panelIds: ["main", "pi"] });
 	// The note over the terminal, in the note's column: pi keeps its height.
-	const stack = useDefaultLayout({ id: "stack", storage: layoutStorage, panelIds: ["page", "terminal"] });
+	const stack = useDefaultLayout({ id: "stack", storage: layoutStorage, panelIds: ["page-pane", "terminal"] });
 	// Opening only, for the folded ring at the foot of the window: it is only
 	// ever pressed with the column away, and a press that could also fold it
 	// would be a guess about which way the column was.
@@ -686,7 +686,7 @@ export function App() {
 					    this to matter is a note that does not scroll, and room to scroll
 					    into is nothing to a page that has nowhere to go. */}
 					<ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1" defaultLayout={stack.defaultLayout} onLayoutChanged={stack.onLayoutChanged}>
-					<ResizablePanel id="page" minSize="20%" className="flex min-h-0 flex-col">
+					<ResizablePanel id="page-pane" minSize="20%" className="flex min-h-0 flex-col">
 					{page?.kind === "document" ? (
 						<Boundary name="document" hint="The file itself is untouched.">
 							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
