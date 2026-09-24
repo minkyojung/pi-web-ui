@@ -191,19 +191,26 @@ export function statusOf({ onRemote, pr }) {
  * whoever asks never waits, and what they get is the truth as of the last
  * answer. Nothing learnt yet is null; an `ask` that fails keeps what was
  * known and is not asked again until the next `staleMs`.
+ *
+ * `again(key)` is for the moment something here has made the last answer
+ * wrong — a pull request merged from the window — so that the next asking
+ * asks at once rather than half a minute on. An ask already under way when
+ * it is called began before the change, and its answer is kept but taken
+ * as already old.
  */
 export function remembered({ ask, onFresh, now = Date.now, staleMs }) {
 	/** key → what is known and when, and the ask under way if one is. */
 	const known = new Map();
-	return (key) => {
-		const had = known.get(key) ?? { at: -Infinity, answer: null, asking: null };
+	const get = (key) => {
+		const had = known.get(key) ?? { at: -Infinity, answer: null, asking: null, outdated: false };
 		known.set(key, had);
 		if (!had.asking && now() - had.at >= staleMs) {
 			// Started now, not on the next tick, and a throw on the way out is a failed ask.
 			had.asking = new Promise((resolve) => resolve(ask(key)))
 				.catch(() => null)
 				.then((answer) => {
-					had.at = now();
+					had.at = had.outdated ? -Infinity : now();
+					had.outdated = false;
 					had.asking = null;
 					if (answer === null) return;
 					had.answer = answer;
@@ -212,4 +219,11 @@ export function remembered({ ask, onFresh, now = Date.now, staleMs }) {
 		}
 		return had.answer;
 	};
+	get.again = (key) => {
+		const had = known.get(key);
+		if (!had) return;
+		had.at = -Infinity;
+		if (had.asking) had.outdated = true;
+	};
+	return get;
 }

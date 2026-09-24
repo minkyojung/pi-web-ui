@@ -27,7 +27,7 @@ import { runScript } from "./scripts.js";
 import { createServerProcess } from "./serverProcess.js";
 import { shellEnv } from "./shellEnv.js";
 import { addBranchWorktree, branchOf, changesIn, git, headOf, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
-import { clone, issues, login, pullRequests, repositories, repositoryName, signIn, signOut, standing } from "./github.js";
+import { clone, issues, login, mergePullRequest, pullRequests, repositories, repositoryName, signIn, signOut, standing } from "./github.js";
 import { KEYS, forget, gitEnv } from "./credentials.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
@@ -597,6 +597,23 @@ async function workspaces() {
  */
 const pullRequestsOf = remembered({ ask: (root) => branchesOf(root).then((branches) => pullRequests(root, branches)), onFresh: workspacesChanged, staleMs: 30_000 });
 
+/**
+ * The pull request of the workspace at `path` merged, from the foot of its
+ * window — and, when GitHub took it, the repository's pull requests asked
+ * about again at once, so the item says merged now rather than half a
+ * minute on.
+ */
+async function mergeFrom(path, number, method) {
+	const project = projectsOf(readSettings(), isCheckout).find((one) => one.worktrees.some((worktree) => worktree.path === path));
+	if (!project) return { error: "This workspace is not in the list." };
+	const merged = await mergePullRequest(path, number, method);
+	if (!merged.error) {
+		pullRequestsOf.again(project.path);
+		workspacesChanged();
+	}
+	return merged;
+}
+
 /** The branches the repository's workspaces are on now — what GitHub is asked about, and nothing else. */
 async function branchesOf(root) {
 	const project = projectsOf(readSettings(), isCheckout).find((p) => p.path === root);
@@ -1052,6 +1069,7 @@ function serveFolders() {
 	ipcMain.handle("workspace:archive", (_event, path, seen) => (devUrl ? null : archiveWorkspace(path, seen)));
 	ipcMain.handle("workspace:restore", (_event, path) => (devUrl ? null : restoreWorkspace(path)));
 	ipcMain.handle("workspace:setup", (_event, path) => (devUrl ? null : setUpAgain(path)));
+	ipcMain.handle("workspace:merge", (_event, path, number, method) => (devUrl ? null : mergeFrom(path, number, method)));
 	ipcMain.handle("run:state", (_event, path) => (devUrl ? null : runState(path)));
 	ipcMain.handle("run:start", (_event, path, id) => (devUrl ? null : startRun(path, typeof id === "string" ? id : null)));
 	ipcMain.handle("run:stop", (_event, path) => (devUrl ? null : runs.stop(path).then(() => runState(path))));

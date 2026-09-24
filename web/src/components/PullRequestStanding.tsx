@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { CheckIcon, CircleIcon, ExternalLinkIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, XIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import { cn } from "cn";
 import type { Mark, PullGlyph, PullRequestView, Said } from "../branchStanding";
@@ -46,9 +48,10 @@ function Saying({ said }: { said: Said }) {
  * merge (branchStanding.ts). Pointing at it brings up the rest, as GitHub's
  * merge box lists them: checks, conflicts, review, the base; and how big it
  * is. A check that failed opens the pull request's checks on GitHub, which is
- * where what each one printed is.
+ * where what each one printed is. When GitHub says nothing stands in the
+ * way, Merge — given `onMerge`, which only the shell can do.
  */
-export function PullRequestStanding({ view }: { view: PullRequestView }) {
+export function PullRequestStanding({ view, onMerge }: { view: PullRequestView; onMerge?: () => Promise<{ error?: string } | null> }) {
 	const said = view.said;
 	return (
 		<HoverCard openDelay={150} closeDelay={150}>
@@ -69,12 +72,72 @@ export function PullRequestStanding({ view }: { view: PullRequestView }) {
 						) : (
 							<Saying said={said} />
 						))}
+					{view.ready && onMerge && <Merge method={view.method} base={view.base} onMerge={onMerge} />}
 				</span>
 			</HoverCardTrigger>
 			<HoverCardContent side="top" align="start" className="w-80 p-3">
 				<PullRequestCard view={view} />
 			</HoverCardContent>
 		</HoverCard>
+	);
+}
+
+/** GitHub's own words for each way it merges, as its Merge button says them. */
+const WAYS: Record<string, string> = { MERGE: "Create a merge commit", SQUASH: "Squash and merge", REBASE: "Rebase and merge" };
+
+/**
+ * Merge, asked twice: a merge is not taken back from here, so the first press
+ * turns the button into Confirm merge, as GitHub's does, and the second
+ * merges. Confirm goes back to Merge on its own after a few seconds, on
+ * Escape, and when the focus leaves it. How it merges is the repository's
+ * default, said on pointing at it. What GitHub says against it — a check it
+ * requires, a conflict come to since — is said in a toast in gh's words;
+ * once merged, the item says so when the list does, which is asked at once.
+ */
+function Merge({ method, base, onMerge }: { method: string; base: string; onMerge: () => Promise<{ error?: string } | null> }) {
+	const [stage, setStage] = useState<"idle" | "confirm" | "merging">("idle");
+	useEffect(() => {
+		if (stage === "idle") return;
+		// Confirm lapses; Merging… gives up waiting for the list after a while, and is Merge again.
+		const timer = setTimeout(() => setStage("idle"), stage === "confirm" ? 4000 : 20_000);
+		return () => clearTimeout(timer);
+	}, [stage]);
+	return (
+		<Button
+			id="merge-pr"
+			variant="outline"
+			size="xs"
+			data-stage={stage}
+			// Confirm in the text's own colour: the one moment here that asks for a decision.
+			className={cn("ml-1 cursor-default font-normal", stage === "confirm" && "text-foreground")}
+			disabled={stage === "merging"}
+			title={`${WAYS[method] ?? "Merge"} into ${base}`}
+			onBlur={() => setStage((now) => (now === "confirm" ? "idle" : now))}
+			onKeyDown={(event) => event.key === "Escape" && setStage((now) => (now === "confirm" ? "idle" : now))}
+			onClick={async () => {
+				if (stage === "idle") return setStage("confirm");
+				setStage("merging");
+				const merged = await onMerge();
+				if (merged?.error || !merged) {
+					toast.error("Not merged", { description: merged?.error ?? "The shell could not be asked." });
+					setStage("idle");
+				}
+			}}
+		>
+			{stage === "confirm" ? (
+				"Confirm merge"
+			) : stage === "merging" ? (
+				<>
+					<Spinner className="size-3" />
+					Merging…
+				</>
+			) : (
+				<>
+					<GitMergeIcon />
+					Merge
+				</>
+			)}
+		</Button>
 	);
 }
 

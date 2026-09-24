@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { pullRequestsFromGraph, pullRequestsQuery } from "../electron/github.js";
+import { mergeArgs, pullRequestsFromGraph, pullRequestsQuery } from "../electron/github.js";
 
 /** GitHub's answer for three branches, as gh gave it on 2026-09-23: one open with a failed check, one merged, one it does not have. */
 const answer = JSON.stringify({
@@ -37,4 +37,15 @@ test("a check still running is pending, and anything that is not GitHub's answer
 	assert.deepEqual(pullRequestsFromGraph(running, ["a"]).get("a").checks, { total: 2, pending: 2, failed: 0 });
 	assert.equal(pullRequestsFromGraph("not json", ["a"]), null);
 	assert.equal(pullRequestsFromGraph(JSON.stringify({ errors: [{ message: "bad" }] }), ["a"]), null);
+});
+
+test("Merge asks gh the repository's own way, and nothing that is not a number and a way", () => {
+	assert.deepEqual(mergeArgs(29, "MERGE"), ["pr", "merge", "29", "--merge"]);
+	assert.deepEqual(mergeArgs(29, "SQUASH"), ["pr", "merge", "29", "--squash"]);
+	assert.deepEqual(mergeArgs(29, "REBASE"), ["pr", "merge", "29", "--rebase"]);
+	assert.equal(mergeArgs(29, ""), null, "not said: not guessed");
+	assert.equal(mergeArgs("29", "MERGE"), null);
+	assert.equal(mergeArgs(0, "MERGE"), null);
+	assert.equal(mergeArgs(29, "--admin"), null);
+	assert.ok(!mergeArgs(29, "MERGE").includes("--delete-branch"), "the branch is the repository's setting to delete, and gh would move this folder off it");
 });

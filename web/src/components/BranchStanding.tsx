@@ -5,7 +5,7 @@ import { standingStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { CreatePullRequest } from "./CreatePullRequest";
-import { loadList, usePageFolder, useWorkspaceList } from "./Repositories";
+import { loadList, usePageFolder, useWorkspaceList, workspaceShell } from "./Repositories";
 import { PullRequestStanding } from "./PullRequestStanding";
 import { WorkStanding } from "./WorkStanding";
 
@@ -47,10 +47,16 @@ export function BranchStanding({ onOpen }: { onOpen: (path: string) => void }) {
 	}, [waiting]);
 	const work = workOf(git);
 	const pull = pullRequestOf(git, status);
+	// Merging is the shell's: gh is there, and a browser tab has neither.
+	const shell = workspaceShell;
 	return (
 		<>
 			{work && <WorkStanding work={work} onOpen={onOpen} />}
-			{pull ? <PullRequestStanding view={pull} /> : offersPullRequest(git, status) && <CreatePullRequest />}
+			{pull ? (
+				<PullRequestStanding view={pull} onMerge={shell && here ? () => shell.merge(here, pull.number, pull.method) : undefined} />
+			) : (
+				offersPullRequest(git, status) && <CreatePullRequest />
+			)}
 		</>
 	);
 }

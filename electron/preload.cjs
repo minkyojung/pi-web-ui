@@ -96,7 +96,8 @@ contextBridge.exposeInMainWorld("pi", {
 	 * `restore` makes an archived workspace's folder again, from the branch it
 	 * kept, and opens it — `{ error }` when git will not have it. `setup`
 	 * runs the repository's setup command again in a workspace (`{ ran }`, or
-	 * `{ error }`), and `onSetup` says when one's setup is running (`"running"`)
+	 * `{ error }`), `merge` merges a workspace's pull request the repository's
+	 * own way (`{}`, or `{ error }` with what gh said), and `onSetup` says when one's setup is running (`"running"`)
 	 * or has ended (null). `onChange` says the list is to be asked for again;
 	 * the listeners return the way to stop listening.
 	 * The list is null in a dev run, where the dev server owns the folder.
@@ -113,6 +114,7 @@ contextBridge.exposeInMainWorld("pi", {
 		archive: (path, seen) => ipcRenderer.invoke("workspace:archive", path, seen),
 		restore: (path) => ipcRenderer.invoke("workspace:restore", path),
 		setup: (path) => ipcRenderer.invoke("workspace:setup", path),
+		merge: (path, number, method) => ipcRenderer.invoke("workspace:merge", path, number, method),
 		onSetup: (listen) => {
 			const handler = (_event, path, stage) => listen(path, stage);
 			ipcRenderer.on("workspace:setup", handler);

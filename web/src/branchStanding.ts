@@ -127,6 +127,8 @@ export interface PullRequestView {
 	size: { added: number; deleted: number; commits: number | null } | null;
 	/** How the repository merges by default — MERGE, SQUASH or REBASE — or "" when not said. */
 	method: string;
+	/** What it would be merged into, as `main`. */
+	base: string;
 }
 
 const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
@@ -181,7 +183,7 @@ function linesOf(status: BranchStatus, behind: number, base: string): Said[] {
 export function pullRequestOf(git: GitStanding | null, status: BranchStatus | undefined): PullRequestView | null {
 	if (!git || status?.number === undefined || !(status.state === "open" || status.state === "merged" || status.state === "closed")) return null;
 	const base = git.base ?? "the base";
-	const head = { number: status.number, title: status.title ?? "", url: status.url ?? null, method: status.method ?? "" };
+	const head = { number: status.number, title: status.title ?? "", url: status.url ?? null, method: status.method ?? "", base };
 	const size = status.added != null && status.deleted != null ? { added: status.added, deleted: status.deleted, commits: status.commits ?? null } : null;
 	if (status.state === "merged") return { ...head, glyph: "merged", said: { mark: null, text: "Merged", tone: "muted", label: "Merged" }, ready: false, lines: [], size };
 	if (status.state === "closed") return { ...head, glyph: "closed", said: { mark: null, text: "Closed", tone: "muted", label: "Closed without merging" }, ready: false, lines: [], size };

@@ -3968,6 +3968,46 @@ check("before a pull request, Create PR at the foot of the window sends /create-
 	}
 });
 
+// An open pull request GitHub says can be merged: Merge, asked twice, merges
+// it the repository's own way through the shell — stood in for here, and
+// refusing the first time as GitHub would for a check it requires.
+check("an open pull request that can be merged: Merge, then Confirm merge, asks the shell to merge it the repository's way, and a refusal is said", async ({ app, cwd }) => {
+	const stopStanding = await app.onNewDocument(`
+		if (sessionStorage.getItem("stand-in-for-merging") === "1") {
+		window.__merged = [];
+		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
+			repositories: { issues: async () => null },
+			onNewSpec: () => () => {},
+			workspaces: { list: async () => ({ projects: [{ path: "/r/demo", name: "demo", worktrees: [{ path: ${JSON.stringify(cwd)}, name: "tokyo", branch: "me/tokyo", status: { state: "open", number: 12, title: "Greet properly", url: "https://github.com/o/r/pull/12", review: "APPROVED", checks: { total: 2, pending: 0, failed: 0 }, merge: "CLEAN", method: "SQUASH" } }] }] }),
+				merge: async (path, number, method) => { window.__merged.push([path, number, method]); return window.__merged.length === 1 ? { error: 'Required status check "ci" is expected.' } : {}; },
+				create: async () => ({}), branches: async () => null, open: async () => {}, onChange: () => () => {}, first: async () => null } };
+		}`);
+	const merged = () => app.evaluate("JSON.stringify(window.__merged)");
+	const stage = () => app.evaluate("document.getElementById('merge-pr')?.dataset.stage ?? null");
+	try {
+		await app.evaluate(`sessionStorage.setItem("stand-in-for-merging", "1"); location.reload()`);
+		await until("Merge", async () => (await stage()) === "idle");
+		assert.equal(await app.evaluate("document.getElementById('merge-pr').title"), "Squash and merge into the base", "the repository's way, in GitHub's words");
+		await app.click("#merge-pr");
+		await until("Confirm merge", async () => (await stage()) === "confirm");
+		assert.equal(await app.evaluate("document.getElementById('merge-pr').textContent"), "Confirm merge");
+		assert.equal(await merged(), "[]", "one press merges nothing");
+		await app.click("#merge-pr");
+		await until("asked once", async () => (await merged()) === JSON.stringify([[cwd, 12, "SQUASH"]]));
+		await until("refused, and said", async () => ((await app.evaluate("document.querySelector('[data-sonner-toast]')?.textContent ?? ''")) ?? "").includes('Required status check "ci" is expected.'));
+		await until("Merge again", async () => (await stage()) === "idle");
+		await app.click("#merge-pr");
+		await until("Confirm merge again", async () => (await stage()) === "confirm");
+		await app.click("#merge-pr");
+		await until("merging", async () => (await stage()) === "merging");
+		assert.equal(JSON.parse(await merged()).length, 2);
+	} finally {
+		await stopStanding();
+		await app.evaluate(`sessionStorage.removeItem("stand-in-for-merging"); location.reload()`);
+		await until("the page back", () => app.evaluate("!!document.getElementById('chat')"));
+	}
+});
+
 // The other end of the new spec dialog: the page of the workspace it made.
 // The shell is stood in for, and says what it kept; the wire is watched for
 // what the page does about it. The line itself is stopped at the wire — the

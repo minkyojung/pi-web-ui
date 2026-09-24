@@ -92,7 +92,7 @@ export function StatusBench() {
 						return (
 							<div key={row.name} data-bench={row.name} className="grid grid-cols-[12rem_16rem_1fr] items-start gap-4">
 								<span className="pt-3.5 text-xs text-muted-foreground">{row.name}</span>
-								<Strip>{view && <PullRequestStanding view={view} />}</Strip>
+								<Strip>{view && <PullRequestStanding view={view} onMerge={() => new Promise((resolve) => setTimeout(() => resolve({ error: "Required status check \"ci\" is expected." }), 1200))} />}</Strip>
 								<div className="rounded-md border bg-popover p-3">{view && <PullRequestCard view={view} />}</div>
 							</div>
 						);

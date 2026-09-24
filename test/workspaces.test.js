@@ -194,6 +194,30 @@ test("an ask that fails keeps what was known, says nothing, and is not asked aga
 	assert.equal(c.asks.length, 3);
 });
 
+test("again: the next asking asks at once, and an answer already on its way when it was said is taken as old", async () => {
+	const c = cache();
+	c.get("/a");
+	c.asks[0].resolve("open");
+	await c.settle();
+	assert.equal(c.get("/a"), "open");
+	assert.equal(c.asks.length, 1, "fresh: not asked");
+	c.get.again("/a");
+	assert.equal(c.get("/a"), "open", "what was known is still given");
+	assert.equal(c.asks.length, 2, "and asked at once");
+	// Said again while that ask is on its way: its answer began before.
+	c.get.again("/a");
+	c.asks[1].resolve("open");
+	await c.settle();
+	assert.deepEqual(c.fresh, ["/a", "/a"]);
+	c.get("/a");
+	assert.equal(c.asks.length, 3, "asked again at once");
+	c.asks[2].resolve("merged");
+	await c.settle();
+	assert.equal(c.get("/a"), "merged");
+	assert.equal(c.asks.length, 3, "and that answer is fresh");
+	c.get.again("/nobody");
+});
+
 test("each key is remembered on its own", async () => {
 	const c = cache();
 	c.get("/a");

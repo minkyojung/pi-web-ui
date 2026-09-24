@@ -62,6 +62,7 @@ export const workspaceShell = (
 				archive(path: string, seen: number): Promise<{ error?: string; changes?: number; warning?: string } | null>;
 				restore(path: string): Promise<{ error?: string } | null>;
 				setup(path: string): Promise<{ error?: string; ran?: boolean } | null>;
+				merge(path: string, number: number, method: string): Promise<{ error?: string } | null>;
 				onSetup(listen: (path: string, stage: "running" | null) => void): () => void;
 				onChange(listen: () => void): () => void;
 			};

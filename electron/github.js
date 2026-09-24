@@ -166,6 +166,36 @@ export async function issues(root) {
 	return out === null ? null : issuesFrom(out);
 }
 
+/** gh's flag for each of GitHub's ways to merge (viewerDefaultMergeMethod). */
+const MERGE_FLAGS = { MERGE: "--merge", SQUASH: "--squash", REBASE: "--rebase" };
+
+/** What gh is given to merge pull request `number` the way `method` says, or null for a number or a way that is not one. Pure. */
+export function mergeArgs(number, method) {
+	const flag = MERGE_FLAGS[method];
+	return Number.isInteger(number) && number > 0 && flag ? ["pr", "merge", String(number), flag] : null;
+}
+
+/**
+ * Pull request `number` merged, asked from inside the workspace at `cwd` so gh
+ * reads the repository off its remote — `{}` when GitHub took it, `{ error }`
+ * with gh's own first line when it did not: a check the repository requires,
+ * a review, a conflict come to since. Not `--delete-branch`: that is the
+ * repository's own setting, and with it gh would switch this folder off its
+ * branch. The way it merges is the repository's default, which the page was
+ * told with the pull request.
+ */
+export function mergePullRequest(cwd, number, method) {
+	const args = mergeArgs(number, method);
+	if (!args) return Promise.resolve({ error: "Not a pull request, or not a way GitHub merges." });
+	return new Promise((resolve) => {
+		execFile("gh", args, { cwd, env: { ...process.env, GH_PROMPT_DISABLED: "1" }, timeout: 60_000 }, (err, _stdout, stderr) => {
+			if (!err) return resolve({});
+			const said = String(stderr ?? "").split("\n").map((line) => line.trim()).find(Boolean);
+			resolve({ error: said || (err.code === "ENOENT" ? "gh is not installed." : "GitHub did not merge it.") });
+		});
+	});
+}
+
 /** How a commit's checks stand, from the rollup's contexts as GitHub gives them: a check run by its status and conclusion, a status by its state. */
 function checksOf(contexts) {
 	const checks = { total: contexts.length, pending: 0, failed: 0 };
