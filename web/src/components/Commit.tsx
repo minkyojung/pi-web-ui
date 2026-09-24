@@ -12,6 +12,7 @@ import { code } from "../codeLook";
 import { commitStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
+import { Size } from "./Size";
 import { Badge } from "./ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 
@@ -93,14 +94,6 @@ export const counts = (files: CommitFile[]): { added: number; deleted: number } 
 	added: files.reduce((sum, file) => sum + (file.added ?? 0), 0),
 	deleted: files.reduce((sum, file) => sum + (file.deleted ?? 0), 0),
 });
-
-export function Size({ added, deleted }: { added: number; deleted: number }) {
-	return (
-		<span className="shrink-0 tabular-nums">
-			<span style={{ color: "var(--code-string)" }}>+{added}</span> <span className="text-destructive">−{deleted}</span>
-		</span>
-	);
-}
 
 /** What the commit says of itself: whose task, its subject, and the sums. */
 function Head({ read, shown }: { read: CommitRead; shown: CommitFile[] }) {

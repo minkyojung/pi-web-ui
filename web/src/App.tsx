@@ -38,6 +38,7 @@ const Pdf = lazy(() => import("./components/Pdf"));
 const Code = lazy(() => import("./components/Code"));
 const Commit = lazy(() => import("./components/Commit"));
 const Task = lazy(() => import("./components/Task"));
+const Changes = lazy(() => import("./components/Changes"));
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
 import { ApproveAction } from "./components/ApproveAction";
@@ -709,6 +710,12 @@ export function App() {
 						<Boundary name="task" hint="Nothing in the repository was touched.">
 							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
 								<Task key={`${page.spec}/${page.task}`} spec={page.spec} task={page.task} onOpen={setOpen} />
+							</Suspense>
+						</Boundary>
+					) : page?.kind === "changes" ? (
+						<Boundary name="changes" hint="Nothing in the repository was touched.">
+							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
+								<Changes onOpen={setOpen} />
 							</Suspense>
 						</Boundary>
 					) : page ? (

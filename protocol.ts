@@ -21,7 +21,8 @@ import type { NoteFile } from "./vault";
 import type { Backlink, Tagged } from "./linkIndex";
 import type { SearchHit } from "./search";
 import type { Settings } from "./settings.ts";
-import type { CommitRead } from "./commitRead.ts";
+import type { CommitFile, CommitRead, WorkingEntry } from "./commitRead.ts";
+import type { Outgoing } from "./standing.ts";
 import type { TaskResult } from "./specResults.ts";
 import type { TaskRun } from "./specRuns.ts";
 import type { TaskRead } from "./taskRead.ts";
@@ -126,6 +127,20 @@ export type ClientMsg =
 	 * here. Asked and not watched: the tab asks again when the specs move.
 	 */
 	| { type: "open_task"; spec: string; task: string }
+	/**
+	 * What is on this machine and not on origin, listed: the files changed
+	 * and not committed, and the commits a push would send — what the list
+	 * at the foot of the window shows (commitRead.ts listWorking, standing.ts
+	 * outgoingIn). Answered with a `work`. Asked when the list opens, and
+	 * again while it is open whenever the standing moves.
+	 */
+	| { type: "ask_work" }
+	/**
+	 * The files changed and not committed, each before and after — the
+	 * Changes page (commitRead.ts readWorking). Answered with `changes`.
+	 * Asked when the page opens, and again whenever the standing moves.
+	 */
+	| { type: "open_changes" }
 	/**
 	 * A note's whole text, on top of the version it was read at — `base` is
 	 * that version's `modified`, or null for a note that did not exist yet.
@@ -884,6 +899,23 @@ export interface CommitMsg extends CommitRead {
 	asked: string;
 }
 
+/** The answer to ask_work: the files changed and not committed, and the commits a push would send, newest first. Empty in no repository. */
+export interface WorkMsg {
+	type: "work";
+	files: WorkingEntry[];
+	/** More files are changed than are listed. */
+	truncated: boolean;
+	commits: Outgoing[];
+}
+
+/** The answer to open_changes: each file changed and not committed, before and after. Empty in no repository. */
+export interface ChangesMsg {
+	type: "changes";
+	files: CommitFile[];
+	/** More files are changed than are given. */
+	truncated: boolean;
+}
+
 /** There is no such commit in this repository, or what was asked for is not a commit's name. */
 export interface CommitGoneMsg {
 	type: "commit_gone";
@@ -1053,6 +1085,8 @@ export type StateMsg =
 	| CommitGoneMsg
 	| TaskMsg
 	| TaskGoneMsg
+	| WorkMsg
+	| ChangesMsg
 	| CodeGoneMsg
 	| NoteDeletedMsg
 	| NoteConflictMsg

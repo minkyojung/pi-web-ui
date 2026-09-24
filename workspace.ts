@@ -97,9 +97,10 @@ import {
 	baseLine,
 	baseOf,
 	githubLine,
+	outgoingIn,
 	standingIn,
 } from "./standing.ts";
-import { readCommit } from "./commitRead.ts";
+import { listWorking, readCommit, readWorking } from "./commitRead.ts";
 import {
 	decide,
 	type Change,
@@ -2258,6 +2259,18 @@ export async function createWorkspace(cwd: string) {
 					case "ask_standing":
 						void sayStanding(reply);
 						break;
+
+					case "ask_work": {
+						const [listed, commits] = await Promise.all([listWorking(CWD), outgoingIn(CWD)]);
+						reply({ type: "work", files: listed?.files ?? [], truncated: listed?.truncated ?? false, commits });
+						break;
+					}
+
+					case "open_changes": {
+						const read = await readWorking(CWD);
+						reply({ type: "changes", files: read?.files ?? [], truncated: read?.truncated ?? false });
+						break;
+					}
 
 					case "open_note": {
 						if (typeof msg.path !== "string") return;

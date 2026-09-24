@@ -7,7 +7,8 @@ import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { MessageResponse } from "./ai-elements/message";
 import { CheckMark } from "./CheckMark";
-import { counts, FileBlock, Size } from "./Commit";
+import { counts, FileBlock } from "./Commit";
+import { Size } from "./Size";
 
 /**
  * One task, looked at: what its run said, and what it changed.

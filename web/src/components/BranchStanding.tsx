@@ -3,12 +3,13 @@ import { useEffect, useSyncExternalStore } from "react";
 import { cn } from "cn";
 import { ExternalLinkIcon } from "lucide-react";
 
-import { type Work, pullRequestOf, workOf } from "../branchStanding";
+import { pullRequestOf, workOf } from "../branchStanding";
 import { standingStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { usePageFolder, useWorkspaceList } from "./Repositories";
 import { Button } from "./ui/button";
+import { WorkStanding } from "./WorkStanding";
 
 /**
  * Where this workspace's branch stands, at the left end of the foot of the
@@ -23,7 +24,7 @@ import { Button } from "./ui/button";
  * server is asked again when the window comes back: a push, a merge, a
  * commit in a terminal are all things it does not hear.
  */
-export function BranchStanding() {
+export function BranchStanding({ onOpen }: { onOpen: (path: string) => void }) {
 	const git = useSyncExternalStore(standingStore.subscribe, standingStore.get);
 	const list = useWorkspaceList();
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
@@ -39,7 +40,7 @@ export function BranchStanding() {
 	const chip = standing?.chip;
 	return (
 		<>
-			{work && <WorkStanding work={work} />}
+			{work && <WorkStanding work={work} onOpen={onOpen} />}
 			{standing && (
 				<span id="branch-standing" data-tone={standing.tone} className="flex shrink-0 items-center gap-1" title={standing.title}>
 					{chip && (
@@ -54,32 +55,5 @@ export function BranchStanding() {
 				</span>
 			)}
 		</>
-	);
-}
-
-/**
- * What is on this machine and not on origin: `Changes 5 ↑3 ↓1`, each left
- * out at 0. The words and arrows are the strip's grey and the figures the
- * text's own colour, as Zed and VS Code draw a count — the figure is what is
- * read, and grey on grey at this size is what made the strip hard to read.
- * An arrow is VS Code's and GitHub Desktop's: up is what a push would send,
- * down what a pull would bring, both against origin.
- */
-function WorkStanding({ work }: { work: Work }) {
-	const figure = (count: number) => <span className="text-foreground tabular-nums">{count}</span>;
-	return (
-		<span id="work-standing" className="flex shrink-0 items-center gap-2 px-1.5">
-			{work.changes > 0 && <span data-changes={work.changes}>Changes {figure(work.changes)}</span>}
-			{work.push > 0 && (
-				<span data-push={work.push} title={work.published ? `${work.push} to push` : "Not on origin"}>
-					↑{figure(work.push)}
-				</span>
-			)}
-			{work.pull > 0 && (
-				<span data-pull={work.pull} title={`${work.pull} to pull`}>
-					↓{figure(work.pull)}
-				</span>
-			)}
-		</span>
 	);
 }

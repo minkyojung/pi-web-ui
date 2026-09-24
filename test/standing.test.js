@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { baseLine, baseOf, githubLine, standingIn, takeCredentials } from "../standing.ts";
+import { baseLine, baseOf, githubLine, outgoingIn, standingIn, takeCredentials } from "../standing.ts";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
 
@@ -92,6 +92,38 @@ test("a branch whose upstream is the base is not taken to have been pushed", asy
 	run(root, "commit", "-q", "-m", "two");
 	assert.equal(run(root, "rev-parse", "--abbrev-ref", "@{upstream}"), "origin/main");
 	assert.deepEqual(await standingIn(root), { branch: "me/y", base: "main", changes: 0, ahead: 1, behind: 0, remote: null });
+});
+
+test("the commits a push would send are listed newest first, against origin's branch once there is one, else the base", async () => {
+	const { root } = cloned();
+	run(root, "checkout", "-q", "-b", "me/x");
+	for (const name of ["two", "three"]) {
+		writeFileSync(join(root, `${name}.txt`), `${name}\n`);
+		run(root, "add", ".");
+		run(root, "commit", "-q", "-m", name);
+	}
+	assert.deepEqual((await outgoingIn(root)).map((c) => c.title), ["three", "two"], "never pushed: every commit the base lacks");
+	const [newest] = await outgoingIn(root);
+	assert.equal(newest.commit, run(root, "rev-parse", "HEAD"));
+	assert.equal(newest.short, run(root, "rev-parse", "--short", "HEAD"));
+	run(root, "push", "-q", "origin", "me/x");
+	assert.deepEqual(await outgoingIn(root), []);
+	writeFileSync(join(root, "four.txt"), "four\n");
+	run(root, "add", ".");
+	run(root, "commit", "-q", "-m", "four");
+	assert.deepEqual((await outgoingIn(root)).map((c) => c.title), ["four"]);
+	assert.equal((await standingIn(root)).remote.ahead, (await outgoingIn(root)).length, "the list and the count are one reckoning");
+});
+
+test("with no origin, or on no branch, there is nothing a push would send", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "octave-standing-alone-"));
+	run(dir, "init", "-q");
+	writeFileSync(join(dir, "a.txt"), "x\n");
+	run(dir, "add", ".");
+	run(dir, "commit", "-q", "-m", "one");
+	assert.deepEqual(await outgoingIn(dir), []);
+	run(dir, "checkout", "-q", "--detach");
+	assert.deepEqual(await outgoingIn(dir), []);
 });
 
 test("with no remote there is no base, and ahead and behind are nothing", async () => {

@@ -53,6 +53,37 @@ export async function standingIn(cwd: string): Promise<GitStanding | null> {
 	return { branch, base: base.replace(/^origin\//, ""), changes, ahead, behind, remote };
 }
 
+/** A commit a push would send, as the list at the foot of the window names it. */
+export interface Outgoing {
+	commit: string;
+	short: string;
+	title: string;
+}
+
+/** How many of them are listed: past this the list says how many more, from the count. */
+export const OUTGOING_MAX = 50;
+
+/**
+ * The commits a push would send, newest first — against origin's branch of
+ * this name as standingIn counts them, else, for a branch never pushed,
+ * every commit the base lacks. None with no origin, or on no branch.
+ */
+export async function outgoingIn(cwd: string): Promise<Outgoing[]> {
+	const branch = await git(cwd, ["branch", "--show-current"]);
+	if (!branch) return [];
+	const pushed = (await git(cwd, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`])) !== null;
+	const against = pushed ? `origin/${branch}` : await baseOf(cwd);
+	if (!against) return [];
+	const out = await git(cwd, ["log", `-n${OUTGOING_MAX}`, "--format=%H%x1f%h%x1f%s", `${against}..HEAD`, "--"]);
+	return (out ?? "")
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => {
+			const [commit = "", short = "", title = ""] = line.split("\x1f");
+			return { commit, short, title };
+		});
+}
+
 /** How many commits HEAD has that `other` does not, and the other way. */
 async function apart(cwd: string, other: string): Promise<{ ahead: number; behind: number }> {
 	const counts = await git(cwd, ["rev-list", "--left-right", "--count", `${other}...HEAD`]);

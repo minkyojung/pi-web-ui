@@ -3872,6 +3872,26 @@ check("the foot of the window says how many changes are not committed, from git,
 	writeFileSync(join(cwd, "one-more.txt"), "x\n");
 	await app.evaluate("dispatchEvent(new Event('focus'))");
 	await until("one more counted", async () => (await standing()) === `Changes ${before + 1}`);
+	// Behind the count, the list: the file just written is a line of it, marked
+	// as a commit's page marks a new file, and the line opens the Changes page
+	// with that file in view.
+	await app.click("#work-standing");
+	const line = '[data-work-file="one-more.txt"]';
+	await until("the file in the list", () => app.evaluate(`!!document.querySelector(${JSON.stringify(line)})`));
+	assert.equal(await app.evaluate(`document.querySelector(${JSON.stringify(line)}).textContent`), "one-more.txtNew+1 −0");
+	assert.equal(await app.evaluate("document.querySelectorAll('[data-work-file]').length"), before + 1, "a line a file the count counts");
+	await app.click(line);
+	await until("the Changes page at the file", () =>
+		app.evaluate(`(() => {
+			const page = document.getElementById("page");
+			const file = page?.querySelector('[data-file="one-more.txt"]');
+			if (!file) return false;
+			const a = page.getBoundingClientRect(), b = file.getBoundingClientRect();
+			return b.top >= a.top - 1 && b.top < a.bottom;
+		})()`),
+	);
+	assert.equal(await app.evaluate("document.getElementById('page').dataset.changes"), String(before + 1), "every file on the one page");
+	assert.equal(await app.evaluate("!!document.querySelector('[data-work-file]')"), false, "the list goes once a line is chosen");
 	git("add", "-A", "--", ".");
 	git("commit", "-q", "-m", "everything");
 	await app.evaluate("dispatchEvent(new Event('focus'))");

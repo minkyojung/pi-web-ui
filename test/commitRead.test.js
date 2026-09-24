@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, unlinkSync, writeFileSync }
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { isCommitName, readCommit, readWorking, statusIn } from "../commitRead.ts";
+import { isCommitName, listWorking, readCommit, readWorking, statusIn } from "../commitRead.ts";
 import { CODE_MAX } from "../vault.ts";
 
 function repository(t) {
@@ -158,6 +158,26 @@ test("작업 트리: HEAD와 다른 파일마다 전(HEAD)과 후(디스크) —
   clean.commit("a");
   assert.deepEqual(await readWorking(clean.cwd), { files: [], truncated: false });
   assert.equal(await readWorking(mkdtempSync(join(tmpdir(), "no-repo-"))), null);
+});
+
+test("작업 트리의 목록: 페이지와 같은 파일, 같은 상태, 같은 줄 수 — 내용 없이", async (t) => {
+  const repo = repository(t);
+  repo.write("greeting.js", "a\nb\n");
+  repo.write("README.md", "# app\n");
+  repo.commit("app");
+  repo.write("greeting.js", "a\nc\nd\n");
+  repo.write("new.js", "one\ntwo\nthree");
+  repo.write(".pi/runs/1/check.log", "x\n");
+  repo.git("mv", "README.md", "READ.md");
+  repo.write("pic.png", Buffer.from([0x89, 0x50, 0, 0x47]));
+  const listed = await listWorking(repo.cwd);
+  const read = await readWorking(repo.cwd);
+  const named = ({ path, from, status, added, deleted }) => ({ path, from, status, added, deleted });
+  assert.deepEqual(listed.files.map(named).sort((a, b) => a.path.localeCompare(b.path)), read.files.map(named).sort((a, b) => a.path.localeCompare(b.path)), "목록과 페이지가 한 파일을 두 가지로 말하지 않는다");
+  assert.deepEqual(byPath(listed)["new.js"], { path: "new.js", from: null, status: "added", added: 3, deleted: 0 }, "마지막 줄에 줄바꿈이 없어도 한 줄");
+  assert.deepEqual(byPath(listed)["greeting.js"], { path: "greeting.js", from: null, status: "modified", added: 2, deleted: 1 });
+  assert.equal(listed.truncated, false);
+  assert.equal(await listWorking(mkdtempSync(join(tmpdir(), "no-repo-"))), null);
 });
 
 test("status --porcelain -z, 읽기: 코드 둘과 경로, 옮긴 것은 새 이름 뒤에 옛 이름", () => {

@@ -18,6 +18,8 @@ import type {
 	CommitMsg,
 	TaskGoneMsg,
 	TaskMsg,
+	WorkMsg,
+	ChangesMsg,
 	ConfigMsg,
 	CommandInfo,
 	ContextSourcesMsg,
@@ -202,6 +204,12 @@ export const specsStore = createStore<SpecInfo[] | null>(null);
 
 /** Where the folder's branch stands, as git last said; null before the server has said, or where there is no branch. */
 export const standingStore = createStore<GitStanding | null>(null);
+
+/** What is on this machine and not on origin, listed, as last asked (ask_work); null before the list at the foot of the window has asked. */
+export const workStore = createStore<WorkMsg | null>(null);
+
+/** Each file changed and not committed, before and after, as the Changes page last asked (open_changes); null before it has. */
+export const changesStore = createStore<ChangesMsg | null>(null);
 
 /**
  * The folder held more notes than the walk would take, so this list is not all

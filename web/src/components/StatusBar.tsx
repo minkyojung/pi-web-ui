@@ -172,7 +172,7 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi, onOpen }: { pat
 				    place that moved with the page would not be one to glance at. */}
 				{/* Before that, where the branch stands: the largest thing first,
 				    and the one that is there even with nothing in front. */}
-				<BranchStanding />
+				<BranchStanding onOpen={onOpen} />
 				<TaskResults open={path} onOpen={onOpen} />
 				{/* All of it against the left edge, where the note's own text begins.
 				    The count first, because it is always there: the agent's share is

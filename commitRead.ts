@@ -150,6 +150,19 @@ export async function readCommit(root: string, name: string): Promise<CommitRead
 	};
 }
 
+/** What readWorking and listWorking both start from: git's status, the app's own folder left out, and git's counts against HEAD. */
+async function workingStatus(root: string): Promise<{ changes: ReturnType<typeof statusIn>; sizes: Map<string, { added: number | null; deleted: number | null }> } | null> {
+	const status = await run(root, ["status", "--porcelain", "-z", "--untracked-files=all", "--"]);
+	if (status === null) return null;
+	const changes = statusIn(status.toString("utf8")).filter((change) => !change.path.startsWith(`${APP_DIR_NAME}/`));
+	const counted = await run(root, ["diff", "--numstat", "-z", "-M", "HEAD", "--"]);
+	const sizes = new Map((counted ? countedIn(counted.toString("utf8")) : []).map((file) => [file.path, file]));
+	return { changes, sizes };
+}
+
+/** Lines in a text as git counts them: a last line with no newline is a line. */
+const linesIn = (text: string): number => text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
+
 /**
  * The folder as it stands against HEAD — what a task's run left before it is
  * accepted (spec.ts endRun), read the same way a commit is so the window
@@ -159,11 +172,9 @@ export async function readCommit(root: string, name: string): Promise<CommitRead
  * an unstaged rename is a file gone and a file new, which is what git says.
  */
 export async function readWorking(root: string): Promise<{ files: CommitFile[]; truncated: boolean } | null> {
-	const status = await run(root, ["status", "--porcelain", "-z", "--untracked-files=all", "--"]);
-	if (status === null) return null;
-	const changes = statusIn(status.toString("utf8")).filter((change) => !change.path.startsWith(`${APP_DIR_NAME}/`));
-	const counted = await run(root, ["diff", "--numstat", "-z", "-M", "HEAD", "--"]);
-	const sizes = new Map((counted ? countedIn(counted.toString("utf8")) : []).map((file) => [file.path, file]));
+	const read = await workingStatus(root);
+	if (read === null) return null;
+	const { changes, sizes } = read;
 	const files: CommitFile[] = [];
 	for (const change of changes.slice(0, FILES_MAX)) {
 		const before = change.status === "added" ? null : await blob(root, "HEAD", change.from ?? change.path);
@@ -171,7 +182,7 @@ export async function readWorking(root: string): Promise<{ files: CommitFile[]; 
 		const not = [before, after].find((side) => side === "binary" || side === "large") as "binary" | "large" | undefined;
 		const text = !not && after !== null && typeof after !== "string" ? after.text : null;
 		// A file git has not seen is not in its numstat: every line of it is new.
-		const counts = sizes.get(change.path) ?? (change.status === "added" && text !== null ? { added: text.split("\n").length - (text.endsWith("\n") ? 1 : 0), deleted: 0 } : null);
+		const counts = sizes.get(change.path) ?? (change.status === "added" && text !== null ? { added: linesIn(text), deleted: 0 } : null);
 		files.push({
 			path: change.path,
 			from: change.from,
@@ -185,6 +196,30 @@ export async function readWorking(root: string): Promise<{ files: CommitFile[]; 
 		});
 	}
 	return { files, truncated: changes.length > FILES_MAX };
+}
+
+/** A file changed and not committed, as a list names it: what choosing one takes, and not its texts. */
+export type WorkingEntry = Pick<CommitFile, "path" | "from" | "status" | "added" | "deleted">;
+
+/**
+ * The same files as readWorking, listed rather than read: the list at the
+ * foot of the window is opened far more often than the page it leads to,
+ * and has no use for both sides of every file. Only a file git has not seen
+ * is read, to count its lines, since git's own count leaves it out.
+ */
+export async function listWorking(root: string): Promise<{ files: WorkingEntry[]; truncated: boolean } | null> {
+	const read = await workingStatus(root);
+	if (read === null) return null;
+	const files: WorkingEntry[] = [];
+	for (const change of read.changes.slice(0, FILES_MAX)) {
+		let counts = read.sizes.get(change.path) ?? null;
+		if (!counts && change.status === "added") {
+			const after = await onDisk(root, change.path);
+			counts = after && typeof after !== "string" ? { added: linesIn(after.text), deleted: 0 } : null;
+		}
+		files.push({ path: change.path, from: change.from, status: change.status, added: counts?.added ?? null, deleted: counts?.deleted ?? null });
+	}
+	return { files, truncated: read.changes.length > FILES_MAX };
 }
 
 /** A file as the disk holds it, judged as blob() judges one of git's; null where there is none. */
