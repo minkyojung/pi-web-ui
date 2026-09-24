@@ -34,25 +34,44 @@ test("no pull request, however far the branch has got, is nothing for the pull r
 	assert.equal(pullRequestOf(git({ changes: 3 }), undefined), null);
 });
 
-test("a pull request: the chip, and what its checks and reviews come to", () => {
-	const open = pullRequestOf(git(), pr());
-	assert.deepEqual(open.chip, { number: 29, url: "https://github.com/o/r/pull/29" });
-	assert.equal(open.text, "checks passed");
-	assert.equal(pullRequestOf(git(), pr({ checks: { total: 2, pending: 1, failed: 0 } })).text, "1 check pending…");
-	const failed = pullRequestOf(git(), pr({ checks: { total: 2, pending: 0, failed: 1 } }));
-	assert.equal(failed.text, "✗ 1 check failed");
-	assert.equal(failed.tone, "destructive");
-	assert.equal(pullRequestOf(git(), pr({ review: "APPROVED" })).text, "approved");
-	const changes = pullRequestOf(git(), pr({ review: "CHANGES_REQUESTED", checks: { total: 2, pending: 1, failed: 0 } }));
-	assert.equal(changes.text, "changes requested", "a person's word outranks a machine's");
-	assert.equal(changes.tone, "destructive");
-	assert.equal(pullRequestOf(git(), pr({ checks: { total: 0, pending: 0, failed: 0 } })).text, "open");
-	assert.equal(pullRequestOf(git(), pr({ draft: true, checks: undefined })).text, "draft");
-	assert.equal(pullRequestOf(git(), pr({ state: "merged" })).text, "merged");
-	assert.equal(pullRequestOf(git(), pr({ state: "closed" })).text, "closed");
+const said = (view) => view.said && (view.said.text ?? view.said.mark);
+
+test("a pull request: its mark, number and title, and what stands most in the way — in the order a person would deal with it", () => {
+	const open = pullRequestOf(git(), pr({ title: "Two items at the foot", merge: "CLEAN" }));
+	assert.deepEqual([open.number, open.title, open.url, open.glyph], [29, "Two items at the foot", "https://github.com/o/r/pull/29", "open"]);
+	assert.equal(said(open), "passed");
+	assert.equal(open.ready, true);
+	const conflicts = pullRequestOf(git(), pr({ merge: "DIRTY", review: "CHANGES_REQUESTED", checks: { total: 2, pending: 0, failed: 1 } }));
+	assert.deepEqual([said(conflicts), conflicts.said.tone, conflicts.ready], ["Conflicts", "destructive", false], "conflicts first: nothing else can be merged past");
+	const failed = pullRequestOf(git(), pr({ merge: "UNSTABLE", review: "CHANGES_REQUESTED", checks: { total: 2, pending: 0, failed: 1 } }));
+	assert.deepEqual([said(failed), failed.said.label, failed.ready], ["failed", "1 check failed", false], "a failed check that is not required is still said, and not merged past");
+	assert.equal(said(pullRequestOf(git(), pr({ merge: "BLOCKED", review: "CHANGES_REQUESTED", checks: { total: 2, pending: 1, failed: 0 } }))), "Changes requested", "a person's word outranks a machine still running");
+	const running = pullRequestOf(git(), pr({ merge: "BLOCKED", checks: { total: 3, pending: 2, failed: 0 } }));
+	assert.deepEqual([said(running), running.said.label, running.said.tone], ["running", "2 checks running", "muted"]);
+	assert.equal(said(pullRequestOf(git({ behind: 4 }), pr({ merge: "BEHIND" }))), "4 behind main");
+	assert.equal(said(pullRequestOf(git({ behind: 0 }), pr({ merge: "BEHIND" }))), "Behind main", "not fetched yet: GitHub's word without the count");
+	assert.equal(said(pullRequestOf(git(), pr({ merge: "BLOCKED", review: "REVIEW_REQUIRED" }))), "Needs review");
+	assert.equal(said(pullRequestOf(git(), pr({ merge: "BLOCKED" }))), "Blocked");
+	const draft = pullRequestOf(git(), pr({ draft: true, merge: "DRAFT" }));
+	assert.deepEqual([draft.glyph, said(draft), draft.ready], ["draft", "Draft", false]);
+	assert.equal(pullRequestOf(git(), pr({ merge: "UNKNOWN", checks: { total: 0, pending: 0, failed: 0 } })).said, null, "nothing known, nothing said");
+	assert.equal(pullRequestOf(git(), pr({ merge: "UNKNOWN" })).ready, false, "not ready until GitHub says so");
 });
 
-test("the base having moved on is said after an open pull request's item, and not for one that is done", () => {
-	assert.equal(pullRequestOf(git({ behind: 5 }), pr()).text, "checks passed · 5 behind");
-	assert.equal(pullRequestOf(git({ behind: 5 }), pr({ state: "merged" })).text, "merged");
+test("merged and closed say so and nothing else", () => {
+	const merged = pullRequestOf(git({ behind: 5 }), pr({ state: "merged", checks: { total: 2, pending: 0, failed: 1 } }));
+	assert.deepEqual([merged.glyph, said(merged), merged.lines, merged.ready], ["merged", "Merged", [], false]);
+	const closed = pullRequestOf(git(), pr({ state: "closed" }));
+	assert.deepEqual([closed.glyph, said(closed)], ["closed", "Closed"]);
+});
+
+test("the card lists what GitHub's merge box would: checks, conflicts, review, the base, draft — only what is known", () => {
+	const lines = (view) => view.lines.map((line) => `${line.mark ?? "-"} ${line.text}`);
+	assert.deepEqual(lines(pullRequestOf(git({ behind: 2 }), pr({ merge: "CLEAN", review: "APPROVED", checks: { total: 4, pending: 0, failed: 0 } }))), ["passed 4 checks passed", "passed No conflicts", "passed Approved", "- 2 behind main"]);
+	assert.deepEqual(lines(pullRequestOf(git(), pr({ merge: "DIRTY", review: "REVIEW_REQUIRED", draft: true, checks: { total: 3, pending: 1, failed: 1 } }))), ["failed 1 check failed", "failed Conflicts", "waiting Needs review", "waiting Draft"]);
+	assert.deepEqual(lines(pullRequestOf(git(), pr({ merge: "UNKNOWN", checks: { total: 2, pending: 2, failed: 0 } }))), ["running 2 checks running"], "whether it conflicts is not known yet");
+	const sized = pullRequestOf(git(), pr({ added: 120, deleted: 30, commits: 5 }));
+	assert.deepEqual(sized.size, { added: 120, deleted: 30, commits: 5 });
+	assert.equal(pullRequestOf(git(), pr()).size, null, "not said, not drawn");
+	assert.equal(pullRequestOf(git(), pr({ method: "SQUASH" })).method, "SQUASH");
 });

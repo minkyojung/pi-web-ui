@@ -1,14 +1,11 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-import { cn } from "cn";
-import { ExternalLinkIcon } from "lucide-react";
-
 import { pullRequestOf, workOf } from "../branchStanding";
 import { standingStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { loadList, usePageFolder, useWorkspaceList } from "./Repositories";
-import { Button } from "./ui/button";
+import { PullRequestStanding } from "./PullRequestStanding";
 import { WorkStanding } from "./WorkStanding";
 
 /**
@@ -16,9 +13,9 @@ import { WorkStanding } from "./WorkStanding";
  * window — the first things there, so they are in the same place whatever
  * is in front, and there even when nothing is. Two items, as
  * branchStanding.ts has it: what is on this machine and not on origin, then
- * the pull request. The pull request's number is a chip that opens it in the
- * browser; a check that failed, or changes asked for, is red — the one red
- * thing in a grey strip, since it is the one thing that wants doing.
+ * the pull request (PullRequestStanding.tsx). What wants doing — a conflict,
+ * a check that failed, changes asked for — is red, the one red thing in a
+ * grey strip.
  *
  * git's side comes from the server, GitHub's from the shell's list. The
  * server is asked again when the window comes back: a push, a merge, a
@@ -48,24 +45,11 @@ export function BranchStanding({ onOpen }: { onOpen: (path: string) => void }) {
 		return () => clearInterval(timer);
 	}, [waiting]);
 	const work = workOf(git);
-	const standing = pullRequestOf(git, row?.status);
-	const chip = standing?.chip;
+	const pull = pullRequestOf(git, status);
 	return (
 		<>
 			{work && <WorkStanding work={work} onOpen={onOpen} />}
-			{standing && (
-				<span id="branch-standing" data-tone={standing.tone} className="flex shrink-0 items-center gap-1" title={standing.title}>
-					{chip && (
-						<Button asChild variant="outline" size="xs" className="h-5 gap-1 px-1.5 font-mono text-[11px] font-normal">
-							<a href={chip.url ?? undefined} target="_blank" rel="noreferrer" aria-label={`Open pull request #${chip.number}`}>
-								#{chip.number}
-								<ExternalLinkIcon className="size-3 opacity-60" />
-							</a>
-						</Button>
-					)}
-					<span className={cn("px-1", standing.tone === "destructive" ? "text-destructive" : "text-muted-foreground")}>{standing.text}</span>
-				</span>
-			)}
+			{pull && <PullRequestStanding view={pull} />}
 		</>
 	);
 }

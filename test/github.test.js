@@ -8,7 +8,7 @@ const answer = JSON.stringify({
 	data: {
 		repository: {
 			viewerDefaultMergeMethod: "SQUASH",
-			b0: { associatedPullRequests: { nodes: [{ number: 31, state: "OPEN", url: "https://github.com/x/y/pull/31", isDraft: false, reviewDecision: null, headRefName: "me/scripts", mergeStateStatus: "BLOCKED", additions: 12, deletions: 3, commitCount: { totalCount: 2 }, commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [{ status: "COMPLETED", conclusion: "SUCCESS" }, { status: "COMPLETED", conclusion: "FAILURE" }] } } } }] } }] } },
+			b0: { associatedPullRequests: { nodes: [{ number: 31, title: "Scripts at the foot", state: "OPEN", url: "https://github.com/x/y/pull/31", isDraft: false, reviewDecision: null, headRefName: "me/scripts", mergeStateStatus: "BLOCKED", additions: 12, deletions: 3, commitCount: { totalCount: 2 }, commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [{ status: "COMPLETED", conclusion: "SUCCESS" }, { status: "COMPLETED", conclusion: "FAILURE" }] } } } }] } }] } },
 			b1: { associatedPullRequests: { nodes: [{ number: 26, state: "MERGED", url: "https://github.com/x/y/pull/26", isDraft: true, reviewDecision: "APPROVED", headRefName: "me/spec", commits: { nodes: [{ commit: { statusCheckRollup: null } }] } }] } },
 			b2: null,
 		},
@@ -27,8 +27,8 @@ test("the query asks for exactly these branches, each aliased in order, with the
 
 test("GitHub's answer is read by branch: the latest pull request, its checks counted, a branch without one left out", () => {
 	const prs = pullRequestsFromGraph(answer, ["me/scripts", "me/spec", "me/nowhere"]);
-	assert.deepEqual(prs.get("me/scripts"), { number: 31, state: "OPEN", url: "https://github.com/x/y/pull/31", draft: false, review: "", checks: { total: 2, pending: 0, failed: 1 }, merge: "BLOCKED", added: 12, deleted: 3, commits: 2, method: "SQUASH" });
-	assert.deepEqual(prs.get("me/spec"), { number: 26, state: "MERGED", url: "https://github.com/x/y/pull/26", draft: true, review: "APPROVED", checks: { total: 0, pending: 0, failed: 0 }, merge: "", added: null, deleted: null, commits: null, method: "SQUASH" }, "what GitHub did not say is said to be unknown");
+	assert.deepEqual(prs.get("me/scripts"), { number: 31, title: "Scripts at the foot", state: "OPEN", url: "https://github.com/x/y/pull/31", draft: false, review: "", checks: { total: 2, pending: 0, failed: 1 }, merge: "BLOCKED", added: 12, deleted: 3, commits: 2, method: "SQUASH" });
+	assert.deepEqual(prs.get("me/spec"), { number: 26, title: "", state: "MERGED", url: "https://github.com/x/y/pull/26", draft: true, review: "APPROVED", checks: { total: 0, pending: 0, failed: 0 }, merge: "", added: null, deleted: null, commits: null, method: "SQUASH" }, "what GitHub did not say is said to be unknown");
 	assert.equal(prs.has("me/nowhere"), false);
 });
 

@@ -3738,11 +3738,12 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		await until("the rows' dots", () => app.evaluate("[...document.querySelectorAll('[data-workspace]')].map((r) => r.querySelector('[data-status]')?.dataset.status ?? '-').join(',') === 'open,merged,-'"));
 		assert.equal(await app.evaluate("document.querySelector('[data-workspace=\"/w/lima\"] [data-status]').getAttribute('aria-label')"), "Pull request #9 was merged");
 		// And at the foot of the window, for this page's workspace (tokyo, whose folder is the suite's, #12):
-		// the chip, and what its checks came to. The folder is the suite's,
-		// which is a repository with notes uncommitted in it, so git's side is
-		// changes — but a pull request outranks that: the item is the pull
-		// request's, and the checks are what is said.
-		await until("the standing at the foot", () => app.evaluate("document.getElementById('branch-standing')?.textContent === '#12checks passed'"));
+		// its mark and number, and what its checks came to — passed, a tick. The
+		// folder is the suite's, which is a repository with notes uncommitted
+		// in it: those are the first item's, beside this one.
+		await until("the standing at the foot", () => app.evaluate("document.getElementById('branch-standing')?.textContent === '#12' && document.getElementById('branch-standing').dataset.said === 'passed'"));
+		assert.equal(await app.evaluate("document.getElementById('branch-standing').dataset.glyph"), "open");
+		assert.match(await app.evaluate("document.getElementById('work-standing')?.textContent ?? ''"), /^Changes \d+$/);
 		assert.equal(await app.evaluate("document.querySelector('#branch-standing a').href"), "https://github.com/o/r/pull/12");
 		await app.click('[data-new-workspace="/r/demo"]');
 		await until("the dialog", () => app.evaluate("!!document.getElementById('new-spec')"));
