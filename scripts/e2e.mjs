@@ -4131,6 +4131,7 @@ check("a task in review opens as a page: the run's last answer, then its files f
 	// The folder as a run finds it: everything before committed, so what the run
 	// left is the only change — and what a first try of this left, taken out first.
 	rmSync(join(cwd, "look"), { recursive: true, force: true });
+	rmSync(join(dir, "notes.md"), { force: true });
 	git("add", "-A");
 	if (git("status", "--porcelain")) git("commit", "-q", "-m", "before the run");
 	mkdirSync(join(cwd, "look"), { recursive: true });
@@ -4144,6 +4145,7 @@ check("a task in review opens as a page: the run's last answer, then its files f
 	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
 	writeFileSync(join(dir, "design.md"), "# Design\n");
 	writeFileSync(join(dir, "tasks.md"), "- [ ] 1. Add the window\n- [ ] 2. Add the latch\n");
+	writeFileSync(join(dir, "notes.md"), "## 1. Add the window\n\n- The latch goes on the left.\n");
 	while (approve(cwd, "look")) {}
 	// The plan says the task is in review — the sessions' word, with no commit anywhere.
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/look/tasks.md")}`);
@@ -4165,6 +4167,11 @@ check("a task in review opens as a page: the run's last answer, then its files f
 	assert.match(report, /The window opens outward: the design did not say which way\./);
 	assert.match(report, /I left the latch for task 2\./);
 	assert.doesNotMatch(report, /Checks:/);
+	// Of the spec's own folder, only what the run left for the tasks after it,
+	// after the work: the plan, the approvals and the documents are not shown.
+	const files = () => app.evaluate("[...document.querySelectorAll('#page [data-file]')].map((f) => f.dataset.file).join(',')");
+	assert.equal(await files(), "look/window.js,.octave/specs/look/notes.md");
+	assert.equal(await app.evaluate("!!document.getElementById('specFiles')"), false);
 	assert.equal(await app.evaluate("document.querySelector('[data-file=\"look/window.js\"]')?.dataset.state"), "closed", "folded");
 	assert.equal(await app.evaluate("!!document.querySelector('[data-file=\"look/window.js\"] .cm-content')"), false, "nothing drawn until it is opened");
 	await app.evaluate("document.querySelector('[data-file=\"look/window.js\"] button[aria-label=\"Unfold this file\"]').click()");
@@ -4185,6 +4192,7 @@ check("a task in review opens as a page: the run's last answer, then its files f
 	assert.ok((await app.evaluate("document.querySelector('#taskHead [role=img]').parentElement.title")).includes(hash), "the commit is behind the mark, on hover");
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [data-checks]')?.dataset.checks"), "passed", "the app's check outranks the agent's word");
 	assert.match(await app.evaluate("document.getElementById('taskReport').innerText"), /I left the latch for task 2\./, "the report, from the commit now");
+	assert.equal(await files(), "look/window.js,.octave/specs/look/notes.md", "the same files, from the commit: the ticked box is in it and not shown");
 	assert.equal(await app.evaluate("document.querySelector('[data-file=\"look/window.js\"]')?.dataset.state"), "open", "the file the person opened stays open across the acceptance: the page did not start over");
 	await app.shot("task-accepted");
 	// And the plan agrees: done, by the box.

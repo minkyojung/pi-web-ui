@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { ChevronRightIcon } from "lucide-react";
 
+import { SPECS_DIR } from "../../../documentKinds.ts";
 import { taskStore } from "../serverState";
 import { specsStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
@@ -10,7 +10,6 @@ import { CheckMark } from "./CheckMark";
 import { counts, FileBlock, Size } from "./Commit";
 import { TaskGlyph } from "./TaskGlyph";
 import { Badge } from "./ui/badge";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 
 /**
  * One task, looked at: what its run said, and what it changed.
@@ -23,6 +22,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collap
  * opened where the report gives reason to. Accepting it (/spec-done) makes
  * the commit, and the page stays the page — the same address, now read off
  * the commit (taskRead.ts) — with the commit named at its head.
+ *
+ * Of the spec's own folder only notes.md is shown, after the work: what the
+ * run left for the tasks after it (spec.ts), which is worth reading when
+ * deciding on this one. The rest of that folder is the app's bookkeeping —
+ * the box ticked, the approvals — and is not shown; the commit's page has it.
  *
  * The head is one line in the plan's own grammar: the standing as the mark
  * at the left, the task's line, and at the right the check mark and the
@@ -58,7 +62,7 @@ export default function Task({ spec, task, onOpen }: { spec: string; task: strin
 	}
 
 	const work = mine.files.filter((file) => !file.spec);
-	const kept = mine.files.filter((file) => file.spec);
+	const notes = mine.files.find((file) => file.path === `${SPECS_DIR}${spec}/notes.md`);
 	const total = counts(work);
 	return (
 		<div id="page" data-task={task} data-standing={mine.standing} className="no-scrollbar edge-top min-h-0 flex-1 overflow-y-auto">
@@ -113,20 +117,8 @@ export default function Task({ spec, task, onOpen }: { spec: string; task: strin
 						<FileBlock key={file.path} file={file} onOpen={onOpen} folded />
 					))}
 					{work.length === 0 && <p className="text-sm text-subtle-foreground">Nothing outside the spec's own folder was changed.</p>}
+					{notes && <FileBlock key={notes.path} file={notes} onOpen={onOpen} folded />}
 					{mine.truncated && <p className="text-xs text-muted-foreground">More files changed than are shown here.</p>}
-					{kept.length > 0 && (
-						<Collapsible className="flex flex-col gap-3">
-							<CollapsibleTrigger id="specFiles" className="group flex items-center gap-1.5 self-start text-xs text-muted-foreground hover:text-foreground">
-								<ChevronRightIcon className="size-3 transition-transform group-data-[state=open]:rotate-90" />
-								Spec files ({kept.length}) — the plan's own folder, not the task's work
-							</CollapsibleTrigger>
-							<CollapsibleContent className="flex flex-col gap-3">
-								{kept.map((file) => (
-									<FileBlock key={file.path} file={file} onOpen={onOpen} folded />
-								))}
-							</CollapsibleContent>
-						</Collapsible>
-					)}
 				</section>
 			</div>
 		</div>
