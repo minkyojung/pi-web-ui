@@ -2395,6 +2395,26 @@ check("open notes are tabs in the title bar; a click picks one, its × closes it
 	assert.equal(await front(), "tab-a.md");
 });
 
+// The list folds from the window's top left, the agent from its top right:
+// the far end of the row of tabs, over the agent's column and outside it.
+check("the agent's column folds from the far end of the row of tabs, not from the note's header", async ({ app }) => {
+	const at = () => app.evaluate(`(() => { const b = document.getElementById('togglePi'); const row = b.parentElement; return { inRow: !!row.querySelector('[role=tablist]'), inHeader: !!document.getElementById('crumbs').parentElement.contains(b), gap: Math.round(row.getBoundingClientRect().right - b.getBoundingClientRect().right) }; })()`);
+	assert.deepEqual(await at(), { inRow: true, inHeader: false, gap: 8 }, "in the tabs' row, at its end, not in the header");
+	// The window is dragged by its top rows, and a drag box later in the page
+	// fills in the holes an earlier one left for its buttons — which a press
+	// through this protocol never sees. So by where the boxes are: none after
+	// the row's own may lie over the button.
+	const covered = () => app.evaluate(`(() => { const b = document.getElementById('togglePi'); const r = b.getBoundingClientRect(); const all = [...document.querySelectorAll('.drag-region')]; return all.slice(all.indexOf(b.closest('.drag-region')) + 1).filter((d) => { const q = d.getBoundingClientRect(); return q.left < r.right && q.right > r.left && q.top < r.bottom && q.bottom > r.top; }).map((d) => d.className); })()`);
+	assert.deepEqual(await covered(), [], "no drag box over it");
+	// Pressed where it is drawn, as a person would — twice, and the column is back.
+	assert.equal(await app.click("#togglePi"), true);
+	await until("the agent away", () => app.evaluate("document.getElementById('togglePi').getAttribute('aria-label') === 'Show the agent'"));
+	assert.equal((await at()).gap, 8, "and it stays at the end with the column folded");
+	assert.deepEqual(await covered(), [], "nor with the column folded");
+	assert.equal(await app.click("#togglePi"), true);
+	await until("the agent back", () => app.evaluate("document.getElementById('togglePi').getAttribute('aria-label') === 'Hide the agent'"));
+});
+
 check("a middle click closes a tab without picking it, and Delete on a focused tab closes it and moves the focus along", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "tab-c.md"), "C\n");
 	writeFileSync(join(cwd, "tab-d.md"), "D\n");

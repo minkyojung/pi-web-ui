@@ -610,6 +610,11 @@ export function App() {
 							onReorder={(from, to) => setTabs((list) => move(list, from, to))}
 							onNew={online ? () => send({ type: "new_note" }) : undefined}
 						/>
+						{/* At the row's far end, which is over the agent's column: the
+						    list's fold is at the window's top left, and the agent's is at
+						    its top right. The tabs take the width between, so this stays
+						    where it is however many there are. */}
+						<PiToggle open={piOpen} onToggle={togglePi} />
 					</div>
 					{/* The card's own margin is the wrapper's to give. A group sets
 					    width and height to 100% inline, so a margin on it is added to
@@ -639,7 +644,7 @@ export function App() {
 					    offers what can be done to a file, which is to find it, not to
 					    rename it (noteActions.ts). A PDF is left out: its viewer
 					    reaches the top of the column, and the words there are its own. */}
-					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} task={page?.kind === "task" ? { spec: page.spec, task: page.task } : null} onOpen={setOpen} actions={<><ApproveAction path={note} /><RunActions path={note} /></>} trailing={<>{note && <ModeToggle mode={mode} onSwitch={() => switchMode(note)} />}<PiToggle open={piOpen} onToggle={togglePi} /></>} />
+					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} task={page?.kind === "task" ? { spec: page.spec, task: page.task } : null} onOpen={setOpen} actions={<><ApproveAction path={note} /><RunActions path={note} /></>} trailing={note && <ModeToggle mode={mode} onSwitch={() => switchMode(note)} />} />
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}

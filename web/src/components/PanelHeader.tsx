@@ -142,10 +142,11 @@ export function ModeToggle({ mode, onSwitch }: { mode: Mode; onSwitch: () => voi
 }
 
 /**
- * The one control for whether the pi column is shown. It lives in the note
- * column's header, not the panel's own: a button that hides the panel it is in
- * leaves nothing to bring it back with. Always drawn, and the icon says which
- * way it will go — as VS Code's secondary side bar toggle does.
+ * The one control for whether the pi column is shown. It lives at the far end
+ * of the row of tabs, over the column and outside it, not in the panel's own
+ * header: a button that hides the panel it is in leaves nothing to bring it
+ * back with. Always drawn, and the icon says which way it will go — as VS
+ * Code's secondary side bar toggle does, at the top right of the window.
  */
 export function PiToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
 	return (
@@ -170,7 +171,7 @@ export function PiToggle({ open, onToggle }: { open: boolean; onToggle: () => vo
 
 /**
  * The same control for the list of notes, and it sits in the strip along the
- * top of the window for the same reason PiToggle sits in the note's header:
+ * top of the window for the same reason PiToggle sits at the end of the tabs:
  * a button inside the column it folds away is folded away with it.
  */
 export function SidebarToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
