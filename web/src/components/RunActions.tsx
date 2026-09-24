@@ -27,13 +27,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  * a cheaper one. With nothing chosen it shows the session's model, which is
  * what a run gets when none is named.
  *
- * And, while a selection in the list covers tasks, the button that runs
- * them as one: `Run 2.1, 2.2, 3`, the numbers themselves rather than a
- * count, so what will run is read before it is pressed — a drag is a tool
- * for words and takes a line it did not mean as often as not, and the
- * Starts on the lines it took are lit for the same reason. The one command
- * with the numbers on it; they run one after another, each as the one
- * before it is committed (spec.ts).
+ * And, while the cursor is on a task — or a selection covers some — the
+ * button that runs it: `Run 2.2`, the number itself, so what will run is
+ * read before it is pressed. One task, the first a selection covers: a task
+ * is run, looked at and accepted before the next is (spec.ts), so there is
+ * no running several at once.
  *
  * With the header's other controls (NoteHeader actions), drawn as they are:
  * no fill, the picker's own size. It was a line of its own over the list
@@ -65,20 +63,20 @@ export function RunActions({ path }: { path: string | null }) {
 	if (!name || !spec || spec.approved < APPROVED_DOCS.length || !spec.written.includes("tasks.md") || !config) return null;
 
 	const chosen = runOnOf(choices, name);
-	const numbers = picked?.spec === name ? picked.numbers : [];
+	const number = picked?.spec === name ? picked.number : null;
 	const stop = runBlocked({
 		online,
 		streaming,
 		compacting: config.isCompacting,
 		hasCommand: commands.some((command) => command.name === RUN),
 		spec,
-		count: numbers.length,
+		count: number === null ? 0 : 1,
 		sent,
 	});
 	const reason = runWhy(stop);
 	return (
 		<>
-			{numbers.length > 0 && (
+			{number !== null && (
 				<Button
 					id="runPicked"
 					variant="soft"
@@ -87,12 +85,12 @@ export function RunActions({ path }: { path: string | null }) {
 					disabled={stop !== null}
 					title={reason ?? undefined}
 					onClick={() => {
-						send(runMessage(name, numbers, chosen ? { model: chosen.model, effort: chosen.level } : {}));
+						send(runMessage(name, [number], chosen ? { model: chosen.model, effort: chosen.level } : {}));
 						setSent(true);
 					}}
 				>
 					<PlayIcon className="size-3 shrink-0" />
-					<span className="min-w-0 truncate">Run {numbers.join(", ")}</span>
+					<span className="min-w-0 truncate">Run {number}</span>
 				</Button>
 			)}
 			<Tooltip>

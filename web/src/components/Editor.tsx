@@ -48,7 +48,7 @@ import type { Edit } from "../types";
 import type { Authored } from "../../../protocol.ts";
 import { authorsStore, commandsStore, configStore, documentsStore, filesStore, noteChangedStore, noteConflictStore, noteGoneStore, noteStore, specsStore } from "../serverState";
 import { RUN, runBlocked, runMessage, runWhy, tasksBetween } from "../specRun.ts";
-import { pickTasks, runOnOf, runOnStore } from "../runOn";
+import { pickTask, runOnOf, runOnStore } from "../runOn";
 import { commitPath } from "../pages";
 import { listOf } from "../resultsList.ts";
 import { inFrontStore, say as sayInFront } from "../inFront";
@@ -521,15 +521,15 @@ export function Editor({
 				theme,
 				EditorView.updateListener.of((u) => {
 					if (held.current.length > 0 && !u.view.composing) releaseHeld();
-					// What the selection covers of a spec's tasks, for the bar over
-					// them (RunActions) — a cursor is its line's task: the bar is the one
-					// way to run, since the Start beside each line was turned off
-					// (two ways to run is "which one?" — spec-mode.md 6절).
+					// The task the header offers to run (RunActions): the cursor's
+					// line's, or the first the selection covers — one task a run. The
+					// header is the one way to run, since the Start beside each line was
+					// turned off (two ways to run is "which one?" — spec-mode.md 6절).
 					if (u.selectionSet || u.docChanged) {
 						const spec = isTasks(at.current) ? specNameOf(at.current) : null;
-						const text = u.state.doc.toString();
-						const numbers = spec === null ? [] : [...new Set(u.state.selection.ranges.flatMap((range) => tasksBetween(text, range.from, range.to).map((task) => task.number)))];
-						pickTasks(spec !== null && numbers.length > 0 ? { spec, numbers } : null);
+						const main = u.state.selection.main;
+						const first = spec === null ? null : (tasksBetween(u.state.doc.toString(), main.from, main.to)[0]?.number ?? null);
+						pickTask(spec !== null && first !== null ? { spec, number: first } : null);
 					}
 					if (u.state.field(propertiesField) !== u.startState.field(propertiesField)) setRead(u.state.field(propertiesField));
 					if (u.docChanged && !u.transactions.some((t) => t.annotation(fromServer))) {
@@ -644,7 +644,7 @@ export function Editor({
 		const spec = isTasks(path) ? specNameOf(path) : null;
 		if (spec === null) {
 			v.dispatch({ effects: startRoom.reconfigure([]) });
-			pickTasks(null);
+			pickTask(null);
 			return;
 		}
 		const why = runWhy(
@@ -687,7 +687,7 @@ export function Editor({
 		});
 	}, [path, mode, online, streaming, config?.isCompacting, config?.run, commands, specs, starting, runOn]);
 	// Gone from the page, the selection covers nothing.
-	useEffect(() => () => pickTasks(null), []);
+	useEffect(() => () => pickTask(null), []);
 
 	// A note made or renamed elsewhere may be the one a link here names.
 	const notes = useSyncExternalStore(filesStore.subscribe, filesStore.get);

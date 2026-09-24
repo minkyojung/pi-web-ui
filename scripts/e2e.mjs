@@ -3658,8 +3658,9 @@ check("the header of a spec's tasks chooses what they run on, and a Start takes 
 	assert.equal(line, `/spec-run runon 2 ${other.key} ${other.level}`, "the model as the picker keys it, and its own level");
 });
 
-// Several tasks as one run: the selection says which, the bar runs them.
-check("tasks a selection covers are offered as one run in the header, by their numbers, and run in one command", async ({ app, cwd }) => {
+// One task a run: a selection offers the first task it covers, as the
+// cursor's line offers its own — each is looked at and accepted before the next.
+check("a selection offers the first task it covers to run, one task a run, as the cursor's line does", async ({ app, cwd }) => {
 	const dir = join(cwd, ".octave/specs/picked");
 	mkdirSync(dir, { recursive: true });
 	const plan = "# Tasks\n\n- [ ] 1. First\n- [ ] 2. Heading\n- [x] 2.1 Second\n- [ ] 2.2 Third\n- [ ] 3. Fourth\n";
@@ -3682,19 +3683,20 @@ check("tasks a selection covers are offered as one run in the header, by their n
 	// and nothing of 3 — the rule editors count selected lines by.
 	await select(plan.indexOf("First"), plan.indexOf("- [ ] 3."));
 	const offered = () => app.evaluate("document.getElementById('runPicked')?.textContent ?? ''");
-	await until("the run offered", async () => (await offered()) === "Run 1, 2");
-	// One character into 3, and it is in.
+	await until("the first task offered", async () => (await offered()) === "Run 1");
+	// One character into 3: covered too, and still only the first is offered.
 	await select(plan.indexOf("First"), plan.indexOf("- [ ] 3.") + 1);
-	await until("3 in", async () => (await offered()) === "Run 1, 2, 3");
+	await new Promise((r) => setTimeout(r, 100));
+	assert.equal(await offered(), "Run 1", "one task, however many lines are taken");
 	await app.shot("task-picked");
-	// Pressed: the one command, the numbers on it, as the person would have typed it.
+	// Pressed: the command for that one task, as the person would have typed it.
 	await app.evaluate("(() => { const send = WebSocket.prototype.send; window.__sent = []; WebSocket.prototype.send = function (data) { window.__sent.push(String(data)); return send.call(this, data); }; })()");
 	// Pressable: Run stays off for a few seconds after a press that started
 	// nothing, and the check before this one pressed it.
 	await until("the run pressable", () => app.evaluate("(() => { const b = document.getElementById('runPicked'); return !!b && !b.disabled; })()"));
 	await app.click("#runPicked");
 	await until("the line sent", () => app.evaluate("window.__sent.some((d) => d.includes('/spec-run picked '))"));
-	assert.equal(await app.evaluate("JSON.parse(window.__sent.find((d) => d.includes('/spec-run picked '))).text"), "/spec-run picked 1 2 3", "2 for all of it; the command unfolds it");
+	assert.equal(await app.evaluate("JSON.parse(window.__sent.find((d) => d.includes('/spec-run picked '))).text"), "/spec-run picked 1", "the one task");
 	// Back to a cursor: its own line's task, and only that.
 	await select(plan.indexOf("Fourth"), plan.indexOf("Fourth"));
 	await until("the cursor's line offered", async () => (await offered()) === "Run 3");

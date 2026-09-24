@@ -8,7 +8,7 @@ import { RunActions } from "../components/RunActions";
 import { NoteHeader } from "../components/NoteHeader";
 import { ModeToggle, PiToggle } from "../components/PanelHeader";
 import { Button } from "../components/ui/button";
-import { pickTasks } from "../runOn";
+import { pickTask } from "../runOn";
 import { commandsStore, configStore, specsStore } from "../serverState";
 import { type Connection, getConnection, setConnection, subscribe } from "../store";
 
@@ -66,14 +66,14 @@ const spec = (over: Partial<SpecInfo> = {}): SpecInfo => ({
 const TASKS_READY: Partial<SpecInfo> = { approved: 2, waiting: null, written: ["requirements.md", "design.md", "tasks.md"], tasks: { total: 5, done: 1, cancelled: 0, next: "2", review: [] } };
 
 /** The states, each a whole world: what is open, what the folder says, what the session is doing. */
-const STATES: { id: string; name: string; path: string; specs: SpecInfo[]; config: ConfigMsg; online?: boolean; picked?: string[] }[] = [
+const STATES: { id: string; name: string; path: string; specs: SpecInfo[]; config: ConfigMsg; online?: boolean; picked?: string }[] = [
 	{ id: "waiting", name: "Requirements waiting", path: docPath(SPEC, "requirements.md"), specs: [spec()], config: config() },
 	{ id: "design", name: "Design waiting", path: docPath(SPEC, "design.md"), specs: [spec({ approved: 1, waiting: "design.md", written: ["requirements.md", "design.md"] })], config: config() },
 	{ id: "busy", name: "Waiting, agent working", path: docPath(SPEC, "requirements.md"), specs: [spec()], config: config({ isStreaming: true }) },
 	{ id: "offline", name: "Waiting, not connected", path: docPath(SPEC, "requirements.md"), specs: [spec()], config: config(), online: false },
 	{ id: "approved", name: "Approved (nothing waiting)", path: docPath(SPEC, "requirements.md"), specs: [spec({ approved: 1, waiting: "design.md", written: ["requirements.md"] })], config: config() },
 	{ id: "tasks", name: "tasks.md, nothing picked", path: docPath(SPEC, "tasks.md"), specs: [spec(TASKS_READY)], config: config() },
-	{ id: "picked", name: "tasks.md, 2 and 3 picked", path: docPath(SPEC, "tasks.md"), specs: [spec(TASKS_READY)], config: config(), picked: ["2", "3"] },
+	{ id: "picked", name: "tasks.md, 2 picked", path: docPath(SPEC, "tasks.md"), specs: [spec(TASKS_READY)], config: config(), picked: "2" },
 	{ id: "running", name: "tasks.md, 2.1 running", path: docPath(SPEC, "tasks.md"), specs: [spec({ ...TASKS_READY, tasks: { total: 5, done: 1, cancelled: 0, next: "2.2", review: [] } })], config: config({ isStreaming: true, run: { spec: SPEC, task: "2.1", title: "POST /login validates and issues a token", then: [] } }) },
 	{ id: "note", name: "A plain note", path: "notes/today.md", specs: [spec()], config: config() },
 ];
@@ -95,7 +95,7 @@ function apply(state: (typeof STATES)[number]): void {
 	]);
 	wanted = state.online === false ? "reconnecting" : "open";
 	setConnection(wanted);
-	pickTasks(state.picked ? { spec: SPEC, numbers: state.picked } : null);
+	pickTask(state.picked ? { spec: SPEC, number: state.picked } : null);
 }
 
 export function HeaderBench() {

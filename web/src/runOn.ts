@@ -37,25 +37,24 @@ export function chooseRunOn(spec: string, choice: RunOn | null): void {
 }
 
 /**
- * The tasks the selection in the editor covers, for the bar over the list
- * to offer as one run: the spec, and the numbers in the order they stand.
- * Read off the selection by the editor as it changes (tasksBetween) and
- * put here, since the bar is not in the editor and the editor does not
- * draw bars. Empty when the selection is a cursor — a single task is the
- * Start beside it — or covers no task.
+ * The task the header offers to run: the cursor's line's, or the first a
+ * selection covers — one task a run, each looked at and accepted before the
+ * next (spec.ts). Read off the selection by the editor as it changes
+ * (tasksBetween) and put here, since the header is not in the editor and the
+ * editor does not draw it. Null when the selection covers no task.
  */
 export interface Picked {
 	spec: string;
-	numbers: string[];
+	number: string;
 }
 
 const picked = createStore<Picked | null>(null);
 
 export const pickedStore = { get: picked.get, subscribe: picked.subscribe };
 
-/** What the selection covers now; null for nothing. Same spec and numbers as before is the same value, so nothing is woken for it. */
-export function pickTasks(next: Picked | null): void {
+/** What the selection offers now; null for nothing. Same spec and number as before is the same value, so nothing is woken for it. */
+export function pickTask(next: Picked | null): void {
 	const was = picked.get();
-	if (was === next || (was && next && was.spec === next.spec && was.numbers.join(",") === next.numbers.join(","))) return;
+	if (was === next || (was && next && was.spec === next.spec && was.number === next.number)) return;
 	picked.set(next);
 }
