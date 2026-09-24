@@ -104,15 +104,12 @@
      field there read as a card. */
   --border: oklch(0 0 0 / 7%);
   --input: oklch(0 0 0 / 10%);
-  /* A focus ring is a non-text indicator, which WCAG asks 3:1 of. The figure
-     shadcn ships reads 2.59 on a page this light — the only one of the four
-     themes where it did; the other three were already clear. Down again now
-     that a control can be focused on pi's floor as well as on the page: the
-     figure is held to the lower of the two, which is what the rule already
-     was — this theme simply grew a second surface to keep it on. The accent's
-     own step 9 now, which is 4.59 on pi's floor: a ring the colour of the
-     button it is round, as Linear draws it. */
-  --ring: oklch(0.552 0.193 259.5);
+  /* A focus ring is a non-text indicator, which WCAG asks 3:1 of. In the
+     ink, not the accent: it is only where the keyboard is, and blue is kept
+     for what is pressed, turned on or chosen — the message box says focus the
+     same way. The figure shadcn ships reads 2.59 on a page this light; the
+     sidebar's own grey is 3.20, so the window has the one ring. */
+  --ring: oklch(0.653 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -216,10 +213,9 @@
      that. --input keeps its own, being an edge you are meant to aim at. */
   --border: oklch(1 0 0 / 5%);
   --input: oklch(1 0 0 / 15%);
-  /* Step 11, not the button's 9: on a page this dark the solid step reads
-     2.74 on pi's wash, under the 3:1 a ring is owed. The one place the ring
-     and the button it is round part company. */
-  --ring: oklch(0.773 0.116 257.9);
+  /* The ink's grey, as in the light theme, and the sidebar's: shadcn's own
+     figure for a page this dark, which clears 3:1 as it stands. */
+  --ring: oklch(0.556 0 0);
   --selection: color-mix(in oklab, var(--primary) 40%, transparent);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
