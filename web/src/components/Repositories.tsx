@@ -5,7 +5,7 @@ import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifi
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "cn";
-import { ArchiveIcon, ChevronRightIcon, GitBranchIcon, PlusIcon } from "lucide-react";
+import { ChevronRightIcon, GitBranchIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { orderedBy, spent } from "../repoOrder";
@@ -49,7 +49,7 @@ export interface WorkspaceList {
 }
 
 /** The shell's side of the list, absent in a browser tab. */
-const workspaceShell = (
+export const workspaceShell = (
 	window as {
 		pi?: {
 			workspaces?: {
@@ -89,7 +89,7 @@ const openLocal = (window as { pi?: { repositories?: { openLocal(): Promise<{ er
  * starts with — `minkyojung/email-auth` is `email-auth` in a list of the
  * same person's work. The whole of it is the row's tooltip.
  */
-const branchName = (branch: string) => branch.slice(branch.indexOf("/") + 1);
+export const branchName = (branch: string) => branch.slice(branch.indexOf("/") + 1);
 
 /**
  * The repositories and their workspaces, as Conductor lists them: a row for
@@ -213,33 +213,6 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 		[],
 	);
 
-	/**
-	 * The archived workspaces being brought back, for their rows to say so.
-	 * The shell makes the folder again and then runs the repository's setup,
-	 * which can take as long as an install: the row leaves the archived group
-	 * as soon as there is a folder, and the window goes there when it is ready.
-	 */
-	const [restoring, setRestoring] = useState<ReadonlySet<string>>(() => new Set());
-	const restore = (path: string) => {
-		setRestoring((was) => new Set(was).add(path));
-		const done = () =>
-			setRestoring((was) => {
-				const next = new Set(was);
-				next.delete(path);
-				return next;
-			});
-		shell.restore(path).then(
-			(result) => {
-				done();
-				if (result?.error) toast.error(result.error);
-			},
-			(err: Error) => {
-				done();
-				toast.error(err.message);
-			},
-		);
-	};
-
 	// Adding one moves the window into it; what is left to say here is why not.
 	const addLocal = () => {
 		openLocal?.().then(
@@ -331,8 +304,6 @@ export function Repositories({ list, choices }: { list: WorkspaceList; choices?:
 								onSpec={() => setStarting({ path: project.path, name: project.name })}
 								onArchive={setDoomed}
 								onDrop={() => setDropping({ path: project.path, name: project.name, workspaces: project.worktrees.length })}
-								onRestore={restore}
-								restoring={restoring}
 								going={going}
 								onOpen={go}
 								onSettle={settle}
@@ -359,7 +330,7 @@ type Project = WorkspaceList["projects"][number];
  * header — so a workspace row is not a handle for the repository above it,
  * and a repository travels with its workspaces.
  */
-function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onDrop, onRestore, restoring, going, onOpen, onSettle, onUnsettle, onMove, first, last }: {
+function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onDrop, going, onOpen, onSettle, onUnsettle, onMove, first, last }: {
 	project: Project;
 	open: boolean;
 	onFold: () => void;
@@ -368,8 +339,6 @@ function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onD
 	onSpec: () => void;
 	onArchive: (workspace: { path: string; branch: string }) => void;
 	onDrop: () => void;
-	onRestore: (path: string) => void;
-	restoring: ReadonlySet<string>;
 	/** The workspace the window is on its way to, and the ways to send it and to have one made ready ahead of the click — see Repositories. */
 	going: string | null;
 	onOpen: (path: string) => void;
@@ -385,12 +354,8 @@ function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onD
 	// drag, and that is what Move up and Move down in the menu are — the way
 	// in without a pointer, and the way a test asks for the same thing.
 	const { attributes: { role: _role, tabIndex: _tabIndex, ...attributes }, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: project.path });
-	// The ones you can open, and the ones that were archived — which are a
-	// group of their own at the foot of the list, folded, since they are what
-	// the repository has finished with. Conductor keeps them the same way.
+	// The ones you can open. The archived ones are in Settings, under Archived.
 	const live = project.worktrees.filter((worktree) => !worktree.state);
-	const archived = project.worktrees.filter((worktree) => worktree.state);
-	const [showArchived, setShowArchived] = useState(false);
 	return (
 		<li
 			ref={setNodeRef}
@@ -498,48 +463,6 @@ function Repository({ project, open, onFold, here, shell, onSpec, onArchive, onD
 								</li>
 							);
 						})}
-						{archived.length > 0 && (
-							<li>
-								<Collapsible open={showArchived} onOpenChange={setShowArchived} className="group/archived">
-									<CollapsibleTrigger asChild>
-										<Button variant="ghost" size="sm" data-archived={project.path} className={cn(row, "text-muted-foreground")}>
-											<ChevronRightIcon className="transition-transform group-data-[state=open]/archived:rotate-90" />
-											<span className="truncate">Archived</span>
-											<span className="ml-auto text-xs tabular-nums">{archived.length}</span>
-										</Button>
-									</CollapsibleTrigger>
-									<CollapsibleContent asChild>
-										{/* A step in from the group's own row, as the workspaces are from the repository's. */}
-										<ul className="flex flex-col pl-3">
-											{archived.map((worktree) => (
-												<li key={worktree.path}>
-													<Tooltip>
-														<TooltipTrigger asChild>
-															{/* A click is the one thing there is to do with it: the
-															    folder is what was given back, and asking for it
-															    back is asking for this workspace. */}
-															<Button
-																variant="ghost"
-																size="sm"
-																data-workspace={worktree.path}
-																data-archived-workspace={worktree.path}
-																disabled={restoring.has(worktree.path)}
-																onClick={() => onRestore(worktree.path)}
-																className={cn(row, "text-muted-foreground")}
-															>
-																{restoring.has(worktree.path) ? <Spinner /> : <ArchiveIcon />}
-																<span className="truncate">{branchName(worktree.branch)}</span>
-															</Button>
-														</TooltipTrigger>
-														<TooltipContent side="right">{worktree.branch} · archived, click to bring it back</TooltipContent>
-													</Tooltip>
-												</li>
-											))}
-										</ul>
-									</CollapsibleContent>
-								</Collapsible>
-							</li>
-						)}
 					</ul>
 				</CollapsibleContent>
 			</Collapsible>

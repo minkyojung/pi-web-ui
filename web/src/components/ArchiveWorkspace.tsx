@@ -66,7 +66,7 @@ export function ArchiveWorkspace({ workspace, onClose, shell }: { workspace: { p
 			<DialogContent id="archive-workspace" className="sm:max-w-md" showCloseButton={false}>
 				<DialogHeader>
 					<DialogTitle>Archive {workspace?.branch}?</DialogTitle>
-					<DialogDescription>Its folder is given back. The branch and its commits stay, and so does the conversation — the row stays under Archived, and opens it again.</DialogDescription>
+					<DialogDescription>Its folder is given back. The branch and its commits stay, and so does the conversation — Settings › Archived brings it back.</DialogDescription>
 				</DialogHeader>
 				{typeof changes === "number" && changes > 0 && (
 					<p id="archive-workspace-changes" className="text-sm text-destructive">

@@ -13,6 +13,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Accounts } from "@/components/Accounts";
+import { ArchivedWorkspaces } from "@/components/ArchivedWorkspaces";
+import { workspaceShell } from "@/components/Repositories";
 import { Loadout } from "@/components/Loadout";
 import {
   Select,
@@ -30,7 +32,7 @@ import { send } from "../ws";
 import { settingsOpenStore } from "../settingsOpen";
 import { bridge, updateStore } from "../update";
 
-const SECTIONS = ["Accounts", "Appearance", "Agent", "Loadout", "Keys", "About"] as const;
+const SECTIONS = ["Accounts", "Appearance", "Agent", "Loadout", "Keys", "Archived", "About"] as const;
 type Section = (typeof SECTIONS)[number];
 const isSection = (name: string): name is Section => (SECTIONS as readonly string[]).includes(name);
 
@@ -120,7 +122,8 @@ export function Settings() {
         </DialogDescription>
         <nav className="flex flex-col gap-0.5 bg-muted/30 p-3">
           <DialogTitle className="px-2 pt-1 pb-2 text-sm font-semibold">Settings</DialogTitle>
-          {SECTIONS.map((name) => (
+          {/* Archived workspaces are the shell's; a browser tab has none. */}
+          {SECTIONS.filter((name) => name !== "Archived" || workspaceShell).map((name) => (
             <Button
               key={name}
               variant="ghost"
@@ -194,6 +197,8 @@ function Panel({ section }: { section: Section }) {
       {section === "Keys" && <Keys />}
 
       {section === "Accounts" && <Accounts />}
+
+      {section === "Archived" && <ArchivedWorkspaces />}
 
       {section === "About" && <About />}
 
