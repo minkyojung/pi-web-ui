@@ -4051,27 +4051,28 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	await app.shot("check-log");
 	await app.click("#results");
 	await until("the list again", () => app.evaluate("document.querySelectorAll('[data-result]').length === 2"));
-	// A line opens that task's commit, and the list goes.
+	// A line opens that task's page — accepted, so read off its commit — and the list goes.
 	await app.evaluate("document.querySelector('[data-result=\"1\"]').click()");
-	await until("the commit's page", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(again)}`));
+	await until("the task's page", () => app.evaluate("document.getElementById('page')?.dataset.task === '1' && document.getElementById('page')?.dataset.standing === 'done'"));
 	assert.equal(await app.evaluate("!!document.querySelector('[data-result]')"), false);
-	// Looked at: nothing is new, from whatever is in front — a commit's page here.
+	assert.ok((await app.evaluate("document.getElementById('taskHead').innerText")).includes(again.slice(0, 7)), "the commit it was accepted in, at the head");
+	// Looked at: nothing is new, from whatever is in front — a task's page here.
 	await until("nothing new", async () => (await button()) === "2 done");
-	// The commit's tab is called by its task, not by its hash — read off the
-	// results the window already has — and every tab is one width, so a long
-	// name is cut rather than the row going ragged.
+	// The task's tab is called by its line, not by its number alone — read off
+	// the results the window already has — and every tab is one width, so a
+	// long name is cut rather than the row going ragged.
 	const tabs = await app.evaluate("[...document.querySelectorAll('[role=tab][data-path]')].map((t) => ({ path: t.dataset.path, text: t.innerText.trim(), width: Math.round(t.getBoundingClientRect().width) }))");
-	// This check's own: others before it have left commits' tabs in the row.
-	const commitTab = tabs.find((tab) => tab.path === `octave://commit/${again}`);
-	assert.equal(commitTab.text, "Task 1 · Add the door", JSON.stringify(tabs));
+	// This check's own: others before it have left tabs in the row.
+	const taskTab = tabs.find((tab) => tab.path === "octave://task/came/1");
+	assert.equal(taskTab.text, "Task 1 · Add the door", JSON.stringify(tabs));
 	assert.equal(new Set(tabs.map((tab) => tab.width)).size, 1, `one width for every tab: ${JSON.stringify(tabs.map((tab) => tab.width))}`);
-	assert.equal(commitTab.width, 192, "twelve rem");
+	assert.equal(taskTab.width, 192, "twelve rem");
 	await app.shot("tab-widths");
 	// Where the page is, in the line a file says where it is: the spec, its
 	// tasks, the task — and `tasks` is the way back to the plan, said.
 	const crumbs = () => app.evaluate("document.getElementById('crumbs')?.innerText.replace(/\\s+/g, ' ').trim() ?? ''");
 	assert.equal(await crumbs(), "came tasks Task 1", `the crumbs: ${await crumbs()}`);
-	await app.shot("commit-crumbs");
+	await app.shot("task-crumbs");
 	await app.evaluate("document.querySelector('#crumbs [data-crumb=\"tasks\"]').click()");
 	await until("the plan, by its crumb", async () => (await editorText(app)).includes("Hang the sign"));
 	// A commit that is no task's has only its hash to say. One made here: run
@@ -4091,6 +4092,70 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	await until("its chips", async () => (await chips()).startsWith("1:"));
 	await app.evaluate("document.querySelector('#editor .cm-task-commit[data-task=\"2\"]').click()");
 	await until("the other task's commit", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(second)}`));
+});
+
+// A task's run ends waiting to be looked at, not in a commit (spec.ts endRun):
+// its session says it ran, the folder holds its changes, and the page is where
+// the person decides. Accepting it makes the commit and the page stays.
+check("a task in review opens as a page: the run's last answer, then its files folded; accepted, the same page reads its commit", async ({ app, cwd }) => {
+	const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
+	const dir = join(cwd, ".octave/specs/look");
+	// The folder as a run finds it: everything before committed, so what the run
+	// left is the only change — and what a first try of this left, taken out first.
+	rmSync(join(cwd, "look"), { recursive: true, force: true });
+	git("add", "-A");
+	if (git("status", "--porcelain")) git("commit", "-q", "-m", "before the run");
+	mkdirSync(join(cwd, "look"), { recursive: true });
+	// The run's session, as pi keeps one where the server reads them (PI_CODING_AGENT_DIR): the mark, and what it said.
+	const session = SessionManager.create(cwd);
+	session.appendCustomMessageEntry("spec-task", "run it", false, { spec: "look", task: "1", title: "Add the window", done: [], then: [] });
+	session.appendMessage({ role: "assistant", content: [{ type: "text", text: "The window opens outward: the design did not say which way.\n\nI left the latch for task 2.\n\nChecks: npm test — 3 passed" }], api: "x", provider: "x", model: "x", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() });
+	// What it changed, uncommitted, and the plan it was run from.
+	writeFileSync(join(cwd, "look", "window.js"), "export const window = 'open';\n");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
+	writeFileSync(join(dir, "design.md"), "# Design\n");
+	writeFileSync(join(dir, "tasks.md"), "- [ ] 1. Add the window\n- [ ] 2. Add the latch\n");
+	while (approve(cwd, "look")) {}
+	// The plan says the task is in review — the sessions' word, with no commit anywhere.
+	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/look/tasks.md")}`);
+	const standing = () => app.evaluate("document.querySelector('#tasks [data-task=\"1\"]')?.dataset.standing ?? '(no row)'");
+	await until("the task in review, in the list", async () => (await standing()) === "review").catch(async (error) => {
+		throw new Error(`${error.message}; the row says ${await standing()}; hash ${await app.evaluate("location.hash")}; in front: ${await app.evaluate("(document.getElementById('tasks') ? 'tasks list' : document.getElementById('editor') ? 'editor' : document.getElementById('page') ? 'page' : 'nothing') + ' — ' + (document.getElementById('note')?.innerText ?? document.getElementById('page')?.innerText ?? '').slice(0, 200).replace(/\\s+/g, ' ')")}`);
+	});
+	assert.equal(await app.evaluate("document.querySelector('#tasks [data-task=\"2\"]')?.dataset.standing"), "todo");
+
+	await app.evaluate(`location.hash = ${JSON.stringify("#octave://task/look/1")}`);
+	await until("the task's page, in review", () => app.evaluate("document.getElementById('page')?.dataset.task === '1' && document.getElementById('page')?.dataset.standing === 'review'"));
+	const head = () => app.evaluate("document.getElementById('taskHead').innerText.replace(/\\s+/g, ' ')");
+	assert.match(await head(), /Task 1 Add the window In review · 1 file \+1 −0 · agent: npm test — 3 passed/, `the head: ${await head()}`);
+	// The report whole, the Checks: line not in it — that is the head's — and the files folded to their names.
+	const report = await app.evaluate("document.getElementById('taskReport').innerText");
+	assert.match(report, /The window opens outward: the design did not say which way\./);
+	assert.match(report, /I left the latch for task 2\./);
+	assert.doesNotMatch(report, /Checks:/);
+	assert.equal(await app.evaluate("document.querySelector('[data-file=\"look/window.js\"]')?.dataset.state"), "closed", "folded");
+	assert.equal(await app.evaluate("!!document.querySelector('[data-file=\"look/window.js\"] .cm-content')"), false, "nothing drawn until it is opened");
+	await app.evaluate("document.querySelector('[data-file=\"look/window.js\"] button[aria-label=\"Unfold this file\"]').click()");
+	await until("the file's difference", () => app.evaluate("document.querySelector('[data-file=\"look/window.js\"] .cm-content')?.textContent.includes(\"export const window = 'open';\")"));
+	// The tab is called by the run's line, and the crumbs are the plan's.
+	assert.equal(await app.evaluate("document.querySelector('[role=tab][data-path=\"octave://task/look/1\"]')?.innerText.trim()"), "Task 1 · Add the window");
+	assert.equal(await app.evaluate("document.getElementById('crumbs')?.innerText.replace(/\\s+/g, ' ').trim()"), "look tasks Task 1");
+	await app.shot("task-review");
+
+	// Accepted, as spec.ts commits it: the box, and the commit naming the session. The page stays, now read off the commit.
+	writeFileSync(join(dir, "tasks.md"), "- [x] 1. Add the window\n- [ ] 2. Add the latch\n");
+	git("add", "look", ".octave/specs/look");
+	git("commit", "-q", "-m", "Add the window", "-m", "The window opens outward: the design did not say which way.\n\nI left the latch for task 2.", "-m", `Spec: look\nTask: 1\nChecks: npm test — 3 passed\nVerified: npm test — exit 0\nSession: ${session.getSessionId()}`);
+	const hash = git("rev-parse", "--short", "HEAD");
+	await until("the same page, accepted", () => app.evaluate("document.getElementById('page')?.dataset.task === '1' && document.getElementById('page')?.dataset.standing === 'done'"));
+	assert.match(await head(), new RegExp(`Task 1 Add the window Accepted ${hash} · 1 file \\+1 −0 · agent: npm test — 3 passed · npm test passed`), `the head: ${await head()}`);
+	assert.match(await app.evaluate("document.getElementById('taskReport').innerText"), /I left the latch for task 2\./, "the report, from the commit now");
+	assert.equal(await app.evaluate("document.querySelector('[data-file=\"look/window.js\"]')?.dataset.state"), "open", "the file the person opened stays open across the acceptance: the page did not start over");
+	await app.shot("task-accepted");
+	// And the plan agrees: done, by the box.
+	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/look/tasks.md")}`);
+	await until("done in the list", () => app.evaluate("document.querySelector('#tasks [data-task=\"1\"]')?.dataset.standing === 'done'"));
 });
 
 // The other place the answer can be given: in the header of the document being read.

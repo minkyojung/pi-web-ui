@@ -36,6 +36,7 @@ const Pdf = lazy(() => import("./components/Pdf"));
 // language's grammar, and a window that opens no file loads none of them.
 const Code = lazy(() => import("./components/Code"));
 const Commit = lazy(() => import("./components/Commit"));
+const Task = lazy(() => import("./components/Task"));
 import { NoteHeader } from "./components/NoteHeader";
 import { NoteTabs } from "./components/NoteTabs";
 import { ApproveAction } from "./components/ApproveAction";
@@ -638,7 +639,7 @@ export function App() {
 					    offers what can be done to a file, which is to find it, not to
 					    rename it (noteActions.ts). A PDF is left out: its viewer
 					    reaches the top of the column, and the words there are its own. */}
-					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} onOpen={setOpen} actions={<><ApproveAction path={note} /><RunActions path={note} /></>} trailing={<>{note && <ModeToggle mode={mode} onSwitch={() => switchMode(note)} />}<PiToggle open={piOpen} onToggle={togglePi} /></>} />
+					<NoteHeader path={page?.kind === "code" ? page.path : note} commit={page?.kind === "commit" ? page.commit : null} task={page?.kind === "task" ? { spec: page.spec, task: page.task } : null} onOpen={setOpen} actions={<><ApproveAction path={note} /><RunActions path={note} /></>} trailing={<>{note && <ModeToggle mode={mode} onSwitch={() => switchMode(note)} />}<PiToggle open={piOpen} onToggle={togglePi} /></>} />
 					{/* A different note is a different editor, with its own history,
 					    rather than one editor with its text swapped — but a renamed note
 					    is the same one, so the key is the note's identity, not its path. */}
@@ -672,6 +673,12 @@ export function App() {
 						<Boundary name="commit" hint="Nothing in the repository was touched.">
 							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
 								<Commit key={page.commit} commit={page.commit} onOpen={setOpen} />
+							</Suspense>
+						</Boundary>
+					) : page?.kind === "task" ? (
+						<Boundary name="task" hint="Nothing in the repository was touched.">
+							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
+								<Task key={`${page.spec}/${page.task}`} spec={page.spec} task={page.task} onOpen={setOpen} />
 							</Suspense>
 						</Boundary>
 					) : page ? (

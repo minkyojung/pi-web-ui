@@ -15,6 +15,9 @@ const WHATS_NEW = "octave://whats-new/";
 /** A commit, to read what it changed: `octave://commit/<hash>`, the hash whole or short. */
 const COMMIT = "octave://commit/";
 
+/** A task, to look at what its run said and changed: `octave://task/<spec>/<number>` — the same address before and after it is accepted. */
+const TASK = "octave://task/";
+
 /** The scheme no file has, which the app's own pages take their address under. */
 const SCHEME = "octave://";
 
@@ -29,12 +32,17 @@ export type Page =
 	| { kind: "document"; path: string; title: string }
 	| { kind: "code"; path: string; title: string }
 	/** What a commit changed, file by file (Commit.tsx). The title is the hash as people say it; the tab learns the rest. */
-	| { kind: "commit"; commit: string; title: string };
+	| { kind: "commit"; commit: string; title: string }
+	/** What a task's run said and changed (Task.tsx), in review or accepted. The title is the number; the tab learns the line. */
+	| { kind: "task"; spec: string; task: string; title: string };
 
 export const whatsNewPath = (version: string): string => `${WHATS_NEW}${version}`;
 
 /** The address of a commit's page. */
 export const commitPath = (commit: string): string => `${COMMIT}${commit}`;
+
+/** The address of a task's page. */
+export const taskPath = (spec: string, task: string): string => `${TASK}${spec}/${task}`;
 
 /** A tab says a file by its name whole, extension and all — that is how it says what it is. */
 const nameOf = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
@@ -48,6 +56,12 @@ export function pageOf(path: string | null): Page | null {
 		// no page rather than a question put to git.
 		const commit = path.slice(COMMIT.length);
 		return /^[0-9a-f]{7,40}$/.test(commit) ? { kind: "commit", commit, title: commit.slice(0, 7) } : null;
+	}
+	if (path.startsWith(TASK)) {
+		// A spec's folder name and a task's number, as the plan has them
+		// (specTasks.ts): anything else is no page.
+		const found = /^([^/]+)\/(\d+(?:\.\d+)?)$/.exec(path.slice(TASK.length));
+		return found ? { kind: "task", spec: found[1]!, task: found[2]!, title: `Task ${found[2]}` } : null;
 	}
 	if (path.startsWith(SCHEME)) {
 		if (!path.startsWith(WHATS_NEW)) return null;

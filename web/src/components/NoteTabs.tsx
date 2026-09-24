@@ -7,7 +7,7 @@ import { Plus, X } from "lucide-react";
 
 import { titleOf, wholePath } from "../noteSync";
 import { pageOf } from "../pages";
-import { commitTabTitle, taskOfCommit } from "../resultsList.ts";
+import { commitTabTitle, taskOfCommit, taskTabTitle } from "../resultsList.ts";
 import { configStore, specsStore } from "../serverState";
 import { others, toTheRight } from "../tabs";
 import { Button } from "./ui/button";
@@ -150,7 +150,9 @@ function NoteTab({
 	const specs = useSyncExternalStore(specsStore.subscribe, specsStore.get);
 	const page = pageOf(path);
 	const ofTask = page?.kind === "commit" ? taskOfCommit(specs, page.commit) : null;
-	const title = ofTask ? commitTabTitle(ofTask) : (page?.title ?? titleOf(path));
+	// A task's page is called by its line too, read off what the window has of
+	// the spec — its runs in review, its results — and by its number until then.
+	const title = ofTask ? commitTabTitle(ofTask) : page?.kind === "task" ? taskTabTitle(specs, page.spec, page.task) : (page?.title ?? titleOf(path));
 	// What the tab cannot say in its width, on hover: where a note in a folder
 	// is, and for a commit its whole name with the hash it is known by. The
 	// rest have nothing to add, so they get no tooltip.

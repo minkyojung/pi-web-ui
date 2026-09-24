@@ -4,7 +4,7 @@ import { CheckIcon, FileTextIcon, XIcon } from "lucide-react";
 import { Spinner } from "./ui/spinner";
 
 import { checkLogPath } from "../checkLog";
-import { commitPath } from "../pages";
+import { taskPath } from "../pages";
 import { type ResultLine, checkMark, footWords, headWords, listOf } from "../resultsList.ts";
 import { sawResults, seenStore } from "../seenResults.ts";
 import { configStore, specsStore } from "../serverState";
@@ -111,7 +111,7 @@ export function TaskResults({ open: inFront, onOpen }: { open: string | null; on
 										data-result={line.task}
 										data-fresh={line.fresh || undefined}
 										title={`${line.short} · ${new Date(line.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}${line.runs > 1 ? ` · run ${line.runs} times, this is the last` : ""}`}
-										onSelect={() => go(commitPath(line.commit))}
+										onSelect={() => go(taskPath(spec.name, line.task))}
 										className="gap-2"
 									>
 										<Line line={line} standing={group.standing} onLog={go} />

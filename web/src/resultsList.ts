@@ -125,3 +125,10 @@ export function taskOfCommit(specs: readonly SpecInfo[] | null, commit: string):
 
 /** What a commit's tab is called: the task and its line, which is a name a person reads; a hash is not. */
 export const commitTabTitle = (of: { task: string; title: string }): string => `Task ${of.task} · ${of.title}`;
+
+/** What a task's tab is called: its line, from the run in review or the last result the window has of it; its number alone until it has either. */
+export function taskTabTitle(specs: readonly SpecInfo[] | null, name: string, task: string): string {
+	const spec = specs?.find((entry) => entry.name === name);
+	const title = spec?.review.find((run) => run.task === task)?.title ?? spec?.results.findLast((result) => result.task === task)?.title ?? null;
+	return title ? commitTabTitle({ task, title }) : `Task ${task}`;
+}

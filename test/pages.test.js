@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { blocksOf, isPage, pageOf, spansOf, vaultUrl, whatsNewPath } from "../web/src/pages.ts";
+import { blocksOf, commitPath, isPage, pageOf, spansOf, taskPath, vaultUrl, whatsNewPath } from "../web/src/pages.ts";
 import { noteFromHash } from "../web/src/noteSync.ts";
 
 test("a page's address is under a scheme no note has, and only a version makes one", () => {
@@ -20,6 +20,19 @@ test("a document's address is its path, and it is a page and not a note", () => 
 	assert.equal(isPage("a.pdf"), true);
 	assert.equal(noteFromHash("#papers/a%20b.pdf"), "papers/a b.pdf", "and the address bar may hold it");
 	assert.equal(vaultUrl("papers/a b#1.pdf"), "/vault/papers/a%20b%231.pdf");
+});
+
+test("a commit's page is its hash and a task's is its spec and number — the same address before and after the task is accepted", () => {
+	assert.equal(commitPath("abc1234"), "octave://commit/abc1234");
+	assert.deepEqual(pageOf("octave://commit/abc1234"), { kind: "commit", commit: "abc1234", title: "abc1234" });
+	assert.equal(pageOf("octave://commit/HEAD~1"), null, "a hash and nothing git would take for a revision");
+	assert.equal(taskPath("email-auth", "2.1"), "octave://task/email-auth/2.1");
+	assert.deepEqual(pageOf("octave://task/email-auth/2.1"), { kind: "task", spec: "email-auth", task: "2.1", title: "Task 2.1" });
+	assert.deepEqual(pageOf("octave://task/email-auth/2"), { kind: "task", spec: "email-auth", task: "2", title: "Task 2" });
+	assert.equal(pageOf("octave://task/email-auth/"), null, "no number");
+	assert.equal(pageOf("octave://task/email-auth/two"), null, "not a number");
+	assert.equal(pageOf("octave://task/a/b/2"), null, "a spec is one folder's name");
+	assert.equal(isPage("octave://task/email-auth/1"), true);
 });
 
 test("anything else in the folder is a file to read, and markdown never is", () => {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { checkMark, commitTabTitle, footWords, headWords, listOf, taskOfCommit } from "../web/src/resultsList.ts";
+import { checkMark, commitTabTitle, footWords, headWords, listOf, taskOfCommit, taskTabTitle } from "../web/src/resultsList.ts";
 
 const run = (task, commit, over = {}) => ({ task, commit, short: commit.slice(0, 7), title: `Task ${task}`, at: 0, checks: null, files: [], added: 1, deleted: 0, ...over });
 const RESULTS = [run("1", "aaaaaaa1"), run("2", "bbbbbbb2", { added: 8 }), run("3", "ccccccc3", { added: 41, deleted: 2 })];
@@ -60,6 +60,12 @@ test("커밋이 어느 작업의 것인지는 이미 받은 결과에서 찾는�
   assert.equal(taskOfCommit(specs, "deadbee"), null, "작업의 커밋이 아니다");
   assert.equal(taskOfCommit(null, "aaaaaaa"), null, "결과가 아직 안 왔다");
   assert.equal(commitTabTitle({ task: "2", title: "Test the greeting" }), "Task 2 · Test the greeting");
+  // A task's tab: the run in review names it first, then the last result; a task with neither is its number.
+  const withReview = specs.map((spec) => ({ ...spec, review: spec.name === "greeting" ? [{ spec: "greeting", task: "3", title: "Ship it", then: [], session: "s", at: 1 }] : [] }));
+  assert.equal(taskTabTitle(withReview, "greeting", "3"), "Task 3 · Ship it", "심사 중인 실행의 줄");
+  assert.equal(taskTabTitle(withReview, "greeting", "2"), "Task 2 · Test the greeting", "받아들인 결과의 줄");
+  assert.equal(taskTabTitle(withReview, "greeting", "9"), "Task 9", "아직 아무것도 없으면 번호");
+  assert.equal(taskTabTitle(null, "greeting", "1"), "Task 1");
 });
 
 test("검사의 표: 앱이 돌린 것이 에이전트의 말을 이긴다", () => {

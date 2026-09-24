@@ -89,12 +89,12 @@ export default function Commit({ commit, onOpen }: { commit: string; onOpen: (pa
 }
 
 /** Lines added and taken out across `files`, as git counted them (commitRead.ts) — the numbers the list of results has too. */
-const counts = (files: CommitFile[]): { added: number; deleted: number } => ({
+export const counts = (files: CommitFile[]): { added: number; deleted: number } => ({
 	added: files.reduce((sum, file) => sum + (file.added ?? 0), 0),
 	deleted: files.reduce((sum, file) => sum + (file.deleted ?? 0), 0),
 });
 
-function Size({ added, deleted }: { added: number; deleted: number }) {
+export function Size({ added, deleted }: { added: number; deleted: number }) {
 	return (
 		<span className="shrink-0 tabular-nums">
 			<span style={{ color: "var(--code-string)" }}>+{added}</span> <span className="text-destructive">−{deleted}</span>
@@ -139,9 +139,9 @@ function Head({ read, shown }: { read: CommitRead; shown: CommitFile[] }) {
 
 const WORDS: Record<CommitFile["status"], string> = { added: "New", modified: "", deleted: "Deleted", renamed: "Renamed" };
 
-/** One file: its name and size, and under them the difference. */
-function FileBlock({ file, onOpen }: { file: CommitFile; onOpen: (path: string) => void }) {
-	const [open, setOpen] = useState(true);
+/** One file: its name and size, and under them the difference — open to begin with, or folded to the name and the size, as the page asks. */
+export function FileBlock({ file, onOpen, folded = false }: { file: CommitFile; onOpen: (path: string) => void; folded?: boolean }) {
+	const [open, setOpen] = useState(!folded);
 	return (
 		<Collapsible open={open} onOpenChange={setOpen} data-file={file.path} className="overflow-hidden rounded-md border">
 			<div className="flex min-w-0 items-center gap-2 bg-muted px-2 py-1.5 text-xs">

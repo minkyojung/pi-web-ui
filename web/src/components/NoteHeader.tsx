@@ -388,7 +388,28 @@ function CommitCrumbs({ commit, onOpen }: { commit: string; onOpen: (path: strin
 	);
 }
 
-export function NoteHeader({ path, commit = null, onOpen, actions, trailing }: { path: string | null; commit?: string | null; onOpen: (path: string) => void; actions?: React.ReactNode; trailing?: React.ReactNode }) {
+/** Where a task's page is: `greeting › tasks › Task 2`, the same crumbs a commit's page has, without asking the results. */
+function TaskCrumbs({ spec, task, onOpen }: { spec: string; task: string; onOpen: (path: string) => void }) {
+	return (
+		<>
+			<span className="max-w-40 shrink-0 truncate px-1">{spec}</span>
+			<ChevronRight className="size-3 shrink-0" />
+			<button
+				type="button"
+				data-crumb="tasks"
+				title="Open the plan"
+				className="shrink-0 rounded-sm px-1 py-0.5 hover:bg-accent hover:text-accent-foreground"
+				onClick={() => onOpen(docPath(spec, "tasks.md"))}
+			>
+				tasks
+			</button>
+			<ChevronRight className="size-3 shrink-0" />
+			<span className="min-w-0 truncate px-1 text-foreground">Task {task}</span>
+		</>
+	);
+}
+
+export function NoteHeader({ path, commit = null, task = null, onOpen, actions, trailing }: { path: string | null; commit?: string | null; task?: { spec: string; task: string } | null; onOpen: (path: string) => void; actions?: React.ReactNode; trailing?: React.ReactNode }) {
 	// The same identifiers the sidebar keys its open folders on, so a crumb and
 	// a row are talking about the same folder without either being told.
 	const folders = path ? foldersOf(path) : [];
@@ -421,6 +442,7 @@ export function NoteHeader({ path, commit = null, onOpen, actions, trailing }: {
 					</>
 				)}
 				{!path && commit && <CommitCrumbs commit={commit} onOpen={onOpen} />}
+				{!path && task && <TaskCrumbs spec={task.spec} task={task.task} onOpen={onOpen} />}
 			</div>
 			{/* Beside the ⋯ rather than after the path, because it is not part of
 			    where the file is: it is a state of the file and a way out of it,

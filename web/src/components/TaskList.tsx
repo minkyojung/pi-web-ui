@@ -22,7 +22,7 @@ import { CheckIcon, CircleDashedIcon, ListIcon, LayersIcon, PlayIcon, XIcon } fr
 import { cn } from "cn";
 import { APPROVED_DOCS, specNameOf } from "../../../documentKinds.ts";
 import { checkLogPath } from "../checkLog";
-import { commitPath, spansOf } from "../pages";
+import { spansOf, taskPath } from "../pages";
 import { commandsStore, configStore, createStore, noteStore, specsStore } from "../serverState";
 import { RUN, runBlocked, runMessage, runWhy } from "../specRun.ts";
 import { docPath } from "../specStanding.ts";
@@ -83,7 +83,7 @@ function Row({ row, spec, started, canRun, why, onOpen, flat }: { row: ListRow; 
 													e.stopPropagation();
 													const check = failed ?? latest.verified[0];
 													if (check) onOpen(checkLogPath(row.number, check.name));
-													else onOpen(commitPath(latest.commit));
+													else onOpen(taskPath(spec, row.number));
 												}}
 											>
 												{mark === "passed" && <CheckIcon className="size-3.5 text-muted-foreground/70" />}
@@ -102,7 +102,7 @@ function Row({ row, spec, started, canRun, why, onOpen, flat }: { row: ListRow; 
 													</div>
 												))}
 											</div>
-											<div className="border-t px-3 py-1.5 text-[11px] text-muted-foreground/70">{latest.verified.length > 0 ? "Click to open what it printed" : "Click to open the commit"}{row.tries > 1 && ` · ${row.tries} runs`}</div>
+											<div className="border-t px-3 py-1.5 text-[11px] text-muted-foreground/70">{latest.verified.length > 0 ? "Click to open what it printed" : "Click to open the task"}{row.tries > 1 && ` · ${row.tries} runs`}</div>
 										</HoverCardContent>
 									</HoverCard>
 								)}
@@ -117,7 +117,8 @@ function Row({ row, spec, started, canRun, why, onOpen, flat }: { row: ListRow; 
 						</ContextMenuItem>
 					)}
 					{words.includes("done") && <ContextMenuItem disabled={!canRun} onSelect={() => send(wordMessage("done", spec, row.number))}><CheckIcon />Done — accept it</ContextMenuItem>}
-					{latest && <ContextMenuItem onSelect={() => onOpen(commitPath(latest.commit))}>Open the commit</ContextMenuItem>}
+					{/* What the run said and changed — in review, and once accepted. */}
+					{(row.standing === "review" || latest) && <ContextMenuItem onSelect={() => onOpen(taskPath(spec, row.number))}>{row.standing === "review" ? "Look at it" : "Open the task"}</ContextMenuItem>}
 					{row.requirements.length > 0 && <ContextMenuItem onSelect={() => onOpen(docPath(spec, "requirements.md"))}>Open the requirements</ContextMenuItem>}
 					<ContextMenuSeparator />
 					{words.includes("reopen") && <ContextMenuItem disabled={!canRun} onSelect={() => send(wordMessage("reopen", spec, row.number))}>Open it again</ContextMenuItem>}
