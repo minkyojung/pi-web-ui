@@ -13,7 +13,6 @@ import { MessageResponse } from "./ai-elements/message";
 import { CheckMark } from "./CheckMark";
 import { counts, FileBlock, Size } from "./Commit";
 import { TaskGlyph } from "./TaskGlyph";
-import { Badge } from "./ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Spinner } from "./ui/spinner";
 
@@ -23,11 +22,11 @@ import { Spinner } from "./ui/spinner";
  * The page the person decides on. A task's run ends waiting to be looked at
  * (spec.ts endRun), and this is where: the run's last answer first, whole,
  * since it is written for this reading — what the diff cannot say — and
- * under it the files it changed, folded to their names and sizes. Folded,
- * unlike a commit's page: the deciding is done on the report and the code is
- * opened where the report gives reason to. Accepting it (/spec-done) makes
- * the commit, and the page stays the page — the same address, now read off
- * the commit (taskRead.ts) — with the commit named at its head.
+ * under it the files it changed, open, as a commit's page has them: a file
+ * is folded by its line where it is not worth the reading. Accepting it
+ * (/spec-done) makes the commit, and the page stays the page — the same
+ * address, now read off the commit (taskRead.ts) — with the commit named at
+ * its head.
  *
  * Of the spec's own folder only notes.md is shown, after the work: what the
  * run left for the tasks after it (spec.ts), which is worth reading when
@@ -35,7 +34,8 @@ import { Spinner } from "./ui/spinner";
  * the box ticked, the approvals — and is not shown; the commit's page has it.
  *
  * The head is one line in the plan's own grammar: the standing at the left,
- * the task's line, and at the right the check mark and the size. The commit,
+ * the task's line as tasks.md writes it — its number, then its words — and
+ * at the right the check mark and the size. The commit,
  * its time and the checks' words are behind the marks, on hover: the person
  * came to judge the work, and those are reference. The standing is also
  * where it is changed (StandingMenu).
@@ -73,17 +73,18 @@ export default function Task({ spec, task, onOpen }: { spec: string; task: strin
 	const total = counts(work);
 	return (
 		<div id="page" data-task={task} data-standing={mine.standing} className="no-scrollbar edge-top min-h-0 flex-1 overflow-y-auto">
-			<div className="mx-auto flex max-w-4xl flex-col gap-4 px-6 py-5">
+			<div className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-5">
 				{/* One line, in the plan's own grammar (TaskList.tsx): the standing as
 				    the mark at the left, the line, and at the right how it was checked
 				    and how much changed. What is reference — the commit, when it was
 				    accepted, the app's word on the checks — is behind the marks, on hover. */}
-				<header id="taskHead" className="flex min-w-0 items-center gap-2">
+				{/* Further from what is under it than those are from each other: the head names the page, and the rest is read. */}
+				<header id="taskHead" className="mb-2 flex min-w-0 items-center gap-2">
 					<StandingMenu task={mine} />
-					<Badge variant="secondary" className="h-5 shrink-0 px-1.5 text-[11px] font-normal tabular-nums">
-						Task {mine.task}
-					</Badge>
-					<h1 className="min-w-0 flex-1 truncate text-base font-medium">{mine.title}</h1>
+					<h1 className="min-w-0 flex-1 truncate text-base font-medium">
+						{/* As tasks.md numbers it: `1.` for a task, `2.1` for one under a heading. Dimmer than the words, which are what is read. */}
+						<span className="tabular-nums text-muted-foreground">{mine.task.includes(".") ? mine.task : `${mine.task}.`}</span> {mine.title}
+					</h1>
 					<span className="flex shrink-0 items-center gap-2 text-xs tabular-nums text-muted-foreground">
 						{(mine.checks !== null || mine.verified.length > 0) && (
 							<CheckMark
@@ -112,10 +113,10 @@ export default function Task({ spec, task, onOpen }: { spec: string; task: strin
 				</section>
 				<section aria-label="What changed" className="flex flex-col gap-3">
 					{work.map((file) => (
-						<FileBlock key={file.path} file={file} onOpen={onOpen} folded />
+						<FileBlock key={file.path} file={file} onOpen={onOpen} />
 					))}
 					{work.length === 0 && <p className="text-sm text-subtle-foreground">Nothing outside the spec's own folder was changed.</p>}
-					{notes && <FileBlock key={notes.path} file={notes} onOpen={onOpen} folded />}
+					{notes && <FileBlock key={notes.path} file={notes} onOpen={onOpen} />}
 					{mine.truncated && <p className="text-xs text-muted-foreground">More files changed than are shown here.</p>}
 				</section>
 			</div>

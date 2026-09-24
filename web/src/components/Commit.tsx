@@ -4,7 +4,7 @@ import { languages } from "@codemirror/language-data";
 import { unifiedMergeView } from "@codemirror/merge";
 import { EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, lineNumbers } from "@codemirror/view";
-import { ChevronRightIcon } from "lucide-react";
+import { ChevronRightIcon, SquareArrowOutUpRightIcon } from "lucide-react";
 
 import type { CommitFile, CommitRead } from "../../../commitRead.ts";
 import * as colour from "../changed";
@@ -139,28 +139,37 @@ function Head({ read, shown }: { read: CommitRead; shown: CommitFile[] }) {
 
 const WORDS: Record<CommitFile["status"], string> = { added: "New", modified: "", deleted: "Deleted", renamed: "Renamed" };
 
-/** One file: its name and size, and under them the difference — open to begin with, or folded to the name and the size, as the page asks. */
-export function FileBlock({ file, onOpen, folded = false }: { file: CommitFile; onOpen: (path: string) => void; folded?: boolean }) {
-	const [open, setOpen] = useState(!folded);
+/**
+ * One file: its name and size, and under them the difference, open to begin
+ * with. The whole line folds it and unfolds it, as a pull request's file
+ * does — a mark the width of a chevron is a small thing to have to hit — and
+ * the file as it is now opens from the arrow at its end, which comes up on
+ * the line's hover; not for a file that is gone, which has no now.
+ */
+export function FileBlock({ file, onOpen }: { file: CommitFile; onOpen: (path: string) => void }) {
+	const [open, setOpen] = useState(true);
 	return (
 		<Collapsible open={open} onOpenChange={setOpen} data-file={file.path} className="overflow-hidden rounded-md border">
-			<div className="flex min-w-0 items-center gap-2 bg-muted px-2 py-1.5 text-xs">
-				<CollapsibleTrigger className="group flex shrink-0 items-center text-muted-foreground hover:text-foreground" aria-label={open ? "Fold this file" : "Unfold this file"}>
-					<ChevronRightIcon className="size-3.5 transition-transform group-data-[state=open]:rotate-90" />
-				</CollapsibleTrigger>
-				{/* The name opens the file as it is now, to read — not for one that
-				    is gone, which has no now. */}
-				{file.status === "deleted" ? (
+			<div className="group/line flex min-w-0 items-center bg-muted pr-1 text-xs">
+				<CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2 pr-1 text-left">
+					<ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:text-foreground group-data-[state=open]:rotate-90" />
 					<span className="min-w-0 truncate font-mono">{file.path}</span>
-				) : (
-					<button type="button" className="min-w-0 truncate font-mono hover:underline" title="Open this file" onClick={() => onOpen(file.path)}>
-						{file.path}
+					{file.from && <span className="min-w-0 truncate text-muted-foreground">← {file.from}</span>}
+					{WORDS[file.status] && <span className="shrink-0 text-muted-foreground">{WORDS[file.status]}</span>}
+					<span className="ml-auto" />
+					{file.added !== null && file.deleted !== null && <Size added={file.added} deleted={file.deleted} />}
+				</CollapsibleTrigger>
+				{file.status !== "deleted" && (
+					<button
+						type="button"
+						className="flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 hover:bg-background hover:text-foreground focus-visible:opacity-100 group-hover/line:opacity-100"
+						title="Open this file"
+						aria-label="Open this file"
+						onClick={() => onOpen(file.path)}
+					>
+						<SquareArrowOutUpRightIcon className="size-3.5" />
 					</button>
 				)}
-				{file.from && <span className="min-w-0 truncate text-muted-foreground">← {file.from}</span>}
-				{WORDS[file.status] && <span className="shrink-0 text-muted-foreground">{WORDS[file.status]}</span>}
-				<span className="ml-auto" />
-				{file.added !== null && file.deleted !== null && <Size added={file.added} deleted={file.deleted} />}
 			</div>
 			<CollapsibleContent>
 				{file.shown === "binary" ? (

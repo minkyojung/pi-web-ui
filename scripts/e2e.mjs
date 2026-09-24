@@ -4125,7 +4125,7 @@ check("a spec's other document written while its tasks are open leaves the list 
 // A task's run ends waiting to be looked at, not in a commit (spec.ts endRun):
 // its session says it ran, the folder holds its changes, and the page is where
 // the person decides. Accepting it makes the commit and the page stays.
-check("a task in review opens as a page: the run's last answer, then its files folded; accepted, the same page reads its commit", async ({ app, cwd }) => {
+check("a task in review opens as a page: the run's last answer, then the files it changed; accepted, the same page reads its commit", async ({ app, cwd }) => {
 	const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
 	const dir = join(cwd, ".octave/specs/look");
 	// The folder as a run finds it: everything before committed, so what the run
@@ -4161,13 +4161,13 @@ check("a task in review opens as a page: the run's last answer, then its files f
 	await until("the task's page, in review", () => app.evaluate("document.getElementById('page')?.dataset.task === '1' && document.getElementById('page')?.dataset.standing === 'review'"));
 	// One line: the standing at the left, the words are the line, the right end is the checks and the size.
 	const head = () => app.evaluate("document.getElementById('taskHead').innerText.replace(/\\s+/g, ' ').trim()");
-	assert.equal(await head(), "In review Task 1 Add the window 1 file +1 −0", `the head: ${await head()}`);
+	assert.equal(await head(), "In review 1. Add the window 1 file +1 −0", `the head: ${await head()}`);
 	// The mark on the page's left edge, the report's words under it: the standing's padding is only for its pressed ground.
 	const inset = () => app.evaluate("Math.round(document.querySelector('#taskStanding svg').getBoundingClientRect().left - document.getElementById('taskReport').getBoundingClientRect().left)");
 	assert.equal(await inset(), 0, "the mark in line with the report");
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [role=img]')?.getAttribute('aria-label')"), "in review");
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [data-checks]')?.dataset.checks"), "said", "the agent's word only, until the app runs its checks");
-	// The report whole, the Checks: line not in it — that is the head's — and the files folded to their names.
+	// The report whole, the Checks: line not in it — that is the head's.
 	const report = await app.evaluate("document.getElementById('taskReport').innerText");
 	assert.match(report, /The window opens outward: the design did not say which way\./);
 	assert.match(report, /I left the latch for task 2\./);
@@ -4177,10 +4177,21 @@ check("a task in review opens as a page: the run's last answer, then its files f
 	const files = () => app.evaluate("[...document.querySelectorAll('#page [data-file]')].map((f) => f.dataset.file).join(',')");
 	assert.equal(await files(), "look/window.js,.octave/specs/look/notes.md");
 	assert.equal(await app.evaluate("!!document.getElementById('specFiles')"), false);
-	assert.equal(await app.evaluate("document.querySelector('[data-file=\"look/window.js\"]')?.dataset.state"), "closed", "folded");
-	assert.equal(await app.evaluate("!!document.querySelector('[data-file=\"look/window.js\"] .cm-content')"), false, "nothing drawn until it is opened");
-	await app.evaluate("document.querySelector('[data-file=\"look/window.js\"] button[aria-label=\"Unfold this file\"]').click()");
+	// Open to begin with, the difference drawn; the whole line folds it — pressed
+	// at its middle, nowhere near the chevron — and unfolds it again.
+	const state = (file) => app.evaluate(`document.querySelector('[data-file="${file}"]')?.dataset.state`);
+	const line = (file) => `[data-file="${file}"] button[aria-expanded]`;
+	assert.equal(await state("look/window.js"), "open");
 	await until("the file's difference", () => app.evaluate("document.querySelector('[data-file=\"look/window.js\"] .cm-content')?.textContent.includes(\"export const window = 'open';\")"));
+	assert.equal(await app.click(line("look/window.js")), true);
+	await until("folded by its line", async () => (await state("look/window.js")) === "closed");
+	assert.equal(await app.click(line("look/window.js")), true);
+	await until("and open again", async () => (await state("look/window.js")) === "open");
+	// The file as it is now opens from the arrow at the line's end, which waits for the line's hover — the pointer is on the other line.
+	assert.equal(await app.evaluate("getComputedStyle(document.querySelector('[data-file=\".octave/specs/look/notes.md\"] button[title=\"Open this file\"]')).opacity"), "0");
+	// Folded here, and kept folded across the acceptance below.
+	assert.equal(await app.click(line(".octave/specs/look/notes.md")), true);
+	await until("the notes folded", async () => (await state(".octave/specs/look/notes.md")) === "closed");
 	// The tab is called by the run's line, and the crumbs are the plan's.
 	assert.equal(await app.evaluate("document.querySelector('[role=tab][data-path=\"octave://task/look/1\"]')?.innerText.trim()"), "Task 1 · Add the window");
 	assert.equal(await app.evaluate("document.getElementById('crumbs')?.innerText.replace(/\\s+/g, ' ').trim()"), "look tasks Task 1");
@@ -4216,14 +4227,14 @@ check("a task in review opens as a page: the run's last answer, then its files f
 	assert.match(trailers, /Spec: look\nTask: 1\n/);
 	assert.match(trailers, new RegExp(`Session: ${session.getSessionId()}`));
 	assert.match(git("show", "HEAD:.octave/specs/look/tasks.md"), /- \[x\] 1\. Add the window/, "the box, in the same commit");
-	assert.equal(await head(), "Done Task 1 Add the window 1 file +1 −0", `the head: ${await head()}`);
+	assert.equal(await head(), "Done 1. Add the window 1 file +1 −0", `the head: ${await head()}`);
 	assert.equal(await inset(), 0, "and accepted, the same");
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [role=img]')?.getAttribute('aria-label')"), "done");
 	assert.ok((await app.evaluate("document.querySelector('#taskHead [role=img]').parentElement.title")).includes(hash), "the commit is behind the mark, on hover");
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [data-checks]')?.dataset.checks"), "passed", "the app's check outranks the agent's word");
 	assert.match(await app.evaluate("document.getElementById('taskReport').innerText"), /I left the latch for task 2\./, "the report, from the commit now");
 	assert.equal(await files(), "look/window.js,.octave/specs/look/notes.md", "the same files, from the commit: the ticked box is in it and not shown");
-	assert.equal(await app.evaluate("document.querySelector('[data-file=\"look/window.js\"]')?.dataset.state"), "open", "the file the person opened stays open across the acceptance: the page did not start over");
+	assert.equal(await state(".octave/specs/look/notes.md"), "closed", "the file the person folded stays folded across the acceptance: the page did not start over");
 	await app.shot("task-accepted");
 	// And the plan agrees: done, by the box.
 	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/look/tasks.md")}`);
