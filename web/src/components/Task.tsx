@@ -153,7 +153,8 @@ function StandingMenu({ task }: { task: TaskMsg }) {
 		if (!online) setSent(null);
 	}, [online]);
 
-	const face = "flex h-6 shrink-0 items-center gap-1.5 rounded-md px-1.5 text-xs text-muted-foreground";
+	// Pulled out by its own padding, so the mark stands on the page's left edge with the report under it, and only the pressed ground reaches past it.
+	const face = "-ml-1.5 flex h-6 shrink-0 items-center gap-1.5 rounded-md px-1.5 text-xs text-muted-foreground";
 	if (task.standing === "done") {
 		return (
 			<span id="taskStanding" className={face} title={`Accepted${task.commit ? ` in ${task.commit.short}, ${new Date(task.commit.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}` : ""}.`}>

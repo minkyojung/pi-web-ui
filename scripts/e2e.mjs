@@ -4162,6 +4162,9 @@ check("a task in review opens as a page: the run's last answer, then its files f
 	// One line: the standing at the left, the words are the line, the right end is the checks and the size.
 	const head = () => app.evaluate("document.getElementById('taskHead').innerText.replace(/\\s+/g, ' ').trim()");
 	assert.equal(await head(), "In review Task 1 Add the window 1 file +1 −0", `the head: ${await head()}`);
+	// The mark on the page's left edge, the report's words under it: the standing's padding is only for its pressed ground.
+	const inset = () => app.evaluate("Math.round(document.querySelector('#taskStanding svg').getBoundingClientRect().left - document.getElementById('taskReport').getBoundingClientRect().left)");
+	assert.equal(await inset(), 0, "the mark in line with the report");
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [role=img]')?.getAttribute('aria-label')"), "in review");
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [data-checks]')?.dataset.checks"), "said", "the agent's word only, until the app runs its checks");
 	// The report whole, the Checks: line not in it — that is the head's — and the files folded to their names.
@@ -4214,6 +4217,7 @@ check("a task in review opens as a page: the run's last answer, then its files f
 	assert.match(trailers, new RegExp(`Session: ${session.getSessionId()}`));
 	assert.match(git("show", "HEAD:.octave/specs/look/tasks.md"), /- \[x\] 1\. Add the window/, "the box, in the same commit");
 	assert.equal(await head(), "Done Task 1 Add the window 1 file +1 −0", `the head: ${await head()}`);
+	assert.equal(await inset(), 0, "and accepted, the same");
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [role=img]')?.getAttribute('aria-label')"), "done");
 	assert.ok((await app.evaluate("document.querySelector('#taskHead [role=img]').parentElement.title")).includes(hash), "the commit is behind the mark, on hover");
 	assert.equal(await app.evaluate("document.querySelector('#taskHead [data-checks]')?.dataset.checks"), "passed", "the app's check outranks the agent's word");
