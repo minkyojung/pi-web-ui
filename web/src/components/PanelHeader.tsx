@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
-import { BookOpen, Check, ChevronDown, Ellipsis, PanelLeft, PanelLeftOpen, PanelRight, PanelRightOpen, Pencil, PencilLine, Plus, Trash2 } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Ellipsis, PanelBottom, PanelBottomOpen, PanelLeft, PanelLeftOpen, PanelRight, PanelRightOpen, Pencil, PencilLine, Plus, Trash2 } from "lucide-react";
 
 import type { Mode } from "../readMode";
 import type { SessionInfo } from "../types";
@@ -137,6 +137,31 @@ export function ModeToggle({ mode, onSwitch }: { mode: Mode; onSwitch: () => voi
 				</Button>
 			</TooltipTrigger>
 			<TooltipContent side="bottom">{words} ⌘E</TooltipContent>
+		</Tooltip>
+	);
+}
+
+/**
+ * Whether the terminal under the note is shown. Beside PiToggle at the end of
+ * the tabs, for the same reason: the panel it folds cannot hold its own way back.
+ */
+export function TerminalToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					id="terminalToggle"
+					variant="ghost"
+					size="icon-xs"
+					aria-label={open ? "Hide the terminal" : "Show the terminal"}
+					aria-pressed={open}
+					className="shrink-0 text-muted-foreground"
+					onClick={onToggle}
+				>
+					{open ? <PanelBottom /> : <PanelBottomOpen />}
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent side="bottom">{open ? "Hide the terminal" : "Show the terminal"} ⌃`</TooltipContent>
 		</Tooltip>
 	);
 }

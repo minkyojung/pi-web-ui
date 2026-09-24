@@ -33,7 +33,6 @@
  * All of that is the note's half, which is as wide as the note's column. What
  * pi has to say for itself is the other half, under pi — see AgentStatus.
  */
-import { SquareTerminalIcon } from "lucide-react";
 import { useSyncExternalStore, useState } from "react";
 
 import { isSpec } from "../../../documentKinds.ts";
@@ -136,7 +135,7 @@ function share(of: Authored): { agent: string | null; other: string | null } | n
 	return { agent, other };
 }
 
-export function StatusBar({ path, piWidth, piFolded, onUnfoldPi, onOpen, terminalOpen, onToggleTerminal }: { path: string | null; piWidth: number | null; piFolded: boolean; onUnfoldPi: () => void; onOpen: (path: string) => void; terminalOpen: boolean; onToggleTerminal: () => void }) {
+export function StatusBar({ path, piWidth, piFolded, onUnfoldPi, onOpen }: { path: string | null; piWidth: number | null; piFolded: boolean; onUnfoldPi: () => void; onOpen: (path: string) => void }) {
 	const front = useSyncExternalStore(inFrontStore.subscribe, inFrontStore.get);
 	// Which of the two the count is showing. Not beside the note — it is how you
 	// like to be told, not a fact about any one note — and kept with the
@@ -232,19 +231,6 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi, onOpen, termina
 				{/* At the far end of the note's half, under the note's right edge: the
 				    repository's own commands, which are about the workspace and not the note. */}
 				<Scripts onOpen={onOpen} />
-				{/* The terminal, beside the repository's commands: both are about
-				    the workspace. Lit while it is open — a control that is on. */}
-				<Button
-					id="terminalToggle"
-					variant="ghost"
-					size="sm"
-					className={`cursor-default px-1.5 text-xs font-normal ${terminalOpen ? "text-primary" : ""}`}
-					title={terminalOpen ? "Hide the terminal (⌃`)" : "Show the terminal (⌃`)"}
-					aria-pressed={terminalOpen}
-					onClick={onToggleTerminal}
-				>
-					<SquareTerminalIcon className="size-3.5" />
-				</Button>
 			</div>
 			<AgentStatus width={piWidth} folded={piFolded} onUnfold={onUnfoldPi} />
 		</div>

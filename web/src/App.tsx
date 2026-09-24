@@ -5,7 +5,7 @@ import { layoutStorage, prefs } from "./prefs.ts";
 
 import { Editor } from "./components/Editor";
 import { Pi } from "./components/Pi";
-import { ModeToggle, PiToggle, SidebarToggle } from "./components/PanelHeader";
+import { ModeToggle, PiToggle, SidebarToggle, TerminalToggle } from "./components/PanelHeader";
 import { Sidebar, Steps } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { Terminals } from "./components/Terminals";
@@ -636,6 +636,7 @@ export function App() {
 						    list's fold is at the window's top left, and the agent's is at
 						    its top right. The tabs take the width between, so this stays
 						    where it is however many there are. */}
+						<TerminalToggle open={terminalOpen} onToggle={toggleTerminal} />
 						<PiToggle open={piOpen} onToggle={togglePi} />
 					</div>
 					{/* The card's own margin is the wrapper's to give. A group sets
@@ -827,7 +828,7 @@ export function App() {
 					    part of the window and reaches its edge, as VS Code's and Zed's
 					    do, and then there is only one place for anything to be centred
 					    in. */}
-					<StatusBar path={note} piWidth={piWidth} piFolded={!piOpen} onUnfoldPi={unfoldPi} onOpen={setOpen} terminalOpen={terminalOpen} onToggleTerminal={toggleTerminal} />
+					<StatusBar path={note} piWidth={piWidth} piFolded={!piOpen} onUnfoldPi={unfoldPi} onOpen={setOpen} />
 				</ResizablePanel>
 			</ResizablePanelGroup>
 			</div>
