@@ -24,6 +24,7 @@ import type { Settings } from "./settings.ts";
 import type { CommitRead } from "./commitRead.ts";
 import type { TaskResult } from "./specResults.ts";
 import type { TaskRun } from "./specRuns.ts";
+import type { TaskRead } from "./taskRead.ts";
 import type { Progress } from "./specTasks.ts";
 
 /** Octave's own settings, for the client, which cannot import settings.ts for anything but its type. */
@@ -118,6 +119,13 @@ export type ClientMsg =
 	 * and not watched: a commit does not change.
 	 */
 	| { type: "open_commit"; commit: string }
+	/**
+	 * A task, to look at what its run said and changed (taskRead.ts): in
+	 * review, the session's last answer and the folder's changes; accepted,
+	 * its commit. Answered with a `task`, or a `task_gone` for one never run
+	 * here. Asked and not watched: the tab asks again when the specs move.
+	 */
+	| { type: "open_task"; spec: string; task: string }
 	/**
 	 * A note's whole text, on top of the version it was read at — `base` is
 	 * that version's `modified`, or null for a note that did not exist yet.
@@ -876,6 +884,18 @@ export interface CommitGoneMsg {
 	asked: string;
 }
 
+/** A task's run — what it said and what it changed — the answer to open_task. See taskRead.ts. */
+export interface TaskMsg extends TaskRead {
+	type: "task";
+}
+
+/** The task has not been run here: no session ran it and no commit is its. */
+export interface TaskGoneMsg {
+	type: "task_gone";
+	spec: string;
+	task: string;
+}
+
 export interface CodeMsg {
 	type: "code";
 	path: string;
@@ -1025,6 +1045,8 @@ export type StateMsg =
 	| CodeMsg
 	| CommitMsg
 	| CommitGoneMsg
+	| TaskMsg
+	| TaskGoneMsg
 	| CodeGoneMsg
 	| NoteDeletedMsg
 	| NoteConflictMsg

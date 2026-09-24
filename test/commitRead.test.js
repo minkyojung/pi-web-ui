@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, unlinkSync, writeFileSync }
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { isCommitName, readCommit } from "../commitRead.ts";
+import { isCommitName, readCommit, readWorking, statusIn } from "../commitRead.ts";
 import { CODE_MAX } from "../vault.ts";
 
 function repository(t) {
@@ -41,6 +41,7 @@ test("작업의 커밋: 누구 것인지, 그리고 파일마다 전과 후 — 
   assert.equal(read.commit, hash);
   assert.equal(read.title, "Greet properly");
   assert.deepEqual([read.spec, read.task, read.checks], ["greeting", "1", "npm test — 1 passed"]);
+  assert.equal(read.body, null, "트레일러뿐이면 본문은 없다");
   assert.equal(read.truncated, false);
   const files = byPath(read);
   assert.deepEqual(Object.keys(files).sort(), [".octave/specs/greeting/tasks.md", "greeting.js", "greeting.test.js"]);
@@ -103,4 +104,69 @@ test("커밋의 이름은 16진 해시뿐이다 — 창에서 온 말을 그대�
   const cwd = mkdtempSync(join(tmpdir(), "commit-read-none-"));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   assert.equal(await readCommit(cwd, hash), null, "저장소가 아니다");
+});
+
+test("본문은 제목 아래, 트레일러 위의 글이다 — 본문 안의 `Key: value` 줄은 트레일러가 아니고, 트레일러 없는 커밋은 본문 전부", async (t) => {
+  const repo = repository(t);
+  repo.write("a.txt", "a\n");
+  const plain = repo.commit("Plain", "Just a body.\n\nAnd a second paragraph of it.");
+  assert.equal((await readCommit(repo.cwd, plain)).body, "Just a body.\n\nAnd a second paragraph of it.");
+  // git's own rule: a last paragraph of `Key: value` lines is trailers, whoever wrote it — so a task's commit puts its trailers last (spec.ts).
+  repo.write("a.txt", "b\n");
+  const task = repo.commit("Do it", "The door opens outward: the design did not say.\n\nSee: the hinge is on the left.", "Spec: s\nTask: 1\nChecks: none\nSession: x");
+  const read = await readCommit(repo.cwd, task);
+  assert.equal(read.body, "The door opens outward: the design did not say.\n\nSee: the hinge is on the left.");
+  assert.deepEqual([read.spec, read.task], ["s", "1"], "트레일러는 여전히 읽힌다");
+  repo.write("a.txt", "c\n");
+  const bare = repo.commit("Bare");
+  assert.equal((await readCommit(repo.cwd, bare)).body, null);
+});
+
+test("작업 트리: HEAD와 다른 파일마다 전(HEAD)과 후(디스크) — 새 파일, 고친 파일, 지운 파일, 앱의 폴더는 빼고, 스펙 폴더는 표시해서", async (t) => {
+  const repo = repository(t);
+  repo.write("greeting.js", "export const greet = (name) => `Hi, ${name}`;\n");
+  repo.write("gone.js", "x\n");
+  repo.write("README.md", "# app\n");
+  repo.commit("app");
+  repo.write("greeting.js", "export const greet = (name) => `Hello, ${name}!`;\n");
+  repo.write("greeting.test.js", "import test from 'node:test';\ntest('x', () => {});\n");
+  repo.write(".octave/specs/greeting/notes.md", "## 1\n");
+  repo.write(".pi/runs/1/check.log", "$ npm test\n");
+  unlinkSync(join(repo.cwd, "gone.js"));
+
+  const read = await readWorking(repo.cwd);
+  assert.equal(read.truncated, false);
+  const files = byPath(read);
+  assert.deepEqual(Object.keys(files).sort(), [".octave/specs/greeting/notes.md", "gone.js", "greeting.js", "greeting.test.js"], "앱의 폴더는 없다");
+  assert.deepEqual(files["greeting.js"], { path: "greeting.js", from: null, status: "modified", shown: "text", before: "export const greet = (name) => `Hi, ${name}`;\n", after: "export const greet = (name) => `Hello, ${name}!`;\n", added: 1, deleted: 1, spec: false });
+  assert.deepEqual([files["greeting.test.js"].status, files["greeting.test.js"].before, files["greeting.test.js"].after, files["greeting.test.js"].added, files["greeting.test.js"].deleted], ["added", null, "import test from 'node:test';\ntest('x', () => {});\n", 2, 0], "git이 모르는 새 파일은 줄 전부가 새것");
+  assert.deepEqual([files["gone.js"].status, files["gone.js"].before, files["gone.js"].after, files["gone.js"].deleted], ["deleted", "x\n", null, 1]);
+  assert.equal(files[".octave/specs/greeting/notes.md"].spec, true);
+  // Staged and unstaged alike: before is HEAD's, after is the disk's.
+  repo.git("add", "greeting.js");
+  repo.write("greeting.js", "export const greet = (name) => `Hello, ${name}!!`;\n");
+  assert.equal(byPath(await readWorking(repo.cwd))["greeting.js"].after, "export const greet = (name) => `Hello, ${name}!!`;\n");
+  // A staged rename is one; a binary is said to be.
+  repo.git("mv", "README.md", "READ.md");
+  repo.write("pic.png", Buffer.from([0x89, 0x50, 0, 0x47]));
+  const moved = byPath(await readWorking(repo.cwd));
+  assert.deepEqual([moved["READ.md"].status, moved["READ.md"].from], ["renamed", "README.md"]);
+  assert.deepEqual([moved["pic.png"].shown, moved["pic.png"].added], ["binary", null]);
+  // Nothing changed: nothing, not null. No repository: null.
+  const clean = repository(t);
+  clean.write("a", "a\n");
+  clean.commit("a");
+  assert.deepEqual(await readWorking(clean.cwd), { files: [], truncated: false });
+  assert.equal(await readWorking(mkdtempSync(join(tmpdir(), "no-repo-"))), null);
+});
+
+test("status --porcelain -z, 읽기: 코드 둘과 경로, 옮긴 것은 새 이름 뒤에 옛 이름", () => {
+  assert.deepEqual(statusIn(" M a.js\0?? b.js\0D  c.js\0R  new.md\0old.md\0A  d.js\0!! ignored\0"), [
+    { status: "modified", path: "a.js", from: null },
+    { status: "added", path: "b.js", from: null },
+    { status: "deleted", path: "c.js", from: null },
+    { status: "renamed", path: "new.md", from: "old.md" },
+    { status: "added", path: "d.js", from: null },
+  ]);
+  assert.deepEqual(statusIn(""), []);
 });

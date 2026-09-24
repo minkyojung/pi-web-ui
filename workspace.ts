@@ -90,6 +90,7 @@ import { inheritedSpecs } from "./specOrigin.ts";
 import { parseTasks, progressOf, type Progress } from "./specTasks.ts";
 import { type TaskResult, taskResults } from "./specResults.ts";
 import { inReview, type TaskRun, taskMarkEntry, taskRuns } from "./specRuns.ts";
+import { readTask } from "./taskRead.ts";
 import {
 	baseLine,
 	baseOf,
@@ -2252,6 +2253,14 @@ export async function createWorkspace(cwd: string) {
 						const asked = typeof msg.commit === "string" ? msg.commit : "";
 						const read = await readCommit(CWD, asked);
 						reply(read ? { type: "commit", asked, ...read } : { type: "commit_gone", asked });
+						break;
+					}
+
+					// A task, to look at: in review or accepted, one answer (taskRead.ts).
+					case "open_task": {
+						if (typeof msg.spec !== "string" || typeof msg.task !== "string") return;
+						const read = await readTask(CWD, msg.spec, msg.task);
+						reply(read ? { type: "task", ...read } : { type: "task_gone", spec: msg.spec, task: msg.task });
 						break;
 					}
 

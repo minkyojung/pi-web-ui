@@ -16,6 +16,8 @@ import type {
 	CodeMsg,
 	CommitGoneMsg,
 	CommitMsg,
+	TaskGoneMsg,
+	TaskMsg,
 	ConfigMsg,
 	CommandInfo,
 	ContextSourcesMsg,
@@ -179,6 +181,9 @@ export const codeStore = createStore<CodeMsg | CodeGoneMsg | null>(null);
 
 /** The commit a tab asked to read, or that there is none — the last answer, whoever asked (Commit.tsx tells its own by `asked`). */
 export const commitStore = createStore<CommitMsg | CommitGoneMsg | null>(null);
+
+/** The task a tab asked to look at, or that it was never run — the last answer, whoever asked (Task.tsx tells its own by spec and number). */
+export const taskStore = createStore<TaskMsg | TaskGoneMsg | null>(null);
 
 /**
  * Where each spec stands — what is approved, what is waiting for the person —

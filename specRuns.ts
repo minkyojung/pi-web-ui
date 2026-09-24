@@ -88,6 +88,59 @@ export function taskMarkEntry(entries: readonly unknown[]): { id: string; mark: 
 }
 
 
+/**
+ * What the run said at its end: the last text the assistant wrote, as the
+ * report that goes into the task's commit — the body, and its `Checks:` line.
+ *
+ * The body is the answer less that line: what the diff cannot say, written
+ * for the person reading the commit (taskPrompt) — in the clone and on the
+ * PR, with `git log` and nothing else. The line is what the commit says
+ * about how the work was checked, and is a trailer of its own. Only the last
+ * text is looked at, since the report is the end of the run and an earlier
+ * turn's is another task's; and in it the last line that begins with the
+ * word, so a model that quoted the instruction before answering is not
+ * taken at its quote.
+ */
+export interface Report {
+	/** The answer without its `Checks:` line, or null when there was nothing else in it. */
+	body: string | null;
+	/** What followed `Checks:`, or null when the answer had no such line. */
+	checks: string | null;
+}
+
+export function reportIn(entries: readonly unknown[]): Report {
+	const text = lastAnswer(entries);
+	if (text === null) return { body: null, checks: null };
+	const lines = text.split("\n");
+	let at = lines.length - 1;
+	while (at >= 0 && !/^checks:/i.test(lines[at]!.trim())) at--;
+	const checks = at >= 0 ? lines[at]!.trim().slice("checks:".length).trim() || null : null;
+	const body = (at >= 0 ? [...lines.slice(0, at), ...lines.slice(at + 1)] : lines).join("\n").trim();
+	return { body: body || null, checks };
+}
+
+/**
+ * The last text the assistant wrote, or null. An answer that is only a tool
+ * call has no text and is not the report; the last one with words is.
+ */
+function lastAnswer(entries: readonly unknown[]): string | null {
+	for (let at = entries.length - 1; at >= 0; at--) {
+		const entry = entries[at] as { type?: string; message?: { role?: string; content?: unknown } } | null;
+		if (entry?.type !== "message" || entry.message?.role !== "assistant") continue;
+		const content = entry.message.content;
+		const text =
+			typeof content === "string"
+				? content
+				: Array.isArray(content)
+					? content
+							.map((part) => (part && typeof part === "object" && (part as { type?: string }).type === "text" ? ((part as { text?: string }).text ?? "") : ""))
+							.join("\n")
+					: "";
+		if (text.trim() !== "") return text;
+	}
+	return null;
+}
+
 /** One run of a task: the session it was, and what the mark said. */
 export interface TaskRun {
 	spec: string;
