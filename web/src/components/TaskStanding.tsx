@@ -93,7 +93,7 @@ export function TaskStanding({ task }: { task: { spec: string; task: string } | 
 				>
 					<CheckIcon />
 					<span className="flex flex-col">
-						Accept
+						Accept and Commit
 						<span className="text-xs text-muted-foreground">{why(stop) ?? "Run the checks, tick the box and commit"}</span>
 					</span>
 				</DropdownMenuItem>

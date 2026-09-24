@@ -4231,6 +4231,7 @@ check("a task in review opens as a page: the run's last answer, then the files i
 		await until("the standing, pressable", () => app.evaluate("document.getElementById('taskStanding')?.disabled === false"));
 		assert.equal(await app.click("#taskStanding"), true);
 		await until("Accept, ready", () => app.evaluate("document.getElementById('acceptTask')?.hasAttribute('data-disabled') === false"));
+		assert.match(await app.evaluate("document.getElementById('acceptTask').innerText"), /^Accept and Commit\n/, "said whole: accepted, and committed");
 		// Opened along the header's right edge, the way the button sits, not out past the window's.
 		assert.equal(await app.evaluate("Math.round(document.getElementById('taskStanding').getBoundingClientRect().right - document.getElementById('acceptTask').closest('[role=menu]').getBoundingClientRect().right)"), 0, "the menu's right edge on the button's");
 		assert.equal(await app.click("#acceptTask"), true);
