@@ -109,14 +109,15 @@ it("확장 스위치가 꺼져 있으면 도구는 pi의 것과 우리 것뿐이
   const config = await want("config");
   const names = config.tools.map((t) => t.name);
   assert.ok(names.includes("ask_user"), `ask_user among ${names.join(", ")}`);
+  assert.ok(names.includes("read_terminal"), `read_terminal among ${names.join(", ")}`);
   assert.ok(names.includes("web_search"), `web_search among ${names.join(", ")}`);
   // There to be turned on, and off until it is: a new session sends nothing to a search.
   assert.deepEqual(config.activeTools.filter((n) => ["web_search", "fetch_content", "source_check", "get_search_content"].includes(n)), [], "the web is off when a session opens");
-  // pi's built-ins, the four Octave brings, and the four of pi-web-access —
+  // pi's built-ins, the five Octave brings, and the four of pi-web-access —
   // which is a dependency of ours, loaded from our own node_modules. With the
   // switch off, whatever ~/.pi/agent/settings.json names stays in the terminal
   // it was installed for; extensions.test.js is where it is on.
-  const known = new Set(["read", "grep", "find", "ls", "edit", "write", "bash", "powershell", "note_edit", "note_write", "note_properties", "ask_user", "web_search", "fetch_content", "source_check", "get_search_content"]);
+  const known = new Set(["read", "grep", "find", "ls", "edit", "write", "bash", "powershell", "note_edit", "note_write", "note_properties", "ask_user", "read_terminal", "web_search", "fetch_content", "source_check", "get_search_content"]);
   assert.deepEqual(names.filter((n) => !known.has(n)), [], `only known tools among ${names.join(", ")}`);
   if (process.platform !== "win32") assert.ok(!names.includes("powershell"), "no powershell where there is none to run");
   assert.ok(!log.includes("sendFlowsList"), "the dashboard bridge never started");

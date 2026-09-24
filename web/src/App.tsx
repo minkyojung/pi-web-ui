@@ -8,6 +8,7 @@ import { Pi } from "./components/Pi";
 import { ModeToggle, PiToggle, SidebarToggle } from "./components/PanelHeader";
 import { Sidebar, Steps } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
+import { Terminals } from "./components/Terminals";
 import { QuickOpen } from "./components/QuickOpen";
 import { Search } from "./components/Search";
 import { WhyCard } from "./components/WhyCard";
@@ -254,6 +255,8 @@ export function App() {
 	// cut again into the note and pi. Each keeps its own widths.
 	const columns = useDefaultLayout({ id: "columns", storage: layoutStorage, panelIds: ["sidebar", "content"] });
 	const panes = useDefaultLayout({ id: "panes", storage: layoutStorage, panelIds: ["main", "pi"] });
+	// The note over the terminal, in the note's column: pi keeps its height.
+	const stack = useDefaultLayout({ id: "stack", storage: layoutStorage, panelIds: ["page", "terminal"] });
 	// Opening only, for the folded ring at the foot of the window: it is only
 	// ever pressed with the column away, and a press that could also fold it
 	// would be a guess about which way the column was.
@@ -261,6 +264,19 @@ export function App() {
 	const togglePi = useCallback(() => {
 		const panel = pi.current;
 		if (panel) panel.isCollapsed() ? panel.expand() : panel.collapse();
+	}, []);
+	// The terminal under the note (Terminal.tsx): folded to nothing rather
+	// than gone, so the shell's screen is where it was when it opens again.
+	const terminal = useRef<PanelImperativeHandle>(null);
+	const [terminalOpen, setTerminalOpen] = useState(false);
+	const toggleTerminal = useCallback(() => {
+		const panel = terminal.current;
+		if (!panel) return;
+		if (!panel.isCollapsed()) return panel.collapse();
+		// To the height it had; the first time, to a third of the column —
+		// expand() alone would open a panel never opened at its minimum.
+		panel.expand();
+		if (panel.getSize().asPercentage <= 20) panel.resize("35%");
 	}, []);
 	const sidebar = useRef<PanelImperativeHandle>(null);
 	const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -452,6 +468,11 @@ export function App() {
 				e.preventDefault();
 				togglePi();
 			}
+			// The terminal, as in VS Code.
+			if (e.key === "`" && e.ctrlKey && !e.metaKey) {
+				e.preventDefault();
+				toggleTerminal();
+			}
 			// The list of notes, as in VS Code, Notion and Obsidian.
 			if ((e.key === "b" || e.key === "B") && mod && !e.shiftKey) {
 				e.preventDefault();
@@ -490,7 +511,7 @@ export function App() {
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [online, open, tabs, closeTab, reopenTab, setOpen, togglePi, toggleSidebar, back, forward]);
+	}, [online, open, tabs, closeTab, reopenTab, setOpen, togglePi, toggleTerminal, toggleSidebar, back, forward]);
 
 	// The side buttons of a mouse, which are back and forward everywhere else.
 	// On mousedown, before the browser makes its own move with them.
@@ -663,6 +684,8 @@ export function App() {
 					    be had, and the room was the one to go: a note short enough for
 					    this to matter is a note that does not scroll, and room to scroll
 					    into is nothing to a page that has nowhere to go. */}
+					<ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1" defaultLayout={stack.defaultLayout} onLayoutChanged={stack.onLayoutChanged}>
+					<ResizablePanel id="page" minSize="20%" className="flex min-h-0 flex-col">
 					{page?.kind === "document" ? (
 						<Boundary name="document" hint="The file itself is untouched.">
 							<Suspense fallback={<div id="page" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>}>
@@ -735,6 +758,23 @@ export function App() {
 						</div>
 					)}
 					</ResizablePanel>
+					{/* Drawn only while the terminal is open: folded, the line would
+					    lie on the card's foot and draw it twice. */}
+					<ResizableHandle className={terminalOpen ? undefined : "hidden"} />
+					<ResizablePanel
+						id="terminal"
+						panelRef={terminal}
+						defaultSize="0%"
+						minSize="20%"
+						collapsible
+						collapsedSize="0%"
+						className="flex min-h-0 flex-col"
+						onResize={() => setTerminalOpen(!terminal.current?.isCollapsed())}
+					>
+						<Terminals open={terminalOpen} onEmpty={() => terminal.current?.collapse()} />
+					</ResizablePanel>
+					</ResizablePanelGroup>
+					</ResizablePanel>
 					{/* The one line between the note and pi: shadcn's handle as it
 					    comes, drawn always, since nothing else says where the one
 					    column ends and the other begins. With pi folded away it would
@@ -787,7 +827,7 @@ export function App() {
 					    part of the window and reaches its edge, as VS Code's and Zed's
 					    do, and then there is only one place for anything to be centred
 					    in. */}
-					<StatusBar path={note} piWidth={piWidth} piFolded={!piOpen} onUnfoldPi={unfoldPi} onOpen={setOpen} />
+					<StatusBar path={note} piWidth={piWidth} piFolded={!piOpen} onUnfoldPi={unfoldPi} onOpen={setOpen} terminalOpen={terminalOpen} onToggleTerminal={toggleTerminal} />
 				</ResizablePanel>
 			</ResizablePanelGroup>
 			</div>

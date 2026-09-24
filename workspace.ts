@@ -23,6 +23,8 @@ import { randomUUID } from "node:crypto";
 import { bytes } from "./request.ts";
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import { type WebSocket } from "ws";
+import { createTerminal, type Terminal } from "./pty/terminal.ts";
+import { readTerminal } from "./terminalTool.ts";
 import {
 	createAgentSessionFromServices,
 	createAgentSessionRuntime,
@@ -307,6 +309,8 @@ export async function createWorkspace(cwd: string) {
 					// The bridge is reached when a question is asked, not now: it is
 					// made further down, after this first session is.
 					{ name: "ask", factory: askUser(() => prompts.ask) },
+					// pi reading what is on the person's terminal — see terminalTool.ts.
+					{ name: "terminal", factory: readTerminal(() => [...terminals].map(([id, t]) => ({ id, shell: t.shell, text: (n: number) => t.text(n) })), () => frontTerminal) },
 					// `/spec` and a line: the requirements of a spec, written for the
 					// person to read — see spec.ts, which runs in pi's terminal too.
 					{ name: "spec", factory: specCommand },
@@ -1229,6 +1233,37 @@ export async function createWorkspace(cwd: string) {
 	/** Whether the agent is in the middle of a turn, and when this folder was last looked at or heard from — for idle.ts. */
 	let working = false;
 	let seen = Date.now();
+	/**
+	 * The folder's terminals, by the id the page gave each — one for now
+	 * (Terminal.tsx). A terminal outlives the socket that was its screen:
+	 * the page attaches again to the same shell after a reload or a move to
+	 * another workspace and back, and the shell goes when it exits, when
+	 * the page says `close`, or with the folder.
+	 */
+	const terminals = new Map<string, Terminal>();
+	/** The one the page has in front, as it last said; what the agent reads when it does not name one. */
+	let frontTerminal: string | null = null;
+	/** A socket that wants to be terminal `id`'s screen: attached to the shell there, or to a new one. */
+	function terminal(id: string, ws: WebSocket): void {
+		seen = Date.now();
+		let had = terminals.get(id);
+		if (!had) {
+			const made = createTerminal({
+				cwd: CWD,
+				env: process.env,
+				onExit: () => {
+					if (terminals.get(id) === made) terminals.delete(id);
+					if (frontTerminal === id) frontTerminal = null;
+				},
+				onFront: () => {
+					frontTerminal = id;
+				},
+			});
+			terminals.set(id, made);
+			had = made;
+		}
+		had.attach(ws);
+	}
 
 	/**
 	 * Which file of the repository each tab has open to read — what to send it
@@ -1679,6 +1714,10 @@ export async function createWorkspace(cwd: string) {
 			}
 			if (req.method !== "GET") return json(405, { error: "read only" });
 			if (pathname === "/api/models") return json(200, catalog());
+			// The terminals alive in this folder, for the page's row of tabs
+			// (Terminals.tsx): the page cannot know from its own storage which
+			// shells are still there after a reload.
+			if (pathname === "/api/terminals") return json(200, { terminals: [...terminals].map(([id, t]) => ({ id, shell: t.shell })), front: frontTerminal });
 			// A note's text as it is on disk, for an embed of it in another note.
 			// Read only, and only a note in the folder (readNote → noteAt).
 			if (pathname === "/api/note") {
@@ -2597,6 +2636,7 @@ export async function createWorkspace(cwd: string) {
 		prompts.cancelAll();
 		logins.cancel();
 		await runtime.dispose();
+		for (const shell of terminals.values()) shell.kill();
 		// server.close() waits for open connections, and an upgraded WebSocket is
 		// one of them. ws does not close them for us when the http server was
 		// passed in, so a browser tab left open would hang the exit.
@@ -2607,6 +2647,7 @@ export async function createWorkspace(cwd: string) {
 		cwd: CWD,
 		handle,
 		attach,
+		terminal,
 		broadcast,
 		dispose,
 		/** The settings were written (server.ts): every tab of this folder hears them, and the config drawn from them. */
@@ -2617,6 +2658,7 @@ export async function createWorkspace(cwd: string) {
 		/** For the line printed as the server comes up. */
 		status: () => ({ model: currentModel()?.id ?? "none", thinking: session().thinkingLevel, sessionFile: session().sessionFile }),
 		/** Whether this folder can be let go of for now — see idle.ts. */
-		idleness: () => ({ busy: working, watched: clients.size, since: seen }),
+		// A shell left open is someone's work in progress, as a turn is.
+		idleness: () => ({ busy: working || terminals.size > 0, watched: clients.size, since: seen }),
 	};
 }
