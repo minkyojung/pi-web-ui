@@ -673,6 +673,12 @@ export interface GitStanding {
 	ahead: number | null;
 	/** Commits on the base that this branch does not have; null with no base. */
 	behind: number | null;
+	/**
+	 * The same two counts against origin's branch of this name: what a push
+	 * would send, and what a pull would bring. Null where origin has no such
+	 * branch — it has never been pushed — or there is no origin at all.
+	 */
+	remote: { ahead: number; behind: number } | null;
 }
 
 /** Sent on connecting, at a turn's end, after a task's commit, and when asked (ask_standing). Null where the folder is no repository or is on no branch. */

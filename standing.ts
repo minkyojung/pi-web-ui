@@ -11,6 +11,13 @@
  * as a workspace is made from it (electron/git.js startOf), or nothing with
  * no remote — then ahead and behind are nothing too.
  *
+ * What a push would send is counted against origin's branch of the same
+ * name, and not against the branch's upstream. A workspace's branch is made
+ * with no upstream (git.js startOf, `--no-track`), and one renamed after its
+ * spec keeps the old name's; origin's branch of this name is where a push
+ * goes, and it is what the shell calls pushed (git.js onRemote), so the two
+ * cannot disagree about whether there is anything to push.
+ *
  * Nothing of Octave's in it: what is not committed leaves out `.pi/` the
  * way removing a workspace counts it (git.js changesIn), since the app
  * writes that folder into every workspace it opens.
@@ -39,10 +46,18 @@ export async function standingIn(cwd: string): Promise<GitStanding | null> {
 	const status = (await git(cwd, ["status", "--porcelain", "--untracked-files=all"])) ?? "";
 	const changes = status.split("\n").filter((line) => line && !/^.. "?\.pi\//.test(line)).length;
 	const base = await baseOf(cwd);
-	if (!base) return { branch, base: null, changes, ahead: null, behind: null };
-	const counts = await git(cwd, ["rev-list", "--left-right", "--count", `${base}...HEAD`]);
+	if (!base) return { branch, base: null, changes, ahead: null, behind: null, remote: null };
+	const { ahead, behind } = await apart(cwd, base);
+	const pushed = (await git(cwd, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`])) !== null;
+	const remote = pushed ? await apart(cwd, `origin/${branch}`) : null;
+	return { branch, base: base.replace(/^origin\//, ""), changes, ahead, behind, remote };
+}
+
+/** How many commits HEAD has that `other` does not, and the other way. */
+async function apart(cwd: string, other: string): Promise<{ ahead: number; behind: number }> {
+	const counts = await git(cwd, ["rev-list", "--left-right", "--count", `${other}...HEAD`]);
 	const [behind, ahead] = (counts ?? "0\t0").split(/\s+/).map((n) => Number(n) || 0);
-	return { branch, base: base.replace(/^origin\//, ""), changes, ahead: ahead ?? 0, behind: behind ?? 0 };
+	return { ahead: ahead ?? 0, behind: behind ?? 0 };
 }
 
 /**

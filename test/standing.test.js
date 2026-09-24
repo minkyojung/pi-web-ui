@@ -34,7 +34,7 @@ test("no repository, or no branch, is nothing", async () => {
 test("a fresh branch off the base: nothing changed, nothing ahead or behind", async () => {
 	const { root } = cloned();
 	run(root, "checkout", "-q", "-b", "me/x");
-	assert.deepEqual(await standingIn(root), { branch: "me/x", base: "main", changes: 0, ahead: 0, behind: 0 });
+	assert.deepEqual(await standingIn(root), { branch: "me/x", base: "main", changes: 0, ahead: 0, behind: 0, remote: null });
 });
 
 test("changes are counted without the app's own folder; commits count ahead; the base moving on counts behind, once fetched", async () => {
@@ -48,14 +48,50 @@ test("changes are counted without the app's own folder; commits count ahead; the
 	assert.equal((await standingIn(root)).changes, 2);
 	run(root, "add", "a.txt", "b.txt");
 	run(root, "commit", "-q", "-m", "two");
-	assert.deepEqual(await standingIn(root), { branch: "me/x", base: "main", changes: 0, ahead: 1, behind: 0 });
+	assert.deepEqual(await standingIn(root), { branch: "me/x", base: "main", changes: 0, ahead: 1, behind: 0, remote: null });
 	writeFileSync(join(repo.seed, "c.txt"), "three\n");
 	run(repo.seed, "add", ".");
 	run(repo.seed, "commit", "-q", "-m", "three");
 	run(repo.seed, "push", "-q", repo.origin, "main");
 	assert.equal((await standingIn(root)).behind, 0, "not fetched yet: what was last fetched stands");
 	run(root, "fetch", "-q");
-	assert.deepEqual(await standingIn(root), { branch: "me/x", base: "main", changes: 0, ahead: 1, behind: 1 });
+	assert.deepEqual(await standingIn(root), { branch: "me/x", base: "main", changes: 0, ahead: 1, behind: 1, remote: null });
+});
+
+test("what a push would send and a pull would bring are counted against origin's branch of this name, once it has one", async () => {
+	const repo = cloned();
+	const { root } = repo;
+	run(root, "checkout", "-q", "-b", "me/x");
+	writeFileSync(join(root, "b.txt"), "two\n");
+	run(root, "add", ".");
+	run(root, "commit", "-q", "-m", "two");
+	assert.equal((await standingIn(root)).remote, null, "never pushed");
+	run(root, "push", "-q", "origin", "me/x");
+	assert.deepEqual((await standingIn(root)).remote, { ahead: 0, behind: 0 });
+	writeFileSync(join(root, "c.txt"), "three\n");
+	run(root, "add", ".");
+	run(root, "commit", "-q", "-m", "three");
+	assert.deepEqual(await standingIn(root), { branch: "me/x", base: "main", changes: 0, ahead: 2, behind: 0, remote: { ahead: 1, behind: 0 } });
+	// Somebody else pushes to the same branch: a pull would bring it, once fetched.
+	const other = join(repo.dir, "other");
+	run(repo.dir, "clone", "-q", "-b", "me/x", repo.origin, "other");
+	writeFileSync(join(other, "d.txt"), "four\n");
+	run(other, "add", ".");
+	run(other, "commit", "-q", "-m", "four");
+	run(other, "push", "-q", "origin", "me/x");
+	assert.deepEqual((await standingIn(root)).remote, { ahead: 1, behind: 0 }, "not fetched yet");
+	run(root, "fetch", "-q");
+	assert.deepEqual((await standingIn(root)).remote, { ahead: 1, behind: 1 });
+});
+
+test("a branch whose upstream is the base is not taken to have been pushed", async () => {
+	const { root } = cloned();
+	run(root, "checkout", "-q", "--track", "-b", "me/y", "origin/main");
+	writeFileSync(join(root, "b.txt"), "two\n");
+	run(root, "add", ".");
+	run(root, "commit", "-q", "-m", "two");
+	assert.equal(run(root, "rev-parse", "--abbrev-ref", "@{upstream}"), "origin/main");
+	assert.deepEqual(await standingIn(root), { branch: "me/y", base: "main", changes: 0, ahead: 1, behind: 0, remote: null });
 });
 
 test("with no remote there is no base, and ahead and behind are nothing", async () => {
@@ -64,7 +100,7 @@ test("with no remote there is no base, and ahead and behind are nothing", async 
 	writeFileSync(join(dir, "a.txt"), "x\n");
 	run(dir, "add", ".");
 	run(dir, "commit", "-q", "-m", "one");
-	assert.deepEqual(await standingIn(dir), { branch: "main", base: null, changes: 0, ahead: null, behind: null });
+	assert.deepEqual(await standingIn(dir), { branch: "main", base: null, changes: 0, ahead: null, behind: null, remote: null });
 });
 
 test("the base is told to the agent as what a diff or a pull request is against, and not at all without one", async () => {
