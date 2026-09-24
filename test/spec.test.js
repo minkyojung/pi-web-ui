@@ -611,6 +611,39 @@ test("되돌아가 고친 뒤 다시 승인하면, 이미 있는 다음 문서�
   assert.match(tasks, /checked as done stays as it is/, "이미 한 작업은 지우지 않는다");
 });
 
+test("스펙이 있는 워크스페이스의 /spec은 새 스펙을 시작하지 않고 그 요구사항에 더한다 — 다시 승인을 기다리고, 승인하면 설계를 맞춘다", async (t) => {
+  const pi = fakePi("minkyojung/email-auth");
+  t.after(pi.cleanup);
+  const spec = docs(pi);
+  for (const doc of ["requirements.md", "design.md", "tasks.md"]) {
+    spec.put(doc);
+    approve(pi.cwd, "email-auth");
+  }
+  await pi.run("구글 로그인도");
+  const [hidden, shown] = pi.done;
+  assert.equal(hidden.sendMessage.content, amendPrompt({ line: "구글 로그인도", name: "email-auth" }), "그 스펙에 더하라는 지시");
+  assert.equal(hidden.options.deliverAs, "nextTurn");
+  assert.equal(shown.sendUserMessage, "/spec 구글 로그인도", "보이는 것은 친 한 줄");
+
+  // The model changes the requirements, and the turn ends.
+  spec.put("requirements.md", "# requirements.md\n\nSign in with Google as well.\n");
+  await pi.settle();
+  assert.deepEqual(pi.renamed, [], "새로 생긴 스펙이 없으니 브랜치는 그대로");
+  assert.deepEqual(spec.state(), { approved: 0, waiting: "requirements.md" }, "고친 요구사항은 다시 승인을 기다린다");
+
+  pi.done.length = 0;
+  await pi.approve("");
+  assert.equal(pi.done[0].sendMessage.content, nextPrompt({ name: "email-auth", next: "design.md", redo: true }), "그 뒤는 손으로 고쳤을 때와 같다");
+});
+
+test("요구사항이 아직 없는 폴더는 스펙이 아니다 — /spec은 새 스펙을 시작한다", async (t) => {
+  const pi = fakePi("minkyojung/tokyo");
+  t.after(pi.cleanup);
+  mkdirSync(join(pi.cwd, ".octave/specs/half-made"), { recursive: true });
+  await pi.run("이메일 인증 추가");
+  assert.match(pi.done[0].sendMessage.content, /named after the spec for you/, "새 스펙의 지시");
+});
+
 test("쓰던 턴이 끊겨 다음 문서가 없으면, /spec-approve가 다시 쓰게 한다 — 새로 승인하는 것은 없다", async (t) => {
   const pi = fakePi("minkyojung/email-auth");
   t.after(pi.cleanup);

@@ -54,6 +54,7 @@ import { APP_DIR_NAME, APPROVALS, APPROVED_DOCS, SPEC_DOCS, type SpecDoc, SPECS_
 import { CITIES } from "./electron/cities.js";
 import { CONFIG_FILE, DEFAULT_TIMEOUT, isConfig, readConfig } from "./electron/octaveConfig.js";
 import { approve, type SpecState, specState } from "./specApproval.ts";
+import { inheritedSpecs } from "./specOrigin.ts";
 import { taskResults } from "./specResults.ts";
 import { inReview, type Report, reportIn, runSessions, TASK_MARK, type TaskMark, taskMark, taskRuns } from "./specRuns.ts";
 import { doneWhenOf, nextTask, parseTasks, runsOf, runsUnder, type Task, taskToRun, withBox, withDone, withParents } from "./specTasks.ts";
@@ -83,6 +84,20 @@ export function takenSpecs(cwd: string): string[] {
 	} catch {
 		return [];
 	}
+}
+
+/**
+ * The spec this workspace is for: of the specs in the folder, the one it
+ * started rather than was made with (specOrigin.ts), once its requirements
+ * are written — or null while there is none. A workspace is one spec, as it
+ * is one branch and one pull request (spec-mode.md 6절): the window names the
+ * same one (SpecInfo.own), and /spec adds to it rather than starting another.
+ * Should a folder somehow hold two, the first by name, so that the answer
+ * does not move from one question to the next.
+ */
+export function ownSpec(cwd: string): string | null {
+	const inherited = inheritedSpecs(cwd);
+	return takenSpecs(cwd).find((name) => !inherited.has(name) && existsSync(join(cwd, SPECS_DIR, name, "requirements.md"))) ?? null;
 }
 
 /**
@@ -917,7 +932,7 @@ export default function spec(pi: ExtensionAPI): void {
 	let ranTask = false;
 
 	pi.registerCommand("spec", {
-		description: "Start a spec from a line: the agent names it and writes its requirements for you to read",
+		description: "Start a spec from a line, or add the line to this workspace's spec: the agent writes its requirements for you to read",
 		handler: async (args, ctx) => {
 			const line = args.trim();
 			if (!line) {
@@ -928,6 +943,16 @@ export default function spec(pi: ExtensionAPI): void {
 			// instructions would go with whatever turn came first.
 			if (!ctx.isIdle()) {
 				ctx.ui.notify("The agent is working. Start the spec when it has finished.", "warning");
+				return;
+			}
+			// Where the workspace has its spec, the line is more of it: added to its
+			// requirements, and no folders recorded, since nothing new is to be
+			// made and so nothing names the branch at the end of the turn.
+			const own = ownSpec(ctx.cwd);
+			if (own) {
+				before = null;
+				pi.sendMessage({ customType: "spec", content: amendPrompt({ line, name: own }), display: false }, { deliverAs: "nextTurn" });
+				pi.sendUserMessage(`/spec ${line}`);
 				return;
 			}
 			const branch = await branchIn(pi, ctx.cwd);
