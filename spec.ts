@@ -210,6 +210,48 @@ export function specPrompt({ line, prefix, branch, taken }: { line: string; pref
 }
 
 /**
+ * What the model is told when /spec is given a line in a workspace whose spec
+ * is there already (ownSpec). A workspace is one spec, as it is one branch and
+ * one pull request (spec-mode.md 6절), so a second line is more of the same
+ * work: it goes into that spec's requirements rather than starting another.
+ *
+ * Only the requirements. Changed, they wait to be approved again, and the
+ * design and the tasks are brought into line after, one approval at a time —
+ * as they are when the person goes back and changes the requirements by hand
+ * (nextPrompt's redo). Nothing here needs to stop the model going further:
+ * with the requirements changed, the documents after them are refused until
+ * they are approved (refusal).
+ */
+export function amendPrompt({ line, name }: { line: string; name: string }): string {
+	const file = `${SPECS_DIR}${name}/requirements.md`;
+	const steps = [
+		`Read ${file}, and the code the line touches — as far as you need to know what is true today, and no further: you are finding out, not designing.`,
+		[
+			`Change ${file} with edit so that it asks for this too, in its form and in the language it is written in. Three things hold, because the design, the tasks and the person's approval already stand on it:`,
+			"- Every requirement and criterion the line does not change stays as it is, with its number: the tasks point at them as 1.2, 3.1.",
+			"- What is new goes after the last requirement, or after the last criterion of the requirement it belongs to, numbered on from there.",
+			"- One is changed or removed only where the line says so — something it takes back, or puts out of scope. Out of Scope and Decisions for You change with it.",
+			"",
+			"What goes in it is what goes in any requirements:",
+			...REQUIREMENTS_RULES.map((rule) => `- ${rule}`),
+		].join("\n"),
+		"Then stop. Say in a line or two what you added or changed, and point at Decisions for You if something is new there. Do not change the design or the tasks: the person approves the requirements again once they have read them, and the rest is brought into line after, one approval at a time. Do not ask them to approve it, and do not go on to code.",
+	];
+	return [
+		`The person added to the spec "${name}" with /spec: "${line}"`,
+		"",
+		"This workspace is that spec's, so a line given here is more of the same work: it goes into the spec's requirements rather than starting another spec.",
+		"",
+		"Add it, and stop. In order:",
+		...steps.map((step, i) => `${i + 1}. ${step}`),
+		"",
+		"Leave the branch as it is, and do not write anything under .git.",
+		"",
+		"Do not narrate these steps; do them.",
+	].join("\n");
+}
+
+/**
  * The design document's shape. Kiro's asks for six sections whatever the
  * work is — a data model and an error-handling section for a change of one
  * line — which is the same filling of slots the requirements had. What is

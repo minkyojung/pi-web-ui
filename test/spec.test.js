@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 
-import spec, { reportIn, endRun, nextPrompt, specPrompt, takenSpecs, taskMark, taskPrompt, trailersOf, unnamed } from "../spec.ts";
+import spec, { amendPrompt, reportIn, endRun, nextPrompt, specPrompt, takenSpecs, taskMark, taskPrompt, trailersOf, unnamed } from "../spec.ts";
 import { approve, specState } from "../specApproval.ts";
 
 test("아직 도시 이름인 브랜치만 이름을 바꿀 자리다 — main이나 이미 이름이 있는 브랜치는 그대로", () => {
@@ -47,6 +47,23 @@ test("지시문은 한 줄을 인용하고, 문서가 무엇을 위한 것인지
   assert.match(said, /the tasks will point at them as 1\.2, 3\.1/, "번호는 지킨다");
   assert.match(said, /Do not go on to a design/, "쓰고 나면 멈춘다");
   assert.match(said, /Do not ask them to approve it/, "묻지 않는다 — 사람이 준비됐을 때 승인한다");
+});
+
+test("스펙이 있는 워크스페이스의 /spec은 그 스펙의 요구사항에 더한다 — 번호는 지키고, 설계와 작업은 승인 뒤의 일", () => {
+  const said = amendPrompt({ line: "결제도 추가", name: "stay-reservation" });
+  assert.ok(said.includes('"결제도 추가"'), "그 사람의 말 그대로");
+  assert.ok(said.includes('spec "stay-reservation"'), "어느 스펙인지");
+  assert.ok(said.includes(".octave/specs/stay-reservation/requirements.md"), "그 스펙의 요구사항");
+  assert.match(said, /with edit/, "새로 쓰지 않고 고친다");
+  assert.ok(said.indexOf("Read .octave/specs/stay-reservation/requirements.md") < said.indexOf("Change "), "읽고 나서 고친다");
+  assert.match(said, /stays as it is, with its number/, "있던 번호는 그대로");
+  assert.match(said, /numbered on from there/, "새 것은 이어서");
+  assert.match(said, /changed or removed only where the line says so/);
+  assert.match(said, /Every acceptance criterion can fail/, "요구사항의 규칙은 새 스펙과 같다");
+  assert.match(said, /Do not change the design or the tasks/, "설계와 작업은 다시 승인한 뒤에");
+  assert.match(said, /Do not ask them to approve it/);
+  assert.match(said, /Leave the branch as it is/, "브랜치 이름은 그대로");
+  for (const fresh of ["kebab-case", "Make the folder", "{name}", "with write"]) assert.equal(said.includes(fresh), false, `새 스펙의 말이 아니다: ${fresh}`);
 });
 
 test("이미 있는 스펙 이름은 지시문이 피하라고 말하고, 이름이 있는 브랜치는 그대로 두라고 한다", () => {
