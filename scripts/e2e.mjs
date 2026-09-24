@@ -3860,18 +3860,18 @@ check("a workspace's row archives it from a right click: what stays is said, the
 // The foot of the window, with no shell to ask GitHub: git's side alone. The
 // suite's folder is a repository with its notes uncommitted, so the item is
 // the count of changes; committed, and with no remote, there is nothing to
-// be ahead of, so nothing is said.
-check("the foot of the window says how many changes are not committed, from git, and nothing once they are committed with no remote to be ahead of", async ({ app, cwd }) => {
-	const standing = () => app.evaluate("document.getElementById('branch-standing')?.textContent ?? ''");
+// push, so nothing is said.
+check("the foot of the window says how many changes are not committed, from git, and nothing once they are committed with no remote to push to", async ({ app, cwd }) => {
+	const standing = () => app.evaluate("document.getElementById('work-standing')?.textContent ?? ''");
 	const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
 	if (!existsSync(join(cwd, ".git"))) git("init", "-q", "-b", "main");
 	// The window is asked to ask: a focus is what does it in the app.
 	await app.evaluate("dispatchEvent(new Event('focus'))");
-	await until("changes counted", async () => /^\d+ changes?$/.test(await standing()));
-	const before = Number((await standing()).split(" ")[0]);
+	await until("changes counted", async () => /^Changes \d+$/.test(await standing()));
+	const before = Number((await standing()).split(" ")[1]);
 	writeFileSync(join(cwd, "one-more.txt"), "x\n");
 	await app.evaluate("dispatchEvent(new Event('focus'))");
-	await until("one more counted", async () => (await standing()) === `${before + 1} changes`);
+	await until("one more counted", async () => (await standing()) === `Changes ${before + 1}`);
 	git("add", "-A", "--", ".");
 	git("commit", "-q", "-m", "everything");
 	await app.evaluate("dispatchEvent(new Event('focus'))");
