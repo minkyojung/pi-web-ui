@@ -4055,7 +4055,7 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	await app.evaluate("document.querySelector('[data-result=\"1\"]').click()");
 	await until("the task's page", () => app.evaluate("document.getElementById('page')?.dataset.task === '1' && document.getElementById('page')?.dataset.standing === 'done'"));
 	assert.equal(await app.evaluate("!!document.querySelector('[data-result]')"), false);
-	assert.ok((await app.evaluate("document.getElementById('taskHead').innerText")).includes(again.slice(0, 7)), "the commit it was accepted in, at the head");
+	assert.ok((await app.evaluate("document.querySelector('#taskHead [role=img]').parentElement.title")).includes(again.slice(0, 7)), "the commit it was accepted in, behind the mark at the head");
 	// Looked at: nothing is new, from whatever is in front — a task's page here.
 	await until("nothing new", async () => (await button()) === "2 done");
 	// The task's tab is called by its line, not by its number alone — read off
