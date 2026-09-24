@@ -191,13 +191,15 @@ export function pullRequestsQuery(branches) {
 		.join("\n    ");
 	return `query($owner: String!, $repo: String!) {
   repository(owner: $owner, name: $repo) {
+    viewerDefaultMergeMethod
     ${refs}
   }
 }
 fragment pr on Ref {
   associatedPullRequests(first: 1, orderBy: { field: UPDATED_AT, direction: DESC }) {
     nodes {
-      number state url isDraft reviewDecision headRefName
+      number state url isDraft reviewDecision headRefName mergeStateStatus additions deletions
+      commitCount: commits { totalCount }
       commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { ... on CheckRun { status conclusion } ... on StatusContext { state } } } } } } }
     }
   }
@@ -209,12 +211,24 @@ fragment pr on Ref {
  * branch, each branch's latest pull request — or null for anything that is
  * not that answer. A branch GitHub does not have, or has no pull request
  * for, is simply not in it.
+ *
+ * `merge` is GitHub's own one word on whether the pull request can be
+ * merged, and if not what stands in the way (mergeStateStatus): CLEAN,
+ * BLOCKED for a review or a check it requires, BEHIND the base when the
+ * base must be merged in first, DIRTY for conflicts, UNSTABLE for a check
+ * that failed and is not required, DRAFT, HAS_HOOKS, and UNKNOWN while
+ * GitHub is still working it out. Taken as GitHub says it rather than
+ * worked out again here from the checks and reviews: it knows which of
+ * them the repository requires, and this does not.
  */
 export function pullRequestsFromGraph(out, branches) {
 	try {
 		const repository = JSON.parse(out)?.data?.repository;
 		if (!repository || typeof repository !== "object") return null;
 		const byHead = new Map();
+		// The repository's, and the same for every pull request of it: how
+		// Merge merges — its default, rather than a setting of the app's.
+		const method = ["MERGE", "SQUASH", "REBASE"].includes(repository.viewerDefaultMergeMethod) ? repository.viewerDefaultMergeMethod : "";
 		branches.forEach((branch, i) => {
 			const pr = repository[`b${i}`]?.associatedPullRequests?.nodes?.[0];
 			if (!pr || !Number.isInteger(pr.number) || typeof pr.state !== "string") return;
@@ -226,6 +240,11 @@ export function pullRequestsFromGraph(out, branches) {
 				draft: pr.isDraft === true,
 				review: typeof pr.reviewDecision === "string" ? pr.reviewDecision : "",
 				checks: checksOf(Array.isArray(contexts) ? contexts : []),
+				merge: typeof pr.mergeStateStatus === "string" ? pr.mergeStateStatus : "",
+				added: Number.isInteger(pr.additions) ? pr.additions : null,
+				deleted: Number.isInteger(pr.deletions) ? pr.deletions : null,
+				commits: Number.isInteger(pr.commitCount?.totalCount) ? pr.commitCount.totalCount : null,
+				method,
 			});
 		});
 		return byHead;

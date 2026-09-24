@@ -160,12 +160,25 @@ export function firstWorkspace(projects, workdir) {
  * of its own, which every new workspace is, is indistinguishable there from
  * one whose commits were all taken in (git.js onRemote).
  *
- * @returns {{ state: "local" | "pushed" | "open" | "merged" | "closed", number?: number, url?: string | null, draft?: boolean, review?: string, checks?: { total: number, pending: number, failed: number } }}
+ * @returns {{ state: "local" | "pushed" | "open" | "merged" | "closed", number?: number, url?: string | null, draft?: boolean, review?: string, checks?: { total: number, pending: number, failed: number }, merge?: string, added?: number | null, deleted?: number | null, commits?: number | null, method?: string }}
  */
 export function statusOf({ onRemote, pr }) {
 	if (pr) {
 		const state = { OPEN: "open", MERGED: "merged", CLOSED: "closed" }[pr.state];
-		if (state) return { state, number: pr.number, url: pr.url ?? null, draft: pr.draft === true, review: pr.review ?? "", checks: pr.checks ?? { total: 0, pending: 0, failed: 0 } };
+		if (state)
+			return {
+				state,
+				number: pr.number,
+				url: pr.url ?? null,
+				draft: pr.draft === true,
+				review: pr.review ?? "",
+				checks: pr.checks ?? { total: 0, pending: 0, failed: 0 },
+				merge: pr.merge ?? "",
+				added: pr.added ?? null,
+				deleted: pr.deleted ?? null,
+				commits: pr.commits ?? null,
+				method: pr.method ?? "",
+			};
 	}
 	return { state: onRemote ? "pushed" : "local" };
 }

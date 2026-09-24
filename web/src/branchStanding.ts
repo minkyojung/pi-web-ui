@@ -45,6 +45,14 @@ export interface BranchStatus {
 	review?: string;
 	/** The checks, folded: how many, how many still running, how many failed. */
 	checks?: { total: number; pending: number; failed: number };
+	/** GitHub's word on whether it can be merged (electron/github.js): CLEAN, BLOCKED, BEHIND, DIRTY, UNSTABLE, DRAFT, HAS_HOOKS, UNKNOWN, or "" when not said. */
+	merge?: string;
+	/** Lines added and taken out across the pull request, and its commits; null when not said. */
+	added?: number | null;
+	deleted?: number | null;
+	commits?: number | null;
+	/** How the repository merges by default — MERGE, SQUASH or REBASE — or "" when not said. */
+	method?: string;
 }
 
 /** What is on this machine and not on origin, as the first item says it. Each is left out at 0. */

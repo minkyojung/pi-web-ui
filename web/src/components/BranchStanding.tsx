@@ -7,7 +7,7 @@ import { pullRequestOf, workOf } from "../branchStanding";
 import { standingStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
-import { usePageFolder, useWorkspaceList } from "./Repositories";
+import { loadList, usePageFolder, useWorkspaceList } from "./Repositories";
 import { Button } from "./ui/button";
 import { WorkStanding } from "./WorkStanding";
 
@@ -35,6 +35,18 @@ export function BranchStanding({ onOpen }: { onOpen: (path: string) => void }) {
 	}, [online]);
 	const here = usePageFolder();
 	const row = list?.projects.flatMap((project) => project.worktrees).find((worktree) => worktree.path === here);
+	// While GitHub is still working something out — a check running, or
+	// whether the pull request can be merged — the list is asked again every
+	// half minute, since nothing else would tell the window it had finished.
+	// The shell asks gh at most that often however often it is asked
+	// (electron/workspaces.js remembered), so this is one call in thirty seconds.
+	const status = row?.status;
+	const waiting = status?.state === "open" && ((status.checks?.pending ?? 0) > 0 || status.merge === "UNKNOWN");
+	useEffect(() => {
+		if (!waiting) return;
+		const timer = setInterval(loadList, 30_000);
+		return () => clearInterval(timer);
+	}, [waiting]);
 	const work = workOf(git);
 	const standing = pullRequestOf(git, row?.status);
 	const chip = standing?.chip;

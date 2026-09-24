@@ -122,7 +122,7 @@ export function usePageFolder(): string | null {
  * was drawn stays drawn meanwhile.
  */
 const listStore = createStore<WorkspaceList | null | undefined>(workspaceShell ? undefined : null, { window: true });
-function loadList(): void {
+export function loadList(): void {
 	workspaceShell?.list().then(
 		(next) => listStore.set(next),
 		() => listStore.set(listStore.get() ?? null),
