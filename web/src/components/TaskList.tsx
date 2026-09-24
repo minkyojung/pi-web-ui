@@ -162,7 +162,13 @@ export function TaskList({ path, onOpen }: { path: string; onOpen: (path: string
 	}, [online, path]);
 	const name = specNameOf(path);
 	const spec = name === null ? null : (specs?.find((entry) => entry.name === name) ?? null);
-	const text = note?.path === path ? note.text : null;
+	// Held, not read off the last note: every document of the spec is sent
+	// whole when it is written — the agent adding to notes.md mid-run — and
+	// that one is not this list's. The editor answers only to its own path
+	// the same way.
+	const [held, setHeld] = useState<{ path: string; text: string } | null>(null);
+	if (note?.path === path && (held?.path !== path || held.text !== note.text)) setHeld({ path, text: note.text });
+	const text = note?.path === path ? note.text : held?.path === path ? held.text : null;
 	if (name === null || text === null) return <div id="tasks" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening…</div>;
 	const running = config?.run?.spec === name ? config.run.task : null;
 	const list = listOf(text, { results: spec?.results ?? [], review: spec?.review ?? [], running });

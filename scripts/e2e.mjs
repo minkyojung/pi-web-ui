@@ -4094,6 +4094,34 @@ check("what a spec's tasks came to is at the foot of the window: how many, how m
 	await until("the other task's commit", () => app.evaluate(`document.getElementById('page')?.dataset.commit === ${JSON.stringify(second)}`));
 });
 
+// Every document of a spec is sent whole when it is written, to every tab:
+// the agent adding to notes.md mid-run is one. The list of tasks is tasks.md's
+// and stays up through another's.
+check("a spec's other document written while its tasks are open leaves the list where it is", async ({ app, api, cwd }) => {
+	const dir = join(cwd, ".octave/specs/aside");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "requirements.md"), "# Requirements\n");
+	writeFileSync(join(dir, "design.md"), "# Design\n");
+	writeFileSync(join(dir, "tasks.md"), "- [ ] 1. Lay the path\n");
+	while (approve(cwd, "aside")) {}
+	await app.evaluate(`location.hash = ${JSON.stringify("#.octave/specs/aside/tasks.md")}`);
+	await until("the list", () => app.evaluate("!!document.querySelector('#tasks [data-task=\"1\"]')"));
+	// A second socket hears what the page hears, and when.
+	const witness = new WebSocket(`ws://127.0.0.1:${api}/ws`);
+	const heard = [];
+	witness.onmessage = (e) => heard.push(JSON.parse(e.data));
+	await new Promise((resolve) => witness.addEventListener("open", resolve, { once: true }));
+	try {
+		writeFileSync(join(dir, "notes.md"), `## 1. Lay the path\n\n- ${Date.now()}\n`);
+		await until("notes.md sent", () => heard.some((m) => m.type === "note" && m.path === ".octave/specs/aside/notes.md"));
+		// The page's copy of the same message: let it land.
+		await new Promise((r) => setTimeout(r, 200));
+		assert.equal(await app.evaluate("!!document.querySelector('#tasks [data-task=\"1\"]')"), true, "the list, still");
+	} finally {
+		witness.close();
+	}
+});
+
 // A task's run ends waiting to be looked at, not in a commit (spec.ts endRun):
 // its session says it ran, the folder holds its changes, and the page is where
 // the person decides. Accepting it makes the commit and the page stays.
