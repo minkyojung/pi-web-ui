@@ -6,7 +6,9 @@ import { specsStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
 import { MessageResponse } from "./ai-elements/message";
+import { CheckMark } from "./CheckMark";
 import { counts, FileBlock, Size } from "./Commit";
+import { TaskGlyph } from "./TaskGlyph";
 import { Badge } from "./ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 
@@ -22,10 +24,10 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collap
  * the commit, and the page stays the page — the same address, now read off
  * the commit (taskRead.ts) — with the commit named at its head.
  *
- * What the head says is three things: the task's line, whether it waits or
- * is accepted, and what the run said it checked. Not the session, not the
- * trailers: the person came to judge the work, and those are the app's
- * bookkeeping.
+ * The head is one line in the plan's own grammar: the standing as the mark
+ * at the left, the task's line, and at the right the check mark and the
+ * size. The commit, its time and the checks' words are behind the marks, on
+ * hover: the person came to judge the work, and those are reference.
  *
  * Asked again whenever the specs move (a turn ending, an acceptance) — the
  * server says so with `specs`, and the report or the changes may have moved
@@ -61,46 +63,40 @@ export default function Task({ spec, task, onOpen }: { spec: string; task: strin
 	return (
 		<div id="page" data-task={task} data-standing={mine.standing} className="no-scrollbar edge-top min-h-0 flex-1 overflow-y-auto">
 			<div className="mx-auto flex max-w-4xl flex-col gap-4 px-6 py-5">
-				<header id="taskHead" className="flex flex-col gap-1.5">
-					<div className="flex min-w-0 items-center gap-2">
-						<Badge variant="secondary" className="h-5 shrink-0 px-1.5 text-[11px] font-normal tabular-nums">
-							Task {mine.task}
-						</Badge>
-						<h1 className="min-w-0 truncate text-base font-medium">{mine.title}</h1>
-					</div>
-					<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-						{mine.standing === "review" ? (
-							<span className="shrink-0 text-status-review" title="The run has ended and its changes are in the folder, not committed. Accept the task to commit them.">
-								In review
-							</span>
-						) : (
-							<>
-								<span className="shrink-0">Accepted</span>
-								{mine.commit && (
-									<Badge variant="outline" className="h-5 shrink-0 px-1.5 font-mono text-[11px] font-normal" title={mine.commit.hash}>
-										{mine.commit.short}
-									</Badge>
-								)}
-							</>
+				{/* One line, in the plan's own grammar (TaskList.tsx): the standing as
+				    the mark at the left, the line, and at the right how it was checked
+				    and how much changed. What is reference — the commit, when it was
+				    accepted, the app's word on the checks — is behind the marks, on hover. */}
+				<header id="taskHead" className="flex min-w-0 items-center gap-2">
+					<span
+						className="flex shrink-0 items-center"
+						title={
+							mine.standing === "review"
+								? `The run has ended and its changes are in the folder, not committed. /spec-done ${mine.task} accepts it: the checks, the box and the commit.`
+								: `Accepted${mine.commit ? ` in ${mine.commit.short}, ${new Date(mine.commit.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}` : ""}.`
+						}
+					>
+						<TaskGlyph standing={mine.standing} />
+					</span>
+					<Badge variant="secondary" className="h-5 shrink-0 px-1.5 text-[11px] font-normal tabular-nums">
+						Task {mine.task}
+					</Badge>
+					<h1 className="min-w-0 flex-1 truncate text-base font-medium">{mine.title}</h1>
+					<span className="flex shrink-0 items-center gap-2 text-xs tabular-nums text-muted-foreground">
+						{(mine.checks !== null || mine.verified.length > 0) && (
+							<CheckMark
+								task={mine.task}
+								checks={mine.checks}
+								verified={mine.verified}
+								foot={mine.standing === "review" ? "The app runs its own checks when you accept the task." : mine.verified.length > 0 ? "Click to open what it printed" : undefined}
+								onOpen={onOpen}
+							/>
 						)}
-						<span className="shrink-0">
-							· {work.length} {work.length === 1 ? "file" : "files"}
+						<span>
+							{work.length} {work.length === 1 ? "file" : "files"}
 						</span>
 						<Size {...total} />
-						{/* The run's own word for how it checked its work, and said to be
-						    so: the app runs its own checks when the task is accepted. */}
-						{mine.checks && (
-							<span className="min-w-0 truncate" title="What the agent said it checked. The app did not run this.">
-								· agent: {mine.checks}
-							</span>
-						)}
-						{mine.verified.map((check) => (
-							<span key={check.name} className={check.exit === 0 ? "shrink-0" : "shrink-0 text-destructive"} title={`The app ran ${check.name}; it ended with exit ${check.exit}.`}>
-								· {check.name} {check.exit === 0 ? "passed" : `failed (exit ${check.exit})`}
-							</span>
-						))}
-						{mine.commit && <span className="shrink-0">· {new Date(mine.commit.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</span>}
-					</div>
+					</span>
 				</header>
 				{/* The report: the agent's, and marked as the agent's, the way its checks are. */}
 				<section id="taskReport" aria-label="What the agent said" className="flex flex-col gap-1.5">

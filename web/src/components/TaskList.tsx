@@ -17,15 +17,15 @@
  * taskList.ts's; this only draws them and sends the words.
  */
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { CheckIcon, CircleDashedIcon, ListIcon, LayersIcon, PlayIcon, XIcon } from "lucide-react";
+import { CheckIcon, ListIcon, LayersIcon, PlayIcon } from "lucide-react";
 
 import { cn } from "cn";
 import { APPROVED_DOCS, specNameOf } from "../../../documentKinds.ts";
-import { checkLogPath } from "../checkLog";
 import { spansOf, taskPath } from "../pages";
 import { commandsStore, configStore, createStore, noteStore, specsStore } from "../serverState";
 import { RUN, runBlocked, runMessage, runWhy } from "../specRun.ts";
 import { docPath } from "../specStanding.ts";
+import { CheckMark } from "./CheckMark";
 import { TaskGlyph } from "./TaskGlyph";
 import { getConnection, subscribe } from "../store";
 import { byStatus, type ListRow, listOf, type Section, wordMessage, wordsFor } from "../taskList.ts";
@@ -34,7 +34,6 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** Whether the list is by the plan's headings or by standing — the window's choice, the same in every workspace. */
@@ -50,8 +49,6 @@ function Row({ row, spec, started, canRun, why, onOpen, flat }: { row: ListRow; 
 	const detail = row.involves.length > 0 || row.requirements.length > 0 || (row.doneWhen && !row.latest) || row.after.length > 0;
 	const words = wordsFor(row.standing);
 	const latest = row.latest;
-	const failed = latest?.verified.find((v) => v.exit !== 0) ?? null;
-	const mark = latest === null ? null : latest.verified.length > 0 ? (failed ? "failed" : "passed") : latest.checks !== null ? "said" : "none";
 	return (
 		<Collapsible open={open} onOpenChange={setOpen}>
 			<ContextMenu>
@@ -73,38 +70,15 @@ function Row({ row, spec, started, canRun, why, onOpen, flat }: { row: ListRow; 
 							<span className="flex shrink-0 items-center gap-2 text-xs tabular-nums text-muted-foreground">
 								{row.count && <span>{row.count.done} / {row.count.total}</span>}
 								{latest && <span className="text-muted-foreground/70">+{latest.added} −{latest.deleted}</span>}
-								{latest && mark && (
-									<HoverCard openDelay={250} closeDelay={150}>
-										<HoverCardTrigger asChild>
-											<button
-												className="flex items-center"
-												aria-label="how the check ended"
-												onClick={(e) => {
-													e.stopPropagation();
-													const check = failed ?? latest.verified[0];
-													if (check) onOpen(checkLogPath(row.number, check.name));
-													else onOpen(taskPath(spec, row.number));
-												}}
-											>
-												{mark === "passed" && <CheckIcon className="size-3.5 text-muted-foreground/70" />}
-												{mark === "failed" && <XIcon className="size-3.5 text-destructive/60" />}
-												{(mark === "said" || mark === "none") && <CircleDashedIcon className="size-3.5 text-muted-foreground/50" />}
-											</button>
-										</HoverCardTrigger>
-										<HoverCardContent side="bottom" align="end" className="w-96 p-0 text-left">
-											<div className="space-y-1 px-3 py-2 font-mono text-[12px]">
-												{latest.verified.length === 0 && <div className="text-muted-foreground">{latest.checks ? `The agent said: ${latest.checks}` : "Nothing was checked."}</div>}
-												{latest.verified.map((v) => (
-													<div key={v.name} className="flex items-center gap-2">
-														<PlayIcon className="size-3 shrink-0 text-muted-foreground/60" />
-														<span className="min-w-0 flex-1 truncate">{v.name}</span>
-														<span className={cn("shrink-0 text-[11px]", v.exit === 0 ? "text-muted-foreground" : "text-destructive/80")}>exit {v.exit}</span>
-													</div>
-												))}
-											</div>
-											<div className="border-t px-3 py-1.5 text-[11px] text-muted-foreground/70">{latest.verified.length > 0 ? "Click to open what it printed" : "Click to open the task"}{row.tries > 1 && ` · ${row.tries} runs`}</div>
-										</HoverCardContent>
-									</HoverCard>
+								{latest && (
+									<CheckMark
+										task={row.number}
+										checks={latest.checks}
+										verified={latest.verified}
+										foot={`${latest.verified.length > 0 ? "Click to open what it printed" : "Click to open the task"}${row.tries > 1 ? ` · ${row.tries} runs` : ""}`}
+										onOpen={onOpen}
+										otherwise={() => onOpen(taskPath(spec, row.number))}
+									/>
 								)}
 							</span>
 						</div>

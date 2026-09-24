@@ -4127,8 +4127,11 @@ check("a task in review opens as a page: the run's last answer, then its files f
 
 	await app.evaluate(`location.hash = ${JSON.stringify("#octave://task/look/1")}`);
 	await until("the task's page, in review", () => app.evaluate("document.getElementById('page')?.dataset.task === '1' && document.getElementById('page')?.dataset.standing === 'review'"));
-	const head = () => app.evaluate("document.getElementById('taskHead').innerText.replace(/\\s+/g, ' ')");
-	assert.match(await head(), /Task 1 Add the window In review · 1 file \+1 −0 · agent: npm test — 3 passed/, `the head: ${await head()}`);
+	// One line: the mark at the left says the standing, the words are the line, the right end is the checks and the size.
+	const head = () => app.evaluate("document.getElementById('taskHead').innerText.replace(/\\s+/g, ' ').trim()");
+	assert.equal(await head(), "Task 1 Add the window 1 file +1 −0", `the head: ${await head()}`);
+	assert.equal(await app.evaluate("document.querySelector('#taskHead [role=img]')?.getAttribute('aria-label')"), "in review");
+	assert.equal(await app.evaluate("document.querySelector('#taskHead [data-checks]')?.dataset.checks"), "said", "the agent's word only, until the app runs its checks");
 	// The report whole, the Checks: line not in it — that is the head's — and the files folded to their names.
 	const report = await app.evaluate("document.getElementById('taskReport').innerText");
 	assert.match(report, /The window opens outward: the design did not say which way\./);
@@ -4149,7 +4152,10 @@ check("a task in review opens as a page: the run's last answer, then its files f
 	git("commit", "-q", "-m", "Add the window", "-m", "The window opens outward: the design did not say which way.\n\nI left the latch for task 2.", "-m", `Spec: look\nTask: 1\nChecks: npm test — 3 passed\nVerified: npm test — exit 0\nSession: ${session.getSessionId()}`);
 	const hash = git("rev-parse", "--short", "HEAD");
 	await until("the same page, accepted", () => app.evaluate("document.getElementById('page')?.dataset.task === '1' && document.getElementById('page')?.dataset.standing === 'done'"));
-	assert.match(await head(), new RegExp(`Task 1 Add the window Accepted ${hash} · 1 file \\+1 −0 · agent: npm test — 3 passed · npm test passed`), `the head: ${await head()}`);
+	assert.equal(await head(), "Task 1 Add the window 1 file +1 −0", `the head: ${await head()}`);
+	assert.equal(await app.evaluate("document.querySelector('#taskHead [role=img]')?.getAttribute('aria-label')"), "done");
+	assert.ok((await app.evaluate("document.querySelector('#taskHead [role=img]').parentElement.title")).includes(hash), "the commit is behind the mark, on hover");
+	assert.equal(await app.evaluate("document.querySelector('#taskHead [data-checks]')?.dataset.checks"), "passed", "the app's check outranks the agent's word");
 	assert.match(await app.evaluate("document.getElementById('taskReport').innerText"), /I left the latch for task 2\./, "the report, from the commit now");
 	assert.equal(await app.evaluate("document.querySelector('[data-file=\"look/window.js\"]')?.dataset.state"), "open", "the file the person opened stays open across the acceptance: the page did not start over");
 	await app.shot("task-accepted");
