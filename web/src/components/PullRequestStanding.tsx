@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowUpIcon, ExternalLinkIcon, GitMergeConflictIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, MessageSquareTextIcon, WrenchIcon } from "lucide-react";
+import { ArrowUpIcon, GitMergeConflictIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, MessageSquareTextIcon, WrenchIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "cn";
@@ -8,6 +8,7 @@ import { ADDRESS_REVIEW, FIX_CHECKS, PUSH, RESOLVE_CONFLICTS } from "../pullRequ
 import { CommandButton } from "./CommandButton";
 import { Button } from "./ui/button";
 import { Spinner } from "./ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
  * GitHub's four marks for a pull request, in the window's own colours rather
@@ -33,8 +34,8 @@ const AGENT: Record<Exclude<PullAction, "merge">, { name: string; id: string; la
 };
 
 /**
- * The pull request, at the foot of the window: its mark and number, which
- * open it on GitHub — and, only when there is something to do, one button
+ * The pull request, at the foot of the window: its mark and number, one
+ * button that opens it on GitHub — and, only when there is something to do, one button
  * that does it (branchStanding.ts pullRequestOf). Nothing else is said
  * here. Why a check failed, what a reviewer asked, where the conflicts are,
  * is on GitHub, a press away, and the agent reads it there when asked to
@@ -47,13 +48,21 @@ export function PullRequestStanding({ view, onMerge }: { view: PullRequestView; 
 	const agent = view.action && view.action !== "merge" ? AGENT[view.action] : null;
 	return (
 		<span id="branch-standing" data-glyph={view.glyph} data-action={view.action ?? undefined} data-running={view.running || undefined} className="flex shrink-0 items-center gap-1 pr-1.5">
-			<Button asChild variant="ghost" size="sm" className="cursor-default gap-1 px-1.5 text-xs font-normal">
-				<a href={view.url ?? undefined} target="_blank" rel="noreferrer" aria-label={`Open pull request #${view.number} on GitHub`}>
-					<Glyph glyph={view.glyph} />
-					<span className="text-foreground tabular-nums">#{view.number}</span>
-					<ExternalLinkIcon className="size-3 opacity-60" />
-				</a>
-			</Button>
+			{/* One button, the mark and the number both: shadcn's link as a button
+			    (Button asChild round an <a>), with the ghost's hover over the whole
+			    of it saying so — an arrow on the end made it look as though only
+			    the arrow went anywhere. Where it goes is said on pointing at it. */}
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button asChild variant="ghost" size="sm" className="cursor-default gap-1 px-1.5 text-xs font-normal">
+						<a href={view.url ?? undefined} target="_blank" rel="noreferrer" aria-label={`Open pull request #${view.number} on GitHub`}>
+							<Glyph glyph={view.glyph} />
+							<span className="text-foreground tabular-nums">#{view.number}</span>
+						</a>
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent side="top">Open on GitHub</TooltipContent>
+			</Tooltip>
 			{view.running && <Spinner className="size-3 shrink-0 text-status-progress" aria-label="Checks running" />}
 			{agent && (
 				<CommandButton name={agent.name} id={agent.id}>
