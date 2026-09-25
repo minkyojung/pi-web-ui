@@ -24,8 +24,8 @@
  * which is the same gap a tab has at the top. Numbers matched by eye drift the
  * moment either end is touched; numbers that follow from one another do not.
  *
- * Two things, both about the note as it stands and both against the left
- * edge: how much of it there is, and how much of it the agent wrote — then
+ * Against the left edge, after what the spec's tasks have come to, two things
+ * about the note as it stands: how much of it there is, and how much of it the agent wrote — then
  * whether it has reached the disk, only when it has not. Where the note sits among
  * the others, its tags and what links to it, was here once and is not the
  * strip's to say: those are ways to go somewhere, and this is a place to read.
@@ -170,9 +170,6 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi, onOpen }: { pat
 				{/* First, and whatever is in front: what the spec's tasks have come
 				    to is about the work and not about the page being read, and a
 				    place that moved with the page would not be one to glance at. */}
-				{/* Before that, where the branch stands: the largest thing first,
-				    and the one that is there even with nothing in front. */}
-				<BranchStanding onOpen={onOpen} />
 				<TaskResults open={path} onOpen={onOpen} />
 				{/* All of it against the left edge, where the note's own text begins.
 				    The count first, because it is always there: the agent's share is
@@ -228,9 +225,17 @@ export function StatusBar({ path, piWidth, piFolded, onUnfoldPi, onOpen }: { pat
 						{words[note.saved]}
 					</span>
 				)}
-				{/* At the far end of the note's half, under the note's right edge: the
-				    repository's own commands, which are about the workspace and not the note. */}
-				<Scripts onOpen={onOpen} />
+				{/* At the far end of the note's half, under the note's right edge: what
+				    is about the workspace and not the note. The repository's own
+				    commands, then where the branch stands last, so commits, the push
+				    and the pull request are read in one corner whatever is in front.
+				    The group, not either item, takes what is left of the row: Scripts
+				    is not there in a repository without a config, and the branch
+				    should not slide to the left edge when it is not. */}
+				<div className="ml-auto flex shrink-0 items-center gap-0.5">
+					<Scripts onOpen={onOpen} />
+					<BranchStanding onOpen={onOpen} />
+				</div>
 			</div>
 			<AgentStatus width={piWidth} folded={piFolded} onUnfold={onUnfoldPi} />
 		</div>

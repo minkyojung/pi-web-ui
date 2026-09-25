@@ -70,7 +70,7 @@ export function WorkStanding({ work, onOpen }: { work: Work; onOpen: (path: stri
 					)}
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent side="top" align="start" className="w-96 p-0">
+			<PopoverContent side="top" align="end" className="w-96 p-0">
 				<Command loop>
 					<div className="flex items-baseline gap-2 px-3 pt-2.5 pb-1 text-xs">
 						<span className="min-w-0 truncate font-medium text-foreground">{git?.branch}</span>

@@ -10,9 +10,9 @@ import { PullRequestStanding } from "./PullRequestStanding";
 import { WorkStanding } from "./WorkStanding";
 
 /**
- * Where this workspace's branch stands, at the left end of the foot of the
- * window — the first things there, so they are in the same place whatever
- * is in front, and there even when nothing is. Two items, as
+ * Where this workspace's branch stands, at the right end of the note's half
+ * of the foot of the window — the last things there, so they are in the same
+ * place whatever is in front, and there even when nothing is. Two items, as
  * branchStanding.ts has it: what is on this machine and not on origin, then
  * the pull request (PullRequestStanding.tsx) — or, before there is one,
  * Create PR. Quiet until there is something to do, and then one button.

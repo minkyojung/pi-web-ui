@@ -116,7 +116,7 @@ export function Scripts({ onOpen }: { onOpen: (path: string) => void }) {
 		}
 	}, [state, path]);
 	if (!shell?.runs || !path || !state) return null;
-	const face = "ml-auto cursor-default gap-1 px-1.5 text-xs font-normal";
+	const face = "cursor-default gap-1 px-1.5 text-xs font-normal";
 	if (!state.configured) {
 		return (
 			<Button
