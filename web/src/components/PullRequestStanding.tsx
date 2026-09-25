@@ -57,7 +57,7 @@ export function PullRequestStanding({ view, onMerge }: { view: PullRequestView; 
 					<Button asChild variant="ghost" size="sm" className="cursor-default gap-1 px-1.5 text-xs font-normal">
 						<a href={view.url ?? undefined} target="_blank" rel="noreferrer" aria-label={`Open pull request #${view.number} on GitHub`}>
 							<Glyph glyph={view.glyph} />
-							<span className="text-foreground tabular-nums">#{view.number}</span>
+							<span className="tabular-nums">#{view.number}</span>
 						</a>
 					</Button>
 				</TooltipTrigger>
