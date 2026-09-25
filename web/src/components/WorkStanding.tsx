@@ -42,7 +42,7 @@ export function WorkStanding({ work, onOpen }: { work: Work; onOpen: (path: stri
 		if (file !== undefined) changesTargetStore.set(file);
 		onOpen(path);
 	};
-	const figure = (count: number) => <span className="text-foreground tabular-nums">{count}</span>;
+	const figure = (count: number) => <span className="tabular-nums">{count}</span>;
 	const files = listed?.files ?? [];
 	const commits = listed?.commits ?? [];
 	const total = files.reduce((sum, file) => ({ added: sum.added + (file.added ?? 0), deleted: sum.deleted + (file.deleted ?? 0) }), { added: 0, deleted: 0 });
