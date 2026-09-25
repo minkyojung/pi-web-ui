@@ -41,9 +41,10 @@ const folderOf = (path: string) => (path.includes("/") ? path.slice(0, path.last
 /**
  * Send the text and empty the box, whichever way it was sent.
  *
- * The open note rides along as its path, beside the message and not in it:
- * the server tells pi for the turn, so the path is never part of what was
- * said, kept, compacted, or asked again later when it may be another note.
+ * The tab in front rides along as its address, beside the message and not
+ * in it: the server tells pi for the turn, so the address is never part of
+ * what was said, kept, compacted, or asked again later when it may be
+ * another tab.
  * Whatever is typed there and not yet written goes out on the same socket
  * ahead of this, so pi reads what is on screen — see saves.ts.
  */
@@ -51,7 +52,7 @@ function submit(
 	form: HTMLFormElement,
 	text: string,
 	behavior: "followUp" | "steer",
-	note: string | null,
+	front: string | null,
 	chosen: ChosenWords | null,
 	files: { url?: string; mediaType?: string }[] = [],
 ): boolean {
@@ -69,10 +70,10 @@ function submit(
 	send({
 		type: "prompt",
 		text: trimmed,
-		...(note ? { note } : {}),
+		...(front ? { front } : {}),
 		// What was chosen in the note, for this turn: pi is told what the
 		// question is about, and the words stay out of the message itself.
-		...(chosen && chosen.path === note ? { chosen: chosen.text, ...(chosen.page ? { page: chosen.page } : {}) } : {}),
+		...(chosen && chosen.path === front ? { chosen: chosen.text, ...(chosen.page ? { page: chosen.page } : {}) } : {}),
 		...(command ? { command } : {}),
 		...(images.length ? { images } : {}),
 		behavior,
@@ -181,14 +182,14 @@ function Attached() {
  * agents that will — Cursor, Claude Code — make it a gesture on the key you
  * press. So it is one here too, and only while a run is going.
  */
-export function Composer({ note }: { note: string | null }) {
+export function Composer({ front }: { front: string | null }) {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const streaming = config?.isStreaming ?? false;
 	// What the editor points at, unless this one has been dropped with the ×.
 	const chosen = useSyncExternalStore(chosenStore.subscribe, chosenStore.get);
 	const [dropped, setDropped] = useState<string | null>(null);
-	const pointing = chosen && chosen.path === note && chosen.text !== dropped ? chosen : null;
+	const pointing = chosen && chosen.path === front && chosen.text !== dropped ? chosen : null;
 
 	// Text a cleared queue handed back. The box is uncontrolled — PromptInput
 	// reads it out of the form on submit — so it is written directly, appended
@@ -213,7 +214,7 @@ export function Composer({ note }: { note: string | null }) {
 	const send_ = (form: HTMLFormElement, value: string, files: { url?: string; mediaType?: string }[]) => {
 		const behavior = steering.current ? "steer" : "followUp";
 		steering.current = false;
-		if (submit(form, value, behavior, note, pointing, files)) setText("");
+		if (submit(form, value, behavior, front, pointing, files)) setText("");
 	};
 	// A file that is not an image, dropped or pasted: it goes into the folder
 	// and its path into the message, where the cursor is, as a mention — the

@@ -172,3 +172,34 @@ test("프롬프트는 노트도 edit·write로 쓴다고 말하고, 막는다는
   assert.equal(/refused on a note/.test(WORKSPACE_PROMPT), false);
   assert.equal(/cannot write a note/.test(WORKSPACE_PROMPT), false);
 });
+
+test("앱의 페이지를 보고 있었으면 주소가 가리키는 것을, 폴더와 git에서 찾는 곳과 함께 말한다", () => {
+  assert.equal(
+    looking({ path: "octave://task/email-auth/3", chosen: null }),
+    "When they sent this message, the person had the page of task 3 of the spec in .octave/specs/email-auth/ open: what its run said and the files it changed, or its commit once accepted. The task itself is in .octave/specs/email-auth/tasks.md.",
+  );
+  assert.match(looking({ path: "octave://task/email-auth/2.1", chosen: null }), /page of task 2\.1 of the spec/);
+  assert.equal(
+    looking({ path: "octave://commit/a1b2c3d", chosen: null }),
+    "When they sent this message, the person had the page of commit a1b2c3d open: its message and the files it changed (git show a1b2c3d).",
+  );
+  assert.match(looking({ path: "octave://changes", chosen: null }), /changes not yet committed.*git diff HEAD/);
+});
+
+test("무엇을 말할지 모르는 페이지는 아무것도 말하지 않는다", async () => {
+  assert.equal(looking({ path: "octave://whats-new/0.0.9", chosen: null }), null);
+  assert.equal(looking({ path: "octave://commit/not-a-hash", chosen: null }), null);
+  assert.equal(looking({ path: "octave://task/../x", chosen: null }), null);
+  assert.equal(await beside({ path: "octave://whats-new/0.0.9", chosen: null }), undefined);
+});
+
+test("저장소의 파일을 읽고 있었으면 고른 글도 함께 말한다", () => {
+  const said = looking({ path: "src/a.ts", chosen: "const a = 1;" });
+  assert.match(said, /was reading this file of the repository: src\/a\.ts/);
+  assert.ok(said.endsWith("> const a = 1;"));
+});
+
+test("보이지 않는 메시지는 무엇을 보고 있었는지를 details에 주소로 남긴다", async () => {
+  const result = await beside({ path: "octave://task/email-auth/3", chosen: null });
+  assert.deepEqual(result.message.details, { front: "octave://task/email-auth/3" });
+});

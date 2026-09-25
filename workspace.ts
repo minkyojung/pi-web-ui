@@ -126,7 +126,7 @@ import {
 	type AskOutcome,
 } from "./ask.ts";
 import { watchNotes } from "./watcher.ts";
-import { guard, WORKSPACE_PROMPT } from "./guard.ts";
+import { type Front, guard, WORKSPACE_PROMPT } from "./guard.ts";
 import { renameTarget } from "./naming.ts";
 import { LinkStore, type Touched } from "./linkIndex.ts";
 import { PropertyStore } from "./propertyIndex.ts";
@@ -230,11 +230,12 @@ export async function createWorkspace(cwd: string) {
 	 * runtime.session rather than capturing it.
 	 */
 	/**
-	 * The note open in the editor of the tab that last sent a prompt, and the
-	 * words chosen in it, given to pi beside the prompt as a hidden message — see
-	 * guard.ts. One value, not one per tab: pi has one conversation.
+	 * The tab in front in the window that last sent a prompt — a file's path or
+	 * a page's address — and the words chosen in it, given to pi beside the
+	 * prompt as a hidden message — see guard.ts. One value, not one per window:
+	 * pi has one conversation.
 	 */
-	let openNote: { path: string; chosen: string | null; page?: string } | null = null;
+	let front: Front | null = null;
 
 	/**
 	 * The ask waiting for an answer, if there is one: what was chosen, where the
@@ -294,7 +295,7 @@ export async function createWorkspace(cwd: string) {
 				appendSystemPrompt: said,
 				extensionFactories: [
 					// The guard first: a blocked call never reaches anything after it.
-					{ name: "guard", factory: guard(CWD, () => openNote) },
+					{ name: "guard", factory: guard(CWD, () => front) },
 					// Then the wall: what the guard let through, the shell runs behind
 					// it, where a note cannot be written. See wall.ts.
 					{ name: "wall", factory: wall(CWD) },
@@ -1842,10 +1843,10 @@ export async function createWorkspace(cwd: string) {
 				switch (msg.type) {
 					case "prompt": {
 						if (typeof msg.text !== "string") return;
-						openNote =
-							typeof msg.note === "string"
+						front =
+							typeof msg.front === "string"
 								? {
-										path: msg.note,
+										path: msg.front,
 										chosen: typeof msg.chosen === "string" && msg.chosen ? msg.chosen : null,
 										// Digits and a dash, since it is said to pi as it came.
 										...(typeof msg.page === "string" && /^\d{1,6}(-\d{1,6})?$/.test(msg.page) ? { page: msg.page } : {}),

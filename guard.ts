@@ -31,8 +31,9 @@
  *   shell; a git command is the only way in. Codex keeps `.git` read-only
  *   inside a folder it may write for the same reason. Only edit and write:
  *   the shell's `git` is how git is meant to be changed.
- * - The note open in the editor, and the words chosen in it, given as a hidden
- *   message of their own beside the person's rather than as text in it. As
+ * - The tab in front — a note, a file, or a page of the app's own, said as
+ *   its address and never its contents — and the words chosen in it, given as
+ *   a hidden message of their own beside the person's rather than as text in it. As
  *   their text it was replayed with a stale path when a question was asked
  *   again or a branch navigated; a message of its own is left behind with the
  *   branch, and says it was as of that message. It was a line of the turn's
@@ -44,7 +45,7 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, relative, sep } from "node:path";
-import { APP_DIR_NAME, isDocument, isSpec } from "./documentKinds.ts";
+import { APP_DIR_NAME, isDocument, isSpec, SPECS_DIR } from "./documentKinds.ts";
 
 /** What the app keeps beside the notes. Nothing of pi's may go there. */
 
@@ -106,14 +107,39 @@ export function mentionsAppDir(command: string): boolean {
 	return new RegExp(`(^|[\\s"'\`=:(])\\${APP_DIR_NAME}(?=[/\\s"'\`)]|$)`).test(command);
 }
 
-/** The note open in the editor, and the words chosen in it, if any. */
-export type OpenNote = () => { path: string; chosen: string | null; page?: string } | null;
+/**
+ * The tab in front — a file's path, or the address of a page of the app's own
+ * (web/src/pages.ts) — and the words chosen in it, if any.
+ */
+export type Front = { path: string; chosen: string | null; page?: string };
+
+/**
+ * What a page of the app's own shows, said as where the same is found in the
+ * folder and in git: the address, and nothing of what the page holds, so pi
+ * reads it for itself when it matters. Read as pages.ts reads the address;
+ * anything else under the scheme — what is new in this version — is nothing
+ * the conversation is about, and null.
+ */
+function lookingAtPage(address: string): string | null {
+	const task = /^octave:\/\/task\/([^/]+)\/(\d+(?:\.\d+)?)$/.exec(address);
+	if (task) {
+		const [, spec, number] = task;
+		return `When they sent this message, the person had the page of task ${number} of the spec in ${SPECS_DIR}${spec}/ open: what its run said and the files it changed, or its commit once accepted. The task itself is in ${SPECS_DIR}${spec}/tasks.md.`;
+	}
+	const commit = /^octave:\/\/commit\/([0-9a-f]{7,40})$/.exec(address);
+	if (commit) return `When they sent this message, the person had the page of commit ${commit[1]} open: its message and the files it changed (git show ${commit[1]}).`;
+	if (address === "octave://changes") return "When they sent this message, the person had the page of the changes not yet committed open: each file changed since the last commit, before and after (git diff HEAD).";
+	return null;
+}
 
 /**
  * What the person was looking at, said beside their message. Kept in the
  * conversation with it, so it is said as of that message rather than as now.
+ * Null where the tab in front is nothing to say.
  */
-export function looking(note: { path: string; chosen: string | null; page?: string }): string {
+export function looking(note: Front): string | null {
+	// A page of the app's own has no words chosen in it that are sent (chosen.ts).
+	if (note.path.startsWith("octave://")) return lookingAtPage(note.path);
 	// A PDF in front is said as one: pi reads it with read, not as a note, and
 	// the page is where to read around the chosen words — read names each page.
 	const document = isDocument(note.path);
@@ -140,7 +166,7 @@ export function looking(note: { path: string; chosen: string | null; page?: stri
 		.join("\n")}`;
 }
 
-export const guard = (root: string, openNote: OpenNote) => (pi: ExtensionAPI) => {
+export const guard = (root: string, front: () => Front | null) => (pi: ExtensionAPI) => {
 	pi.on("tool_call", async (event) => {
 		const input = event.input as { path?: unknown; command?: unknown };
 		if ((event.toolName === "edit" || event.toolName === "write") && typeof input.path === "string") {
@@ -161,8 +187,9 @@ export const guard = (root: string, openNote: OpenNote) => (pi: ExtensionAPI) =>
 	// the system prompt comes before the whole conversation, so changing it
 	// with every note opened would throw away the provider's cache of all of it.
 	pi.on("before_agent_start", async () => {
-		const note = openNote();
-		if (!note) return undefined;
-		return { message: { customType: "open-note", content: looking(note), display: false } };
+		const note = front();
+		const said = note && looking(note);
+		if (!said) return undefined;
+		return { message: { customType: "open-note", content: said, display: false, details: { front: note.path } } };
 	});
 };

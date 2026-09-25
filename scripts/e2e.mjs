@@ -3137,13 +3137,40 @@ check("words dragged across in a PDF show above the box with their page, and go 
 	await app.press("Enter");
 	const prompt = await until("the prompt to go", async () => (await app.evaluate("window.__sent.map((d) => JSON.parse(d)).find((m) => m.type === 'prompt') ?? null")));
 	assert.equal(prompt.text, "what does this mean", "the message is only what was typed");
-	assert.equal(prompt.note, "chosen from.pdf");
+	assert.equal(prompt.front, "chosen from.pdf");
 	assert.equal(prompt.page, "2");
 	assert.match(prompt.chosen, /Page two says hello/);
 	// A click on the pages unchooses, as it does anywhere.
 	const blank = await app.evaluate("(() => { const r = document.querySelector('#page .textLayer span[data-e2e=two]').getBoundingClientRect(); return [r.left + 20, r.bottom + 80]; })()");
 	await app.clickAt(blank[0], blank[1]);
 	await until("the chip to go", async () => (await chip()) === "");
+});
+
+check("the tab in front goes beside the message as its address: a file with the words chosen in it, or a page of the app's own", async ({ app, cwd }) => {
+	writeFileSync(join(cwd, "front.ts"), "export const front = 1;\n");
+	// Kept rather than sent: what is checked is what the box hands the socket, and no model is asked.
+	await app.evaluate(`(() => { window.__sent = []; const send = WebSocket.prototype.send; WebSocket.prototype.send = function (d) { if (this.url.endsWith("/ws") && JSON.parse(String(d)).type === "prompt") return void window.__sent.push(JSON.parse(String(d))); return send.call(this, d); }; })()`);
+	const ask = async (text) => {
+		const before = await app.evaluate("window.__sent.length");
+		await app.click("textarea");
+		await app.keys(text);
+		await app.press("Enter");
+		return until("the prompt to go", () => app.evaluate(`window.__sent.length > ${before} ? window.__sent.at(-1) : null`));
+	};
+	// A file of the repository, with a line of it chosen: the words go with it, as they do from a note.
+	await app.evaluate(`location.hash = "#front.ts"`);
+	await until("the file in front", () => app.evaluate(`!!document.querySelector('#page[data-code="front.ts"] .cm-line')`));
+	assert.equal(await app.drag("#page .cm-line", 0), true);
+	await until("the chosen words above the box", async () => (await app.evaluate("document.getElementById('chosen')?.textContent ?? ''")).includes("front"));
+	const code = await ask("what is this");
+	assert.equal(code.front, "front.ts");
+	assert.match(code.chosen, /export const front/);
+	// A page of the app's own: its address, and nothing chosen.
+	await app.evaluate(`location.hash = "#octave://changes"`);
+	await until("the Changes page in front", () => app.evaluate(`decodeURIComponent(location.hash) === "#octave://changes" && !document.querySelector('#page[data-code]')`));
+	const page = await ask("what changed");
+	assert.equal(page.front, "octave://changes");
+	assert.equal(page.chosen, undefined);
 });
 
 /**

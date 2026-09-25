@@ -842,7 +842,7 @@ it("고른 부분을 물으면 답이 그 아래에 pi의 글로 들어오고, �
   const note = await want("note", (m) => m.path === "ask.md");
   const from = note.text.indexOf(chosen);
   clear();
-  send({ type: "prompt", text: "왜 그런지 한 문장으로 알려줘.", note: "ask.md", ask: { id: 7, path: "ask.md", from, to: from + chosen.length } });
+  send({ type: "prompt", text: "왜 그런지 한 문장으로 알려줘.", front: "ask.md", ask: { id: 7, path: "ask.md", from, to: from + chosen.length } });
   // 답을 기다리는 동안 고른 글 위를 고친다: 자리가 뒤로 밀린다.
   send({ type: "save_note", path: "ask.md", text: note.text.replace("머리말", "머리말을 더 길게 고쳐 썼다"), base: note.modified });
   await want("note_changed", (m) => m.path === "ask.md" && m.changes.some((c) => c.author === "me"));
@@ -911,6 +911,20 @@ it("/로 시작하는 글은 명령이 아니라 글로 보내진다", async () 
   send({ type: "prompt", text: "/curator" });
   const started = await want("message_start", (m) => m.message?.role === "user", 30_000);
   assert.equal(started.message.content.find((c) => c.type === "text")?.text, "/curator");
+  send({ type: "abort" });
+  await want("agent_settled", () => true, 30_000);
+});
+
+// Spends the start of a model call, like the "/" test above. What it pins is
+// the wiring from the box to pi: the tab in front goes as its address, and pi
+// is told what that page is beside the question, with the address kept.
+it("앞에 열린 탭이 앱의 페이지여도 그 주소로 가고, pi는 그게 무엇인지 들으며 묻는다", async () => {
+  clear();
+  send({ type: "prompt", text: "이거 뭐야?", front: "octave://task/email-auth/3" });
+  const beside = await want("message_end", (m) => m.message?.role === "custom" && m.message.customType === "open-note", 30_000);
+  assert.match(beside.message.content, /page of task 3 of the spec in \.octave\/specs\/email-auth\//);
+  assert.deepEqual(beside.message.details, { front: "octave://task/email-auth/3" });
+  assert.equal(beside.message.display, false);
   send({ type: "abort" });
   await want("agent_settled", () => true, 30_000);
 });

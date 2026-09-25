@@ -816,7 +816,7 @@ export function App() {
 							<Boundary name="conversation">
 								{/* A PDF in front is what the message is beside, as a note is:
 								    the agent is told which, and what was chosen on its pages. */}
-								<Pi note={page?.kind === "document" ? page.path : note} raw={raw} />
+								<Pi front={open} raw={raw} />
 							</Boundary>
 						</div>
 					</ResizablePanel>

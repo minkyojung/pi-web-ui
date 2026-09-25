@@ -52,16 +52,20 @@ export type ClientMsg =
 			behavior?: "steer" | "followUp";
 			/** Asking again: the user message this one is an alternative to. */
 			entryId?: string;
-			/** The note open in the editor, for pi to be told about this turn. Not part of the message. */
-			note?: string;
 			/**
-			 * The words chosen in that note when this was sent, for pi to be told
-			 * about this turn beside the note itself. Like `note`, not part of the
+			 * The address of the tab in front when this was sent — a file's path,
+			 * or a page of the app's own (`octave://task/…`, see pages.ts) — for pi
+			 * to be told about this turn. Not part of the message.
+			 */
+			front?: string;
+			/**
+			 * The words chosen in that tab when this was sent, for pi to be told
+			 * about this turn beside the tab itself. Like `front`, not part of the
 			 * message: what is chosen when a question is asked again later is
 			 * whatever is chosen then, which is nothing to do with this one.
 			 */
 			chosen?: string;
-			/** Where in a document those words are — "3", "3-4" — when `note` is a PDF rather than a note. */
+			/** Where in a document those words are — "3", "3-4" — when `front` is a PDF rather than a note. */
 			page?: string;
 			/**
 			 * Asking about a chosen part of the open note rather than typing in the

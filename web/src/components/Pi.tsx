@@ -85,7 +85,7 @@ function Foot({ children }: { children: ReactNode }) {
  * the tabs want more width than the note alone has — and which session is
  * open is pi's own business, not something true of the pair of them.
  */
-export function Pi({ note, raw }: { note: string | null; raw: boolean }) {
+export function Pi({ front, raw }: { front: string | null; raw: boolean }) {
 	const items = useSyncExternalStore(subscribe, getItems);
 	return (
 		<>
@@ -94,7 +94,7 @@ export function Pi({ note, raw }: { note: string | null; raw: boolean }) {
 			    home in a utility stylesheet — and only one was ever read. */}
 			{raw ? <RawView /> : <Conversation items={items} />}
 			<Foot>
-				<Composer note={note} />
+				<Composer front={front} />
 			</Foot>
 		</>
 	);
