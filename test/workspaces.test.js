@@ -94,12 +94,12 @@ test("an archived workspace is on the list though its folder is not, and is not 
 });
 
 test("a branch's status is its pull request's when it has one, else only whether the remote has it — never merged by git alone", () => {
-	const bare = { title: "", url: null, draft: false, review: "", checks: { total: 0, pending: 0, failed: 0 }, merge: "", added: null, deleted: null, commits: null, method: "" };
+	const bare = { url: null, draft: false, review: "", checks: { total: 0, pending: 0, failed: 0 }, merge: "", method: "" };
 	assert.deepEqual(statusOf({ onRemote: true, pr: { number: 27, state: "OPEN" } }), { state: "open", number: 27, ...bare });
 	assert.deepEqual(statusOf({ onRemote: true, pr: { number: 27, state: "MERGED" } }), { state: "merged", number: 27, ...bare });
 	assert.deepEqual(statusOf({ onRemote: true, pr: { number: 27, state: "CLOSED" } }), { state: "closed", number: 27, ...bare });
-	const full = { number: 30, title: "Merge it", state: "OPEN", url: "https://x/30", draft: true, review: "APPROVED", checks: { total: 2, pending: 1, failed: 0 }, merge: "CLEAN", added: 5, deleted: 1, commits: 3, method: "SQUASH" };
-	assert.deepEqual(statusOf({ onRemote: true, pr: full }), { state: "open", number: 30, title: "Merge it", url: "https://x/30", draft: true, review: "APPROVED", checks: { total: 2, pending: 1, failed: 0 }, merge: "CLEAN", added: 5, deleted: 1, commits: 3, method: "SQUASH" }, "what gh said of it goes along");
+	const full = { number: 30, state: "OPEN", url: "https://x/30", draft: true, review: "APPROVED", checks: { total: 2, pending: 1, failed: 0 }, merge: "CLEAN", method: "SQUASH" };
+	assert.deepEqual(statusOf({ onRemote: true, pr: full }), { state: "open", number: 30, url: "https://x/30", draft: true, review: "APPROVED", checks: { total: 2, pending: 1, failed: 0 }, merge: "CLEAN", method: "SQUASH" }, "what gh said of it goes along");
 	assert.deepEqual(statusOf({ onRemote: true, pr: null }), { state: "pushed" });
 	assert.deepEqual(statusOf({ onRemote: false, pr: null }), { state: "local" });
 	assert.deepEqual(statusOf({ onRemote: false, pr: { number: 1, state: "WHAT" } }), { state: "local" }, "a state gh does not have is no pull request");

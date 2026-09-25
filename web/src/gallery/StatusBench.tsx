@@ -18,14 +18,10 @@ const git = (over: Partial<GitStanding> = {}): GitStanding => ({ branch: "me/sta
 const pr = (over: Partial<BranchStatus> = {}): BranchStatus => ({
 	state: "open",
 	number: 29,
-	title: "The foot of the window says the branch in two items",
 	url: "https://github.com/o/r/pull/29",
 	review: "",
 	checks: { total: 4, pending: 0, failed: 0 },
 	merge: "CLEAN",
-	added: 120,
-	deleted: 30,
-	commits: 5,
 	method: "MERGE",
 	...over,
 });

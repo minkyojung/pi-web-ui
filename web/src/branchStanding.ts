@@ -39,8 +39,6 @@ export interface GitStanding {
 export interface BranchStatus {
 	state: "local" | "pushed" | "open" | "merged" | "closed";
 	number?: number;
-	/** The pull request's own title, or "" when not said. */
-	title?: string;
 	url?: string;
 	draft?: boolean;
 	/** GitHub's word on the reviews: APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, or "" for none. */
@@ -49,10 +47,6 @@ export interface BranchStatus {
 	checks?: { total: number; pending: number; failed: number };
 	/** GitHub's word on whether it can be merged (electron/github.js): CLEAN, BLOCKED, BEHIND, DIRTY, UNSTABLE, DRAFT, HAS_HOOKS, UNKNOWN, or "" when not said. */
 	merge?: string;
-	/** Lines added and taken out across the pull request, and its commits; null when not said. */
-	added?: number | null;
-	deleted?: number | null;
-	commits?: number | null;
 	/** How the repository merges by default — MERGE, SQUASH or REBASE — or "" when not said. */
 	method?: string;
 }

@@ -254,8 +254,8 @@ test("GitHub's pull requests are read by branch, with their checks folded and th
 		b3: { associatedPullRequests: { nodes: [] } },
 	} } }), ["me/x", "me/y", "me/z", "me/none"]);
 	assert.deepEqual([...map], [
-		["me/x", { number: 30, title: "", state: "OPEN", url: "https://x/30", draft: false, review: "APPROVED", checks: { total: 3, pending: 1, failed: 1 }, merge: "", added: null, deleted: null, commits: null, method: "" }],
-		["me/y", { number: 9, title: "", state: "CLOSED", url: null, draft: false, review: "", checks: { total: 0, pending: 0, failed: 0 }, merge: "", added: null, deleted: null, commits: null, method: "" }],
+		["me/x", { number: 30, state: "OPEN", url: "https://x/30", draft: false, review: "APPROVED", checks: { total: 3, pending: 1, failed: 1 }, merge: "", method: "" }],
+		["me/y", { number: 9, state: "CLOSED", url: null, draft: false, review: "", checks: { total: 0, pending: 0, failed: 0 }, merge: "", method: "" }],
 	]);
 	assert.equal(pullRequestsFromGraph("nope", ["me/x"]), null);
 });

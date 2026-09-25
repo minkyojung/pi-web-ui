@@ -228,8 +228,7 @@ export function pullRequestsQuery(branches) {
 fragment pr on Ref {
   associatedPullRequests(first: 1, orderBy: { field: UPDATED_AT, direction: DESC }) {
     nodes {
-      number title state url isDraft reviewDecision headRefName mergeStateStatus additions deletions
-      commitCount: commits { totalCount }
+      number state url isDraft reviewDecision headRefName mergeStateStatus
       commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { ... on CheckRun { status conclusion } ... on StatusContext { state } } } } } } }
     }
   }
@@ -265,16 +264,12 @@ export function pullRequestsFromGraph(out, branches) {
 			const contexts = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes;
 			byHead.set(branch, {
 				number: pr.number,
-				title: typeof pr.title === "string" ? pr.title : "",
 				state: pr.state,
 				url: typeof pr.url === "string" ? pr.url : null,
 				draft: pr.isDraft === true,
 				review: typeof pr.reviewDecision === "string" ? pr.reviewDecision : "",
 				checks: checksOf(Array.isArray(contexts) ? contexts : []),
 				merge: typeof pr.mergeStateStatus === "string" ? pr.mergeStateStatus : "",
-				added: Number.isInteger(pr.additions) ? pr.additions : null,
-				deleted: Number.isInteger(pr.deletions) ? pr.deletions : null,
-				commits: Number.isInteger(pr.commitCount?.totalCount) ? pr.commitCount.totalCount : null,
 				method,
 			});
 		});
