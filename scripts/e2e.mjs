@@ -966,21 +966,30 @@ check("a decision made in the moment after typing still lands", async ({ app, cw
 	assert.equal(await chunks(app), 0, "and it stays gone once everything has been written down");
 });
 
-check("choosing words in a note shows them above the box, and the × takes them off", async ({ app }) => {
+check("choosing words in a note shows them over the box beside the note's name, and turning off what is in front leaves both out", async ({ app }) => {
 	await app.evaluate(`document.querySelector('#notes button[data-path="first.md"]').click()`);
 	await until("the note", async () => (await editorStatus(app)) === "saved");
+	await until("the note on the strip over the box", () => app.evaluate("document.getElementById('front')?.dataset.kind === 'note'"));
 	// Chosen the way a person chooses: dragged across the line.
 	assert.equal(await app.drag("#editor .cm-line", 0), true);
-	const chip = await until("the chosen words above the box", async () => {
-		const text = await app.evaluate("document.getElementById('chosen')?.textContent ?? ''");
+	const chip = await until("the chosen words beside it", async () => {
+		const text = await app.evaluate("document.querySelector('#front #chosen')?.textContent ?? ''");
 		return text.trim() ? text : null;
 	});
-	assert.ok((await editorText(app)).includes(chip.trim()), `what is above the box is what is chosen in the note: ${chip}`);
+	assert.ok((await editorText(app)).includes(chip.trim()), `what is over the box is what is chosen in the note: ${chip}`);
 	await app.shot("chosen");
-	// Taking them off leaves the words chosen on screen and only stops them going.
-	await app.evaluate(`document.querySelector('#chosen button').click()`);
-	await until("the chip to go", async () => !(await app.evaluate("!!document.getElementById('chosen')")));
+	// Turned off, the strip stays, faded, and nothing of it goes; the words stay chosen on screen.
+	await app.evaluate("(() => { window.__sent = []; const send = WebSocket.prototype.send; WebSocket.prototype.send = function (d) { if (this.url.endsWith('/ws') && JSON.parse(String(d)).type === 'prompt') return void window.__sent.push(JSON.parse(String(d))); return send.call(this, d); }; })()");
+	await app.evaluate("document.getElementById('front-toggle').click()");
+	await until("the strip faded", () => app.evaluate("document.getElementById('front').dataset.off === 'true'"));
+	assert.equal(await app.evaluate("document.getElementById('front-toggle').getAttribute('aria-pressed')"), "false");
 	assert.equal(await app.evaluate("!!document.querySelector('#editor .cm-selectionBackground, #editor .cm-selectionLayer > *')"), true, "the words are still chosen");
+	await app.click("textarea");
+	await app.keys("about this");
+	await app.press("Enter");
+	const sent = await until("the prompt to go", () => app.evaluate("window.__sent.at(-1) ?? null"));
+	assert.equal(sent.front, undefined, "the note does not go");
+	assert.equal(sent.chosen, undefined, "nor the words chosen in it");
 });
 
 /** The line a note made here opens with, saying when it was made — see withCreated in vault.ts. */
@@ -4369,6 +4378,9 @@ check("a task in review opens as a page: the run's last answer, then the files i
 
 	await app.evaluate(`location.hash = ${JSON.stringify("#octave://task/look/1")}`);
 	await until("the task's page, in review", () => app.evaluate("document.getElementById('page')?.dataset.task === '1' && document.getElementById('page')?.dataset.standing === 'review'"));
+	// Over the message box, as Linear says an issue: where it stands, its number, its line.
+	await until("the task on the strip over the box", () => app.evaluate("document.getElementById('front')?.dataset.kind === 'task' && document.getElementById('front').innerText.replace(/\\s+/g, ' ').trim() === '1 Add the window'"));
+	await app.shot("front-task");
 	// One line: the words are the line, the right end is the checks and the size.
 	const head = () => app.evaluate("document.getElementById('taskHead').innerText.replace(/\\s+/g, ' ').trim()");
 	assert.equal(await head(), "1. Add the window 1 file +1 −0", `the head: ${await head()}`);

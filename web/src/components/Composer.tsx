@@ -1,25 +1,26 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { ArrowUpIcon, CornerDownLeftIcon, PencilIcon, SquareIcon, TextQuoteIcon, X } from "lucide-react";
+import { ArrowUpIcon, CornerDownLeftIcon, FileCodeIcon, FileDiffIcon, FileTextIcon, FileTypeIcon, GitCommitHorizontalIcon, PencilIcon, ScanIcon, SquareIcon, TextQuoteIcon, X } from "lucide-react";
 
 import { attach, filesToAttach, imagesOf } from "../attachments";
 import { type Chosen as ChosenWords, chosenStore } from "../chosen";
 import { acceptCommand, commandQuery, matchCommands, namesCommand } from "../commandMenu";
 import { draftStore } from "../draft";
+import { type FrontLabel, frontLabel } from "../frontLabel";
 import { acceptMention, insertMention, matchNotes, mentionQuery } from "../noteMention";
 import { titleOf } from "../noteSync";
 import { appendRestored } from "../queue";
 import { flushSaves } from "../saves";
-import { askingAgainStore, commandsStore, configStore, documentsStore, filesStore, restoredStore } from "../serverState";
+import { askingAgainStore, commandsStore, configStore, documentsStore, filesStore, restoredStore, specsStore } from "../serverState";
 import { applyServerEvent, getConnection, subscribe } from "../store";
 import { send } from "../ws";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { InputGroupButton } from "./ui/input-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { type Suggestion, SuggestMenu } from "./SuggestMenu";
 import { ModelPicker } from "./ModelPicker";
 import { QueuedMessages } from "./QueuedMessages";
+import { TaskGlyph } from "./TaskGlyph";
 import {
 	PromptInput,
 	PromptInputBody,
@@ -113,35 +114,77 @@ function AskingAgain() {
 }
 
 /**
- * What is chosen in the note, above the box, so that a question can be about
- * it without being made to quote it.
+ * The tab in front, over the box, as it goes beside the message: what kind of
+ * thing it is, the name the tab row calls it by, and the words chosen in it —
+ * one thing, which part of which file, so one line. Linear's agent says the
+ * issue it is open on the same way, on a card a size larger than the box,
+ * over its top edge.
  *
- * It appears by being chosen and goes by being unchosen — no key, no button to
- * attach with. Dropping it with the × leaves the words chosen on screen and
- * only stops them riding along, until something else is chosen.
+ * It appears with the tab and goes with it; the words appear by being chosen
+ * and go by being unchosen. Turned off (FrontToggle), it stays, faded, so
+ * what is not going is still said.
  */
-function Chosen({ chosen, onDrop }: { chosen: ChosenWords | null; onDrop: () => void }) {
-	if (!chosen) return null;
-
+function Front({ label, chosen, off }: { label: FrontLabel; chosen: ChosenWords | null; off: boolean }) {
 	return (
-		<PromptInputHeader id="chosen">
-			<Badge variant="secondary" className="max-w-full gap-1 font-normal" title={chosen.text}>
-				<TextQuoteIcon className="size-3 shrink-0" />
-				{/* Where in a PDF: its pages are the only address the words have. */}
-				{chosen.page && <span className="shrink-0 text-muted-foreground">p. {chosen.page}</span>}
-				<span className="min-w-0 truncate">{chosen.text}</span>
-				<Button
-					variant="ghost"
-					size="icon-xs"
-					className="size-4 rounded-sm"
-					onClick={onDrop}
-					aria-label="Do not send the chosen words"
-				>
-					<X />
-				</Button>
-			</Badge>
-		</PromptInputHeader>
+		<div id="front" data-kind={label.kind} data-off={off || undefined} className="flex min-w-0 items-center gap-1.5 px-2.5 pt-1.5 pb-2 text-sm data-[off]:opacity-50">
+			<FrontMark label={label} />
+			{"id" in label && <span className="shrink-0 text-muted-foreground tabular-nums">{label.id}</span>}
+			{label.name !== null && <span className="min-w-0 shrink truncate">{label.name}</span>}
+			{label.kind === "task" && label.name === null && <span className="min-w-0 shrink truncate">Task {label.id}</span>}
+			{chosen && (
+				<span id="chosen" className="flex min-w-0 flex-1 items-center gap-1 text-muted-foreground" title={chosen.text}>
+					<TextQuoteIcon className="size-3.5 shrink-0" />
+					{/* Where in a PDF: its pages are the only address the words have. */}
+					{chosen.page && <span className="shrink-0">p. {chosen.page}</span>}
+					<span className="min-w-0 truncate">{chosen.text}</span>
+				</span>
+			)}
+		</div>
 	);
+}
+
+/**
+ * Whether the tab in front goes with the message: lit while it does, as
+ * Linear's is. Off for one tab only — see Composer.
+ */
+function FrontToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<InputGroupButton
+					id="front-toggle"
+					variant="ghost"
+					size="icon-sm"
+					aria-label={on ? "Do not send what is in front" : "Send what is in front"}
+					aria-pressed={on}
+					className="rounded-full aria-pressed:bg-accent aria-pressed:text-foreground"
+					onClick={onToggle}
+				>
+					<ScanIcon className="size-4" />
+				</InputGroupButton>
+			</TooltipTrigger>
+			<TooltipContent side="top">{on ? "The agent is told what is in front — press to leave it out" : "Tell the agent what is in front"}</TooltipContent>
+		</Tooltip>
+	);
+}
+
+/** What kind of thing the tab in front is: a task where it stands, as the plan draws it; the rest by what they are. */
+function FrontMark({ label }: { label: FrontLabel }) {
+	const icon = "size-4 shrink-0 text-muted-foreground";
+	switch (label.kind) {
+		case "task":
+			return <TaskGlyph standing={label.standing} />;
+		case "commit":
+			return <GitCommitHorizontalIcon className={icon} />;
+		case "changes":
+			return <FileDiffIcon className={icon} />;
+		case "code":
+			return <FileCodeIcon className={icon} />;
+		case "document":
+			return <FileTypeIcon className={icon} />;
+		case "note":
+			return <FileTextIcon className={icon} />;
+	}
 }
 
 /**
@@ -186,10 +229,17 @@ export function Composer({ front }: { front: string | null }) {
 	const online = useSyncExternalStore(subscribe, getConnection) === "open";
 	const config = useSyncExternalStore(configStore.subscribe, configStore.get);
 	const streaming = config?.isStreaming ?? false;
-	// What the editor points at, unless this one has been dropped with the ×.
+	// The tab in front goes beside the message unless it is turned off, and
+	// only that tab: another in front is on again, since what was turned off
+	// was that one (Claude Code's × on its file does the same).
+	const specs = useSyncExternalStore(specsStore.subscribe, specsStore.get);
+	const label = front ? frontLabel(specs, front) : null;
+	const [off, setOff] = useState<string | null>(null);
+	useEffect(() => setOff(null), [front]);
+	const going = label && off !== front ? front : null;
+	// What the editor points at in that tab, going and faded with it.
 	const chosen = useSyncExternalStore(chosenStore.subscribe, chosenStore.get);
-	const [dropped, setDropped] = useState<string | null>(null);
-	const pointing = chosen && chosen.path === front && chosen.text !== dropped ? chosen : null;
+	const pointing = chosen && chosen.path === front ? chosen : null;
 
 	// Text a cleared queue handed back. The box is uncontrolled — PromptInput
 	// reads it out of the form on submit — so it is written directly, appended
@@ -214,7 +264,7 @@ export function Composer({ front }: { front: string | null }) {
 	const send_ = (form: HTMLFormElement, value: string, files: { url?: string; mediaType?: string }[]) => {
 		const behavior = steering.current ? "steer" : "followUp";
 		steering.current = false;
-		if (submit(form, value, behavior, front, pointing, files)) setText("");
+		if (submit(form, value, behavior, going, going ? pointing : null, files)) setText("");
 	};
 	// A file that is not an image, dropped or pasted: it goes into the folder
 	// and its path into the message, where the cursor is, as a mention — the
@@ -340,6 +390,11 @@ export function Composer({ front }: { front: string | null }) {
 			{list && (
 				<SuggestMenu id={list.id} items={list.items} selected={current?.value ?? ""} onSelect={setSelected} onPick={list.pick} />
 			)}
+			{/* A card a size larger than the box, the tab in front along its top
+			    edge: drawn only while there is a tab to say, so the box is the
+			    box as it always was when there is not. */}
+			<div className={label ? "rounded-lg border bg-muted/40 p-1" : undefined}>
+			{label && <Front label={label} chosen={pointing} off={going === null} />}
 			<PromptInput accept="image/*" onSubmit={(message, event) => send_(event.currentTarget, message.text, message.files)}>
 				<Attached />
 				{adding.length > 0 && (
@@ -347,7 +402,6 @@ export function Composer({ front }: { front: string | null }) {
 						Adding {adding.join(", ")} to the folder…
 					</PromptInputHeader>
 				)}
-				<Chosen chosen={pointing} onDrop={() => setDropped(pointing?.text ?? null)} />
 				<PromptInputBody>
 					{/* The component asks for four lines of empty box; one is enough until
 					    there is something to show, and it grows from there. */}
@@ -413,6 +467,7 @@ export function Composer({ front }: { front: string | null }) {
 					    one, and its children — which are not flexible — get squeezed out
 					    of it and drawn over the controls on the left. */}
 					<span className="flex shrink-0 items-center gap-1">
+						{label && <FrontToggle on={going !== null} onToggle={() => setOff(going ? front : null)} />}
 						{/* Stopping is its own button rather than the sending one wearing
 						    another hat, and it belongs beside what it is the opposite of.
 						    Quiet where that one is solid, so two buttons this close are
@@ -451,6 +506,7 @@ export function Composer({ front }: { front: string | null }) {
 					</span>
 				</PromptInputFooter>
 			</PromptInput>
+			</div>
 			</div>
 		</div>
 	);
