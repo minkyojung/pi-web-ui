@@ -1,7 +1,7 @@
 import { type BranchStatus, type GitStanding, pullRequestOf, workOf } from "../branchStanding";
-import { CREATE_PR } from "../createPr";
+import { ADDRESS_REVIEW, CREATE_PR, FIX_CHECKS, PUSH, RESOLVE_CONFLICTS } from "../pullRequestCommands";
 import { CreatePullRequest } from "../components/CreatePullRequest";
-import { PullRequestCard, PullRequestStanding } from "../components/PullRequestStanding";
+import { PullRequestStanding } from "../components/PullRequestStanding";
 import { WorkStanding } from "../components/WorkStanding";
 import { commandsStore } from "../serverState";
 import { getConnection, setConnection, subscribe } from "../store";
@@ -11,8 +11,7 @@ import { getConnection, setConnection, subscribe } from "../store";
  * each can be in, side by side, drawn by the app's own components from the
  * app's own reading (branchStanding.ts) — so a change to the order, the
  * words or the look is seen in all of them at once, without a pull request
- * to put in each state. The card behind the pull request's item is drawn
- * open beside it.
+ * to put in each state.
  */
 
 const git = (over: Partial<GitStanding> = {}): GitStanding => ({ branch: "me/status-bar", base: "main", changes: 0, ahead: 0, behind: 0, remote: null, ...over });
@@ -38,21 +37,21 @@ const WORK: { name: string; git: GitStanding }[] = [
 ];
 
 const PULLS: { name: string; git: GitStanding; status: BranchStatus }[] = [
-	{ name: "1 Conflicts", git: git({ behind: 3 }), status: pr({ merge: "DIRTY", checks: { total: 4, pending: 0, failed: 1 } }) },
-	{ name: "2 A check failed", git: git(), status: pr({ merge: "UNSTABLE", checks: { total: 4, pending: 0, failed: 1 } }) },
-	{ name: "3 Changes requested", git: git(), status: pr({ merge: "BLOCKED", review: "CHANGES_REQUESTED" }) },
-	{ name: "4 Checks running", git: git(), status: pr({ merge: "UNKNOWN", checks: { total: 4, pending: 2, failed: 0 } }) },
-	{ name: "5 Behind main", git: git({ behind: 2 }), status: pr({ merge: "BEHIND" }) },
-	{ name: "6 Needs review", git: git(), status: pr({ merge: "BLOCKED", review: "REVIEW_REQUIRED" }) },
-	{ name: "7 Draft", git: git(), status: pr({ merge: "DRAFT", draft: true }) },
-	{ name: "8 Ready", git: git(), status: pr({ merge: "CLEAN", review: "APPROVED" }) },
+	{ name: "Not pushed", git: git({ changes: 2 }), status: pr({ merge: "DIRTY", checks: { total: 4, pending: 0, failed: 1 } }) },
+	{ name: "Conflicts", git: git(), status: pr({ merge: "DIRTY", checks: { total: 4, pending: 0, failed: 1 } }) },
+	{ name: "A check failed", git: git(), status: pr({ merge: "UNSTABLE", checks: { total: 4, pending: 0, failed: 1 } }) },
+	{ name: "Changes requested", git: git(), status: pr({ merge: "BLOCKED", review: "CHANGES_REQUESTED" }) },
+	{ name: "Checks running", git: git(), status: pr({ merge: "UNKNOWN", checks: { total: 4, pending: 2, failed: 0 } }) },
+	{ name: "Ready", git: git(), status: pr({ merge: "CLEAN", review: "APPROVED" }) },
+	{ name: "Waiting on a review", git: git(), status: pr({ merge: "BLOCKED", review: "REVIEW_REQUIRED" }) },
+	{ name: "Draft", git: git(), status: pr({ merge: "DRAFT", draft: true }) },
 	{ name: "Merged", git: git(), status: pr({ state: "merged", merge: "UNKNOWN" }) },
 	{ name: "Closed", git: git(), status: pr({ state: "closed", merge: "UNKNOWN" }) },
 ];
 
-// Create PR is pressable only where pi has the command and the window is
-// connected; there is no server here, so the bench says both.
-commandsStore.set([{ name: CREATE_PR, description: "", source: "extension" }]);
+// The buttons are pressable only where pi has the commands and the window
+// is connected; there is no server here, so the bench says both.
+commandsStore.set([CREATE_PR, PUSH, RESOLVE_CONFLICTS, FIX_CHECKS, ADDRESS_REVIEW].map((name) => ({ name, source: "extension" as const })));
 setConnection("open");
 subscribe(() => {
 	if (getConnection() !== "open") setConnection("open");
@@ -80,8 +79,8 @@ export function StatusBench() {
 					})}
 				</section>
 				<section className="flex flex-col gap-3">
-					<h2 className="text-sm font-medium">The pull request, most in the way first</h2>
-					<div data-bench="No pull request yet" className="grid grid-cols-[12rem_16rem_1fr] items-start gap-4">
+					<h2 className="text-sm font-medium">The pull request: at most one thing to do</h2>
+					<div data-bench="No pull request yet" className="grid grid-cols-[12rem_24rem] items-start gap-4">
 						<span className="pt-3.5 text-xs text-muted-foreground">No pull request yet</span>
 						<Strip>
 							<CreatePullRequest />
@@ -90,10 +89,9 @@ export function StatusBench() {
 					{PULLS.map((row) => {
 						const view = pullRequestOf(row.git, row.status);
 						return (
-							<div key={row.name} data-bench={row.name} className="grid grid-cols-[12rem_16rem_1fr] items-start gap-4">
+							<div key={row.name} data-bench={row.name} className="grid grid-cols-[12rem_24rem] items-start gap-4">
 								<span className="pt-3.5 text-xs text-muted-foreground">{row.name}</span>
 								<Strip>{view && <PullRequestStanding view={view} onMerge={() => new Promise((resolve) => setTimeout(() => resolve({ error: "Required status check \"ci\" is expected." }), 1200))} />}</Strip>
-								<div className="rounded-md border bg-popover p-3">{view && <PullRequestCard view={view} />}</div>
 							</div>
 						);
 					})}

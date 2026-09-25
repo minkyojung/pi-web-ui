@@ -14,9 +14,8 @@ import { WorkStanding } from "./WorkStanding";
  * window — the first things there, so they are in the same place whatever
  * is in front, and there even when nothing is. Two items, as
  * branchStanding.ts has it: what is on this machine and not on origin, then
- * the pull request (PullRequestStanding.tsx). What wants doing — a conflict,
- * a check that failed, changes asked for — is red, the one red thing in a
- * grey strip.
+ * the pull request (PullRequestStanding.tsx) — or, before there is one,
+ * Create PR. Quiet until there is something to do, and then one button.
  *
  * git's side comes from the server, GitHub's from the shell's list. The
  * server is asked again when the window comes back: a push, a merge, a

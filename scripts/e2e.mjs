@@ -3738,10 +3738,11 @@ check("the + beside a repository opens the new spec dialog: a line, the model an
 		await until("the rows' dots", () => app.evaluate("[...document.querySelectorAll('[data-workspace]')].map((r) => r.querySelector('[data-status]')?.dataset.status ?? '-').join(',') === 'open,merged,-'"));
 		assert.equal(await app.evaluate("document.querySelector('[data-workspace=\"/w/lima\"] [data-status]').getAttribute('aria-label')"), "Pull request #9 was merged");
 		// And at the foot of the window, for this page's workspace (tokyo, whose folder is the suite's, #12):
-		// its mark and number, and what its checks came to — passed, a tick. The
-		// folder is the suite's, which is a repository with notes uncommitted
-		// in it: those are the first item's, beside this one.
-		await until("the standing at the foot", () => app.evaluate("document.getElementById('branch-standing')?.textContent === '#12' && document.getElementById('branch-standing').dataset.said === 'passed'"));
+		// its mark and number — and, since the suite's folder has notes not
+		// committed, Push: until they are on origin, what GitHub says of the
+		// pull request is about the commit before.
+		await until("the standing at the foot", () => app.evaluate("document.getElementById('branch-standing')?.dataset.action === 'push'"));
+		assert.equal(await app.evaluate("document.querySelector('#branch-standing a').textContent"), "#12");
 		assert.equal(await app.evaluate("document.getElementById('branch-standing').dataset.glyph"), "open");
 		assert.match(await app.evaluate("document.getElementById('work-standing')?.textContent ?? ''"), /^Changes \d+$/);
 		assert.equal(await app.evaluate("document.querySelector('#branch-standing a').href"), "https://github.com/o/r/pull/12");
@@ -3968,25 +3969,51 @@ check("before a pull request, Create PR at the foot of the window sends /create-
 	}
 });
 
-// An open pull request GitHub says can be merged: Merge, asked twice, merges
-// it the repository's own way through the shell — stood in for here, and
-// refusing the first time as GitHub would for a check it requires.
-check("an open pull request that can be merged: Merge, then Confirm merge, asks the shell to merge it the repository's way, and a refusal is said", async ({ app, cwd }) => {
+// An open pull request: one thing to do at a time. With a file not
+// committed, Push, which sends /push — stopped at the wire, since a turn here
+// would be in every check after. Committed, and GitHub saying nothing is in
+// the way, Merge: asked twice, it merges the repository's own way through
+// the shell — stood in for here, and refusing the first time as GitHub would
+// for a check it requires.
+check("an open pull request: Push while something is not on origin, then Merge and Confirm merge, which asks the shell to merge it the repository's way", async ({ app, cwd }) => {
+	const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd, encoding: "utf8" }).trim();
+	if (!existsSync(join(cwd, ".git"))) git("init", "-q", "-b", "main");
+	// A clean folder to begin from, as the checks before may or may not have left it.
+	git("add", "-A", "--", ".");
+	if (git("status", "--porcelain")) git("commit", "-q", "-m", "everything so far");
 	const stopStanding = await app.onNewDocument(`
 		if (sessionStorage.getItem("stand-in-for-merging") === "1") {
 		window.__merged = [];
+		window.__sent = [];
 		window.pi = { folders: async () => ({ current: null, recent: [] }), choose: async () => {}, open: async () => {}, reveal: async () => {},
 			repositories: { issues: async () => null },
 			onNewSpec: () => () => {},
-			workspaces: { list: async () => ({ projects: [{ path: "/r/demo", name: "demo", worktrees: [{ path: ${JSON.stringify(cwd)}, name: "tokyo", branch: "me/tokyo", status: { state: "open", number: 12, title: "Greet properly", url: "https://github.com/o/r/pull/12", review: "APPROVED", checks: { total: 2, pending: 0, failed: 0 }, merge: "CLEAN", method: "SQUASH" } }] }] }),
+			workspaces: { list: async () => ({ projects: [{ path: "/r/demo", name: "demo", worktrees: [{ path: ${JSON.stringify(cwd)}, name: "tokyo", branch: "me/tokyo", status: { state: "open", number: 12, url: "https://github.com/o/r/pull/12", review: "APPROVED", checks: { total: 2, pending: 0, failed: 0 }, merge: "CLEAN", method: "SQUASH" } }] }] }),
 				merge: async (path, number, method) => { window.__merged.push([path, number, method]); return window.__merged.length === 1 ? { error: 'Required status check "ci" is expected.' } : {}; },
 				create: async () => ({}), branches: async () => null, open: async () => {}, onChange: () => () => {}, first: async () => null } };
+		const send = WebSocket.prototype.send;
+		WebSocket.prototype.send = function (data) {
+			if (!this.url.endsWith("/ws")) return send.call(this, data);
+			const msg = JSON.parse(String(data));
+			if (msg.type === "prompt" && String(msg.text).startsWith("/push")) return void window.__sent.push([msg.text, msg.command]);
+			return send.call(this, data);
+		};
 		}`);
 	const merged = () => app.evaluate("JSON.stringify(window.__merged)");
 	const stage = () => app.evaluate("document.getElementById('merge-pr')?.dataset.stage ?? null");
+	const action = () => app.evaluate("document.getElementById('branch-standing')?.dataset.action ?? null");
 	try {
+		writeFileSync(join(cwd, "for-the-push.txt"), "x\n");
 		await app.evaluate(`sessionStorage.setItem("stand-in-for-merging", "1"); location.reload()`);
+		await until("Push", async () => (await action()) === "push");
+		assert.equal(await app.evaluate("document.getElementById('push-pr').textContent"), "Push");
+		assert.equal(await app.evaluate("!!document.getElementById('merge-pr')"), false, "one thing at a time");
+		await app.click("#push-pr");
+		await until("/push sent", async () => (await app.evaluate("JSON.stringify(window.__sent)")) === JSON.stringify([["/push", true]]));
+		rmSync(join(cwd, "for-the-push.txt"));
+		await app.evaluate("dispatchEvent(new Event('focus'))");
 		await until("Merge", async () => (await stage()) === "idle");
+		assert.equal(await action(), "merge");
 		assert.equal(await app.evaluate("document.getElementById('merge-pr').title"), "Squash and merge into the base", "the repository's way, in GitHub's words");
 		await app.click("#merge-pr");
 		await until("Confirm merge", async () => (await stage()) === "confirm");
@@ -4002,6 +4029,7 @@ check("an open pull request that can be merged: Merge, then Confirm merge, asks 
 		await until("merging", async () => (await stage()) === "merging");
 		assert.equal(JSON.parse(await merged()).length, 2);
 	} finally {
+		rmSync(join(cwd, "for-the-push.txt"), { force: true });
 		await stopStanding();
 		await app.evaluate(`sessionStorage.removeItem("stand-in-for-merging"); location.reload()`);
 		await until("the page back", () => app.evaluate("!!document.getElementById('chat')"));

@@ -5,11 +5,11 @@
  * is what is on this machine and nowhere else: files changed and not
  * committed, commits a push would send, and commits a pull would bring —
  * what VS Code's branch and sync items say, in the same arrows (workOf). The
- * second is how far the pull request has got, one thing at a time, the way
- * Conductor's line is (`#29 ↗ 1 check pending…`) (pullRequestOf). The two
- * can both have something to say: a fix committed and not yet pushed is on
- * this machine only, and the pull request still stands where the last push
- * left it.
+ * second is the pull request: its number, and at most one thing to do about
+ * it, as Conductor has it — Create PR before there is one, then Push,
+ * Resolve conflicts, Fix checks, Address review or Merge, and nothing at
+ * all while nothing is to be done (pullRequestOf). Why is GitHub's to say,
+ * a press away.
  *
  * What git knows of the folder comes from the server (StandingMsg); what
  * GitHub knows of the branch comes from the shell's list, which asks gh
@@ -100,96 +100,54 @@ export function offersPullRequest(git: GitStanding | null, status: BranchStatus 
 /** Which of GitHub's pull request marks, and so which colour: open, draft, merged, closed (Primer's own four). */
 export type PullGlyph = "open" | "draft" | "merged" | "closed";
 
-/** A mark before a word: a check that passed, failed or is running; a thing still wanted; or none. */
-export type Mark = "passed" | "failed" | "running" | "waiting" | null;
+/** The one thing to do about a pull request, each a button: four are the agent's (pullRequest.ts), Merge the shell's. */
+export type PullAction = "push" | "resolve-conflicts" | "fix-checks" | "address-review" | "merge";
 
-/** One thing said, with a mark or a word or both, and how loud: red wants doing, grey is waiting. */
-export interface Said {
-	mark: Mark;
-	text: string | null;
-	tone: "destructive" | "muted";
-	/** The sentence for a screen reader and the pointer, where the mark stands alone. */
-	label: string;
-}
-
-/** The pull request as the second item draws it: its mark and number, the one thing after them, and the card behind them. */
+/** The pull request as the second item draws it: its mark and number, and at most one thing to do. */
 export interface PullRequestView {
 	number: number;
-	title: string;
 	url: string | null;
 	glyph: PullGlyph;
-	/** The one thing said after the number — what stands most in the way — or null. */
-	said: Said | null;
-	/** Nothing stands in the way: GitHub says it can be merged. */
-	ready: boolean;
-	/** The card's lines, in the order GitHub's merge box has them: checks, conflicts, review, the base, draft. */
-	lines: Said[];
-	size: { added: number; deleted: number; commits: number | null } | null;
+	/** What there is to do now, or null: nothing is, or it is somebody else's — a reviewer's, GitHub's. */
+	action: PullAction | null;
+	/** Checks are running, and there is nothing to do but wait. */
+	running: boolean;
 	/** How the repository merges by default — MERGE, SQUASH or REBASE — or "" when not said. */
 	method: string;
 	/** What it would be merged into, as `main`. */
 	base: string;
 }
 
-const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
-
 /**
- * The one thing said after the number: what stands most in the way of the
- * merge, in the order a person would have to deal with it. What wants
- * doing first, in red — conflicts, a check that failed, changes asked
- * for — then what is only waiting, in grey — checks running, the base to be
- * merged in, a review, a draft. The order is ours; what is in the way is
- * GitHub's word (merge: mergeStateStatus), which knows which checks and
- * reviews the repository requires.
+ * The one thing to do, in the order it has to be done. What is here and
+ * not on origin first: until it is pushed, what GitHub says of the checks
+ * and the conflicts is about the commit before. Then what stands in the
+ * way — conflicts, a failed check, changes asked for — each the agent's to
+ * deal with; then, with nothing in the way, the merge. What is in the way
+ * is GitHub's word (merge: mergeStateStatus), which knows which checks and
+ * reviews the repository requires. Waiting on a reviewer, or on a draft
+ * being made ready, is nobody's here: nothing is offered.
  */
-function mostInTheWay(status: BranchStatus, behind: string): Said | null {
+function actionOf(git: GitStanding, status: BranchStatus): { action: PullAction | null; running: boolean } {
 	const checks = status.checks ?? { total: 0, pending: 0, failed: 0 };
-	if (status.merge === "DIRTY") return { mark: null, text: "Conflicts", tone: "destructive", label: "Conflicts with the base" };
-	if (checks.failed > 0) return { mark: "failed", text: null, tone: "destructive", label: `${n(checks.failed, "check")} failed` };
-	if (status.review === "CHANGES_REQUESTED") return { mark: null, text: "Changes requested", tone: "destructive", label: "Changes requested" };
-	if (checks.pending > 0) return { mark: "running", text: null, tone: "muted", label: `${n(checks.pending, "check")} running` };
-	if (status.merge === "BEHIND") return { mark: null, text: behind, tone: "muted", label: behind };
-	if (status.merge === "BLOCKED") return status.review === "REVIEW_REQUIRED" ? { mark: null, text: "Needs review", tone: "muted", label: "Needs review" } : { mark: null, text: "Blocked", tone: "muted", label: "Blocked by the repository's rules" };
-	if (status.draft || status.merge === "DRAFT") return { mark: null, text: "Draft", tone: "muted", label: "Draft" };
-	if (checks.total > 0) return { mark: "passed", text: null, tone: "muted", label: `${n(checks.total, "check")} passed` };
-	return null;
-}
-
-/** What GitHub's merge box would list: each check, conflict, review and the base, as far as they are known. */
-function linesOf(status: BranchStatus, behind: number, base: string): Said[] {
-	const checks = status.checks ?? { total: 0, pending: 0, failed: 0 };
-	const lines: Said[] = [];
-	const line = (mark: Mark, text: string, tone: Said["tone"] = "muted") => lines.push({ mark, text, tone, label: text });
-	if (checks.failed > 0) line("failed", `${n(checks.failed, "check")} failed`, "destructive");
-	else if (checks.pending > 0) line("running", `${n(checks.pending, "check")} running`);
-	else if (checks.total > 0) line("passed", `${n(checks.total, "check")} passed`);
-	// Only when GitHub has worked it out: UNKNOWN is not an answer either way.
-	if (status.merge === "DIRTY") line("failed", "Conflicts", "destructive");
-	else if (status.merge && status.merge !== "UNKNOWN") line("passed", "No conflicts");
-	if (status.review === "CHANGES_REQUESTED") line("failed", "Changes requested", "destructive");
-	else if (status.review === "APPROVED") line("passed", "Approved");
-	else if (status.review === "REVIEW_REQUIRED") line("waiting", "Needs review");
-	if (behind > 0) line(null, `${behind} behind ${base}`);
-	if (status.draft) line("waiting", "Draft");
-	return lines;
+	const unpushed = git.changes > 0 || (git.remote ? git.remote.ahead : (git.ahead ?? 0)) > 0;
+	if (unpushed) return { action: "push", running: false };
+	if (status.merge === "DIRTY") return { action: "resolve-conflicts", running: false };
+	if (checks.failed > 0) return { action: "fix-checks", running: false };
+	if (status.review === "CHANGES_REQUESTED") return { action: "address-review", running: false };
+	if (checks.pending > 0) return { action: null, running: true };
+	if (status.merge === "CLEAN" || status.merge === "UNSTABLE" || status.merge === "HAS_HOOKS") return { action: "merge", running: false };
+	return { action: null, running: false };
 }
 
 /**
  * The pull request's item, or null where there is none: before one is
- * opened, what there is to say is the first item's (workOf). Merged and
- * closed say so and nothing else; an open one says the one thing most in
- * the way, and its card says all of them.
+ * opened, what there is to say is the first item's (workOf), and what to do
+ * is Create PR (offersPullRequest). Merged and closed are the mark alone.
  */
 export function pullRequestOf(git: GitStanding | null, status: BranchStatus | undefined): PullRequestView | null {
 	if (!git || status?.number === undefined || !(status.state === "open" || status.state === "merged" || status.state === "closed")) return null;
-	const base = git.base ?? "the base";
-	const head = { number: status.number, title: status.title ?? "", url: status.url ?? null, method: status.method ?? "", base };
-	const size = status.added != null && status.deleted != null ? { added: status.added, deleted: status.deleted, commits: status.commits ?? null } : null;
-	if (status.state === "merged") return { ...head, glyph: "merged", said: { mark: null, text: "Merged", tone: "muted", label: "Merged" }, ready: false, lines: [], size };
-	if (status.state === "closed") return { ...head, glyph: "closed", said: { mark: null, text: "Closed", tone: "muted", label: "Closed without merging" }, ready: false, lines: [], size };
-	const behind = git.behind ?? 0;
-	const said = mostInTheWay(status, behind > 0 ? `${behind} behind ${base}` : `Behind ${base}`);
-	const ready = status.merge === "CLEAN" || status.merge === "UNSTABLE" || status.merge === "HAS_HOOKS";
-	// A check that failed and is not required does not stand in the way (UNSTABLE), but it is still said first.
-	return { ...head, glyph: status.draft ? "draft" : "open", said, ready: ready && said?.tone !== "destructive", lines: linesOf(status, behind, base), size };
+	const head = { number: status.number, url: status.url ?? null, method: status.method ?? "", base: git.base ?? "the base" };
+	if (status.state !== "open") return { ...head, glyph: status.state, action: null, running: false };
+	return { ...head, glyph: status.draft ? "draft" : "open", ...actionOf(git, status) };
 }
