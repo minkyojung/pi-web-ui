@@ -3,6 +3,10 @@
  * look — in the message box (schema.ts, plain DOM) and in a message sent
  * (FileChip.tsx, React), so the two are the same thing seen twice.
  */
+import { cn } from "cn";
+
+import { badgeVariants } from "../components/ui/badge-variants.ts";
+
 export type FileKind = "image" | "pdf" | "note" | "code" | "file";
 
 export function fileKind(path: string): FileKind {
@@ -16,8 +20,18 @@ export function fileKind(path: string): FileKind {
 
 export const nameOf = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 
-/** The chip's box: a word's height, the file's name cut short past a width. */
-export const CHIP_CLASS = "mx-0.5 inline-flex max-w-64 items-center gap-1 rounded-md border bg-muted/60 px-1.5 py-px align-baseline text-[0.9em] leading-snug";
+/**
+ * The chip's look: shadcn's outline badge, filled with the page's own ground
+ * and edged in the input's line — a step down from the box and the message
+ * it sits in, whose fill is the theme's secondary, and an edge that shows in
+ * both themes, where the theme's border is all but gone in the dark one.
+ * Less round, and sized to sit in a line of text: a word's height, the
+ * file's name cut short past a width.
+ */
+export const CHIP_CLASS = cn(
+	badgeVariants({ variant: "outline" }),
+	"mx-0.5 max-w-64 justify-start rounded-md border-input bg-background px-1.5 py-px align-baseline text-[0.9em] leading-snug font-normal [&>svg]:size-3.5",
+);
 
 /** The icon inside it. */
-export const CHIP_ICON_CLASS = "size-3.5 shrink-0 text-muted-foreground";
+export const CHIP_ICON_CLASS = "shrink-0 text-muted-foreground";

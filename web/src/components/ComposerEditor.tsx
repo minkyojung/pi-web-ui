@@ -74,6 +74,8 @@ export function ComposerEditor({
 				role: "textbox",
 				"aria-multiline": "true",
 				"aria-label": "Message the agent",
+				// A message is not a document to proof: no red underline under a name or a path.
+				spellcheck: "false",
 				class: "min-h-9 w-full px-3 py-3 text-base whitespace-pre-wrap outline-none md:text-sm",
 			},
 			handleKeyDown: (view: EditorView, event: KeyboardEvent) => {
