@@ -1,8 +1,8 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { ArrowUpRightIcon, CheckIcon, CopyIcon, ExternalLinkIcon, KeyRoundIcon, TriangleAlertIcon, UserRoundIcon } from "lucide-react";
+import { ArrowUpRightIcon, CheckIcon, CopyIcon, ExternalLinkIcon, KeyRoundIcon, UserRoundIcon } from "lucide-react";
 
-import { bridge as githubBridge, githubStore, identityStore, refresh as refreshGitHub, type Code, type GitHubBridge, type GitHubStanding, type Identity } from "../github";
+import { bridge as githubBridge, githubStore, identityStore, refresh as refreshGitHub, type Code, type CommitChoices, type GitHubBridge, type GitHubStanding, type Identity } from "../github";
 import { loginStore, providersStore, type LoginState } from "../serverState";
 import type { LoginEvent, LoginPrompt, ProviderInfo } from "../types";
 import { send } from "../ws";
@@ -185,12 +185,11 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 					) : (
 						<span className="truncate text-sm font-medium">GitHub</span>
 					)}
-					<Commits bridge={bridge} identity={identity} github={me !== null && me.id !== null}>
-						{about}
-					</Commits>
+					{about && <span className="truncate text-xs text-muted-foreground">{about}</span>}
 				</div>
 				<span className="flex shrink-0 gap-1">{actions}</span>
 			</div>
+			{identity && <Commits bridge={bridge} identity={identity} login={me?.login ?? null} />}
 			{signing && (
 				<Dialog open onOpenChange={(open) => !open && (busy ? void bridge.cancel() : setSigning(null))}>
 					<DialogContent className="max-w-md" showCloseButton={false}>
@@ -225,55 +224,66 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 }
 
 /**
- * The line under the person, and after what it says of them, who git
- * commits as on this machine — the address every commit made here carries,
- * which GitHub ties a commit to an account by, as GitHub Desktop shows it
- * beside the account; the name, as git has it, is there on pointing at it.
- * Git was told it, or it made it up from the Mac's names and commits as that
- * without a word; then it is marked, pointing at it says why, and the
- * signed-in person's name and GitHub's private address for them are offered,
- * filling in only what git lacks. Nothing is said about an address git was
- * told: whether GitHub knows it is not something this sign-in can ask.
+ * Who git commits as on this machine, in a row of its own under the person:
+ * the name and address every commit made here carries, the address being
+ * what GitHub ties a commit to an account by — as GitHub Desktop keeps it
+ * beside the account. When git was never told, it makes one up from the
+ * Mac's names and commits as that without a word; then, for the person
+ * signed in, this offers what GitHub Desktop would (commitChoices) in its
+ * place, quietly, for one Save to set.
  */
-function Commits({ bridge, identity, github, children: about }: { bridge: GitHubBridge; identity: Identity | null; github: boolean; children: React.ReactNode }) {
+function Commits({ bridge, identity, login }: { bridge: GitHubBridge; identity: Identity; login: string | null }) {
+	const [choices, setChoices] = useState<CommitChoices | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const fill = async () => {
+	// Asked for whoever is signed in, and asked again when that changes.
+	useEffect(() => {
+		setChoices(null);
+		if (!login || identity.set) return;
+		let current = true;
+		void bridge.commitChoices().then((got) => current && setChoices(got));
+		return () => {
+			current = false;
+		};
+	}, [bridge, login, identity.set]);
+
+	const offered = !identity.set && choices?.email ? { name: choices.name, email: choices.email } : null;
+	const shown = offered ?? identity;
+	const who = shown.name && shown.email ? `${shown.name} <${shown.email}>` : (shown.email ?? shown.name ?? "No one");
+
+	const save = async (who: { name: string; email: string }) => {
 		setBusy(true);
 		setError(null);
-		const out = await bridge.useGitHubIdentity();
+		const out = await bridge.setIdentity(who);
 		await refreshGitHub();
 		setError(out.error ?? null);
 		setBusy(false);
 	};
 
-	const who = identity && (identity.name && identity.email ? `${identity.name} <${identity.email}>` : (identity.email ?? identity.name));
-	const why = identity && !identity.set && (who ? "Git made this up from this Mac's names, so GitHub cannot tell these commits are yours." : "Git has not been told who you are.") + (github ? "" : " Sign in to GitHub to use your account.");
-	if (!about && !identity) return null;
 	return (
-		<>
-			<span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-				{about && <span className="shrink-0">{about}</span>}
-				{about && identity && <span aria-hidden>·</span>}
-				{identity && (
-					<span id="commitIdentity" className={`flex min-w-0 items-center gap-1 ${identity.set ? "" : "text-warning"}`} title={why || `Commits on this Mac are made as ${who}`}>
-						{!identity.set && <TriangleAlertIcon className="size-3 shrink-0" />}
-						<span className="truncate">{identity.email ? `commits as ${identity.email}` : "git does not know who you are"}</span>
-					</span>
-				)}
-				{identity && !identity.set && github && (
-					<Button type="button" variant="link" className="h-auto shrink-0 p-0 text-xs" disabled={busy} onClick={fill}>
-						Use GitHub's
+		<div className="flex flex-col gap-1 border-t px-3 py-2 text-xs">
+			<div className="flex min-h-7 items-center gap-3">
+				<span className="shrink-0 text-muted-foreground">Commits as</span>
+				<span
+					id="commitIdentity"
+					className={`min-w-0 flex-1 truncate ${identity.set ? "" : "text-muted-foreground"}`}
+					title={identity.set ? who : offered ? "Not set yet: what GitHub has for you. Save to commit as it." : "Not set: git makes this up from the Mac's names."}
+				>
+					{who}
+				</span>
+				{offered && (
+					<Button type="button" variant="outline" size="sm" className="h-7 shrink-0 text-xs" disabled={busy} onClick={() => save(offered)}>
+						Save
 					</Button>
 				)}
-			</span>
+			</div>
 			{error && (
-				<p role="alert" className="text-xs text-destructive">
+				<p role="alert" className="text-destructive">
 					{error}
 				</p>
 			)}
-		</>
+		</div>
 	);
 }
 
