@@ -45,6 +45,8 @@ export function statusDot(status: BranchStatus | undefined): { className: string
 
 /** The list the shell keeps — see electron/workspaces.js and preload.cjs. */
 export interface WorkspaceList {
+	/** The repositories taken off the list, still kept by the shell with their workspaces (electron/main.js showRepository). */
+	hidden?: { path: string; name: string; workspaces: number }[];
 	projects: { path: string; name: string; worktrees: { path: string; name: string; branch: string; state?: "archiving" | "archived" | null; at?: string | null; status?: BranchStatus }[] }[];
 }
 

@@ -572,11 +572,15 @@ function workspacesChanged() {
 async function workspaces() {
 	// A repository taken off the list is still in the settings, so that adding
 	// it again brings back its workspaces — it is left out here (workspaces.js).
-	const projects = projectsOf(readSettings(), isCheckout).filter((project) => !project.hidden);
+	const all = projectsOf(readSettings(), isCheckout);
+	const projects = all.filter((project) => !project.hidden);
 	// Which of these a page is on is not said here: the page knows its own
 	// folder from its server, and the one in front is where the window is
 	// going, which a page still up while it goes there is not.
 	return {
+		// The ones taken off the list, for Settings › Archived to offer back —
+		// by name and how many workspaces come back with each, nothing asked of git.
+		hidden: all.filter((project) => project.hidden).map((project) => ({ path: project.path, name: basename(project.path), workspaces: project.worktrees.filter((worktree) => !worktree.state).length })),
 		projects: await Promise.all(
 			projects.map(async (project) => {
 				const prs = pullRequestsOf(project.path);
@@ -1026,6 +1030,19 @@ async function removeRepository(root) {
  * is not only a look: a new spec asked for from the menu, with the window on
  * no repository, opens over it.
  */
+/**
+ * A repository taken off the list put back on it, with everything it had —
+ * the other way back to adding it again from the Finder, as Conductor's
+ * hidden repositories come back. Nothing on the disk was touched, so nothing
+ * is.
+ */
+function showRepository(root) {
+	if (!projectsOf(readSettings(), isCheckout).some((project) => project.path === root && project.hidden)) return { error: "That repository is not off the list." };
+	writeSettings({ ...readSettings(), projects: hiddenRepository(projectsOf(readSettings(), isCheckout), root, false) });
+	workspacesChanged();
+	return {};
+}
+
 function reorderRepositories(paths) {
 	writeSettings({ ...readSettings(), projects: reordered(projectsOf(readSettings(), isCheckout), paths) });
 	workspacesChanged();
@@ -1075,6 +1092,7 @@ function serveFolders() {
 	ipcMain.handle("repository:clone", (_event, source) => (devUrl ? null : cloneRepository(source)));
 	ipcMain.handle("repositories:reorder", (_event, paths) => (devUrl ? null : reorderRepositories(paths)));
 	ipcMain.handle("repository:remove", (_event, root) => (devUrl ? null : removeRepository(root)));
+	ipcMain.handle("repository:show", (_event, root) => (devUrl ? null : showRepository(root)));
 	// What the clone dialog offers, or null when gh cannot say.
 	ipcMain.handle("github:repositories", () => (devUrl ? null : repositories()));
 	// The open issues of a repository on the list, for a spec to start from one.

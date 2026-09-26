@@ -40,7 +40,7 @@ export function RemoveRepository({ repository, onClose, remove }: {
 					<DialogDescription>
 						Nothing on your disk is touched: the clone stays where it is, with its branches, and so
 						{workspaces === 1 ? " does its one workspace" : workspaces > 0 ? ` do its ${workspaces} workspaces` : " do any workspaces it has"}.
-						Adding the repository again brings the list back as it is now.
+						Settings › Archived puts it back as it is now, and so does adding it again.
 					</DialogDescription>
 				</DialogHeader>
 				{error && (
