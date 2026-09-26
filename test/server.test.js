@@ -929,6 +929,24 @@ it("앞에 열린 탭이 앱의 페이지여도 그 주소로 가고, pi는 그�
   await want("agent_settled", () => true, 30_000);
 });
 
+// Spends the start of a model call. A picture put in the box is a file of
+// the box's folder, named in the message as a chip: the model is shown it
+// all the same, and told where it is.
+it("칩으로 넣은 그림은 폴더에서 읽혀 pi에 그림으로 가고, 어디 있는지도 듣는다", async () => {
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  const saved = await (await fetch(`http://127.0.0.1:${port}/api/attachment?to=message&name=${encodeURIComponent("a shot.png")}`, { method: "POST", headers: { "content-type": "application/octet-stream" }, body: Buffer.from(png, "base64") })).json();
+  clear();
+  send({ type: "prompt", text: `what is this? @"${saved.path}"`, pictures: [saved.path] });
+  const started = await want("message_start", (m) => m.message?.role === "user", 30_000);
+  const image = started.message.content.find((c) => c.type === "image");
+  assert.equal(image?.data, png, "the picture itself, read from the folder");
+  assert.equal(image.mimeType, "image/png");
+  const told = await want("message_end", (m) => m.message?.role === "custom" && m.message.customType === "attached", 30_000);
+  assert.deepEqual(told.message.details.pictures, [saved.path]);
+  send({ type: "abort" });
+  await want("agent_settled", () => true, 30_000);
+});
+
 // /curator is pi-web-access's, and "bogus" is not one of its options: the
 // extension says so through ctx.ui.notify, which is the whole path this pins —
 // a command chosen from the list runs, and what it says arrives in the

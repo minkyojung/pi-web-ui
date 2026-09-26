@@ -86,3 +86,17 @@ test("a picture given in the message box is served from .octave/attachments/<id>
 	assert.equal(messagePictureAt(ROOT, ".pi/history/a.png"), null, "never .pi/");
 	assert.equal(attachmentAt(ROOT, ".octave/attachments/ab12cd34/Pasted image.png"), null, "the note's door still keeps out of dot-folders");
 });
+
+import { picturesAt } from "../pictures.ts";
+
+test("a message's chips are shown to the model when they are pictures it reads, once each, from where the box kept them", () => {
+	const kept = join(ROOT, ".octave/attachments/cd34ef56");
+	mkdirSync(kept, { recursive: true });
+	writeFileSync(join(kept, "shot one.png"), png);
+	writeFileSync(join(kept, "logo.svg"), "<svg onload='x'/>");
+	writeFileSync(join(kept, "scan.bmp"), png);
+	const path = ".octave/attachments/cd34ef56/shot one.png";
+	const shown = picturesAt(ROOT, [path, path, ".octave/attachments/cd34ef56/logo.svg", ".octave/attachments/cd34ef56/scan.bmp", "images/diagram.png", 42]);
+	assert.deepEqual(shown, [{ path, data: png.toString("base64"), mimeType: "image/png" }], "a PNG once; not an SVG, not a kind no model reads, not from outside the box's folder");
+	assert.equal(messagePictureAt(ROOT, ".octave/attachments/cd34ef56/logo.svg"), null, "an SVG is not served either: the box takes any file, and that one can carry a script");
+});

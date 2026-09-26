@@ -54,10 +54,16 @@ export function attachmentAt(root: string, given: string, from = ""): { path: st
 	return at(found[0].path);
 }
 
-/** A picture given in the message box, for the conversation to show over the message it went with (conversation.js besideOf). */
+/**
+ * A picture given in the message box, for the conversation to show over the
+ * message it went with (conversation.js besideOf) and for the model to be
+ * shown (workspace.ts). Not an SVG: the box takes any file, and that one can
+ * carry a script.
+ */
 export function messagePictureAt(root: string, given: string): { path: string; full: string; type: string } | null {
 	const file = messageFileAt(root, given);
 	const type = file && imageType(file.path);
+	if (type === "image/svg+xml") return null;
 	return file && type && isFile(file.full) ? { ...file, type } : null;
 }
 
@@ -110,4 +116,31 @@ export function attachmentFolder(root: string, from: string): string {
 	if (told === "./") return posix.dirname(from) === "." ? "" : posix.dirname(from);
 	if (told.startsWith("./")) return posix.normalize(posix.join(posix.dirname(from), told.slice(2)));
 	return told.replace(/^\/|\/$/g, "");
+}
+
+/** What a model is shown as a picture; the rest of IMAGE_TYPES it is not given. */
+const SHOWN = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
+/** Past this a picture is left for the agent to open by its path rather than put in the message. */
+const SHOWN_BYTES = 20 * 1024 * 1024;
+
+/**
+ * The pictures a message names as chips, read from where the box kept them,
+ * to be shown to the model with the message: each once, only kinds a model
+ * reads, and only what is where the box keeps its files (messagePictureAt).
+ * One that cannot be read is left out; its path is still in the message.
+ */
+export function picturesAt(root: string, paths: readonly unknown[]): { path: string; data: string; mimeType: string }[] {
+	const out: { path: string; data: string; mimeType: string }[] = [];
+	for (const path of new Set(paths.filter((p): p is string => typeof p === "string"))) {
+		const found = messagePictureAt(root, path);
+		if (!found || !SHOWN.has(found.type)) continue;
+		try {
+			if (statSync(found.full).size > SHOWN_BYTES) continue;
+			out.push({ path, data: readFileSync(found.full).toString("base64"), mimeType: found.type });
+		} catch {
+			// Gone since it was named: the path in the message says what it was.
+		}
+	}
+	return out;
 }

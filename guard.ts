@@ -81,7 +81,7 @@ export const WORKSPACE_PROMPT = [
 	"A .pdf in the folder is read with read as well: it comes back as its text, page by page, and a long one is continued with offset like any file. grep and bash see only its bytes.",
 	`bash cannot write anything under ${APP_DIR_NAME}/: the operating system refuses it. Everything else in the folder it may write.`,
 	`The folder ${APP_DIR_NAME}/ belongs to the app — it holds the app's own records — and must not be read as the repository's files, written, or removed; tools that try are refused.`,
-	"When you refer to a file, use its path relative to this folder.",
+	"When you refer to a file, use its path relative to this folder. The person points at one the same way, as @path in their message — @\"path\" when it has a space in it; a file they gave you is under .octave/attachments/.",
 ].join(" ");
 
 /** Whether a path, as a tool would take it, lies under the app's folder. */

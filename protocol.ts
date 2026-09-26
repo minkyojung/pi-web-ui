@@ -48,6 +48,12 @@ export type ClientMsg =
 			command?: boolean;
 			/** Images pasted into the box: base64 and a media type, as pi's ImageContent has them. */
 			images?: { data: string; mimeType: string; name?: string }[];
+			/**
+			 * The pictures the message names as chips, where they were kept in the
+			 * box's folder (.octave/attachments/…): the server reads them and shows
+			 * them to the model, and tells it where they are.
+			 */
+			pictures?: string[];
 			/** What to do with it mid-run. Ignored when nothing is running. */
 			behavior?: "steer" | "followUp";
 			/** Asking again: the user message this one is an alternative to. */

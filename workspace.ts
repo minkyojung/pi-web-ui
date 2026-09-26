@@ -77,7 +77,7 @@ import {
 	writeSpec,
 	type WriteResult,
 } from "./vault.ts";
-import { attachmentAt, messagePictureAt } from "./pictures.ts";
+import { attachmentAt, messagePictureAt, picturesAt } from "./pictures.ts";
 import { FileIndex } from "./fileIndex.ts";
 import { type Repo, repoFiles } from "./repoFiles.ts";
 import { deleteNote, shellTrash } from "./trash.ts";
@@ -1900,7 +1900,13 @@ export async function createWorkspace(cwd: string) {
 						}
 						// The pictures, kept beside what was dropped on the box before pi is
 						// given them (attach.ts keepPictures).
-						pictures = Array.isArray(msg.images) ? keepPictures(CWD, msg.images.filter((i) => typeof i?.data === "string" && typeof i?.mimeType === "string")) : [];
+						// And the ones it names as chips, read from where the box kept them.
+						const named = Array.isArray(msg.pictures) ? picturesAt(CWD, msg.pictures) : [];
+						pictures = [...(Array.isArray(msg.images) ? keepPictures(CWD, msg.images.filter((i) => typeof i?.data === "string" && typeof i?.mimeType === "string")) : []), ...named.map((p) => p.path)];
+						const images = [
+							...(msg.images ?? []).map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType })),
+							...named.map((p) => ({ type: "image" as const, data: p.data, mimeType: p.mimeType })),
+						];
 						// "steer" redirects the run in progress; "followUp" waits for it to finish.
 						const behavior = msg.behavior === "steer" ? "steer" : "followUp";
 						try {
@@ -1913,7 +1919,7 @@ export async function createWorkspace(cwd: string) {
 							await session().prompt(text, {
 								expandPromptTemplates: msg.command === true,
 								// The bytes and their type, as pi takes them; the name is only for the copy kept.
-								...(msg.images?.length ? { images: msg.images.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType })) } : {}),
+								...(images.length ? { images } : {}),
 								...(session().isStreaming ? { streamingBehavior: behavior } : {}),
 							});
 						} catch (err) {
