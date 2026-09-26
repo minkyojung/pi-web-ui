@@ -628,3 +628,16 @@
 .cm-embed-body pre { font-family: ui-monospace, monospace; font-size: 0.9em; background: color-mix(in oklab, var(--foreground) 5%, transparent); border-radius: 6px; padding: 0.5em 0.75em; overflow-x: auto; }
 .cm-embed-body blockquote { border-left: 2px solid var(--border); padding-left: 0.75rem; margin: 0.4em 0; }
 .cm-embed-missing .cm-embed-body { color: var(--muted-foreground); }
+
+/*
+ * The message box's placeholder (ComposerEditor.tsx): Tiptap marks the empty
+ * first line and gives it the words; drawing them is the page's, in the
+ * textarea's colour for them.
+ */
+[data-slot="input-group-control"].ProseMirror p.is-editor-empty:first-child::before {
+	content: attr(data-placeholder);
+	float: left;
+	height: 0;
+	pointer-events: none;
+	color: var(--muted-foreground);
+}
