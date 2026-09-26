@@ -7,7 +7,7 @@ import test from "node:test";
 
 import { CITIES, pickCity } from "../electron/cities.js";
 import { branchOf, changesIn, fetchOrigin, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf, startOf } from "../electron/git.js";
-import { deviceCodeFrom, login, signIn, standing } from "../electron/github.js";
+import { deviceCodeFrom, login, profileFrom, signIn, standing } from "../electron/github.js";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
 
@@ -156,10 +156,31 @@ test("signing in shows gh's code as gh says it, and ends as gh ends — well, or
 	const gone = withGh("sleep 30", () => signIn({ onCode: () => {}, signal: giving.signal }));
 	giving.abort();
 	assert.deepEqual(await gone, { cancelled: true });
-	const standings = await withGh('case "$*" in *--version*) echo "gh version 0";; *"api user"*) echo "someone";; esac', async () => [await standing()]);
-	assert.deepEqual(standings, [{ state: "signed-in", login: "someone" }]);
+	const standings = await withGh(`case "$*" in *--version*) echo "gh version 0";; *"api user"*) echo '{"login":"someone","id":7,"name":"Some One","avatar_url":"https://avatars.githubusercontent.com/u/7?v=4","html_url":"https://github.com/someone"}';; esac`, async () => [await standing(), await login()]);
+	assert.deepEqual(standings, [{ state: "signed-in", login: "someone", name: "Some One", avatarUrl: "https://avatars.githubusercontent.com/u/7?v=4", url: "https://github.com/someone", id: 7 }, "someone"]);
 	const out = await withGh('case "$*" in *--version*) echo "gh version 0";; *) exit 1;; esac', () => standing());
 	assert.deepEqual(out, { state: "signed-out" });
+});
+
+/** GitHub's answer to `gh api user`, as it gives it for its own example account (docs.github.com, "Get the authenticated user"), cut to what is read and a little more. */
+const octocat = { login: "octocat", id: 1, avatar_url: "https://github.com/images/error/octocat_happy.gif", html_url: "https://github.com/octocat", name: "monalisa octocat", company: "GitHub", bio: "There once was...", followers: 20 };
+
+test("the person is read off GitHub's answer: login, name, picture, page and number — nothing else", () => {
+	assert.deepEqual(profileFrom(JSON.stringify(octocat)), { login: "octocat", name: "monalisa octocat", avatarUrl: "https://github.com/images/error/octocat_happy.gif", url: "https://github.com/octocat", id: 1 });
+});
+
+test("what a person has not filled in is said to be missing, not made up", () => {
+	assert.deepEqual(profileFrom(JSON.stringify({ ...octocat, name: null })).name, null, "no name is no name, not the login again");
+	assert.equal(profileFrom(JSON.stringify({ ...octocat, name: "  " })).name, null);
+	assert.equal(profileFrom(JSON.stringify({ ...octocat, avatar_url: "http://example.com/a.png" })).avatarUrl, null, "a picture only over https");
+	assert.equal(profileFrom(JSON.stringify({ ...octocat, html_url: "https://example.com/octocat" })).url, "https://github.com/octocat", "the page is GitHub's, whatever the answer says");
+	assert.equal(profileFrom(JSON.stringify({ ...octocat, id: "1" })).id, null);
+});
+
+test("anything that is not GitHub's answer about a person is no one", () => {
+	for (const out of [null, "", "someone", "not json", "[]", "null", JSON.stringify({ id: 1 }), JSON.stringify({ login: "" }), JSON.stringify({ login: 7 }), JSON.stringify({ message: "Bad credentials" })]) {
+		assert.equal(profileFrom(out), null, String(out));
+	}
 });
 
 test("a clone is asked for by owner/name or by a GitHub address, and nothing else", async () => {

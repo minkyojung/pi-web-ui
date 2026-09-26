@@ -11,7 +11,13 @@
  */
 import { createStore } from "./serverState";
 
-export type GitHubStanding = { state: "missing" } | { state: "signed-out" } | { state: "signed-in"; login: string };
+/**
+ * Who is signed in, as GitHub says (electron/github.js profileFrom): what
+ * they have not filled in is null. `url` is their page on GitHub; `id` is
+ * GitHub's number for them, which does not change when the login does.
+ */
+export type GitHubProfile = { login: string; name: string | null; avatarUrl: string | null; url: string; id: number | null };
+export type GitHubStanding = { state: "missing" } | { state: "signed-out" } | ({ state: "signed-in" } & GitHubProfile);
 export type Code = { userCode: string; verificationUri: string };
 export type Outcome = { ok?: true; error?: string; cancelled?: true };
 export type GitHubBridge = {
