@@ -51,7 +51,7 @@ function Foot({ children }: { children: ReactNode }) {
 	// focus: it went with the question, and the box is where it came from.
 	const asking = useRef(false);
 	useEffect(() => {
-		if (asking.current && !prompt && focusIsNowhere()) box.current?.querySelector("textarea")?.focus();
+		if (asking.current && !prompt && focusIsNowhere()) box.current?.querySelector<HTMLElement>('[data-slot="input-group-control"]')?.focus();
 		asking.current = !!prompt;
 	}, [prompt]);
 

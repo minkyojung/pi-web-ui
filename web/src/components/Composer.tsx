@@ -7,7 +7,7 @@ import { type Chosen as ChosenWords, chosenStore } from "../chosen";
 import { acceptCommand, commandQuery, matchCommands, namesCommand } from "../commandMenu";
 import { draftStore } from "../draft";
 import { type FrontLabel, frontLabel } from "../frontLabel";
-import { acceptMention, insertMention, matchNotes, mentionQuery } from "../noteMention";
+import { matchNotes, mentionQuery } from "../noteMention";
 import { titleOf } from "../noteSync";
 import { appendRestored } from "../queue";
 import { flushSaves } from "../saves";
@@ -20,6 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { type Suggestion, SuggestMenu } from "./SuggestMenu";
 import { ModelPicker } from "./ModelPicker";
 import { QueuedMessages } from "./QueuedMessages";
+import { ComposerEditor, type ComposerEditorHandle } from "./ComposerEditor";
 import { FrontMark } from "./FrontMark";
 import {
 	PromptInput,
@@ -27,7 +28,6 @@ import {
 	PromptInputFooter,
 	PromptInputHeader,
 	PromptInputSubmit,
-	PromptInputTextarea,
 	PromptInputTools,
 	usePromptInputAttachments,
 } from "./ai-elements/prompt-input";
@@ -226,14 +226,14 @@ export function Composer({ front }: { front: string | null }) {
 	const chosen = useSyncExternalStore(chosenStore.subscribe, chosenStore.get);
 	const pointing = chosen && chosen.path === front ? chosen : null;
 
-	// Text a cleared queue handed back. The box is uncontrolled — PromptInput
-	// reads it out of the form on submit — so it is written directly, appended
-	// rather than assigned so it cannot overwrite something half-typed.
-	const box = useRef<HTMLTextAreaElement>(null);
-	// What the box holds and where the cursor is, kept beside it for the
-	// lists: the box is uncontrolled, so these follow it rather than drive it.
+	// The box (ComposerEditor), read and written as text. It is uncontrolled —
+	// PromptInput reads it out of the form on submit — so what is written in is
+	// written through it.
+	const box = useRef<ComposerEditorHandle>(null);
+	// What the box holds and the caret's line up to the caret, kept beside it
+	// for the lists: these follow the box rather than drive it.
 	const [text, setText] = useState(() => draftStore.get());
-	const [caret, setCaret] = useState(0);
+	const [before, setBefore] = useState({ text: "", start: 1 });
 	const commands = useSyncExternalStore(commandsStore.subscribe, commandsStore.get);
 	const files = useSyncExternalStore(filesStore.subscribe, filesStore.get);
 	const documents = useSyncExternalStore(documentsStore.subscribe, documentsStore.get);
@@ -249,42 +249,42 @@ export function Composer({ front }: { front: string | null }) {
 	const send_ = (form: HTMLFormElement, value: string, files: { url?: string; mediaType?: string; filename?: string }[]) => {
 		const behavior = steering.current ? "steer" : "followUp";
 		steering.current = false;
-		if (submit(form, value, behavior, going, going ? pointing : null, files)) setText("");
+		if (submit(form, value, behavior, going, going ? pointing : null, files)) box.current?.clear();
 	};
 	// A file that is not an image, dropped or pasted: it goes where the message
-	// box's files are kept (.octave/attachments, out of git) and its path into
-	// the message, where the cursor is, as a mention — the
-	// box is read when the answer comes, since the person may have typed on.
+	// box's files are kept (.octave/attachments, out of git) and into the
+	// message as a chip, where the caret is when the answer comes, since the
+	// person may have typed on.
 	// The form below still sees the same event and takes the images from it.
 	const [adding, setAdding] = useState<string[]>([]);
 	const take = (list: FileList | undefined | null) => {
 		for (const file of filesToAttach(list ?? [])) {
 			setAdding((names) => [...names, file.name]);
 			attach(file, { to: "message" })
-				.then((path) => {
-					const el = box.current;
-					if (!el) return;
-					const next = insertMention(el.value, el.selectionStart, path);
-					write(next.text, next.cursor);
-				})
+				.then((path) => box.current?.insertChip(path))
 				.catch((err: Error) => applyServerEvent({ type: "error", message: `Could not add ${file.name}: ${err.message}` }))
 				.finally(() => setAdding((names) => names.filter((n, i) => i !== names.indexOf(file.name))));
 		}
 	};
-	const write = (value: string, cursor = value.length) => {
-		if (!box.current) return;
-		box.current.value = value;
-		box.current.setSelectionRange(cursor, cursor);
+	const write = (value: string) => {
+		box.current?.setText(value);
+		box.current?.focus();
+	};
+	// What the box says after each change, the draft kept with it.
+	const changed = (value: string, line: { text: string; start: number }) => {
 		draftStore.set(value);
 		setText(value);
-		setCaret(cursor);
-		box.current.focus();
+		setBefore(line);
 	};
+	// What `@path` names a file for the box to draw as a chip: a note or a
+	// document the lists offer, or a file given to the box itself.
+	const known = new Set([...files.map((f) => f.path), ...documents]);
+	const isFile = (path: string) => known.has(path) || path.startsWith(".octave/attachments/");
 	// One list at most: a command being named (the whole box is "/word"), else
 	// a note being named (the word at the cursor is "@word"). Each says what
 	// it offers and what taking a row does; the keys below are the same.
 	const command = commandQuery(text);
-	const mention = mentionQuery(text, caret);
+	const mention = mentionQuery(before.text, before.text.length);
 	let list: { id: string; items: Suggestion[]; pick: (value: string) => void } | null = null;
 	if (dismissed !== text && command !== null) {
 		list = {
@@ -305,10 +305,8 @@ export function Composer({ front }: { front: string | null }) {
 			items: matchNotes([...files.map((f) => f.path), ...documents], mention.query)
 				.slice(0, NOTES_OFFERED)
 				.map((path) => ({ value: path, label: titleOf(path), detail: folderOf(path) })),
-			pick: (path) => {
-				const next = acceptMention(text, mention.from, caret, path);
-				write(next.text, next.cursor);
-			},
+			// The typed `@word` becomes the file's chip.
+			pick: (path) => box.current?.replace(before.start + mention.from, before.start + before.text.length, { chip: path }),
 		};
 	}
 	const offered = list?.items ?? [];
@@ -317,12 +315,12 @@ export function Composer({ front }: { front: string | null }) {
 	// — see draft.ts. Written in, not given as a default: a form reset goes
 	// back to the default, and a sent message must leave the box empty.
 	useEffect(() => {
-		if (box.current) box.current.value = draftStore.get();
+		box.current?.setText(draftStore.get());
 	}, []);
 	const restored = useSyncExternalStore(restoredStore.subscribe, restoredStore.get);
 	useEffect(() => {
 		if (!restored || !box.current) return;
-		write(appendRestored(box.current.value, restored));
+		write(appendRestored(box.current.text(), restored));
 		restoredStore.set(null);
 	}, [restored]);
 
@@ -391,41 +389,33 @@ export function Composer({ front }: { front: string | null }) {
 					</PromptInputHeader>
 				)}
 				<PromptInputBody>
-					{/* The component asks for four lines of empty box; one is enough until
-					    there is something to show, and it grows from there. */}
-					<PromptInputTextarea
-						ref={box}
-						className="min-h-9"
-						placeholder="Message the agent"
+					<ComposerEditor
+						handle={box}
+						isFile={isFile}
 						disabled={!online}
-						onChange={(e) => {
-							draftStore.set(e.currentTarget.value);
-							setText(e.currentTarget.value);
-							setCaret(e.currentTarget.selectionStart);
-						}}
-						// Where the cursor is, for the word it is at the end of. Fires on
-						// every move of it, keys and mouse alike.
-						onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+						onChange={changed}
 						onKeyDown={(e) => {
 							// While rows are offered, the keys that move through a list are
 							// the list's: up and down choose, Enter and Tab take, Escape
 							// puts it away. Anything else types on.
-							if (list && current && !e.nativeEvent.isComposing) {
+							if (list && current) {
 								const at = offered.indexOf(current);
 								const step = (n: number) => setSelected(offered[(at + n + offered.length) % offered.length]!.value);
-								if (e.key === "ArrowDown") return void (e.preventDefault(), step(1));
-								if (e.key === "ArrowUp") return void (e.preventDefault(), step(-1));
-								if (e.key === "Enter" || e.key === "Tab") return void (e.preventDefault(), list.pick(current.value));
-								if (e.key === "Escape") return void (e.preventDefault(), setDismissed(text));
+								if (e.key === "ArrowDown") return (e.preventDefault(), step(1), true);
+								if (e.key === "ArrowUp") return (e.preventDefault(), step(-1), true);
+								if (e.key === "Enter" || e.key === "Tab") return (e.preventDefault(), list.pick(current.value), true);
+								if (e.key === "Escape") return (e.preventDefault(), setDismissed(text), true);
 							}
 							// Steering is delivered at the next turn boundary — after the
 							// current turn's tool calls, before the next model call — so it
 							// cuts a tool-using run short. Enter alone queues instead.
-							if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+							if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
 								e.preventDefault();
 								steering.current = true;
-								e.currentTarget.form!.requestSubmit();
+								(e.target as HTMLElement).closest("form")?.requestSubmit();
+								return true;
 							}
+							return false;
 						}}
 					/>
 				</PromptInputBody>

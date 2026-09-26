@@ -448,10 +448,10 @@ check("and forward again", async ({ app }) => {
 });
 
 check("a question takes the message box's place, is answered from the keys, and gives the box back with what was in it", async ({ app }) => {
-	const boxShown = () => app.evaluate("document.querySelector('textarea[placeholder=\"Message the agent\"]').offsetParent !== null");
+	const boxShown = () => app.evaluate(`document.querySelector(${JSON.stringify(BOX)}).offsetParent !== null`);
 	const asked = () => app.evaluate("!!document.getElementById('question')");
 	const before = await marks(app);
-	await app.click('textarea[placeholder="Message the agent"]');
+	await app.click(BOX);
 	await app.keys("DRAFT");
 
 	// The server's own question, which no model has to be called for.
@@ -475,8 +475,8 @@ check("a question takes the message box's place, is answered from the keys, and 
 	await app.press("Escape");
 	await until("the question closed", async () => !(await asked()));
 	assert.equal(await boxShown(), true);
-	assert.equal(await app.evaluate("document.querySelector('textarea[placeholder=\"Message the agent\"]').value"), "DRAFT");
-	await until("the keys back on the box", () => app.evaluate("document.activeElement?.placeholder === 'Message the agent'"));
+	assert.equal(await boxText(app), "DRAFT");
+	await until("the keys back on the box", () => app.evaluate(`!!document.activeElement?.matches(${JSON.stringify(BOX)})`));
 	assert.equal(await marks(app), before);
 
 	// Answered from the keys: a number takes a choice, and nothing is sent until Enter.
@@ -493,9 +493,9 @@ check("a question takes the message box's place, is answered from the keys, and 
 	// Back where the checks after this one expect to be, with an empty box.
 	assert.equal(await step(app, "Next answer"), true);
 	await until("the second branch", async () => (await marks(app)) === before);
-	await app.click('textarea[placeholder="Message the agent"]');
+	await app.click(BOX);
 	for (const _ of "DRAFT") await app.press("Backspace");
-	assert.equal(await app.evaluate("document.querySelector('textarea[placeholder=\"Message the agent\"]').value"), "");
+	assert.equal(await boxText(app), "");
 });
 
 check("asking a question again fills the box without moving anything", async ({ app }) => {
@@ -507,7 +507,7 @@ check("asking a question again fills the box without moving anything", async ({ 
 		return true;
 	})()`), true);
 	await until("the question in the box", () =>
-		app.evaluate(`document.querySelector('textarea')?.value?.includes("rewrite the reducer")`),
+		boxText(app).then((text) => text.includes("rewrite the reducer")),
 	);
 	// Nothing was sent, so the conversation is exactly where it was: this is
 	// the difference between copying a question and navigating to it.
@@ -525,7 +525,7 @@ check("changing your mind about it costs nothing", async ({ app }) => {
 	await until("the note to go", async () => !(await app.evaluate("document.body.textContent")).includes("Asking again:"));
 	// The text stays in the box: it was copied in, and cancelling is about
 	// where it will be sent, not about what was typed.
-	assert.ok(await app.evaluate(`document.querySelector('textarea')?.value?.includes("rewrite the reducer")`));
+	assert.ok(await boxText(app).then((text) => text.includes("rewrite the reducer")));
 });
 
 /**
@@ -554,6 +554,17 @@ const pickFile = async (page, path) => {
 	await until("the file offered", () => page.evaluate(`[...document.querySelectorAll('[data-slot=command-list] [cmdk-item]')].some((i) => i.dataset.value === ${JSON.stringify(path.toLowerCase())})`));
 	await page.evaluate(`[...document.querySelectorAll('[data-slot=command-list] [cmdk-item]')].find((i) => i.dataset.value === ${JSON.stringify(path.toLowerCase())}).click()`);
 	await until("the file in front", () => page.evaluate(`!!document.querySelector('#page[data-code=${JSON.stringify(path)}]')`));
+};
+
+/** The message box (ComposerEditor.tsx), and what it holds as the text it sends. */
+const BOX = "[data-slot=input-group-control][contenteditable]";
+const boxText = (page) => page.evaluate("document.querySelector('input[name=message]')?.value ?? ''");
+/** The box emptied as a person would: into it, everything chosen, gone. */
+const clearBox = async (page) => {
+	await page.evaluate(`document.querySelector(${JSON.stringify(BOX)}).focus()`);
+	await page.press("a", { meta: true });
+	await page.press("Backspace");
+	await until("the box empty", async () => (await boxText(page)) === "");
 };
 
 const pickNote = async (page, path) => {
@@ -695,7 +706,7 @@ check("a selection is drawn as wide as the words, and shows marks only while the
 	assert.equal(band.pad, "0px", "the content has no padding for the band to paint");
 	assert.ok(band.count > 0 && band.within, "every piece of the band lies within the text column");
 	// The focus goes to the composer: the selection stays, the marks go.
-	await app.evaluate("document.querySelector('textarea').focus()");
+	await app.evaluate(`document.querySelector(${JSON.stringify(BOX)}).focus()`);
 	await until("the # to hide with the focus gone", async () => !(await shownText(app)).includes("# first") && (await shownText(app)).includes("first"));
 	// And back: the same selection shows them again.
 	await app.evaluate("document.querySelector('#editor .cm-content').focus()");
@@ -984,7 +995,7 @@ check("choosing words in a note shows them over the box beside the note's name, 
 	await until("the strip faded", () => app.evaluate("document.getElementById('front').dataset.off === 'true'"));
 	assert.equal(await app.evaluate("document.getElementById('front-toggle').getAttribute('aria-pressed')"), "false");
 	assert.equal(await app.evaluate("!!document.querySelector('#editor .cm-selectionBackground, #editor .cm-selectionLayer > *')"), true, "the words are still chosen");
-	await app.click("textarea");
+	await app.click(BOX);
 	await app.keys("about this");
 	await app.press("Enter");
 	const sent = await until("the prompt to go", () => app.evaluate("window.__sent.at(-1) ?? null"));
@@ -3007,9 +3018,9 @@ check("the path above a note folds its middle away, and a folder in it opens wha
  * registers "curator" — so this runs against the real server, not a bench.
  */
 check("typing / in the message box offers pi's commands, and Enter writes the chosen one in", async ({ app }) => {
-	const box = () => app.evaluate("document.querySelector('textarea').value");
+	const box = () => boxText(app);
 	const listed = () => app.evaluate("[...document.querySelectorAll('#commands [cmdk-item]')].map((i) => i.textContent)");
-	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.focus(); t.value = ''; })()");
+	await clearBox(app);
 	await app.keys("/cur");
 	await until("the list to narrow to curator", async () => (await listed()).some((t) => t.startsWith("/curator")));
 	// Being in the DOM is not being seen: the box clips what is inside it, and
@@ -3024,14 +3035,14 @@ check("typing / in the message box offers pi's commands, and Enter writes the ch
 	await until("the command written in", async () => (await box()) === "/curator ");
 	assert.deepEqual(await listed(), [], "the list has done its part once the word is complete");
 	// Escape puts the list away for the text as it stands; typing brings it back.
-	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.focus(); t.value = ''; })()");
+	await clearBox(app);
 	await app.keys("/");
 	await until("every command offered", async () => (await listed()).length > 1);
 	await app.press("Escape");
 	await until("the list put away", async () => (await listed()).length === 0);
 	await app.keys("c");
 	await until("the list back", async () => (await listed()).length > 0);
-	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+	await clearBox(app);
 });
 
 /**
@@ -3042,9 +3053,9 @@ check("typing / in the message box offers pi's commands, and Enter writes the ch
 check("typing @ in the message box offers the notes, and Enter writes the chosen one's path in", async ({ app, cwd }) => {
 	writeFileSync(join(cwd, "mentionable.md"), "# mentionable\n");
 	await until("the note to be listed", () => app.evaluate(`!!document.querySelector('#notes button[data-path="mentionable.md"]')`));
-	const box = () => app.evaluate("document.querySelector('textarea').value");
+	const box = () => boxText(app);
 	const listed = () => app.evaluate("[...document.querySelectorAll('#mentions [cmdk-item]')].map((i) => i.textContent)");
-	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.focus(); t.value = ''; })()");
+	await clearBox(app);
 	await app.keys("about @mentio");
 	await until("the list to narrow to the note", async () => (await listed()).some((t) => t.startsWith("mentionable")));
 	assert.equal(await app.evaluate(`(() => {
@@ -3053,19 +3064,20 @@ check("typing @ in the message box offers the notes, and Enter writes the chosen
 	})()`), true, "the list is on screen, not clipped by the box");
 	await app.press("Enter");
 	await until("the path written in", async () => (await box()) === "about @mentionable.md ");
+	assert.equal(await app.evaluate(`document.querySelector('[data-file-chip]')?.dataset.path`), "mentionable.md", "the note is a chip in the box");
 	assert.deepEqual(await listed(), [], "the list has done its part once the word is complete");
 	// A mention is a word among words: what follows types on, and the list stays away.
 	await app.keys("and more");
 	assert.deepEqual(await listed(), []);
-	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+	await clearBox(app);
 	// A PDF in the folder is offered too, after the notes, with its extension for a title.
 	writeFileSync(join(cwd, "mentionable.pdf"), "%PDF-1.4\n");
-	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.focus(); t.value = ''; })()");
+	await clearBox(app);
 	await app.keys("see @mentionable.p");
 	await until("the PDF to be listed", async () => (await listed()).some((t) => t.startsWith("mentionable.pdf")));
 	await app.press("Enter");
 	await until("the PDF's path written in", async () => (await box()) === "see @mentionable.pdf ");
-	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+	await clearBox(app);
 });
 
 /**
@@ -3137,7 +3149,7 @@ check("words dragged across in a PDF show above the box with their page, and go 
 	// The whole of what was dragged across, under its page: the selection grows as the pointer moves, and the chip follows it.
 	await until("the chip with the page and the words", async () => (await chip()) === "p. 2Page two says hello.");
 	// Into the box to ask: the browser lets go of the selection, the words stay.
-	await app.click("textarea");
+	await app.click(BOX);
 	await new Promise((r) => setTimeout(r, 300));
 	assert.match(await chip(), /^p\. 2/, "clicking into the box does not take them away");
 	// What goes out: the words and the page beside the message, the PDF as what is in front.
@@ -3161,7 +3173,7 @@ check("the tab in front goes beside the message as its address: a file with the 
 	await app.evaluate(`(() => { window.__sent = []; const send = WebSocket.prototype.send; WebSocket.prototype.send = function (d) { if (this.url.endsWith("/ws") && JSON.parse(String(d)).type === "prompt") return void window.__sent.push(JSON.parse(String(d))); return send.call(this, d); }; })()`);
 	const ask = async (text) => {
 		const before = await app.evaluate("window.__sent.length");
-		await app.click("textarea");
+		await app.click(BOX);
 		await app.keys(text);
 		await app.press("Enter");
 		return until("the prompt to go", () => app.evaluate(`window.__sent.length > ${before} ? window.__sent.at(-1) : null`));
@@ -3189,7 +3201,7 @@ check("a picture pasted into the message box rides with the message as bytes, na
 		const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
 		const data = new DataTransfer();
 		data.items.add(new File([png], "image.png", { type: "image/png" }));
-		const t = document.querySelector("textarea");
+		const t = document.querySelector(${JSON.stringify(BOX)});
 		t.focus();
 		t.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }));
 	})()`);
@@ -3207,16 +3219,20 @@ check("a picture pasted into the message box rides with the message as bytes, na
  * message. The drop is a real DragEvent carrying a real File, so what is
  * checked is the whole path: the box, the door, the disk, the list.
  */
-check("a PDF dropped on the message box is kept in .octave/attachments/, out of the work, and named in the message", async ({ app, cwd }) => {
-	const box = () => app.evaluate("document.querySelector('textarea').value");
-	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.focus(); t.value = 'about'; t.setSelectionRange(5, 5); t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+check("a PDF dropped on the message box is kept in .octave/attachments/, out of the work, and is a chip in the message", async ({ app, cwd }) => {
+	const box = () => boxText(app);
+	await clearBox(app);
+	await app.keys("about ");
 	await app.evaluate(`(() => {
 		const data = new DataTransfer();
 		data.items.add(new File([new TextEncoder().encode("%PDF-1.4 dropped")], "dropped here.pdf", { type: "application/pdf" }));
-		document.querySelector('textarea').dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
+		document.querySelector(${JSON.stringify(BOX)}).dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
 	})()`);
-	const written = await until("the path written in", async () => /^about @\.octave\/attachments\/[0-9a-f]{8}\/dropped here\.pdf $/.test(await box()) && (await box()));
-	const path = written.slice("about @".length).trim();
+	// A chip where the caret was; in what is sent, its path — quoted, since the name has a space.
+	const written = await until("the chip written in", async () => /^about @"\.octave\/attachments\/[0-9a-f]{8}\/dropped here\.pdf" $/.test(await box()) && (await box()));
+	const path = written.slice('about @"'.length, -2);
+	assert.equal(await app.evaluate(`document.querySelector('[data-file-chip]')?.dataset.path`), path, "a chip, not the path as text");
+	assert.equal(await app.evaluate(`document.querySelector('[data-file-chip]')?.textContent`), "dropped here.pdf", "the chip says the file's name");
 	assert.equal(readFileSync(join(cwd, path), "utf8"), "%PDF-1.4 dropped", "the bytes are in the folder");
 	assert.equal(existsSync(join(cwd, "attachments/dropped here.pdf")), false, "not where a note's pictures go");
 	assert.equal(await app.evaluate("document.querySelector('#adding') === null"), true, "the line saying so is gone once it is there");
@@ -3225,11 +3241,11 @@ check("a PDF dropped on the message box is kept in .octave/attachments/, out of 
 	await app.evaluate(`(() => {
 		const data = new DataTransfer();
 		data.items.add(new File(["x"], "script.sh", { type: "text/x-sh" }));
-		document.querySelector('textarea').dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
+		document.querySelector(${JSON.stringify(BOX)}).dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
 	})()`);
 	await until("the refusal said", () => app.evaluate("document.body.innerText.includes('Could not add script.sh')"));
 	assert.equal(await box(), written);
-	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+	await clearBox(app);
 });
 
 check("the loadout screen keeps a model pi does not offer, and shows a change another window made", async ({ app, api }) => {

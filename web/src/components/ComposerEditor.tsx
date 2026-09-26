@@ -16,7 +16,7 @@ export interface ComposerEditorHandle {
 	text(): string;
 	/** The caret's line up to the caret, and where it starts — see composer/caret.ts. */
 	before(): { text: string; start: number };
-	/** The whole box, from text; the caret at its end. */
+	/** The whole box, from text; the caret at its end, the focus where it was. */
 	setText(text: string): void;
 	/** A range replaced by text, or by a file's chip and a space after it; the caret after. */
 	replace(from: number, to: number, what: { text: string } | { chip: string }): void;
@@ -156,7 +156,9 @@ export function ComposerEditor({
 			text: () => (editor ? docToText(editor.getJSON()) : ""),
 			before: () => (editor ? lineBefore(editor.state) : { text: "", start: 1 }),
 			setText: (text) => {
-				editor?.chain().setContent(textToDoc(text, latest.current.isFile)).focus("end").run();
+				// The caret to the end, without taking the focus: the draft is put back
+				// as the box is made, and that is no reason to leave where the person is.
+				editor?.chain().setContent(textToDoc(text, latest.current.isFile)).setTextSelection(Number.MAX_SAFE_INTEGER).run();
 			},
 			replace: (from, to, what) => {
 				const content = "chip" in what ? [{ type: CHIP, attrs: { path: what.chip } }, { type: "text", text: " " }] : what.text;
