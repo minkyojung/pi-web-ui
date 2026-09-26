@@ -270,15 +270,16 @@ export function Composer({ front }: { front: string | null }) {
 		steering.current = false;
 		if (submit(form, value, behavior, going, going ? pointing : null, files)) setText("");
 	};
-	// A file that is not an image, dropped or pasted: it goes into the folder
-	// and its path into the message, where the cursor is, as a mention — the
+	// A file that is not an image, dropped or pasted: it goes where the message
+	// box's files are kept (.octave/attachments, out of git) and its path into
+	// the message, where the cursor is, as a mention — the
 	// box is read when the answer comes, since the person may have typed on.
 	// The form below still sees the same event and takes the images from it.
 	const [adding, setAdding] = useState<string[]>([]);
 	const take = (list: FileList | undefined | null) => {
 		for (const file of filesToAttach(list ?? [])) {
 			setAdding((names) => [...names, file.name]);
-			attach(file)
+			attach(file, { to: "message" })
 				.then((path) => {
 					const el = box.current;
 					if (!el) return;

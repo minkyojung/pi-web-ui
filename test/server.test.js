@@ -1094,6 +1094,17 @@ test("떨어뜨린 파일은 attachments/에 놓이고, PDF면 목록이 바로 
   assert.ok(!existsSync(join(cwd, "attachments/a.pdf")), "거절된 것은 쓰이지 않는다");
 });
 
+test("입력창에 떨어뜨린 파일은 .octave/attachments/<ID>/에 원래 이름대로 놓인다", async () => {
+  const post = (name, body) => fetch(`http://127.0.0.1:${port}/api/attachment?to=message&name=${encodeURIComponent(name)}`, { method: "POST", headers: { "content-type": "application/octet-stream" }, body });
+  const saved = await post("for the agent.pdf", readFileSync(join(root, "test/fixtures/three-pages.pdf")));
+  assert.equal(saved.status, 201);
+  const { path } = await saved.json();
+  assert.match(path, /^\.octave\/attachments\/[0-9a-f]{8}\/for the agent\.pdf$/);
+  assert.ok(existsSync(join(cwd, path)));
+  assert.ok(!existsSync(join(cwd, "attachments/for the agent.pdf")), "노트의 첨부 폴더가 아니다");
+  assert.equal((await post("run.sh", "x")).status, 415, "받는 종류는 같다");
+});
+
 // Not `it`: none of this needs a model, and saving a setting is what a person
 // without credentials does first. Last in the file, and on a socket of its own
 // — a second window — since the checks above read what the first one was sent

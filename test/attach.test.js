@@ -4,7 +4,10 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { cleanName, MAX_BYTES, numbered, saveAttachment, takes } from "../attach.ts";
+import { execFileSync } from "node:child_process";
+
+import { cleanName, MAX_BYTES, numbered, saveAttachment, saveMessageAttachment, takes } from "../attach.ts";
+import { excludeFromGit } from "../gitExclude.ts";
 
 const bytes = (s) => new TextEncoder().encode(s);
 
@@ -75,6 +78,68 @@ test("볼트가 첨부 폴더를 정해 두었으면 거기에, 노트 옆이라
 		assert.deepEqual(saveAttachment(root, "b.png", bytes("x"), "notes.md"), { ok: true, path: "attachments/b.png" }, "폴더 밖은 따르지 않는다");
 		told(".hidden");
 		assert.deepEqual(saveAttachment(root, "c.png", bytes("x"), "notes.md"), { ok: true, path: "attachments/c.png" }, "숨은 폴더도");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+const git = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+
+test("입력창에 붙인 것은 .octave/attachments/<ID>/에 원래 이름대로, 같은 이름도 제 폴더에 따로", () => {
+	const root = mkdtempSync(join(tmpdir(), "attach-"));
+	try {
+		const one = saveMessageAttachment(root, "Screenshot 1.png", bytes("one"));
+		const two = saveMessageAttachment(root, "Screenshot 1.png", bytes("two"));
+		assert.match(one.path, /^\.octave\/attachments\/[0-9a-f]{8}\/Screenshot 1\.png$/);
+		assert.match(two.path, /^\.octave\/attachments\/[0-9a-f]{8}\/Screenshot 1\.png$/);
+		assert.notEqual(one.path, two.path, "같은 이름은 다른 폴더");
+		assert.equal(readFileSync(join(root, one.path), "utf8"), "one");
+		assert.equal(readFileSync(join(root, two.path), "utf8"), "two");
+		assert.ok(!readdirSync(root).includes("attachments"), "노트의 첨부 폴더는 건드리지 않는다");
+		assert.deepEqual(saveMessageAttachment(root, "run.sh", bytes("x")), { ok: false, reason: "kind" }, "받는 종류는 노트와 같다");
+		assert.deepEqual(saveMessageAttachment(root, "a.pdf", bytes("")), { ok: false, reason: "size" });
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("입력창 첨부는 git에서 빠진다 — 저장소의 .gitignore가 아니라 이 클론의 info/exclude로, 한 번만, 모든 워크트리에", () => {
+	const root = mkdtempSync(join(tmpdir(), "exclude-"));
+	try {
+		const repo = join(root, "repo");
+		mkdirSync(repo);
+		git(repo, "init", "-q", "-b", "main");
+		writeFileSync(join(repo, "a.md"), "a\n");
+		git(repo, "add", ".");
+		git(repo, "commit", "-q", "-m", "a");
+		const tree = join(root, "tree");
+		git(repo, "worktree", "add", "-q", "-b", "me/tree", tree);
+		// Saved in the worktree: the line goes in the repository's one exclude file.
+		saveMessageAttachment(tree, "shot.png", bytes("png"));
+		saveMessageAttachment(tree, "shot.png", bytes("png"));
+		const exclude = readFileSync(join(repo, ".git/info/exclude"), "utf8");
+		assert.equal(exclude.split("\n").filter((line) => line === "/.octave/attachments/").length, 1, "두 번 저장해도 한 줄");
+		assert.equal(git(tree, "status", "--porcelain"), "", "워크트리에서 보이지 않는다");
+		assert.ok(!readdirSync(tree).includes(".gitignore"), "저장소의 .gitignore는 건드리지 않는다");
+		// The other checkout of the same repository hears it too.
+		mkdirSync(join(repo, ".octave/attachments/x"), { recursive: true });
+		writeFileSync(join(repo, ".octave/attachments/x/b.png"), "png");
+		assert.equal(git(repo, "status", "--porcelain"), "");
+		// A line already there, written by hand without a newline at the end, is kept and not repeated.
+		writeFileSync(join(repo, ".git/info/exclude"), "node_modules\n/.octave/attachments/");
+		excludeFromGit(repo, "/.octave/attachments/");
+		assert.equal(readFileSync(join(repo, ".git/info/exclude"), "utf8"), "node_modules\n/.octave/attachments/");
+		excludeFromGit(repo, "/.other/");
+		assert.equal(readFileSync(join(repo, ".git/info/exclude"), "utf8"), "node_modules\n/.octave/attachments/\n/.other/\n", "끝에 줄바꿈이 없던 파일에도 제 줄로");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("저장소가 아닌 폴더에서는 git에 아무것도 하지 않고 저장만 한다", () => {
+	const root = mkdtempSync(join(tmpdir(), "attach-"));
+	try {
+		assert.equal(saveMessageAttachment(root, "a.pdf", bytes("%PDF")).ok, true);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

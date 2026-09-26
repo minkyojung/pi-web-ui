@@ -28,10 +28,12 @@ export function filesToAttach<F extends { type: string }>(files: Iterable<F>): F
  * Put a file in the folder by the server's one door (attach.ts there) and
  * say where it went. A refusal comes back as the server worded it. `from` is
  * the note it is for, where there is one: a vault may keep such files beside
- * the note. `name` is for the file that came without one worth keeping.
+ * the note. `to: "message"` is for the message box instead, whose files are
+ * kept out of the work (attach.ts saveMessageAttachment). `name` is for the
+ * file that came without one worth keeping.
  */
-export async function attach(file: File, { name = file.name, from = "" }: { name?: string; from?: string } = {}): Promise<string> {
-	const res = await fetch(forFolder(`/api/attachment?name=${encodeURIComponent(name)}&from=${encodeURIComponent(from)}`), {
+export async function attach(file: File, { name = file.name, from = "", to }: { name?: string; from?: string; to?: "message" } = {}): Promise<string> {
+	const res = await fetch(forFolder(`/api/attachment?name=${encodeURIComponent(name)}&from=${encodeURIComponent(from)}${to ? `&to=${to}` : ""}`), {
 		method: "POST",
 		headers: { "content-type": "application/octet-stream" },
 		body: file,

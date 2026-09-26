@@ -86,7 +86,7 @@ import { noteTools } from "./noteEdit.ts";
 import { claimAppDir } from "./appDir.ts";
 import { wall } from "./wall.ts";
 import { documents } from "./documents.ts";
-import { MAX_BYTES, saveAttachment, type Saved } from "./attach.ts";
+import { MAX_BYTES, saveAttachment, saveMessageAttachment, type Saved } from "./attach.ts";
 import { documentType, SPEC_DOCS, SPECS_DIR } from "./documentKinds.ts";
 import { specState } from "./specApproval.ts";
 import { inheritedSpecs } from "./specOrigin.ts";
@@ -1704,7 +1704,12 @@ export async function createWorkspace(cwd: string) {
 				}
 				let saved: Saved;
 				try {
-					saved = saveAttachment(CWD, url.searchParams.get("name") ?? "", body, url.searchParams.get("from") ?? "");
+					// For the message box, or for a note: said by the page, not guessed from
+					// whether a note was named.
+					saved =
+						url.searchParams.get("to") === "message"
+							? saveMessageAttachment(CWD, url.searchParams.get("name") ?? "", body)
+							: saveAttachment(CWD, url.searchParams.get("name") ?? "", body, url.searchParams.get("from") ?? "");
 				} catch (err) {
 					console.error("could not save an attachment:", err instanceof Error ? err.message : err);
 					return json(500, { error: "could not save the file" });

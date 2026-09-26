@@ -3187,7 +3187,7 @@ check("the tab in front goes beside the message as its address: a file with the 
  * message. The drop is a real DragEvent carrying a real File, so what is
  * checked is the whole path: the box, the door, the disk, the list.
  */
-check("a PDF dropped on the message box is put in attachments/ and named in the message", async ({ app, cwd }) => {
+check("a PDF dropped on the message box is kept in .octave/attachments/, out of the work, and named in the message", async ({ app, cwd }) => {
 	const box = () => app.evaluate("document.querySelector('textarea').value");
 	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.focus(); t.value = 'about'; t.setSelectionRange(5, 5); t.dispatchEvent(new Event('input', { bubbles: true })); })()");
 	await app.evaluate(`(() => {
@@ -3195,8 +3195,10 @@ check("a PDF dropped on the message box is put in attachments/ and named in the 
 		data.items.add(new File([new TextEncoder().encode("%PDF-1.4 dropped")], "dropped here.pdf", { type: "application/pdf" }));
 		document.querySelector('textarea').dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
 	})()`);
-	await until("the path written in", async () => (await box()) === "about @attachments/dropped here.pdf ");
-	assert.equal(readFileSync(join(cwd, "attachments/dropped here.pdf"), "utf8"), "%PDF-1.4 dropped", "the bytes are in the folder");
+	const written = await until("the path written in", async () => /^about @\.octave\/attachments\/[0-9a-f]{8}\/dropped here\.pdf $/.test(await box()) && (await box()));
+	const path = written.slice("about @".length).trim();
+	assert.equal(readFileSync(join(cwd, path), "utf8"), "%PDF-1.4 dropped", "the bytes are in the folder");
+	assert.equal(existsSync(join(cwd, "attachments/dropped here.pdf")), false, "not where a note's pictures go");
 	assert.equal(await app.evaluate("document.querySelector('#adding') === null"), true, "the line saying so is gone once it is there");
 	assert.equal(await app.evaluate("document.querySelector('#attached') === null"), true, "it is not an image riding with the message");
 	// A kind the folder does not take is refused, in the conversation, and nothing is written in.
@@ -3206,7 +3208,7 @@ check("a PDF dropped on the message box is put in attachments/ and named in the 
 		document.querySelector('textarea').dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
 	})()`);
 	await until("the refusal said", () => app.evaluate("document.body.innerText.includes('Could not add script.sh')"));
-	assert.equal(await box(), "about @attachments/dropped here.pdf ");
+	assert.equal(await box(), written);
 	await app.evaluate("(() => { const t = document.querySelector('textarea'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
 });
 
