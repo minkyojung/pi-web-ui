@@ -137,7 +137,7 @@ export function deviceCodeFrom(text) {
 }
 
 /**
- * Sign in to github.com with gh, as `gh auth login --web` does in a terminal
+ * One of gh's ways through GitHub's approval, run as it runs in a terminal
  * but with none: gh gets a code from GitHub and says it, `onCode` shows it,
  * the person enters it in their browser, and gh waits for GitHub to say so
  * and keeps the token in its own keyring — where `credentials.js` finds it
@@ -145,9 +145,8 @@ export function deviceCodeFrom(text) {
  * when gh ends well, `{ error }` with gh's own words when not, and
  * `{ cancelled }` when `signal` gave up — the person's own doing, not news.
  */
-export function signIn({ onCode, signal }) {
+function authorize(args, { onCode, signal }) {
 	return new Promise((resolve) => {
-		const args = ["auth", "login", "--web", "--hostname", "github.com", "--git-protocol", "https", "--skip-ssh-key"];
 		const child = execFile("gh", args, { env: { ...process.env, GH_PROMPT_DISABLED: "1" }, timeout: 15 * 60_000, signal }, (err, _stdout, stderr) => {
 			if (!err) resolve({ ok: true });
 			else if (err.name === "AbortError") resolve({ cancelled: true });
@@ -166,6 +165,24 @@ export function signIn({ onCode, signal }) {
 			}
 		});
 	});
+}
+
+/**
+ * Sign in to github.com with gh, as `gh auth login --web` does, asking as
+ * well to read the person's email addresses (user:email) — for the one
+ * their commits are made as (emails) — so one approval is all it takes.
+ */
+export function signIn(options) {
+	return authorize(["auth", "login", "--web", "--hostname", "github.com", "--git-protocol", "https", "--skip-ssh-key", "--scopes", "user:email"], options);
+}
+
+/**
+ * Let a sign-in made without it read the person's email addresses:
+ * `gh auth refresh` adds the scope to those the sign-in has, and GitHub asks
+ * the person the way a sign-in does, with a code.
+ */
+export function allowEmail(options) {
+	return authorize(["auth", "refresh", "--hostname", "github.com", "--scopes", "user:email"], options);
 }
 
 /** Sign out of github.com in gh: the token goes from its keyring, and so from the app. */
