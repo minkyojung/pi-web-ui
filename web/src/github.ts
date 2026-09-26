@@ -18,10 +18,14 @@ import { createStore } from "./serverState";
  */
 export type GitHubProfile = { login: string; name: string | null; avatarUrl: string | null; url: string; id: number | null };
 export type GitHubStanding = { state: "missing" } | { state: "signed-out" } | ({ state: "signed-in" } & GitHubProfile);
+/** Who git commits as on this machine; `set` is false when git made it up from the machine's names (electron/git.js identity). */
+export type Identity = { name: string | null; email: string | null; set: boolean };
 export type Code = { userCode: string; verificationUri: string };
 export type Outcome = { ok?: true; error?: string; cancelled?: true };
 export type GitHubBridge = {
 	standing(): Promise<GitHubStanding>;
+	identity(): Promise<Identity>;
+	useGitHubIdentity(): Promise<{ error?: string }>;
 	signIn(): Promise<Outcome>;
 	cancel(): Promise<void>;
 	signOut(): Promise<Outcome>;
@@ -33,11 +37,15 @@ export const bridge: GitHubBridge | null = (window as unknown as { pi?: { github
 /** Where the person stands, or null until the shell has said. */
 export const githubStore = createStore<GitHubStanding | null>(null, { window: true });
 
+/** Who git commits as, or null until the shell has said. Asked with the standing, since what fills it in is the sign-in. */
+export const identityStore = createStore<Identity | null>(null, { window: true });
+
 /** Ask the shell again, and keep what it says. */
 export async function refresh(): Promise<GitHubStanding | null> {
 	if (!bridge) return null;
-	const standing = await bridge.standing();
+	const [standing, identity] = await Promise.all([bridge.standing(), bridge.identity()]);
 	githubStore.set(standing);
+	identityStore.set(identity);
 	return standing;
 }
 

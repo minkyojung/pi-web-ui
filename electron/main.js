@@ -26,8 +26,8 @@ import { createRuns } from "./runs.js";
 import { runScript } from "./scripts.js";
 import { createServerProcess } from "./serverProcess.js";
 import { shellEnv } from "./shellEnv.js";
-import { addBranchWorktree, branchOf, changesIn, git, headOf, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
-import { clone, issues, login, mergePullRequest, pullRequests, repositories, repositoryName, signIn, signOut, standing } from "./github.js";
+import { addBranchWorktree, branchOf, changesIn, fillIdentity, git, headOf, identity, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
+import { clone, issues, login, mergePullRequest, noreplyEmail, pullRequests, repositories, repositoryName, signIn, signOut, standing } from "./github.js";
 import { KEYS, forget, gitEnv } from "./credentials.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
@@ -256,6 +256,20 @@ const servers = createServerProcess({
  */
 /** The sign-in under way, if one is; a second ask while it goes is the same one. */
 let signingIn = null;
+
+/**
+ * Git told to commit as the person signed in to GitHub: their name — their
+ * login when they have none — and GitHub's private address for them, which
+ * GitHub ties to them without their own address being in every commit. Only
+ * what git has no word for yet (fillIdentity). Worked out here from gh
+ * rather than taken from the page.
+ */
+async function useGitHubIdentity() {
+	const me = await standing();
+	const email = me.state === "signed-in" ? noreplyEmail(me.id, me.login) : null;
+	if (!email) return { error: "Nobody is signed in to GitHub." };
+	return fillIdentity({ name: me.name ?? me.login, email });
+}
 
 async function signInToGitHub(page) {
 	if (signingIn) return { error: "A sign-in is already under way." };
@@ -1048,6 +1062,9 @@ function serveFolders() {
 		await tellCredentials();
 		return out;
 	});
+	// And who git commits as on this machine, filled in from GitHub (git.js).
+	ipcMain.handle("github:identity", () => identity());
+	ipcMain.handle("github:useGitHubIdentity", () => useGitHubIdentity());
 	// The list, and the two things done to it. In a dev run the dev server owns
 	// the folder, so there is no list to switch in.
 	ipcMain.handle("workspaces", () => (devUrl ? null : workspaces()));
