@@ -7,7 +7,7 @@ import test from "node:test";
 
 import { CITIES, pickCity } from "../electron/cities.js";
 import { branchOf, changesIn, fetchOrigin, fillIdentity, identity, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf, setIdentity, startOf } from "../electron/git.js";
-import { allowEmail, deviceCodeFrom, emailsFrom, login, noreplyEmail, preferredEmail, profileFrom, signIn, standing } from "../electron/github.js";
+import { allowEmail, choicesFrom, deviceCodeFrom, emailsFrom, login, noreplyEmail, preferredEmail, profileFrom, signIn, standing } from "../electron/github.js";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
 
@@ -277,6 +277,17 @@ test("the address offered to commit as is GitHub Desktop's: the primary if publi
 	assert.equal(preferredEmail({ ...me, email: "octocat@github.com" }, null), "octocat@github.com");
 	assert.equal(preferredEmail(me, null), "1+octocat@users.noreply.github.com");
 	assert.equal(preferredEmail({ login: "octocat", id: null, email: null }, null), null, "nothing to make one from");
+});
+
+test("what a person is offered to commit as: their name, the address Desktop would pick, and every address of theirs with the noreply one", () => {
+	const me = { login: "octocat", id: 1, name: "monalisa octocat", email: null };
+	const list = [
+		{ email: "octocat@github.com", primary: true, visibility: "private" },
+		{ email: "mona@work.example", primary: false, visibility: null },
+	];
+	assert.deepEqual(choicesFrom(me, list), { name: "monalisa octocat", email: "octocat@github.com", emails: ["octocat@github.com", "mona@work.example", "1+octocat@users.noreply.github.com"] });
+	assert.deepEqual(choicesFrom(me, [...list, { email: "1+octocat@users.noreply.github.com", primary: false, visibility: null }]).emails, ["octocat@github.com", "mona@work.example", "1+octocat@users.noreply.github.com"], "the noreply one once");
+	assert.deepEqual(choicesFrom({ ...me, name: null }, null), { name: "octocat", email: "1+octocat@users.noreply.github.com", emails: null }, "no list while the sign-in may not read it; the login stands for no name");
 });
 
 test("setting who commits writes the name and the email, over what was there", async () => {

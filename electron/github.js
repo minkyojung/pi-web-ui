@@ -102,6 +102,27 @@ export function noreplyEmail(id, login) {
 	return Number.isInteger(id) && id > 0 && login ? `${id}+${login}@users.noreply.github.com` : null;
 }
 
+/**
+ * What to offer a person to commit as: their name on GitHub — their login
+ * when they have none — the address GitHub Desktop would pick
+ * (preferredEmail), and the addresses to choose from: their verified ones
+ * and the noreply one, or null while the sign-in may not read them. Pure.
+ */
+export function choicesFrom(profile, list) {
+	const noreply = noreplyEmail(profile.id, profile.login);
+	return {
+		name: profile.name ?? profile.login,
+		email: preferredEmail(profile, list),
+		emails: list && [...new Set([...list.map((entry) => entry.email), ...(noreply ? [noreply] : [])])],
+	};
+}
+
+/** The same for whoever is signed in now, or null when nobody is. */
+export async function commitChoices() {
+	const person = await profile();
+	return person && choicesFrom(person, await emails());
+}
+
 /** The signed-in person on GitHub, or null: no gh, no sign-in, no answer. */
 async function profile() {
 	return profileFrom(await gh(["api", "user"]));

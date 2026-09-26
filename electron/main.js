@@ -26,8 +26,8 @@ import { createRuns } from "./runs.js";
 import { runScript } from "./scripts.js";
 import { createServerProcess } from "./serverProcess.js";
 import { shellEnv } from "./shellEnv.js";
-import { addBranchWorktree, branchOf, changesIn, fillIdentity, git, headOf, identity, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf } from "./git.js";
-import { clone, issues, login, mergePullRequest, noreplyEmail, pullRequests, repositories, repositoryName, signIn, signOut, standing } from "./github.js";
+import { addBranchWorktree, branchOf, changesIn, fillIdentity, git, headOf, identity, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf, setIdentity } from "./git.js";
+import { allowEmail, clone, commitChoices, issues, login, mergePullRequest, noreplyEmail, pullRequests, repositories, repositoryName, signIn, signOut, standing } from "./github.js";
 import { KEYS, forget, gitEnv } from "./credentials.js";
 import { editorsOn, openingOf } from "./editors.js";
 import { firstFrom, firsts } from "./firstSpec.js";
@@ -254,7 +254,7 @@ const servers = createServerProcess({
  * same door: whatever goes wrong upstream, the shell will not throw away
  * something the person did not point this app at.
  */
-/** The sign-in under way, if one is; a second ask while it goes is the same one. */
+/** The approval under way — a sign-in, or letting one read email — if one is; a second ask while it goes is the same one. */
 let signingIn = null;
 
 /**
@@ -271,11 +271,16 @@ async function useGitHubIdentity() {
 	return fillIdentity({ name: me.name ?? me.login, email });
 }
 
-async function signInToGitHub(page) {
+/**
+ * One of gh's approvals (github.js signIn, allowEmail), with the code gh gets
+ * shown on the page; the token may be a new one after either, so the servers
+ * are told.
+ */
+async function authorizeGitHub(page, flow) {
 	if (signingIn) return { error: "A sign-in is already under way." };
 	signingIn = new AbortController();
 	try {
-		const out = await signIn({ signal: signingIn.signal, onCode: (code) => !page.isDestroyed() && page.send("github:code", code) });
+		const out = await flow({ signal: signingIn.signal, onCode: (code) => !page.isDestroyed() && page.send("github:code", code) });
 		if (out.ok) await tellCredentials();
 		return out;
 	} finally {
@@ -1055,7 +1060,8 @@ function serveFolders() {
 	// Settings › Accounts: where the person stands with GitHub, and signing in
 	// and out — gh's, with the code gh gets shown on the page (github.js).
 	ipcMain.handle("github:standing", () => standing());
-	ipcMain.handle("github:signIn", (event) => signInToGitHub(event.sender));
+	ipcMain.handle("github:signIn", (event) => authorizeGitHub(event.sender, signIn));
+	ipcMain.handle("github:allowEmail", (event) => authorizeGitHub(event.sender, allowEmail));
 	ipcMain.handle("github:cancel", () => signingIn?.abort());
 	ipcMain.handle("github:signOut", async () => {
 		const out = await signOut();
@@ -1065,6 +1071,8 @@ function serveFolders() {
 	// And who git commits as on this machine, filled in from GitHub (git.js).
 	ipcMain.handle("github:identity", () => identity());
 	ipcMain.handle("github:useGitHubIdentity", () => useGitHubIdentity());
+	ipcMain.handle("github:commitChoices", () => commitChoices());
+	ipcMain.handle("github:setIdentity", (_event, who) => setIdentity(who ?? {}));
 	// The list, and the two things done to it. In a dev run the dev server owns
 	// the folder, so there is no list to switch in.
 	ipcMain.handle("workspaces", () => (devUrl ? null : workspaces()));
