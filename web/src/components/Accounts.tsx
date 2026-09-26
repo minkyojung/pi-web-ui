@@ -264,7 +264,7 @@ function Commits({ bridge, identity, github, children: about }: { bridge: GitHub
 				)}
 				{identity && !identity.set && github && (
 					<Button type="button" variant="link" className="h-auto shrink-0 p-0 text-xs" disabled={busy} onClick={fill}>
-						Use my GitHub account
+						Use GitHub's
 					</Button>
 				)}
 			</span>
