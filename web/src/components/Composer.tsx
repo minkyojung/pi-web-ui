@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { ArrowUpIcon, CornerDownLeftIcon, PencilIcon, ScanIcon, SquareIcon, TextQuoteIcon, X } from "lucide-react";
+import { ArrowUpIcon, CornerDownLeftIcon, PencilIcon, ScanTextIcon, SquareIcon, TextQuoteIcon, X } from "lucide-react";
 
 import { attach, pastedName } from "../attachments";
 import { type Chosen as ChosenWords, chosenStore } from "../chosen";
@@ -163,10 +163,10 @@ function FrontToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 					size="icon-sm"
 					aria-label={on ? "Do not send what is in front" : "Send what is in front"}
 					aria-pressed={on}
-					className="rounded-full aria-pressed:bg-accent aria-pressed:text-foreground"
+					className="rounded-full text-subtle-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
 					onClick={onToggle}
 				>
-					<ScanIcon className="size-4" />
+					<ScanTextIcon className="size-4" strokeWidth={1.5} />
 				</InputGroupButton>
 			</TooltipTrigger>
 			<TooltipContent side="top">{on ? "The agent is told what is in front — press to leave it out" : "Tell the agent what is in front"}</TooltipContent>
