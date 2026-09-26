@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { CITIES, pickCity } from "../electron/cities.js";
 import { branchOf, changesIn, fetchOrigin, fillIdentity, identity, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf, setIdentity, startOf } from "../electron/git.js";
-import { deviceCodeFrom, emailsFrom, login, noreplyEmail, preferredEmail, profileFrom, signIn, standing } from "../electron/github.js";
+import { allowEmail, deviceCodeFrom, emailsFrom, login, noreplyEmail, preferredEmail, profileFrom, signIn, standing } from "../electron/github.js";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
 
@@ -290,6 +290,24 @@ test("setting who commits writes the name and the email, over what was there", a
 		}
 		assert.deepEqual(await identity(), { name: "monalisa octocat", email: "1+octocat@users.noreply.github.com", set: true }, "nothing bad was written");
 	});
+});
+
+test("a sign-in asks to read the person's email addresses too, and letting a sign-in made before read them is the same flow", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "octave-gh-args-"));
+	const said = join(dir, "args");
+	const code = 'echo "! First copy your one-time code: AB12-CD34" >&2; echo "Open this URL to continue in your web browser: https://github.com/login/device" >&2';
+	const codes = [];
+	const onCode = (c) => codes.push(c);
+	assert.deepEqual(await withGh(`echo "$*" >> ${said}; ${code}; exit 0`, () => signIn({ onCode })), { ok: true });
+	assert.deepEqual(await withGh(`echo "$*" >> ${said}; ${code}; exit 0`, () => allowEmail({ onCode })), { ok: true });
+	const [signing, allowing] = readFileSync(said, "utf8").trim().split("\n");
+	assert.match(signing, /^auth login --web --hostname github\.com .*--scopes user:email/);
+	assert.match(allowing, /^auth refresh --hostname github\.com --scopes user:email$/, "only what is added: gh keeps the scopes it has");
+	assert.deepEqual(codes, [{ userCode: "AB12-CD34", verificationUri: "https://github.com/login/device" }, { userCode: "AB12-CD34", verificationUri: "https://github.com/login/device" }]);
+	const giving = new AbortController();
+	const gone = withGh("sleep 30", () => allowEmail({ onCode, signal: giving.signal }));
+	giving.abort();
+	assert.deepEqual(await gone, { cancelled: true });
 });
 
 test("a clone is asked for by owner/name or by a GitHub address, and nothing else", async () => {
