@@ -8,10 +8,12 @@ import { drawSelection, EditorView, keymap, lineNumbers } from "@codemirror/view
 import { choose, chosenStore } from "../chosen";
 import { code } from "../codeLook";
 import { isRunLog, stuckToEnd } from "../logTail";
+import { noteActions } from "../noteActions";
 import { say as sayInFront } from "../inFront";
 import { codeStore } from "../serverState";
 import { getConnection, subscribe } from "../store";
 import { send } from "../ws";
+import { Button } from "./ui/button";
 
 const theme = EditorView.theme({
 	// A height, unlike the note's editor: there is no title and no backlinks
@@ -150,13 +152,21 @@ export default function Code({ path }: { path: string }) {
 	}, [mine, path]);
 
 	const gone = mine?.type === "code_gone" ? mine : null;
+	// A file that is not text has nothing to show here; the Finder has, and
+	// this is the way there — the same one the file's menu offers.
+	const reveal = gone?.reason === "binary" ? noteActions(path).find((a) => a !== "separator" && a.label === "Reveal in Finder") : undefined;
 	return (
 		<div id="page" data-code={path} className="edge-top relative flex min-h-0 flex-1 flex-col">
 			<div ref={host} className="min-h-0 flex-1 overflow-hidden" />
 			{gone && (
-				<p className="absolute inset-0 flex items-center justify-center bg-background p-8 text-center text-sm text-subtle-foreground">
-					{gone.reason === "binary" ? "Not a text file." : "This file is not in the folder."}
-				</p>
+				<div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background p-8 text-center text-sm text-subtle-foreground">
+					<p>{gone.reason === "binary" ? "Not a text file." : "This file is not in the folder."}</p>
+					{reveal && reveal !== "separator" && (
+						<Button id="reveal-binary" variant="outline" size="sm" onClick={reveal.run}>
+							{reveal.label}
+						</Button>
+					)}
+				</div>
 			)}
 			{mine?.type === "code" && mine.truncated && (
 				<p className="border-t px-3 py-1.5 text-xs text-muted-foreground">{isRunLog(path) ? "Too long to show whole — this is the end of it." : "Too long to show whole — this is the beginning of it."}</p>

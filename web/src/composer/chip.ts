@@ -36,3 +36,15 @@ export const CHIP_CLASS = cn(
 
 /** The icon inside it. */
 export const CHIP_ICON_CLASS = "shrink-0 text-muted-foreground";
+
+/** Where the message box keeps what is put in it; a picture from there is served (pictures.ts messagePictureAt). */
+const GIVEN = ".octave/attachments/";
+
+/**
+ * What pressing a chip does (chipActions.ts): a picture given to the box is
+ * looked at, large; anything else opens in a tab — an SVG too, read as the
+ * text it is, since it is never served as a picture.
+ */
+export function chipAction(path: string): "picture" | "tab" {
+	return fileKind(path) === "image" && path.startsWith(GIVEN) && !path.toLowerCase().endsWith(".svg") ? "picture" : "tab";
+}
