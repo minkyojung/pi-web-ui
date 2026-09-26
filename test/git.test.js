@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { CITIES, pickCity } from "../electron/cities.js";
-import { branchOf, changesIn, fetchOrigin, fillIdentity, identity, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf, setIdentity, startOf } from "../electron/git.js";
+import { branchOf, changesIn, fetchOrigin, identity, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf, setIdentity, startOf } from "../electron/git.js";
 import { allowEmail, choicesFrom, deviceCodeFrom, emailsFrom, login, noreplyEmail, preferredEmail, profileFrom, signIn, standing } from "../electron/github.js";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
@@ -218,30 +218,6 @@ test("who commits is what git was told, once it has a name and an email", async 
 	});
 });
 
-test("filling in who commits writes only what git has no word for, and leaves the rest as the person set it", async () => {
-	await withHome(async (home) => {
-		execFileSync("git", ["config", "--global", "user.name", "Mona Lisa"], { cwd: home });
-		assert.deepEqual(await fillIdentity({ name: "monalisa octocat", email: "1+octocat@users.noreply.github.com" }), {});
-		assert.deepEqual(await identity(), { name: "Mona Lisa", email: "1+octocat@users.noreply.github.com", set: true });
-		assert.deepEqual(await fillIdentity({ name: "someone else", email: "else@example.com" }), {}, "nothing is left to fill");
-		assert.deepEqual(await identity(), { name: "Mona Lisa", email: "1+octocat@users.noreply.github.com", set: true });
-		const repo = join(home, "repo");
-		mkdirSync(repo);
-		execFileSync("git", ["init", "-q"], { cwd: repo });
-		execFileSync("git", ["commit", "-q", "--allow-empty", "-m", "first"], { cwd: repo });
-		assert.equal(execFileSync("git", ["log", "-1", "--format=%an <%ae>"], { cwd: repo, encoding: "utf8" }).trim(), "Mona Lisa <1+octocat@users.noreply.github.com>", "a commit is made as them");
-	});
-});
-
-test("what is not a name or an email is not written", async () => {
-	await withHome(async () => {
-		for (const bad of [{ name: "", email: "a@b" }, { name: "a", email: "not an email" }, { name: "a\nb", email: "a@b" }, { name: "a", email: "<a@b>" }, {}]) {
-			assert.ok((await fillIdentity(bad)).error, JSON.stringify(bad));
-		}
-		assert.equal((await identity()).set, false);
-	});
-});
-
 test("GitHub's private address for a person is made of their number and their login", () => {
 	assert.equal(noreplyEmail(1, "octocat"), "1+octocat@users.noreply.github.com");
 	assert.equal(noreplyEmail(null, "octocat"), null, "without the number there is no address that stays theirs");
@@ -300,6 +276,11 @@ test("setting who commits writes the name and the email, over what was there", a
 			assert.ok((await setIdentity(bad)).error, JSON.stringify(bad));
 		}
 		assert.deepEqual(await identity(), { name: "monalisa octocat", email: "1+octocat@users.noreply.github.com", set: true }, "nothing bad was written");
+		const repo = join(home, "repo");
+		mkdirSync(repo);
+		execFileSync("git", ["init", "-q"], { cwd: repo });
+		execFileSync("git", ["commit", "-q", "--allow-empty", "-m", "first"], { cwd: repo });
+		assert.equal(execFileSync("git", ["log", "-1", "--format=%an <%ae>"], { cwd: repo, encoding: "utf8" }).trim(), "monalisa octocat <1+octocat@users.noreply.github.com>", "a commit is made as them");
 	});
 });
 

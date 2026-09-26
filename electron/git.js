@@ -75,26 +75,6 @@ export async function setIdentity({ name, email } = {}) {
 }
 
 /**
- * Git told who commits on this machine, in the person's global configuration
- * as `git config --global` tells it — only what it has no word for yet: a
- * name or an email set already, anywhere git reads one, stays as it is.
- * `{}` when done, `{ error }` for a name or an email that is not one, or
- * git's own words.
- */
-export async function fillIdentity({ name, email } = {}) {
-	if (!isIdentity(name, email)) return { error: "That is not a name and an email." };
-	try {
-		for (const [key, value] of [["user.name", name], ["user.email", email]]) {
-			const told = await git(homedir(), ["config", "--get", key]).catch(() => "");
-			if (!told) await git(homedir(), ["config", "--global", key, value]);
-		}
-		return {};
-	} catch (err) {
-		return { error: err.message };
-	}
-}
-
-/**
  * The repository a folder belongs to, as the folder its clone is in — the
  * same answer for the clone and for any of its worktrees — or null for a
  * folder that is in none, or in a repository with no working tree.

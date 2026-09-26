@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { ArrowUpRightIcon, CheckIcon, CopyIcon, ExternalLinkIcon, KeyRoundIcon, UserRoundIcon } from "lucide-react";
 
-import { bridge as githubBridge, githubStore, identityStore, refresh as refreshGitHub, type Code, type CommitChoices, type GitHubBridge, type GitHubStanding, type Identity } from "../github";
+import { bridge as githubBridge, githubStore, identityStore, refresh as refreshGitHub, type Code, type CommitChoices, type GitHubBridge, type GitHubStanding, type Identity, type Outcome } from "../github";
 import { loginStore, providersStore, type LoginState } from "../serverState";
 import type { LoginEvent, LoginPrompt, ProviderInfo } from "../types";
 import { send } from "../ws";
@@ -123,17 +123,22 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 	const identity = useSyncExternalStore(identityStore.subscribe, identityStore.get);
 	const [signing, setSigning] = useState<{ code: Code | null; error: string | null } | null>(null);
 	const [busy, setBusy] = useState(false);
+	// Approvals that ended well, so what hangs on the sign-in's scopes is asked again.
+	const [approved, setApproved] = useState(0);
 
-	const signIn = async () => {
+	// A sign-in, or letting one read email: the same approval, with the same dialog.
+	const approve = async (flow: () => Promise<Outcome>) => {
 		setBusy(true);
 		setSigning({ code: null, error: null });
 		const stop = bridge.onCode((code) => setSigning((was) => ({ code, error: was?.error ?? null })));
-		const out = await bridge.signIn();
+		const out = await flow();
 		stop();
 		await refreshGitHub();
 		setSigning(out.error ? { code: null, error: out.error } : null);
+		if (out.ok) setApproved((n) => n + 1);
 		setBusy(false);
 	};
+	const signIn = () => approve(bridge.signIn);
 	const signOut = async () => {
 		setBusy(true);
 		await bridge.signOut();
@@ -190,13 +195,13 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 				</div>
 				<span className="flex shrink-0 gap-1">{actions}</span>
 			</div>
-			{identity && <Commits bridge={bridge} identity={identity} login={me?.login ?? null} />}
+			{identity && <Commits bridge={bridge} identity={identity} login={me?.login ?? null} approved={approved} onAllowEmail={() => approve(bridge.allowEmail)} />}
 			{signing && (
 				<Dialog open onOpenChange={(open) => !open && (busy ? void bridge.cancel() : setSigning(null))}>
 					<DialogContent className="max-w-md" showCloseButton={false}>
 						<DialogHeader>
 							<DialogTitle className="text-sm">GitHub</DialogTitle>
-							<DialogDescription className="sr-only">Signing in to GitHub.</DialogDescription>
+							<DialogDescription className="sr-only">Asking GitHub to approve.</DialogDescription>
 						</DialogHeader>
 						<div className="flex flex-col gap-3 text-xs">
 							{signing.code && <Event event={{ type: "device_code", ...signing.code }} />}
@@ -235,16 +240,18 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
  *
  * Edit changes either, as Desktop's Git settings do: the name typed, the
  * address picked from the person's own on GitHub — or typed, under Other,
- * and whenever the sign-in cannot read them.
+ * and whenever the sign-in cannot read them. A sign-in made before it asked
+ * to read them can be let now, with the approval a sign-in is.
  */
-function Commits({ bridge, identity, login }: { bridge: GitHubBridge; identity: Identity; login: string | null }) {
+function Commits({ bridge, identity, login, approved, onAllowEmail }: { bridge: GitHubBridge; identity: Identity; login: string | null; approved: number; onAllowEmail: () => void }) {
 	const [choices, setChoices] = useState<CommitChoices | null>(null);
 	const [editing, setEditing] = useState<{ name: string; email: string; typed: boolean } | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	// Asked for whoever is signed in, when there is something to offer them:
-	// git was never told, or they are choosing. Asked again when that changes.
+	// git was never told, or they are choosing. Asked again when that changes,
+	// and after an approval, which may have let the sign-in read their email.
 	const asking = login !== null && (!identity.set || editing !== null);
 	useEffect(() => {
 		if (!asking) return;
@@ -253,7 +260,7 @@ function Commits({ bridge, identity, login }: { bridge: GitHubBridge; identity: 
 		return () => {
 			current = false;
 		};
-	}, [bridge, asking, login]);
+	}, [bridge, asking, login, approved]);
 
 	const offered = !identity.set && login && choices?.email ? { name: choices.name, email: choices.email } : null;
 	const shown = offered ?? identity;
@@ -316,6 +323,15 @@ function Commits({ bridge, identity, login }: { bridge: GitHubBridge; identity: 
 						</Button>
 					</span>
 				</div>
+				{login && choices && !choices.emails && (
+					<p className="text-muted-foreground">
+						To pick from your addresses on GitHub,{" "}
+						<Button type="button" variant="link" className="h-auto p-0 text-xs" disabled={busy} onClick={onAllowEmail}>
+							allow the app to read them
+						</Button>
+						.
+					</p>
+				)}
 				{error && (
 					<p role="alert" className="text-destructive">
 						{error}

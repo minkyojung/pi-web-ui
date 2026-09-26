@@ -32,7 +32,6 @@ export type Outcome = { ok?: true; error?: string; cancelled?: true };
 export type GitHubBridge = {
 	standing(): Promise<GitHubStanding>;
 	identity(): Promise<Identity>;
-	useGitHubIdentity(): Promise<{ error?: string }>;
 	commitChoices(): Promise<CommitChoices | null>;
 	setIdentity(who: { name: string; email: string }): Promise<{ error?: string }>;
 	allowEmail(): Promise<Outcome>;
