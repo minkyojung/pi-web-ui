@@ -959,6 +959,10 @@ it("붙여넣은 이미지는 글과 함께 pi에 간다", async () => {
   const kept = readdirSync(join(cwd, ".octave/attachments")).map((id) => join(cwd, ".octave/attachments", id, "Pasted image 20260926153012.png")).filter((p) => existsSync(p));
   assert.equal(kept.length, 1, "one copy, under the name the page gave it");
   assert.equal(readFileSync(kept[0]).toString("base64"), png);
+  // And pi is told where, beside the message.
+  const told = await want("message_end", (m) => m.message?.role === "custom" && m.message.customType === "attached", 30_000);
+  assert.equal(told.message.display, false);
+  assert.deepEqual(told.message.details.pictures.map((p) => join(cwd, p)), kept);
   send({ type: "abort" });
   await want("agent_settled", () => true, 30_000);
 });

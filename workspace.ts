@@ -127,6 +127,7 @@ import {
 } from "./ask.ts";
 import { watchNotes } from "./watcher.ts";
 import { type Front, guard, WORKSPACE_PROMPT } from "./guard.ts";
+import { sentPictures } from "./sentPictures.ts";
 import { renameTarget } from "./naming.ts";
 import { LinkStore, type Touched } from "./linkIndex.ts";
 import { PropertyStore } from "./propertyIndex.ts";
@@ -236,6 +237,8 @@ export async function createWorkspace(cwd: string) {
 	 * pi has one conversation.
 	 */
 	let front: Front | null = null;
+	/** Where the pictures sent with the last prompt were kept, said to pi beside it — see sentPictures.ts. */
+	let pictures: string[] = [];
 
 	/**
 	 * The ask waiting for an answer, if there is one: what was chosen, where the
@@ -299,6 +302,8 @@ export async function createWorkspace(cwd: string) {
 					// Then the wall: what the guard let through, the shell runs behind
 					// it, where a note cannot be written. See wall.ts.
 					{ name: "wall", factory: wall(CWD) },
+					// Where the pictures sent with a message were kept, said beside it as the tab in front is.
+					{ name: "sent-pictures", factory: sentPictures(() => pictures) },
 					// A PDF read with pi's read comes back as its text, page by page —
 					// see documents.ts.
 					{ name: "documents", factory: documents(CWD) },
@@ -1891,7 +1896,7 @@ export async function createWorkspace(cwd: string) {
 						}
 						// The pictures, kept beside what was dropped on the box before pi is
 						// given them (attach.ts keepPictures).
-						if (Array.isArray(msg.images)) keepPictures(CWD, msg.images.filter((i) => typeof i?.data === "string" && typeof i?.mimeType === "string"));
+						pictures = Array.isArray(msg.images) ? keepPictures(CWD, msg.images.filter((i) => typeof i?.data === "string" && typeof i?.mimeType === "string")) : [];
 						// "steer" redirects the run in progress; "followUp" waits for it to finish.
 						const behavior = msg.behavior === "steer" ? "steer" : "followUp";
 						try {
