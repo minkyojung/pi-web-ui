@@ -959,32 +959,6 @@ it("목록에서 고른 명령은 실행되고, 확장이 하는 말은 대화�
   assert.ok(!inbox.some((m) => m.type === "message_start"), "nothing was sent to the model");
 });
 
-
-// A one-pixel PNG, which is enough to see it arrive: the question is on
-// record with the image beside the words, in the shape pi keeps images in.
-// Aborted as soon as it is, like the "/" test above.
-it("붙여넣은 이미지는 글과 함께 pi에 간다", async () => {
-  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
-  clear();
-  send({ type: "prompt", text: "what colour is this?", images: [{ data: png, mimeType: "image/png", name: "Pasted image 20260926153012.png" }] });
-  const started = await want("message_start", (m) => m.message?.role === "user", 30_000);
-  const image = started.message.content.find((c) => c.type === "image");
-  assert.ok(image, "an image part beside the text");
-  assert.equal(image.mimeType, "image/png");
-  assert.equal(image.data, png);
-  assert.equal(image.name, undefined, "the name is the copy's, not the model's");
-  // And a copy kept where what is dropped on the box is.
-  const kept = readdirSync(join(cwd, ".octave/attachments")).map((id) => join(cwd, ".octave/attachments", id, "Pasted image 20260926153012.png")).filter((p) => existsSync(p));
-  assert.equal(kept.length, 1, "one copy, under the name the page gave it");
-  assert.equal(readFileSync(kept[0]).toString("base64"), png);
-  // And pi is told where, beside the message.
-  const told = await want("message_end", (m) => m.message?.role === "custom" && m.message.customType === "attached", 30_000);
-  assert.equal(told.message.display, false);
-  assert.deepEqual(told.message.details.pictures.map((p) => join(cwd, p)), kept);
-  send({ type: "abort" });
-  await want("agent_settled", () => true, 30_000);
-});
-
 it("압축을 손으로 시키면 pi가 하고, 할 것이 없으면 그렇다고 말한다", async () => {
   clear();
   send({ type: "compact" });

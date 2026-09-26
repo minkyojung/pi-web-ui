@@ -86,7 +86,7 @@ import { noteTools } from "./noteEdit.ts";
 import { claimAppDir } from "./appDir.ts";
 import { wall } from "./wall.ts";
 import { documents } from "./documents.ts";
-import { keepPictures, MAX_BYTES, saveAttachment, saveMessageAttachment, type Saved } from "./attach.ts";
+import { MAX_BYTES, saveAttachment, saveMessageAttachment, type Saved } from "./attach.ts";
 import { documentType, SPEC_DOCS, SPECS_DIR } from "./documentKinds.ts";
 import { specState } from "./specApproval.ts";
 import { inheritedSpecs } from "./specOrigin.ts";
@@ -1898,15 +1898,11 @@ export async function createWorkspace(cwd: string) {
 							await broadcastAll();
 							rereadWhenSettled = true;
 						}
-						// The pictures, kept beside what was dropped on the box before pi is
-						// given them (attach.ts keepPictures).
-						// And the ones it names as chips, read from where the box kept them.
+						// The pictures the message names as chips, read from where the box
+						// kept them, to show the model — and where they are, to tell it.
 						const named = Array.isArray(msg.pictures) ? picturesAt(CWD, msg.pictures) : [];
-						pictures = [...(Array.isArray(msg.images) ? keepPictures(CWD, msg.images.filter((i) => typeof i?.data === "string" && typeof i?.mimeType === "string")) : []), ...named.map((p) => p.path)];
-						const images = [
-							...(msg.images ?? []).map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType })),
-							...named.map((p) => ({ type: "image" as const, data: p.data, mimeType: p.mimeType })),
-						];
+						pictures = named.map((p) => p.path);
+						const images = named.map((p) => ({ type: "image" as const, data: p.data, mimeType: p.mimeType }));
 						// "steer" redirects the run in progress; "followUp" waits for it to finish.
 						const behavior = msg.behavior === "steer" ? "steer" : "followUp";
 						try {
@@ -1918,7 +1914,6 @@ export async function createWorkspace(cwd: string) {
 							// if the session is streaming and no behavior is given.)
 							await session().prompt(text, {
 								expandPromptTemplates: msg.command === true,
-								// The bytes and their type, as pi takes them; the name is only for the copy kept.
 								...(images.length ? { images } : {}),
 								...(session().isStreaming ? { streamingBehavior: behavior } : {}),
 							});

@@ -1,5 +1,5 @@
 /**
- * Where the pictures sent with a message were kept (attach.ts keepPictures),
+ * Where the pictures a message names as chips are kept (pictures.ts picturesAt),
  * said beside it as the tab in front is (guard.ts): a hidden message of its
  * own, not the system prompt and not the person's words. The model has the
  * pictures themselves this turn; this is how it finds them again once a long

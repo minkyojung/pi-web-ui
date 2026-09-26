@@ -61,8 +61,8 @@ function Chip({ icon: Icon, text, children, ...data }: { icon: LucideIcon; text:
 /**
  * What was sent beside a message, over it: the tab that was in front and the
  * words chosen in it, as the strip over the box said them before it went
- * (Composer.tsx Front), and the pictures, from the copies kept of them
- * (attach.ts keepPictures). Each a kind's icon and a file's name — a
+ * (Composer.tsx Front), and the pictures, from where the box keeps them
+ * (pictures.ts picturesAt). Each a kind's icon and a file's name — a
  * thumbnail this small shows nothing — with what it is in full on hover.
  * What the agent was given, the person can see after, as they could before.
  */

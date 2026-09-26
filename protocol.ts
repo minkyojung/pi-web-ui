@@ -46,8 +46,6 @@ export type ClientMsg =
 			 * is a character like any other, however it was typed.
 			 */
 			command?: boolean;
-			/** Images pasted into the box: base64 and a media type, as pi's ImageContent has them. */
-			images?: { data: string; mimeType: string; name?: string }[];
 			/**
 			 * The pictures the message names as chips, where they were kept in the
 			 * box's folder (.octave/attachments/…): the server reads them and shows

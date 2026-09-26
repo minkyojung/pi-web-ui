@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { execFileSync } from "node:child_process";
 
-import { cleanName, keepPictures, MAX_BYTES, numbered, saveAttachment, saveMessageAttachment, takes } from "../attach.ts";
+import { cleanName, MAX_BYTES, numbered, saveAttachment, saveMessageAttachment, takes } from "../attach.ts";
 import { excludeFromGit } from "../gitExclude.ts";
 
 const bytes = (s) => new TextEncoder().encode(s);
@@ -144,26 +144,6 @@ test("저장소가 아닌 폴더에서는 git에 아무것도 하지 않고 저�
 	const root = mkdtempSync(join(tmpdir(), "attach-"));
 	try {
 		assert.equal(saveMessageAttachment(root, "a.pdf", bytes("%PDF")).ok, true);
-	} finally {
-		rmSync(root, { recursive: true, force: true });
-	}
-});
-
-test("메시지와 함께 간 그림은 사본이 입력창 첨부 자리에 남는다 — 쓸 수 없는 이름이면 종류로 짓고, 남기지 못한 것은 건너뛴다", () => {
-	const root = mkdtempSync(join(tmpdir(), "attach-"));
-	try {
-		const png = Buffer.from("png bytes").toString("base64");
-		const kept = keepPictures(root, [
-			{ data: png, mimeType: "image/png", name: "Pasted image 20260926153012.png" },
-			{ data: png, mimeType: "image/jpeg", name: "../../evil.sh" },
-			{ data: png, mimeType: "image/jpeg" },
-			{ data: "", mimeType: "image/png", name: "empty.png" },
-		]);
-		assert.equal(kept.length, 3, "빈 것은 남지 않는다");
-		assert.match(kept[0], /^\.octave\/attachments\/[0-9a-f]{8}\/Pasted image 20260926153012\.png$/);
-		assert.match(kept[1], /\/Pasted image\.jpg$/, "받지 않는 이름은 종류로");
-		assert.match(kept[2], /\/Pasted image\.jpg$/, "이름이 없으면 종류로");
-		assert.equal(readFileSync(join(root, kept[0]), "utf8"), "png bytes", "보낸 바이트 그대로");
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
