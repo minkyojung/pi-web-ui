@@ -26,29 +26,22 @@ import { __iconNode as fileType } from "lucide-react/dist/esm/icons/file-type.mj
 import { __iconNode as file } from "lucide-react/dist/esm/icons/file.mjs";
 import { __iconNode as image } from "lucide-react/dist/esm/icons/image.mjs";
 
+import { CHIP_CLASS, CHIP_ICON_CLASS, type FileKind, fileKind, nameOf } from "./chip.ts";
 import { CHIP, mentionOf } from "./text.ts";
 
 const SVG = "http://www.w3.org/2000/svg";
 
-/** A file's icon by its kind, as the chips over a sent message have them (Beside.tsx). */
-function iconOf(path: string): [string, Record<string, string>][] {
-	const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
-	if (/^(png|jpe?g|gif|webp|avif|bmp)$/.test(ext)) return image;
-	if (ext === "pdf") return fileType;
-	if (ext === "md") return fileText;
-	return path.includes(".") ? fileCode : file;
-}
+/** A file's icon by its kind, as a sent message's chips have them (FileChip.tsx). */
+const ICONS: Record<FileKind, [string, Record<string, string>][]> = { image, pdf: fileType, note: fileText, code: fileCode, file };
 
 /** A lucide icon as a DOM spec: its shapes, drawn in the text's colour. */
 function iconSpec(shapes: [string, Record<string, string>][]): unknown[] {
 	return [
 		`${SVG} svg`,
-		{ viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", class: "size-3.5 shrink-0 text-muted-foreground" },
+		{ viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", class: CHIP_ICON_CLASS },
 		...shapes.map(([tag, { key: _key, ...attrs }]) => [`${SVG} ${tag}`, attrs]),
 	];
 }
-
-const nameOf = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 
 /** A file in a line: one position, deleted whole, `@path` as text (mentionOf). */
 export const FileChip = Node.create({
@@ -65,9 +58,9 @@ export const FileChip = Node.create({
 			"data-file-chip": "",
 			"data-path": node.attrs.path,
 			title: node.attrs.path,
-			class: "mx-0.5 inline-flex max-w-64 items-center gap-1 rounded-md border bg-muted/60 px-1.5 py-px align-baseline text-[0.9em] leading-snug",
+			class: CHIP_CLASS,
 		}),
-		iconSpec(iconOf(node.attrs.path)),
+		iconSpec(ICONS[fileKind(node.attrs.path)]),
 		["span", { class: "truncate" }, nameOf(node.attrs.path)],
 	],
 	renderText: ({ node }) => mentionOf(node.attrs.path),

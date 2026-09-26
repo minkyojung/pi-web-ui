@@ -1,9 +1,8 @@
 import { type ReactNode, useSyncExternalStore } from "react";
 
-import { FileCodeIcon, FileDiffIcon, FileTextIcon, FileTypeIcon, GitCommitHorizontalIcon, ImageIcon, ListChecksIcon, type LucideIcon, TextQuoteIcon } from "lucide-react";
+import { FileCodeIcon, FileDiffIcon, FileTextIcon, FileTypeIcon, GitCommitHorizontalIcon, ListChecksIcon, type LucideIcon, TextQuoteIcon } from "lucide-react";
 
 import { type FrontLabel, frontLabel } from "../frontLabel";
-import { vaultUrl } from "../pages";
 import { specsStore } from "../serverState";
 import type { Item } from "../types";
 import { Attachment, AttachmentContent, AttachmentMedia, AttachmentTitle } from "./ui/attachment";
@@ -61,16 +60,15 @@ function Chip({ icon: Icon, text, children, ...data }: { icon: LucideIcon; text:
 /**
  * What was sent beside a message, over it: the tab that was in front and the
  * words chosen in it, as the strip over the box said them before it went
- * (Composer.tsx Front), and the pictures, from where the box keeps them
- * (pictures.ts picturesAt). Each a kind's icon and a file's name — a
- * thumbnail this small shows nothing — with what it is in full on hover.
- * What the agent was given, the person can see after, as they could before.
+ * (Composer.tsx Front). Each a kind's icon and a name, with what it is in
+ * full on hover. What the agent was given, the person can see after, as they
+ * could before. The files given with it are chips in the message itself
+ * (FileChip.tsx), as they were in the box.
  */
 export function Beside({ beside }: { beside: NonNullable<Item["beside"]> }) {
 	const specs = useSyncExternalStore(specsStore.subscribe, specsStore.get);
 	const label = beside.front ? frontLabel(specs, beside.front) : null;
-	const pictures = beside.pictures ?? [];
-	if (!label && !beside.chosen && pictures.length === 0) return null;
+	if (!label && !beside.chosen) return null;
 	return (
 		<div data-beside className="ml-auto flex max-w-full flex-wrap justify-end gap-1 opacity-80">
 			{label && beside.front && (
@@ -84,11 +82,6 @@ export function Beside({ beside }: { beside: NonNullable<Item["beside"]> }) {
 					<p className="max-h-60 overflow-y-auto whitespace-pre-wrap">{beside.chosen}</p>
 				</Chip>
 			)}
-			{pictures.map((path) => (
-				<Chip key={path} icon={ImageIcon} text={nameOf(path)} data-beside-picture={path}>
-					<img src={vaultUrl(path)} alt={nameOf(path)} className="max-h-64 max-w-72 rounded-sm object-contain" />
-				</Chip>
-			))}
 		</div>
 	);
 }
