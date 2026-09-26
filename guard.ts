@@ -190,6 +190,8 @@ export const guard = (root: string, front: () => Front | null) => (pi: Extension
 		const note = front();
 		const said = note && looking(note);
 		if (!said) return undefined;
-		return { message: { customType: "open-note", content: said, display: false, details: { front: note.path } } };
+		// What was said, as data too, for the conversation to draw over the message (conversation.js).
+		const details = { front: note.path, ...(note.chosen ? { chosen: note.chosen } : {}), ...(note.page ? { page: note.page } : {}) };
+		return { message: { customType: "open-note", content: said, display: false, details } };
 	});
 };

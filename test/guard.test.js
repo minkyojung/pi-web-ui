@@ -202,4 +202,6 @@ test("저장소의 파일을 읽고 있었으면 고른 글도 함께 말한다"
 test("보이지 않는 메시지는 무엇을 보고 있었는지를 details에 주소로 남긴다", async () => {
   const result = await beside({ path: "octave://task/email-auth/3", chosen: null });
   assert.deepEqual(result.message.details, { front: "octave://task/email-auth/3" });
+  const chosen = await beside({ path: "papers/a.pdf", chosen: "첫 줄", page: "3" });
+  assert.deepEqual(chosen.message.details, { front: "papers/a.pdf", chosen: "첫 줄", page: "3" }, "고른 글과 쪽도 데이터로");
 });
