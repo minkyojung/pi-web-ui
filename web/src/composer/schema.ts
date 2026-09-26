@@ -57,7 +57,6 @@ export const FileChip = Node.create({
 		mergeAttributes(HTMLAttributes, {
 			"data-file-chip": "",
 			"data-path": node.attrs.path,
-			title: node.attrs.path,
 			class: CHIP_CLASS,
 		}),
 		iconSpec(ICONS[fileKind(node.attrs.path)]),

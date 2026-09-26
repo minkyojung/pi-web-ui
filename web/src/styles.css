@@ -641,3 +641,12 @@
 	pointer-events: none;
 	color: var(--muted-foreground);
 }
+
+/*
+ * A chip's preview (ChipLayer.tsx) is looked at, never pressed: the box Radix
+ * wraps it in to place it lets the pointer through as well, or where it comes
+ * down over the chip it takes the click that was meant to open it.
+ */
+[data-radix-popper-content-wrapper]:has(> #chip-preview) {
+	pointer-events: none;
+}

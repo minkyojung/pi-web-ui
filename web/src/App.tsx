@@ -53,6 +53,7 @@ import { Button } from "./components/ui/button";
 import { getConnection, subscribe } from "./store";
 import { send } from "./ws";
 import { openRequestStore } from "./openRequest";
+import { ChipLayer } from "./components/ChipLayer";
 
 /**
  * Which note is in the middle column, and the way back to the ones before it.
@@ -541,6 +542,8 @@ export function App() {
 			<Search open={searching} onOpenChange={setSearching} onPick={setOpen} />
 			{/* Beside the words it is about, when one of them has been asked about. */}
 			<WhyCard />
+			{/* What a file's chip does, in the message box and in a message sent alike. */}
+			<ChipLayer />
 			{/* The corner: the one place something not about the note or the agent may speak up. */}
 			<Toaster position="bottom-right" offset={{ bottom: 44, right: 16 }} />
 			<UpdateToast />

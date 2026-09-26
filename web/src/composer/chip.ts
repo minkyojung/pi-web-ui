@@ -31,7 +31,7 @@ export const nameOf = (path: string): string => path.slice(path.lastIndexOf("/")
  */
 export const CHIP_CLASS = cn(
 	badgeVariants({ variant: "outline" }),
-	"mx-0.5 max-w-64 justify-start rounded-sm border-input bg-background px-1.5 py-px align-baseline text-xs leading-snug font-normal text-subtle-foreground [&>svg]:size-3",
+	"mx-0.5 max-w-64 cursor-pointer justify-start rounded-sm border-input bg-background px-1.5 py-px align-baseline text-xs leading-snug font-normal text-subtle-foreground [&>svg]:size-3",
 );
 
 /** The icon inside it. */

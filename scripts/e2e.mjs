@@ -3215,7 +3215,43 @@ check("a picture pasted into the message box is a chip like any file, kept in th
 	const sent = await until("the prompt to go", () => app.evaluate("window.__sent.at(-1) ?? null"));
 	assert.equal(sent.text, `@"${path}" what is this`, "the chip is its path in the text");
 	assert.deepEqual(sent.pictures, [path], "and the server is told to show it");
+	await until("the box empty once it is sent", async () => (await boxText(app)) === "" && (await app.evaluate("document.querySelectorAll('[data-file-chip]').length")) === 0);
 	assert.equal(sent.images, undefined, "no bytes from the page");
+});
+
+check("a file's chip in the message box shows what it is when pointed at, and opens it when pressed: a picture large, a PDF in its tab", async ({ app }) => {
+	await clearBox(app);
+	const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+	await app.evaluate(`(() => {
+		const box = document.querySelector(${JSON.stringify(BOX)});
+		box.focus();
+		const data = new DataTransfer();
+		data.items.add(new File([Uint8Array.from(atob(${JSON.stringify(png)}), (c) => c.charCodeAt(0))], "image.png", { type: "image/png" }));
+		data.items.add(new File([new TextEncoder().encode("%PDF-1.4 chip")], "chip paper.pdf", { type: "application/pdf" }));
+		box.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
+	})()`);
+	await until("two chips in the box", () => app.evaluate("document.querySelectorAll('[data-file-chip]').length === 2"));
+	const chip = (kind) => app.evaluate(`[...document.querySelectorAll('[data-file-chip]')].find((c) => c.dataset.path.endsWith(${JSON.stringify(kind)}))?.dataset.path ?? null`);
+	const picture = await chip(".png");
+	const paper = await chip(".pdf");
+	const middle = (path) => app.evaluate(`(() => { const r = document.querySelector('[data-file-chip][data-path=' + ${JSON.stringify(JSON.stringify(path))} + ']').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
+	// Pointed at: the picture shown, with its path, and the focus left in the box.
+	const [x, y] = await middle(picture);
+	await app.moveTo(x, y);
+	await until("the preview", () => app.evaluate("document.querySelector('#chip-preview img')?.naturalWidth === 1"));
+	assert.ok((await app.evaluate("document.getElementById('chip-preview').textContent")).includes(picture));
+	assert.equal(await app.evaluate(`!!document.activeElement?.matches(${JSON.stringify(BOX)})`), true, "the box keeps the keys");
+	// Pressed: the picture large, and Escape puts it away.
+	await app.clickAt(x, y);
+	await until("the picture large", () => app.evaluate("document.querySelector('#chip-picture img')?.naturalWidth === 1"));
+	await app.press("Escape");
+	await until("put away", () => app.evaluate("!document.getElementById('chip-picture')"));
+	// A PDF: its tab, and the message as it was.
+	const [px, py] = await middle(paper);
+	await app.clickAt(px, py);
+	await until("the PDF in front", () => app.evaluate(`decodeURIComponent(location.hash) === ${JSON.stringify(`#${paper}`)}`));
+	assert.equal(await app.evaluate("document.querySelectorAll('[data-file-chip]').length"), 2, "pressing a chip does not take it out of the message");
+	await clearBox(app);
 });
 
 /**
