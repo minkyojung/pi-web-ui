@@ -6,6 +6,7 @@ import { bridge as githubBridge, githubStore, refresh as refreshGitHub, type Cod
 import { loginStore, providersStore, type LoginState } from "../serverState";
 import type { LoginEvent, LoginPrompt, ProviderInfo } from "../types";
 import { send } from "../ws";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -28,9 +29,9 @@ import { Spinner } from "./ui/spinner";
  * start. Then the ones that take only a key — the long tail, behind a line
  * after the first few, since forty is a list to search, not read.
  *
- * Then GitHub, which is not a provider but is an account, and the other
- * thing the agent signs in to: where the code is. It is the shell's — gh's,
- * so the terminal is signed in too — and so is there only in the app.
+ * Above them all, GitHub, which is not a provider but is an account: the
+ * person's own, so it comes first and is drawn as them. It is the shell's —
+ * gh's, so the terminal is signed in too — and so is there only in the app.
  */
 const FEATURED = ["openai"];
 
@@ -55,42 +56,48 @@ export function Accounts() {
 		<>
 			<header className="flex flex-col gap-1">
 				<h2 className="text-sm font-semibold">Accounts</h2>
-				<p className="text-xs text-subtle-foreground">
-					Who pi runs its models from. Kept by pi, in <code className="text-[11px]">~/.pi/agent</code>, so the terminal pi is
-					signed in too.
-				</p>
+				<p className="text-xs text-subtle-foreground">{githubBridge ? "Who you are on GitHub, and who the agent runs its models from." : "Who the agent runs its models from."}</p>
 			</header>
 
-			<Group title="Signed in" empty="Nobody yet — pick a provider below.">
-				{signedIn.map((p) => (
-					<Row key={p.id} provider={p} busy={busy} />
-				))}
-			</Group>
-
-			{accounts.length > 0 && (
-				<Group title="Sign in with an account">
-					{accounts.map((p) => (
-						<Row key={p.id} provider={p} busy={busy} />
-					))}
-				</Group>
-			)}
-
-			{keyed.length > 0 && (
-				<Group title="With an API key">
-					{keyedShown.map((p) => (
-						<Row key={p.id} provider={p} busy={busy} />
-					))}
-					{!all && hidden > 0 && (
-						<li>
-							<Button type="button" variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => setAll(true)}>
-								{hidden} more providers…
-							</Button>
-						</li>
-					)}
-				</Group>
-			)}
-
 			{githubBridge && <GitHub bridge={githubBridge} />}
+
+			<section className="flex flex-col gap-4">
+				<header className="flex flex-col gap-1">
+					<h3 className="text-xs font-semibold">Models</h3>
+					<p className="text-xs text-subtle-foreground">
+						Kept by pi, in <code className="text-[11px]">~/.pi/agent</code>, so the terminal pi is signed in too.
+					</p>
+				</header>
+
+				<Group title="Signed in" empty="Nobody yet — pick a provider below.">
+					{signedIn.map((p) => (
+						<Row key={p.id} provider={p} busy={busy} />
+					))}
+				</Group>
+
+				{accounts.length > 0 && (
+					<Group title="Sign in with an account">
+						{accounts.map((p) => (
+							<Row key={p.id} provider={p} busy={busy} />
+						))}
+					</Group>
+				)}
+
+				{keyed.length > 0 && (
+					<Group title="With an API key">
+						{keyedShown.map((p) => (
+							<Row key={p.id} provider={p} busy={busy} />
+						))}
+						{!all && hidden > 0 && (
+							<li>
+								<Button type="button" variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => setAll(true)}>
+									{hidden} more providers…
+								</Button>
+							</li>
+						)}
+					</Group>
+				)}
+			</section>
 
 			{login && <SignIn login={login} name={providers.find((p) => p.id === login.provider)?.name ?? login.provider} />}
 		</>
@@ -98,11 +105,14 @@ export function Accounts() {
 }
 
 /**
- * The GitHub row, and the sign-in behind it. Where the person stands is the
- * store's (github.ts), asked again after anything done here. A sign-in is
- * gh's: the shell runs it and says the one-time code as gh gets it, shown
- * here the way a provider's is (Event), and it ends when GitHub says yes or
- * the person gives up.
+ * The person on GitHub, and the sign-in behind them. Signed in, they are
+ * drawn as GitHub has them — picture, name, login — with their page a click
+ * away: read here and changed there, since the account is GitHub's. Their
+ * initials stand in while the picture loads or when it cannot. Where they
+ * stand is the store's (github.ts), asked again after anything done here. A
+ * sign-in is gh's: the shell runs it and says the one-time code as gh gets
+ * it, shown here the way a provider's is (Event), and it ends when GitHub
+ * says yes or the person gives up.
  */
 function GitHub({ bridge }: { bridge: GitHubBridge }) {
 	const standing: GitHubStanding | null = useSyncExternalStore(githubStore.subscribe, githubStore.get);
@@ -127,13 +137,22 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 	};
 	const b = "h-7 text-xs";
 
-	let status: React.ReactNode = null;
+	const me = standing?.state === "signed-in" ? standing : null;
+	let about: React.ReactNode = null;
 	let actions: React.ReactNode = null;
-	if (standing?.state === "signed-in") {
-		status = (
-			<Badge variant="secondary" className="gap-1 text-[11px]">
-				<UserRoundIcon className="size-3" /> {standing.login}
-			</Badge>
+	if (me) {
+		about = (
+			<>
+				{me.name && (
+					<>
+						<span className="truncate">@{me.login}</span>
+						<span aria-hidden>·</span>
+					</>
+				)}
+				<a href={me.url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 text-link underline-offset-2 hover:underline">
+					View on GitHub <ExternalLinkIcon className="size-3" />
+				</a>
+			</>
 		);
 		actions = (
 			<Button type="button" variant="outline" size="sm" className={b} disabled={busy} onClick={signOut}>
@@ -141,13 +160,14 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 			</Button>
 		);
 	} else if (standing?.state === "signed-out") {
+		about = "Not signed in";
 		actions = (
 			<Button type="button" variant="outline" size="sm" className={`${b} gap-1.5`} disabled={busy} onClick={signIn}>
 				<UserRoundIcon className="size-3" /> Sign in with GitHub
 			</Button>
 		);
 	} else if (standing?.state === "missing") {
-		status = <span className="text-xs text-muted-foreground">GitHub CLI isn't installed</span>;
+		about = "GitHub CLI isn't installed";
 		actions = (
 			<a href="https://cli.github.com" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-link underline-offset-2 hover:underline">
 				Get gh <ExternalLinkIcon className="size-3" />
@@ -156,12 +176,18 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 	}
 
 	return (
-		<Group title="Where the code is">
-			<li className={`flex min-h-10 items-center gap-3 rounded-md border px-3 py-1.5 ${standing?.state === "signed-in" ? "border-transparent bg-muted" : ""}`} title="Kept by gh, so the terminal is signed in too.">
-				<span className="min-w-0 flex-1 truncate text-sm">GitHub</span>
-				{status}
-				<span className="flex shrink-0 gap-1">{actions}</span>
-			</li>
+		<div id="github" className={`flex items-center gap-3 rounded-md border px-3 py-2.5 ${me ? "border-transparent bg-muted" : ""}`} title="Kept by gh, so the terminal is signed in too.">
+			<Avatar size="lg">
+				{me?.avatarUrl && <AvatarImage src={me.avatarUrl} alt="" />}
+				<AvatarFallback delayMs={me?.avatarUrl ? 600 : 0} className={me ? "bg-background" : undefined}>
+					{me ? initials(me.name ?? me.login) : <UserRoundIcon className="size-4" />}
+				</AvatarFallback>
+			</Avatar>
+			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+				<span className="truncate text-sm font-medium">{me ? (me.name ?? me.login) : "GitHub"}</span>
+				{about && <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">{about}</span>}
+			</div>
+			<span className="flex shrink-0 gap-1">{actions}</span>
 			{signing && (
 				<Dialog open onOpenChange={(open) => !open && (busy ? void bridge.cancel() : setSigning(null))}>
 					<DialogContent className="max-w-md" showCloseButton={false}>
@@ -191,8 +217,19 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 					</DialogContent>
 				</Dialog>
 			)}
-		</Group>
+		</div>
 	);
+}
+
+/** The first letters of the first two words of a name, as a picture's stand-in: "William Jung" is WJ. */
+function initials(name: string): string {
+	return name
+		.split(/\s+/)
+		.filter(Boolean)
+		.slice(0, 2)
+		.map((word) => Array.from(word)[0])
+		.join("")
+		.toUpperCase();
 }
 
 /** A run of rows under a small heading; `empty` is what stands in for none. */
@@ -200,7 +237,7 @@ function Group({ title, empty, children }: { title: string; empty?: string; chil
 	const rows = Array.isArray(children) ? children.flat().filter(Boolean) : children ? [children] : [];
 	return (
 		<section className="flex flex-col gap-1">
-			<h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
+			<h4 className="text-xs font-medium text-muted-foreground">{title}</h4>
 			{rows.length ? <ul className="flex flex-col gap-1">{children}</ul> : empty && <p className="px-3 py-2 text-xs text-subtle-foreground">{empty}</p>}
 		</section>
 	);
