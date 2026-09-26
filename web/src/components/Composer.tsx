@@ -51,7 +51,6 @@ const folderOf = (path: string) => (path.includes("/") ? path.slice(0, path.last
  * ahead of this, so pi reads what is on screen — see saves.ts.
  */
 function submit(
-	form: HTMLFormElement,
 	text: string,
 	behavior: "followUp" | "steer",
 	front: string | null,
@@ -82,7 +81,9 @@ function submit(
 		...(asking ? { entryId: asking.entryId } : {}),
 	});
 	askingAgainStore.set(null);
-	form.reset();
+	// The form resets itself (PromptInput); the box and its draft are the
+	// Composer's to empty. The form is not touched here: PromptInput calls on
+	// after an await, when the event no longer has it.
 	draftStore.set("");
 	return true;
 }
@@ -218,11 +219,11 @@ export function Composer({ front }: { front: string | null }) {
 	const steering = useRef(false);
 	// Sent, the box is reset by the form, which fires no change: the mirror is
 	// emptied by hand.
-	const send_ = (form: HTMLFormElement, value: string) => {
+	const send_ = (value: string) => {
 		const behavior = steering.current ? "steer" : "followUp";
 		steering.current = false;
 		const pictures = (box.current?.chips() ?? []).filter((path) => PICTURE.test(path));
-		if (submit(form, value, behavior, going, going ? pointing : null, pictures)) box.current?.clear();
+		if (submit(value, behavior, going, going ? pointing : null, pictures)) box.current?.clear();
 	};
 	// A file dropped or pasted, of any kind: it goes where the message box's
 	// files are kept (.octave/attachments, out of git) and into the message as
@@ -360,7 +361,7 @@ export function Composer({ front }: { front: string | null }) {
 			    it, in line with everything else in the panel. */}
 			<div className={label ? "-mx-[5px] -mb-[5px] rounded-lg border bg-muted/40 p-1" : undefined}>
 			{label && <Front key={front} label={label} chosen={pointing} off={going === null} />}
-			<PromptInput onSubmit={(message, event) => send_(event.currentTarget, message.text)}>
+			<PromptInput onSubmit={(message) => send_(message.text)}>
 				{adding.length > 0 && (
 					<PromptInputHeader id="adding" className="text-xs text-muted-foreground">
 						Adding {adding.join(", ")} to the folder…

@@ -48,6 +48,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 - Sentences you read are a step brighter than the grey of a timestamp or a label: the description under a dialog's title or a setting, a sign-in's instructions, what the agent was thinking once you open it, a message waiting its turn, a search hit's line. Before, they were the same grey as everything you only glance at, so the words that explain did not stand out from the ones that don't.
 - The names in a note's folded properties — `status`, `tags` — are in a grey you can read. They were faded below it, to less contrast than any text is owed.
 ### Fixed
+- A message you sent is no longer kept as the box's draft: going to another workspace and back left it waiting in the box again, as if not yet sent.
 - Marks inside marks are hidden off the cursor too — the backticks of code inside italics, the asterisks of italics inside bold or inside a link's text. They stayed drawn while everything around them was hidden.
 - In the light theme, a line drawn on grey — the rule beside a turn's tools and thinking in the agent's column, the edge of a bar, a rule on a highlighted row — was half as clear as the same line on the white page, and on the darkest greys almost gone. Every line now stands as far from the surface it is on as it does from the page.
 - Red error text in the light theme — a failed tool in the agent's column, an error at the foot of the window — was a shade too light to meet the contrast text is owed on those greys. It is a step darker.
