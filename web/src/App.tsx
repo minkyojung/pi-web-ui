@@ -52,6 +52,7 @@ import { noteCreatedStore, noteDeletedStore, noteRenamedStore, specsStore } from
 import { Button } from "./components/ui/button";
 import { getConnection, subscribe } from "./store";
 import { send } from "./ws";
+import { openRequestStore } from "./openRequest";
 
 /**
  * Which note is in the middle column, and the way back to the ones before it.
@@ -236,6 +237,13 @@ function readRail(): number | null {
  */
 export function App() {
 	const { open, place, left, onLeave, setOpen, showInstead, back, forward, canBack, canForward } = useOpenNote();
+	// A file asked for from elsewhere — a chip — opened as the list opens one.
+	const requested = useSyncExternalStore(openRequestStore.subscribe, openRequestStore.get);
+	useEffect(() => {
+		if (!requested) return;
+		setOpen(requested);
+		openRequestStore.set(null);
+	}, [requested]);
 	// A debug view, so it is behind a shortcut rather than a permanent control in
 	// the best seat on screen. RawView says how to leave, since nothing says it
 	// is there in the first place.
