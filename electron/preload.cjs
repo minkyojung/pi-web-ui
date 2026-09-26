@@ -66,11 +66,18 @@ contextBridge.exposeInMainWorld("pi", {
 	 * `identity` is who git commits as on this machine, `{ name, email, set }`
 	 * — `set` false when git made it up — and `useGitHubIdentity` fills in
 	 * what git lacks from the person signed in, answering `{}` or `{ error }`.
+	 * `commitChoices` is what to offer them to commit as, `{ name, email,
+	 * emails }` — `emails` null until `allowEmail`, an approval as a sign-in
+	 * is, lets the sign-in read them — or null when nobody is signed in; and
+	 * `setIdentity({ name, email })` sets it, answering `{}` or `{ error }`.
 	 */
 	github: {
 		standing: () => ipcRenderer.invoke("github:standing"),
 		identity: () => ipcRenderer.invoke("github:identity"),
 		useGitHubIdentity: () => ipcRenderer.invoke("github:useGitHubIdentity"),
+		commitChoices: () => ipcRenderer.invoke("github:commitChoices"),
+		setIdentity: (who) => ipcRenderer.invoke("github:setIdentity", who),
+		allowEmail: () => ipcRenderer.invoke("github:allowEmail"),
 		signIn: () => ipcRenderer.invoke("github:signIn"),
 		cancel: () => ipcRenderer.invoke("github:cancel"),
 		signOut: () => ipcRenderer.invoke("github:signOut"),

@@ -21,12 +21,21 @@ export type GitHubProfile = { login: string; name: string | null; avatarUrl: str
 export type GitHubStanding = { state: "missing" } | { state: "signed-out" } | ({ state: "signed-in" } & GitHubProfile);
 /** Who git commits as on this machine; `set` is false when git made it up from the machine's names (electron/git.js identity). */
 export type Identity = { name: string | null; email: string | null; set: boolean };
+/**
+ * What to offer the person to commit as (electron/github.js choicesFrom):
+ * their name, the address GitHub Desktop would pick, and the addresses to
+ * choose from — null until the sign-in may read them (allowEmail).
+ */
+export type CommitChoices = { name: string; email: string | null; emails: string[] | null };
 export type Code = { userCode: string; verificationUri: string };
 export type Outcome = { ok?: true; error?: string; cancelled?: true };
 export type GitHubBridge = {
 	standing(): Promise<GitHubStanding>;
 	identity(): Promise<Identity>;
 	useGitHubIdentity(): Promise<{ error?: string }>;
+	commitChoices(): Promise<CommitChoices | null>;
+	setIdentity(who: { name: string; email: string }): Promise<{ error?: string }>;
+	allowEmail(): Promise<Outcome>;
 	signIn(): Promise<Outcome>;
 	cancel(): Promise<void>;
 	signOut(): Promise<Outcome>;
