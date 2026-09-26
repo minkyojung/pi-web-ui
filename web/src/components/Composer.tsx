@@ -391,9 +391,11 @@ export function Composer({ front }: { front: string | null }) {
 				<SuggestMenu id={list.id} items={list.items} selected={current?.value ?? ""} onSelect={setSelected} onPick={list.pick} />
 			)}
 			{/* A card a size larger than the box, the tab in front along its top
-			    edge: drawn only while there is a tab to say, so the box is the
-			    box as it always was when there is not. */}
-			<div className={label ? "rounded-lg border bg-muted/40 p-1" : undefined}>
+			    edge: drawn only while there is a tab to say. It grows out into the
+			    panel's padding — by its own border and padding, 5px — rather than
+			    into the box, so the box keeps the width and the place it has without
+			    it, in line with everything else in the panel. */}
+			<div className={label ? "-mx-[5px] -mb-[5px] rounded-lg border bg-muted/40 p-1" : undefined}>
 			{label && <Front label={label} chosen={pointing} off={going === null} />}
 			<PromptInput accept="image/*" onSubmit={(message, event) => send_(event.currentTarget, message.text, message.files)}>
 				<Attached />
