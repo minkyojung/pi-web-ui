@@ -3182,6 +3182,26 @@ check("the tab in front goes beside the message as its address: a file with the 
 	assert.equal(page.chosen, undefined);
 });
 
+check("a picture pasted into the message box rides with the message as bytes, named as its copy will be kept", async ({ app }) => {
+	await app.evaluate(`(() => { window.__sent = []; const send = WebSocket.prototype.send; WebSocket.prototype.send = function (d) { if (this.url.endsWith("/ws") && JSON.parse(String(d)).type === "prompt") return void window.__sent.push(JSON.parse(String(d))); return send.call(this, d); }; })()`);
+	// A clipboard's picture, which comes as "image.png" whatever it shows.
+	await app.evaluate(`(() => {
+		const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
+		const data = new DataTransfer();
+		data.items.add(new File([png], "image.png", { type: "image/png" }));
+		const t = document.querySelector("textarea");
+		t.focus();
+		t.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }));
+	})()`);
+	await until("the picture over the box", () => app.evaluate("!!document.querySelector('#attached img')"));
+	await app.keys("what is this");
+	await app.press("Enter");
+	const sent = await until("the prompt to go", () => app.evaluate("window.__sent.at(-1) ?? null"));
+	assert.equal(sent.images?.length, 1);
+	assert.equal(sent.images[0].mimeType, "image/png");
+	assert.match(sent.images[0].name, /^Pasted image \d{14}\.png$/, "a clipboard's picture is named from the moment");
+});
+
 /**
  * A PDF dropped on the message box goes into the folder and is named in the
  * message. The drop is a real DragEvent carrying a real File, so what is

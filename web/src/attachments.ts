@@ -12,6 +12,8 @@ import { forFolder } from "./workspace.ts";
 export interface PastedImage {
 	data: string;
 	mimeType: string;
+	/** What it is kept under beside the message (attach.ts keepPictures): its own name, or one from the moment for a clipboard's "image.png". */
+	name?: string;
 }
 
 /**
@@ -43,12 +45,12 @@ export async function attach(file: File, { name = file.name, from = "", to }: { 
 	return said.path;
 }
 
-/** The pasted images as pi takes them; anything that is not an image data URL is left out. */
-export function imagesOf(files: { url?: string; mediaType?: string }[]): PastedImage[] {
+/** The pasted images as pi takes them, each with the name it is kept under; anything that is not an image data URL is left out. */
+export function imagesOf(files: { url?: string; mediaType?: string; filename?: string }[], now = new Date()): PastedImage[] {
 	const out: PastedImage[] = [];
 	for (const f of files) {
 		const m = /^data:(image\/[\w.+-]+);base64,(.+)$/s.exec(f.url ?? "");
-		if (m) out.push({ mimeType: m[1]!, data: m[2]! });
+		if (m) out.push({ mimeType: m[1]!, data: m[2]!, name: pastedName(f.filename ?? "", m[1]!, now) });
 	}
 	return out;
 }

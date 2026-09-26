@@ -55,7 +55,7 @@ function submit(
 	behavior: "followUp" | "steer",
 	front: string | null,
 	chosen: ChosenWords | null,
-	files: { url?: string; mediaType?: string }[] = [],
+	files: { url?: string; mediaType?: string; filename?: string }[] = [],
 ): boolean {
 	const trimmed = text.trim();
 	if (!trimmed) return false;
@@ -265,7 +265,7 @@ export function Composer({ front }: { front: string | null }) {
 	const steering = useRef(false);
 	// Sent, the box is reset by the form, which fires no change: the mirror is
 	// emptied by hand.
-	const send_ = (form: HTMLFormElement, value: string, files: { url?: string; mediaType?: string }[]) => {
+	const send_ = (form: HTMLFormElement, value: string, files: { url?: string; mediaType?: string; filename?: string }[]) => {
 		const behavior = steering.current ? "steer" : "followUp";
 		steering.current = false;
 		if (submit(form, value, behavior, going, going ? pointing : null, files)) setText("");

@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { spawn } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -948,12 +948,17 @@ it("목록에서 고른 명령은 실행되고, 확장이 하는 말은 대화�
 it("붙여넣은 이미지는 글과 함께 pi에 간다", async () => {
   const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
   clear();
-  send({ type: "prompt", text: "what colour is this?", images: [{ data: png, mimeType: "image/png" }] });
+  send({ type: "prompt", text: "what colour is this?", images: [{ data: png, mimeType: "image/png", name: "Pasted image 20260926153012.png" }] });
   const started = await want("message_start", (m) => m.message?.role === "user", 30_000);
   const image = started.message.content.find((c) => c.type === "image");
   assert.ok(image, "an image part beside the text");
   assert.equal(image.mimeType, "image/png");
   assert.equal(image.data, png);
+  assert.equal(image.name, undefined, "the name is the copy's, not the model's");
+  // And a copy kept where what is dropped on the box is.
+  const kept = readdirSync(join(cwd, ".octave/attachments")).map((id) => join(cwd, ".octave/attachments", id, "Pasted image 20260926153012.png")).filter((p) => existsSync(p));
+  assert.equal(kept.length, 1, "one copy, under the name the page gave it");
+  assert.equal(readFileSync(kept[0]).toString("base64"), png);
   send({ type: "abort" });
   await want("agent_settled", () => true, 30_000);
 });

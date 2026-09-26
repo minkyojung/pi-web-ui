@@ -86,7 +86,7 @@ import { noteTools } from "./noteEdit.ts";
 import { claimAppDir } from "./appDir.ts";
 import { wall } from "./wall.ts";
 import { documents } from "./documents.ts";
-import { MAX_BYTES, saveAttachment, saveMessageAttachment, type Saved } from "./attach.ts";
+import { keepPictures, MAX_BYTES, saveAttachment, saveMessageAttachment, type Saved } from "./attach.ts";
 import { documentType, SPEC_DOCS, SPECS_DIR } from "./documentKinds.ts";
 import { specState } from "./specApproval.ts";
 import { inheritedSpecs } from "./specOrigin.ts";
@@ -1889,6 +1889,9 @@ export async function createWorkspace(cwd: string) {
 							await broadcastAll();
 							rereadWhenSettled = true;
 						}
+						// The pictures, kept beside what was dropped on the box before pi is
+						// given them (attach.ts keepPictures).
+						if (Array.isArray(msg.images)) keepPictures(CWD, msg.images.filter((i) => typeof i?.data === "string" && typeof i?.mimeType === "string"));
 						// "steer" redirects the run in progress; "followUp" waits for it to finish.
 						const behavior = msg.behavior === "steer" ? "steer" : "followUp";
 						try {
@@ -1900,7 +1903,8 @@ export async function createWorkspace(cwd: string) {
 							// if the session is streaming and no behavior is given.)
 							await session().prompt(text, {
 								expandPromptTemplates: msg.command === true,
-								...(msg.images?.length ? { images: msg.images.map((i) => ({ type: "image" as const, ...i })) } : {}),
+								// The bytes and their type, as pi takes them; the name is only for the copy kept.
+								...(msg.images?.length ? { images: msg.images.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType })) } : {}),
 								...(session().isStreaming ? { streamingBehavior: behavior } : {}),
 							});
 						} catch (err) {
