@@ -147,7 +147,7 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 	if (me) {
 		about = me.name && <span className="truncate">@{me.login}</span>;
 		actions = (
-			<Button type="button" variant="outline" size="sm" className={b} disabled={busy} onClick={signOut}>
+			<Button type="button" variant="ghost" size="sm" className={`${b} text-muted-foreground`} disabled={busy} onClick={signOut}>
 				Sign out
 			</Button>
 		);
