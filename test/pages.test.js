@@ -60,3 +60,10 @@ test("a changelog section is headings, lists and paragraphs, with code set apart
 	assert.deepEqual(spansOf("no code"), [{ code: false, text: "no code" }]);
 	assert.deepEqual(blocksOf("a line\nthat wraps\n\nnext"), [{ kind: "paragraph", text: "a line that wraps" }, { kind: "paragraph", text: "next" }]);
 });
+
+test("a file given in the message box opens as a page: a PDF as a document, anything else — markdown too — read as a file", () => {
+	assert.equal(pageOf(".octave/attachments/ab12cd34/paper.pdf")?.kind, "document");
+	assert.deepEqual(pageOf(".octave/attachments/ab12cd34/notes.md"), { kind: "code", path: ".octave/attachments/ab12cd34/notes.md", title: "notes.md" }, "not a note to edit: what was handed to the agent");
+	assert.equal(pageOf(".octave/attachments/ab12cd34/run.log")?.kind, "code");
+	assert.equal(pageOf("notes/a.md"), null, "a note of the folder is still the editor's");
+});

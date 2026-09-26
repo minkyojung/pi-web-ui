@@ -63,6 +63,7 @@ import { branchPoints } from "./branches.ts";
 import {
 	documentAt,
 	listNotes,
+	messageDocumentAt,
 	newNoteName,
 	type Note,
 	readCode,
@@ -1772,7 +1773,7 @@ export async function createWorkspace(cwd: string) {
 			// A picture a note refers to, or a document by its own path: what the tab
 			// that shows a PDF reads (Pdf.tsx). A document is named exactly, never
 			// looked for by name, since nothing embeds one yet.
-			const document = documentAt(CWD, given);
+			const document = documentAt(CWD, given) ?? messageDocumentAt(CWD, given);
 			const found =
 				attachmentAt(CWD, given, url.searchParams.get("from") ?? "") ??
 				// Or one given in the message box, for the conversation to show over its message.

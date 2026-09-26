@@ -21,6 +21,9 @@ const TASK = "octave://task/";
 /** The files changed and not committed, each before and after: one page for all of them, so there is one tab however many are looked at. */
 const CHANGES = "octave://changes";
 
+/** Where the message box keeps what is put in it (attach.ts MESSAGE_ATTACHMENTS). */
+const GIVEN = ".octave/attachments/";
+
 /** The scheme no file has, which the app's own pages take their address under. */
 const SCHEME = "octave://";
 
@@ -79,8 +82,10 @@ export function pageOf(path: string | null): Page | null {
 	}
 	// Everything else in the folder. Markdown is the editor's — a note, or a
 	// spec, which is markdown the notes' lists do not hold — and the rest is
-	// read: a repository's code, its config, its workflows (repoFiles.ts).
-	return path.endsWith(".md") ? null : { kind: "code", path, title: nameOf(path) };
+	// read: a repository's code, its config, its workflows (repoFiles.ts). A
+	// file given in the message box is read too, markdown or not: it is what
+	// was handed to the agent, not a note of the folder's.
+	return path.endsWith(".md") && !path.startsWith(GIVEN) ? null : { kind: "code", path, title: nameOf(path) };
 }
 
 export const isPage = (path: string | null): boolean => pageOf(path) !== null;

@@ -423,3 +423,15 @@ test("읽기는 글자와 쓰인 시각을 주고, 글자가 아닌 것은 그�
   assert.match(log.text, /^early line\n/, "begins on a whole line");
   assert.match(log.text, /last line\n\(exit 0\)\n$/, "and ends with the end");
 });
+
+test("입력창에 준 문서는 탭에 열리지만, 폴더의 문서 목록이 묻는 문서는 아니다", async () => {
+  const { messageDocumentAt } = await import("../vault.ts");
+  mkdirSync(join(DIR, ".octave/attachments/ab12cd34"), { recursive: true });
+  writeFileSync(join(DIR, ".octave/attachments/ab12cd34/paper.pdf"), "%PDF");
+  writeFileSync(join(DIR, ".octave/attachments/ab12cd34/notes.md"), "# x");
+  assert.equal(messageDocumentAt(DIR, ".octave/attachments/ab12cd34/paper.pdf"), ".octave/attachments/ab12cd34/paper.pdf");
+  assert.equal(documentAt(DIR, ".octave/attachments/ab12cd34/paper.pdf"), null, "목록과 감시가 묻는 쪽에는 없다");
+  assert.equal(messageDocumentAt(DIR, ".octave/attachments/ab12cd34/notes.md"), null, "문서만");
+  assert.equal(codeAt(DIR, ".octave/attachments/ab12cd34/notes.md")?.path, ".octave/attachments/ab12cd34/notes.md", "글로 읽는 탭에는 열린다");
+  assert.equal(codeAt(DIR, ".pi/history/a.jsonl"), null, "앱의 폴더는 여전히 아니다");
+});

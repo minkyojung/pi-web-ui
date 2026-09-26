@@ -290,6 +290,16 @@ export function documentAt(root: string, given: string): string | null {
 }
 
 /**
+ * A document given in the message box (messageFileAt), for its chip to open
+ * in a tab. Apart from documentAt, which the lists and the watcher ask: what
+ * was handed to the agent is not one of the folder's documents to offer.
+ */
+export function messageDocumentAt(root: string, given: string): string | null {
+	const file = messageFileAt(root, given);
+	return file && isDocument(file.path) ? file.path : null;
+}
+
+/**
  * The note a tool's path argument names, as the vault knows notes.
  *
  * pi's tools take a path as given, relative or absolute and spelled however
