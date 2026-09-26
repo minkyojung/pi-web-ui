@@ -1,4 +1,9 @@
 @import "tailwindcss";
+/* The enter and exit the shadcn kit's parts are written with — animate-in,
+   fade-in-0, zoom-in-95, slide-in-from-top-2 on a menu, a dialog, a tooltip
+   — which shadcn's setup brings and this one had left out, so the classes
+   were there and nothing moved. */
+@import "tw-animate-css";
 /* The window's typeface, Pretendard: Inter's Latin with a Hangul drawn to sit
    beside it, one family for a line that is half of each — which notes and
    conversations here are. The system face it replaces has no Hangul of its
@@ -649,4 +654,19 @@
  */
 [data-radix-popper-content-wrapper]:has(> #chip-preview) {
 	pointer-events: none;
+}
+
+/*
+ * With motion reduced, a menu, a dialog or a tooltip is simply there and then
+ * gone (tw-animate-css, above): no animation, and so none for Radix to wait
+ * on before it takes the thing away.
+ */
+@media (prefers-reduced-motion: reduce) {
+	/* The kit writes them behind a state — data-[state=open]:animate-in — so
+	   it is the name inside the class that is matched, and it has to win over
+	   that state's selector. */
+	[class*="animate-in"],
+	[class*="animate-out"] {
+		animation: none !important;
+	}
 }
