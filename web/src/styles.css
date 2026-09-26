@@ -504,6 +504,12 @@
 @keyframes step-in {
   from { opacity: 0; transform: translateY(2px); }
 }
+/* With motion reduced the new line is simply there: what changed is still read, and nothing moves to say so. */
+@media (prefers-reduced-motion: reduce) {
+  .step-in {
+    animation: none;
+  }
+}
 
 /*
  * The arc that travels round the agent's ring while it works (ContextGauge).

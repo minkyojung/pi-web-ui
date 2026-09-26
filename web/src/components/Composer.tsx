@@ -123,10 +123,14 @@ function AskingAgain() {
  * It appears with the tab and goes with it; the words appear by being chosen
  * and go by being unchosen. Turned off (FrontToggle), it stays, faded, so
  * what is not going is still said.
+ *
+ * Keyed by the tab (Composer), so another tab rises in as a step does at the
+ * foot of the window (.step-in) — and choosing words, which is the same tab,
+ * does not. Still with motion reduced; the fade when it is turned off stays.
  */
 function Front({ label, chosen, off }: { label: FrontLabel; chosen: ChosenWords | null; off: boolean }) {
 	return (
-		<div id="front" data-kind={label.kind} data-off={off || undefined} className="flex min-w-0 items-center gap-1.5 px-2.5 pt-1.5 pb-2 text-sm data-[off]:opacity-50">
+		<div id="front" data-kind={label.kind} data-off={off || undefined} className="step-in flex min-w-0 items-center gap-1.5 px-2.5 pt-1.5 pb-2 text-sm transition-opacity duration-150 data-[off]:opacity-50">
 			<FrontMark label={label} />
 			{"id" in label && <span className="shrink-0 text-muted-foreground tabular-nums">{label.id}</span>}
 			{label.name !== null && <span className="min-w-0 shrink truncate">{label.name}</span>}
@@ -396,7 +400,7 @@ export function Composer({ front }: { front: string | null }) {
 			    into the box, so the box keeps the width and the place it has without
 			    it, in line with everything else in the panel. */}
 			<div className={label ? "-mx-[5px] -mb-[5px] rounded-lg border bg-muted/40 p-1" : undefined}>
-			{label && <Front label={label} chosen={pointing} off={going === null} />}
+			{label && <Front key={front} label={label} chosen={pointing} off={going === null} />}
 			<PromptInput accept="image/*" onSubmit={(message, event) => send_(event.currentTarget, message.text, message.files)}>
 				<Attached />
 				{adding.length > 0 && (
