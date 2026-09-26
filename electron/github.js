@@ -23,9 +23,9 @@ function gh(args, { timeoutMs = 15_000, cwd } = {}) {
 /**
  * The signed-in person as GitHub's answer to `gh api user` has them, cut to
  * what the app shows — or null for anything that is not that answer. Only
- * what the sign-in's own scopes give: the public profile, so no private
- * email. What they have not filled in is null rather than made up — a
- * person with no name has none, and the page decides what stands in for
+ * the public profile: `email` is the one they chose to show, not their
+ * others (emails). What they have not filled in is null rather than made up
+ * — a person with no name has none, and the page decides what stands in for
  * it. Pure, so it can be read in a test.
  */
 export function profileFrom(out) {
@@ -43,7 +43,53 @@ export function profileFrom(out) {
 		avatarUrl: typeof user.avatar_url === "string" && user.avatar_url.startsWith("https://") ? user.avatar_url : null,
 		url: `https://github.com/${user.login}`,
 		id: Number.isInteger(user.id) && user.id > 0 ? user.id : null,
+		email: typeof user.email === "string" && /^[^\s@<>]+@[^\s@<>]+$/.test(user.email) ? user.email : null,
 	};
+}
+
+/**
+ * The person's email addresses as GitHub's list has them (`gh api
+ * user/emails`) — the verified ones, since GitHub ties a commit to no other
+ * — or null for anything that is not that list. Pure.
+ */
+export function emailsFrom(out) {
+	let list;
+	try {
+		list = JSON.parse(out);
+	} catch {
+		return null;
+	}
+	if (!Array.isArray(list)) return null;
+	return list
+		.filter((entry) => entry && typeof entry.email === "string" && entry.verified === true)
+		.map((entry) => ({ email: entry.email, primary: entry.primary === true, visibility: typeof entry.visibility === "string" ? entry.visibility : null }));
+}
+
+/**
+ * The signed-in person's email addresses, or null when gh cannot say — and
+ * it cannot until the sign-in has been let read them (the user:email scope;
+ * allowEmail): GitHub answers 404 without it.
+ */
+export async function emails() {
+	return emailsFrom(await gh(["api", "user/emails"]));
+}
+
+/**
+ * The address to offer a person to commit as, as GitHub Desktop picks it
+ * (lookupPreferredEmail in desktop/desktop's app/src/lib/email.ts): the
+ * primary if it is public — a list without visibility is an older GitHub's,
+ * where every address was — else a noreply one on the list, else the first
+ * on it, else the noreply address made from their number. Without the list
+ * the profile's public email stands in for a public primary. Null when
+ * there is nothing to make one from. Pure.
+ */
+export function preferredEmail(profile, list) {
+	const made = noreplyEmail(profile.id, profile.login);
+	if (!list) return profile.email ?? made;
+	if (list.length === 0) return made;
+	const primary = list.find((entry) => entry.primary);
+	if (primary && (primary.visibility === "public" || primary.visibility === null)) return primary.email;
+	return list.find((entry) => entry.email.toLowerCase().endsWith("@users.noreply.github.com"))?.email ?? list[0].email;
 }
 
 /**

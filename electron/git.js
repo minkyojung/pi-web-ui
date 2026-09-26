@@ -51,6 +51,29 @@ export async function identity() {
 	return { name: made?.[1] || name || null, email: made?.[2] || email || null, set: false };
 }
 
+/** A name and an email git can write a commit as: something each, and nothing that would break the line git writes them on. */
+function isIdentity(name, email) {
+	const plain = (value) => typeof value === "string" && value.trim() !== "" && !/[\n<>]/.test(value);
+	return plain(name) && plain(email) && /^[^\s@]+@[^\s@]+$/.test(email);
+}
+
+/**
+ * Git told who commits on this machine, in the person's global configuration
+ * as `git config --global` tells it — both, over whatever was there, since
+ * the person chose them. `{}` when done, `{ error }` for a name or an email
+ * that is not one, or git's own words.
+ */
+export async function setIdentity({ name, email } = {}) {
+	if (!isIdentity(name, email)) return { error: "That is not a name and an email." };
+	try {
+		await git(homedir(), ["config", "--global", "user.name", name.trim()]);
+		await git(homedir(), ["config", "--global", "user.email", email.trim()]);
+		return {};
+	} catch (err) {
+		return { error: err.message };
+	}
+}
+
 /**
  * Git told who commits on this machine, in the person's global configuration
  * as `git config --global` tells it — only what it has no word for yet: a
@@ -59,8 +82,7 @@ export async function identity() {
  * git's own words.
  */
 export async function fillIdentity({ name, email } = {}) {
-	const plain = (value) => typeof value === "string" && value.trim() !== "" && !/[\n<>]/.test(value);
-	if (!plain(name) || !plain(email) || !/^[^\s@]+@[^\s@]+$/.test(email)) return { error: "That is not a name and an email." };
+	if (!isIdentity(name, email)) return { error: "That is not a name and an email." };
 	try {
 		for (const [key, value] of [["user.name", name], ["user.email", email]]) {
 			const told = await git(homedir(), ["config", "--get", key]).catch(() => "");

@@ -6,8 +6,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { CITIES, pickCity } from "../electron/cities.js";
-import { branchOf, changesIn, fetchOrigin, fillIdentity, identity, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf, startOf } from "../electron/git.js";
-import { deviceCodeFrom, login, noreplyEmail, profileFrom, signIn, standing } from "../electron/github.js";
+import { branchOf, changesIn, fetchOrigin, fillIdentity, identity, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf, setIdentity, startOf } from "../electron/git.js";
+import { deviceCodeFrom, emailsFrom, login, noreplyEmail, preferredEmail, profileFrom, signIn, standing } from "../electron/github.js";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
 
@@ -157,16 +157,18 @@ test("signing in shows gh's code as gh says it, and ends as gh ends — well, or
 	giving.abort();
 	assert.deepEqual(await gone, { cancelled: true });
 	const standings = await withGh(`case "$*" in *--version*) echo "gh version 0";; *"api user"*) echo '{"login":"someone","id":7,"name":"Some One","avatar_url":"https://avatars.githubusercontent.com/u/7?v=4","html_url":"https://github.com/someone"}';; esac`, async () => [await standing(), await login()]);
-	assert.deepEqual(standings, [{ state: "signed-in", login: "someone", name: "Some One", avatarUrl: "https://avatars.githubusercontent.com/u/7?v=4", url: "https://github.com/someone", id: 7 }, "someone"]);
+	assert.deepEqual(standings, [{ state: "signed-in", login: "someone", name: "Some One", avatarUrl: "https://avatars.githubusercontent.com/u/7?v=4", url: "https://github.com/someone", id: 7, email: null }, "someone"]);
 	const out = await withGh('case "$*" in *--version*) echo "gh version 0";; *) exit 1;; esac', () => standing());
 	assert.deepEqual(out, { state: "signed-out" });
 });
 
 /** GitHub's answer to `gh api user`, as it gives it for its own example account (docs.github.com, "Get the authenticated user"), cut to what is read and a little more. */
-const octocat = { login: "octocat", id: 1, avatar_url: "https://github.com/images/error/octocat_happy.gif", html_url: "https://github.com/octocat", name: "monalisa octocat", company: "GitHub", bio: "There once was...", followers: 20 };
+const octocat = { login: "octocat", id: 1, avatar_url: "https://github.com/images/error/octocat_happy.gif", html_url: "https://github.com/octocat", name: "monalisa octocat", company: "GitHub", email: "octocat@github.com", bio: "There once was...", followers: 20 };
 
-test("the person is read off GitHub's answer: login, name, picture, page and number — nothing else", () => {
-	assert.deepEqual(profileFrom(JSON.stringify(octocat)), { login: "octocat", name: "monalisa octocat", avatarUrl: "https://github.com/images/error/octocat_happy.gif", url: "https://github.com/octocat", id: 1 });
+test("the person is read off GitHub's answer: login, name, picture, page, number and public email — nothing else", () => {
+	assert.deepEqual(profileFrom(JSON.stringify(octocat)), { login: "octocat", name: "monalisa octocat", avatarUrl: "https://github.com/images/error/octocat_happy.gif", url: "https://github.com/octocat", id: 1, email: "octocat@github.com" });
+	assert.equal(profileFrom(JSON.stringify({ ...octocat, email: null })).email, null, "no public email is no email");
+	assert.equal(profileFrom(JSON.stringify({ ...octocat, email: "not an email" })).email, null);
 });
 
 test("what a person has not filled in is said to be missing, not made up", () => {
@@ -244,6 +246,50 @@ test("GitHub's private address for a person is made of their number and their lo
 	assert.equal(noreplyEmail(1, "octocat"), "1+octocat@users.noreply.github.com");
 	assert.equal(noreplyEmail(null, "octocat"), null, "without the number there is no address that stays theirs");
 	assert.equal(noreplyEmail(1, ""), null);
+});
+
+test("the person's email addresses are read off GitHub's list, the verified ones only", () => {
+	const list = [
+		{ email: "octocat@github.com", verified: true, primary: true, visibility: "public" },
+		{ email: "old@example.com", verified: false, primary: false, visibility: null },
+		{ email: "1+octocat@users.noreply.github.com", verified: true, primary: false, visibility: null },
+	];
+	assert.deepEqual(emailsFrom(JSON.stringify(list)), [
+		{ email: "octocat@github.com", primary: true, visibility: "public" },
+		{ email: "1+octocat@users.noreply.github.com", primary: false, visibility: null },
+	]);
+	for (const out of [null, "", "not json", "{}", JSON.stringify({ message: "Not Found" })]) assert.equal(emailsFrom(out), null, String(out));
+	assert.deepEqual(emailsFrom("[]"), []);
+});
+
+test("the address offered to commit as is GitHub Desktop's: the primary if public, else a noreply one, else the first, else one made", () => {
+	const me = { login: "octocat", id: 1, email: null };
+	const primary = { email: "octocat@github.com", primary: true, visibility: "public" };
+	const hidden = { ...primary, visibility: "private" };
+	const noreply = { email: "1+octocat@users.noreply.github.com", primary: false, visibility: null };
+	const work = { email: "mona@work.example", primary: false, visibility: null };
+	assert.equal(preferredEmail(me, [work, primary, noreply]), "octocat@github.com");
+	assert.equal(preferredEmail(me, [{ ...primary, visibility: null }]), "octocat@github.com", "no visibility is an older GitHub's public");
+	assert.equal(preferredEmail(me, [work, hidden, noreply]), "1+octocat@users.noreply.github.com", "a private primary is not put in every commit");
+	assert.equal(preferredEmail(me, [work, hidden]), "mona@work.example");
+	assert.equal(preferredEmail(me, []), "1+octocat@users.noreply.github.com");
+	// Without the list — a sign-in that was never let read it — the profile's public email stands for a public primary.
+	assert.equal(preferredEmail({ ...me, email: "octocat@github.com" }, null), "octocat@github.com");
+	assert.equal(preferredEmail(me, null), "1+octocat@users.noreply.github.com");
+	assert.equal(preferredEmail({ login: "octocat", id: null, email: null }, null), null, "nothing to make one from");
+});
+
+test("setting who commits writes the name and the email, over what was there", async () => {
+	await withHome(async (home) => {
+		execFileSync("git", ["config", "--global", "user.name", "Mona Lisa"], { cwd: home });
+		execFileSync("git", ["config", "--global", "user.email", "mona@example.com"], { cwd: home });
+		assert.deepEqual(await setIdentity({ name: "monalisa octocat", email: "1+octocat@users.noreply.github.com" }), {});
+		assert.deepEqual(await identity(), { name: "monalisa octocat", email: "1+octocat@users.noreply.github.com", set: true });
+		for (const bad of [{ name: "", email: "a@b" }, { name: "a", email: "not an email" }, { name: "a\nb", email: "a@b" }, { name: "a", email: "<a@b>" }, {}]) {
+			assert.ok((await setIdentity(bad)).error, JSON.stringify(bad));
+		}
+		assert.deepEqual(await identity(), { name: "monalisa octocat", email: "1+octocat@users.noreply.github.com", set: true }, "nothing bad was written");
+	});
 });
 
 test("a clone is asked for by owner/name or by a GitHub address, and nothing else", async () => {
