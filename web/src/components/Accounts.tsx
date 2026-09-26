@@ -185,11 +185,17 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 					) : (
 						<span className="truncate text-sm font-medium">GitHub</span>
 					)}
-					{about && <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">{about}</span>}
+					{(about || identity?.set) && (
+						<span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+							{about}
+							{about && identity?.set && <span aria-hidden>·</span>}
+							{identity?.set && <CommitsAs identity={identity} />}
+						</span>
+					)}
 				</div>
 				<span className="flex shrink-0 gap-1">{actions}</span>
 			</div>
-			{identity && <Commits bridge={bridge} identity={identity} github={me !== null && me.id !== null} />}
+			{identity && !identity.set && <Commits bridge={bridge} identity={identity} github={me !== null && me.id !== null} />}
 			{signing && (
 				<Dialog open onOpenChange={(open) => !open && (busy ? void bridge.cancel() : setSigning(null))}>
 					<DialogContent className="max-w-md" showCloseButton={false}>
@@ -220,6 +226,19 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 				</Dialog>
 			)}
 		</div>
+	);
+}
+
+/**
+ * Who git commits as, when git was told: the address alone, since it is what
+ * GitHub ties a commit to an account by — the name, as git has it, is there
+ * on pointing at it.
+ */
+function CommitsAs({ identity }: { identity: Identity }) {
+	return (
+		<span id="commitIdentity" className="min-w-0 truncate" title={`Commits on this Mac are made as ${identity.name} <${identity.email}>`}>
+			commits as {identity.email}
+		</span>
 	);
 }
 
