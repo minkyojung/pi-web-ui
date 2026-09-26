@@ -25,12 +25,13 @@ export const nameOf = (path: string): string => path.slice(path.lastIndexOf("/")
  * and edged in the input's line — a step down from the box and the message
  * it sits in, whose fill is the theme's secondary, and an edge that shows in
  * both themes, where the theme's border is all but gone in the dark one.
- * Less round, and sized to sit in a line of text: a word's height, the
+ * A step down from the text around it — its radius, its size, its colour —
+ * as a thing named in a line rather than a word of it: a word's height, the
  * file's name cut short past a width.
  */
 export const CHIP_CLASS = cn(
 	badgeVariants({ variant: "outline" }),
-	"mx-0.5 max-w-64 justify-start rounded-md border-input bg-background px-1.5 py-px align-baseline text-[0.9em] leading-snug font-normal [&>svg]:size-3.5",
+	"mx-0.5 max-w-64 justify-start rounded-sm border-input bg-background px-1.5 py-px align-baseline text-xs leading-snug font-normal text-subtle-foreground [&>svg]:size-3",
 );
 
 /** The icon inside it. */
