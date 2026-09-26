@@ -12,6 +12,7 @@ import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "./ui/select";
 import { Spinner } from "./ui/spinner";
 
 /**
@@ -231,24 +232,30 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
  * Mac's names and commits as that without a word; then, for the person
  * signed in, this offers what GitHub Desktop would (commitChoices) in its
  * place, quietly, for one Save to set.
+ *
+ * Edit changes either, as Desktop's Git settings do: the name typed, the
+ * address picked from the person's own on GitHub — or typed, under Other,
+ * and whenever the sign-in cannot read them.
  */
 function Commits({ bridge, identity, login }: { bridge: GitHubBridge; identity: Identity; login: string | null }) {
 	const [choices, setChoices] = useState<CommitChoices | null>(null);
+	const [editing, setEditing] = useState<{ name: string; email: string; typed: boolean } | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	// Asked for whoever is signed in, and asked again when that changes.
+	// Asked for whoever is signed in, when there is something to offer them:
+	// git was never told, or they are choosing. Asked again when that changes.
+	const asking = login !== null && (!identity.set || editing !== null);
 	useEffect(() => {
-		setChoices(null);
-		if (!login || identity.set) return;
+		if (!asking) return;
 		let current = true;
 		void bridge.commitChoices().then((got) => current && setChoices(got));
 		return () => {
 			current = false;
 		};
-	}, [bridge, login, identity.set]);
+	}, [bridge, asking, login]);
 
-	const offered = !identity.set && choices?.email ? { name: choices.name, email: choices.email } : null;
+	const offered = !identity.set && login && choices?.email ? { name: choices.name, email: choices.email } : null;
 	const shown = offered ?? identity;
 	const who = shown.name && shown.email ? `${shown.name} <${shown.email}>` : (shown.email ?? shown.name ?? "No one");
 
@@ -258,8 +265,65 @@ function Commits({ bridge, identity, login }: { bridge: GitHubBridge; identity: 
 		const out = await bridge.setIdentity(who);
 		await refreshGitHub();
 		setError(out.error ?? null);
+		if (!out.error) setEditing(null);
 		setBusy(false);
 	};
+
+	if (editing) {
+		const emails = login ? (choices?.emails ?? null) : null;
+		// The address being edited is among those offered even when it is not the person's on GitHub, so picking another does not lose it.
+		const listed = emails && (editing.email && !emails.includes(editing.email) ? [editing.email, ...emails] : emails);
+		const valid = editing.name.trim() !== "" && /^[^\s@<>]+@[^\s@<>]+$/.test(editing.email.trim());
+		return (
+			<form
+				className="flex flex-col gap-1 border-t px-3 py-2 text-xs"
+				onSubmit={(e) => {
+					e.preventDefault();
+					if (valid) void save({ name: editing.name.trim(), email: editing.email.trim() });
+				}}
+			>
+				<div className="flex min-h-7 items-center gap-3">
+					<span className="shrink-0 text-muted-foreground">Commits as</span>
+					<div className="grid min-w-0 flex-1 grid-cols-[2fr_3fr] gap-2">
+						<Input aria-label="Name" className="h-7 text-xs md:text-xs" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} autoFocus />
+						{listed && !editing.typed ? (
+							<Select value={editing.email} onValueChange={(email) => setEditing(email === OTHER ? { ...editing, email: "", typed: true } : { ...editing, email })}>
+								<SelectTrigger aria-label="Email" size="sm" className="h-7 w-full min-w-0 text-xs">
+									<SelectValue placeholder="Email" />
+								</SelectTrigger>
+								<SelectContent>
+									{listed.map((email) => (
+										<SelectItem key={email} value={email} className="text-xs">
+											{email}
+										</SelectItem>
+									))}
+									<SelectSeparator />
+									<SelectItem value={OTHER} className="text-xs">
+										Other…
+									</SelectItem>
+								</SelectContent>
+							</Select>
+						) : (
+							<Input aria-label="Email" type="email" placeholder="Email" className="h-7 text-xs md:text-xs" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} autoFocus={editing.typed} />
+						)}
+					</div>
+					<span className="flex shrink-0 gap-1">
+						<Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" disabled={busy} onClick={() => (setEditing(null), setError(null))}>
+							Cancel
+						</Button>
+						<Button type="submit" variant="outline" size="sm" className="h-7 text-xs" disabled={busy || !valid}>
+							Save
+						</Button>
+					</span>
+				</div>
+				{error && (
+					<p role="alert" className="text-destructive">
+						{error}
+					</p>
+				)}
+			</form>
+		);
+	}
 
 	return (
 		<div className="flex flex-col gap-1 border-t px-3 py-2 text-xs">
@@ -272,11 +336,16 @@ function Commits({ bridge, identity, login }: { bridge: GitHubBridge; identity: 
 				>
 					{who}
 				</span>
-				{offered && (
-					<Button type="button" variant="outline" size="sm" className="h-7 shrink-0 text-xs" disabled={busy} onClick={() => save(offered)}>
-						Save
+				<span className="flex shrink-0 gap-1">
+					<Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" disabled={busy} onClick={() => setEditing({ name: shown.name ?? "", email: identity.set || offered ? (shown.email ?? "") : "", typed: false })}>
+						Edit
 					</Button>
-				)}
+					{offered && (
+						<Button type="button" variant="outline" size="sm" className="h-7 text-xs" disabled={busy} onClick={() => save(offered)}>
+							Save
+						</Button>
+					)}
+				</span>
 			</div>
 			{error && (
 				<p role="alert" className="text-destructive">
@@ -286,6 +355,9 @@ function Commits({ bridge, identity, login }: { bridge: GitHubBridge; identity: 
 		</div>
 	);
 }
+
+/** The value of Other… in the list of addresses, which no address can be. */
+const OTHER = "\u0000other";
 
 /** The first letters of the first two words of a name, as a picture's stand-in: "William Jung" is WJ. */
 function initials(name: string): string {

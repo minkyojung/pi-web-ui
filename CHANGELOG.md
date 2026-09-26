@@ -6,7 +6,7 @@ the versions follow [SemVer](https://semver.org/), and while they begin with 0 a
 
 ## [Unreleased]
 ### Added
-- Under your GitHub account in Settings › Accounts, who your commits are made as on this Mac. When git was never told, it would make up an address from the Mac's names that GitHub cannot tell is yours; Accounts offers what GitHub has for you in its place — the address GitHub Desktop would pick — and Save sets it.
+- Under your GitHub account in Settings › Accounts, who your commits are made as on this Mac. When git was never told, it would make up an address from the Mac's names that GitHub cannot tell is yours; Accounts offers what GitHub has for you in its place — the address GitHub Desktop would pick — and Save sets it. Edit changes either: the name typed, and the address picked from your own on GitHub or typed under Other.
 - `/push`, `/resolve-conflicts`, `/fix-checks` and `/address-review`, for a pull request that is open: the agent pushes what is here; merges the base in and resolves the conflicts; reads on GitHub why the checks failed and fixes the cause; or reads the review and makes the changes asked for — and pushes when it is done.
 - Merge at the foot of the window, once GitHub says nothing stands in the way of a pull request: press it, then Confirm merge, and it is merged the way the repository merges by default — the button says which on pointing at it. If GitHub refuses, what it said comes up in the corner.
 - Create PR at the foot of the window, where the pull request will be once there is one: the agent commits what is left, pushes, and opens the pull request against the base, and the conversation says "Create a PR". Its arrow opens a draft instead. `/create-pr` does the same, and `/create-pr draft`.
