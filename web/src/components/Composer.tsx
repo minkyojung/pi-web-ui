@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ArrowUpIcon, CornerDownLeftIcon, PencilIcon, ScanIcon, SquareIcon, TextQuoteIcon, X } from "lucide-react";
 
-import { attach, filesToAttach, imagesOf } from "../attachments";
+import { attach, pastedName } from "../attachments";
 import { type Chosen as ChosenWords, chosenStore } from "../chosen";
 import { acceptCommand, commandQuery, matchCommands, namesCommand } from "../commandMenu";
 import { draftStore } from "../draft";
@@ -29,7 +29,6 @@ import {
 	PromptInputHeader,
 	PromptInputSubmit,
 	PromptInputTools,
-	usePromptInputAttachments,
 } from "./ai-elements/prompt-input";
 
 const MOD = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
@@ -37,6 +36,8 @@ const MOD = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
 const SOURCE = { extension: "command", prompt: "prompt", skill: "skill" } as const;
 /** No more notes than can be looked through; the word narrows it from there. */
 const NOTES_OFFERED = 30;
+/** A chip's file the model is shown as a picture (pictures.ts SHOWN, by name). */
+const PICTURE = /\.(png|jpe?g|gif|webp)$/i;
 const folderOf = (path: string) => (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : undefined);
 
 /**
@@ -55,11 +56,10 @@ function submit(
 	behavior: "followUp" | "steer",
 	front: string | null,
 	chosen: ChosenWords | null,
-	files: { url?: string; mediaType?: string; filename?: string }[] = [],
+	pictures: string[],
 ): boolean {
 	const trimmed = text.trim();
 	if (!trimmed) return false;
-	const images = imagesOf(files);
 	flushSaves();
 	// A first word that names a command on the list pi sent is one, and pi is
 	// told so; any other "/" is a character. See commandMenu.ts.
@@ -76,7 +76,8 @@ function submit(
 		// question is about, and the words stay out of the message itself.
 		...(chosen && chosen.path === front ? { chosen: chosen.text, ...(chosen.page ? { page: chosen.page } : {}) } : {}),
 		...(command ? { command } : {}),
-		...(images.length ? { images } : {}),
+		// The pictures among the chips, for the server to show the model.
+		...(pictures.length ? { pictures } : {}),
 		behavior,
 		...(asking ? { entryId: asking.entryId } : {}),
 	});
@@ -173,35 +174,6 @@ function FrontToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 }
 
 /**
- * What was pasted into the box, above it, each with the way to take it back
- * out. Images only: those are what ride with a message, since pi's models
- * read them. Any other file goes into the folder and is named in the text
- * instead — see `take` in Composer.
- */
-function Attached() {
-	const attachments = usePromptInputAttachments();
-	if (attachments.files.length === 0) return null;
-	return (
-		<PromptInputHeader id="attached">
-			{attachments.files.map((f) => (
-				<span key={f.id} className="relative inline-flex">
-					<img src={f.url} alt={f.filename ?? "pasted image"} className="size-12 rounded-sm border object-cover" />
-					<Button
-						variant="secondary"
-						size="icon-xs"
-						className="absolute -top-1.5 -right-1.5 size-4 rounded-full"
-						onClick={() => attachments.remove(f.id)}
-						aria-label="Do not send this image"
-					>
-						<X />
-					</Button>
-				</span>
-			))}
-		</PromptInputHeader>
-	);
-}
-
-/**
  * Where you write to pi.
  *
  * What to do with a message typed mid-run used to be a dropdown, which asked
@@ -246,21 +218,28 @@ export function Composer({ front }: { front: string | null }) {
 	const steering = useRef(false);
 	// Sent, the box is reset by the form, which fires no change: the mirror is
 	// emptied by hand.
-	const send_ = (form: HTMLFormElement, value: string, files: { url?: string; mediaType?: string; filename?: string }[]) => {
+	const send_ = (form: HTMLFormElement, value: string) => {
 		const behavior = steering.current ? "steer" : "followUp";
 		steering.current = false;
-		if (submit(form, value, behavior, going, going ? pointing : null, files)) box.current?.clear();
+		const pictures = (box.current?.chips() ?? []).filter((path) => PICTURE.test(path));
+		if (submit(form, value, behavior, going, going ? pointing : null, pictures)) box.current?.clear();
 	};
-	// A file that is not an image, dropped or pasted: it goes where the message
-	// box's files are kept (.octave/attachments, out of git) and into the
-	// message as a chip, where the caret is when the answer comes, since the
-	// person may have typed on.
-	// The form below still sees the same event and takes the images from it.
+	// A file dropped or pasted, of any kind: it goes where the message box's
+	// files are kept (.octave/attachments, out of git) and into the message as
+	// a chip, where the caret is when the answer comes, since the person may
+	// have typed on. A picture too — one rule for every file; the model is
+	// shown a picture from there (workspace.ts). Taken here first, so neither
+	// the form nor the editor under this does anything else with it.
 	const [adding, setAdding] = useState<string[]>([]);
-	const take = (list: FileList | undefined | null) => {
-		for (const file of filesToAttach(list ?? [])) {
+	const take = (event: { preventDefault(): void; stopPropagation(): void }, list: FileList | undefined | null) => {
+		if (!list?.length) return;
+		event.preventDefault();
+		event.stopPropagation();
+		for (const file of [...list]) {
+			// A clipboard's picture comes as "image.png" whatever it shows.
+			const name = file.type.startsWith("image/") ? pastedName(file.name, file.type) : file.name;
 			setAdding((names) => [...names, file.name]);
-			attach(file, { to: "message" })
+			attach(file, { to: "message", name })
 				.then((path) => box.current?.insertChip(path))
 				.catch((err: Error) => applyServerEvent({ type: "error", message: `Could not add ${file.name}: ${err.message}` }))
 				.finally(() => setAdding((names) => names.filter((n, i) => i !== names.indexOf(file.name))));
@@ -370,7 +349,7 @@ export function Composer({ front }: { front: string | null }) {
 			{/* The list sits over the box's top edge, so it is placed from out here:
 			    the box clips what is inside it (overflow-hidden), and a list drawn
 			    inside was there and could not be seen. */}
-			<div className="relative" onDropCapture={(e) => take(e.dataTransfer?.files)} onPasteCapture={(e) => take(e.clipboardData?.files)}>
+			<div className="relative" onDropCapture={(e) => take(e, e.dataTransfer?.files)} onPasteCapture={(e) => take(e, e.clipboardData?.files)}>
 			{list && (
 				<SuggestMenu id={list.id} items={list.items} selected={current?.value ?? ""} onSelect={setSelected} onPick={list.pick} />
 			)}
@@ -381,8 +360,7 @@ export function Composer({ front }: { front: string | null }) {
 			    it, in line with everything else in the panel. */}
 			<div className={label ? "-mx-[5px] -mb-[5px] rounded-lg border bg-muted/40 p-1" : undefined}>
 			{label && <Front key={front} label={label} chosen={pointing} off={going === null} />}
-			<PromptInput accept="image/*" onSubmit={(message, event) => send_(event.currentTarget, message.text, message.files)}>
-				<Attached />
+			<PromptInput onSubmit={(message, event) => send_(event.currentTarget, message.text)}>
 				{adding.length > 0 && (
 					<PromptInputHeader id="adding" className="text-xs text-muted-foreground">
 						Adding {adding.join(", ")} to the folder…

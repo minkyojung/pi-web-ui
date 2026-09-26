@@ -3194,7 +3194,7 @@ check("the tab in front goes beside the message as its address: a file with the 
 	assert.equal(page.chosen, undefined);
 });
 
-check("a picture pasted into the message box rides with the message as bytes, named as its copy will be kept", async ({ app }) => {
+check("a picture pasted into the message box is a chip like any file, kept in the box's folder under a name from the moment, and goes as a picture to show", async ({ app, cwd }) => {
 	await app.evaluate(`(() => { window.__sent = []; const send = WebSocket.prototype.send; WebSocket.prototype.send = function (d) { if (this.url.endsWith("/ws") && JSON.parse(String(d)).type === "prompt") return void window.__sent.push(JSON.parse(String(d))); return send.call(this, d); }; })()`);
 	// A clipboard's picture, which comes as "image.png" whatever it shows.
 	await app.evaluate(`(() => {
@@ -3205,13 +3205,17 @@ check("a picture pasted into the message box rides with the message as bytes, na
 		t.focus();
 		t.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }));
 	})()`);
-	await until("the picture over the box", () => app.evaluate("!!document.querySelector('#attached img')"));
+	const path = await until("the picture a chip in the box", () => app.evaluate("document.querySelector('[data-file-chip]')?.dataset.path ?? null"));
+	assert.match(path, /^\.octave\/attachments\/[0-9a-f]{8}\/Pasted image \d{14}\.png$/, "a clipboard's picture is named from the moment");
+	assert.ok(existsSync(join(cwd, path)), "and kept in the box's folder");
+	assert.equal(await app.evaluate("!!document.querySelector('#attached')"), false, "no card over the box: a chip, as every file is");
+	// The chip is followed by a space already, as a word is.
 	await app.keys("what is this");
 	await app.press("Enter");
 	const sent = await until("the prompt to go", () => app.evaluate("window.__sent.at(-1) ?? null"));
-	assert.equal(sent.images?.length, 1);
-	assert.equal(sent.images[0].mimeType, "image/png");
-	assert.match(sent.images[0].name, /^Pasted image \d{14}\.png$/, "a clipboard's picture is named from the moment");
+	assert.equal(sent.text, `@"${path}" what is this`, "the chip is its path in the text");
+	assert.deepEqual(sent.pictures, [path], "and the server is told to show it");
+	assert.equal(sent.images, undefined, "no bytes from the page");
 });
 
 /**

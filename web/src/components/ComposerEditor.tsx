@@ -8,12 +8,13 @@ import { type Editor, EditorContent, useEditor } from "@tiptap/react";
 import { lineBefore } from "../composer/caret";
 import { extensions } from "../composer/schema";
 import { CHIP, docToText, textToDoc } from "../composer/text";
-import { usePromptInputAttachments } from "./ai-elements/prompt-input";
 
 /** What the rest of the box does with it, in the text it stands for (composer/text.ts). */
 export interface ComposerEditorHandle {
 	/** The whole message as text, a chip its `@path`. */
 	text(): string;
+	/** The files the message names as chips, in order. */
+	chips(): string[];
 	/** The caret's line up to the caret, and where it starts — see composer/caret.ts. */
 	before(): { text: string; start: number };
 	/** The whole box, from text; the caret at its end, the focus where it was. */
@@ -30,8 +31,8 @@ export interface ComposerEditorHandle {
  * The message box itself: a ProseMirror document where a file is a chip in
  * the line (composer/schema.ts), in place of the textarea that was here, and
  * doing what that did — Enter sends, Shift+Enter breaks the line, nothing is
- * sent mid-composition, Backspace in an empty box takes the last picture
- * back, a pasted picture joins the message. What it holds is read and written
+ * sent mid-composition. Files pasted or dropped never reach it: the Composer
+ * takes them first and puts their chips in. What it holds is read and written
  * as text (the handle), so the lists, the draft and what is sent are the
  * Composer's as they were.
  *
@@ -54,12 +55,11 @@ export function ComposerEditor({
 	/** The Composer's keys first — the lists, steering; true if it took the key. */
 	onKeyDown: (event: KeyboardEvent) => boolean;
 }) {
-	const attachments = usePromptInputAttachments();
 	const input = useRef<HTMLInputElement>(null);
 	// Read by the editor's handlers, which are made once: a handler made anew
 	// on each render would have the editor reconfigured on each render.
-	const latest = useRef({ isFile, onChange, onKeyDown, attachments });
-	latest.current = { isFile, onChange, onKeyDown, attachments };
+	const latest = useRef({ isFile, onChange, onKeyDown });
+	latest.current = { isFile, onChange, onKeyDown };
 
 	const report = (editor: Editor) => {
 		const text = docToText(editor.getJSON());
@@ -100,24 +100,11 @@ export function ComposerEditor({
 					view.dispatch(state.tr.delete($from.pos, $from.pos + 1));
 					return true;
 				}
-				// An empty box, and a picture waiting: Backspace takes it back.
-				const { files, remove } = latest.current.attachments;
-				if (event.key === "Backspace" && state.doc.childCount === 1 && state.doc.firstChild!.childCount === 0 && files.length > 0) {
-					remove(files.at(-1)!.id);
-					return true;
-				}
 				return false;
 			},
 			handlePaste: (view: EditorView, event: ClipboardEvent) => {
 				const data = event.clipboardData;
 				if (!data) return false;
-				// Files: a picture rides with the message; anything else is taken
-				// by the Composer's own paste handler, which has run already.
-				const files = [...data.files];
-				if (files.length > 0) {
-					latest.current.attachments.add(files.filter((f) => f.type.startsWith("image/")));
-					return true;
-				}
 				// Another app's formatting is not a message's: its text only, with
 				// `@path` read back into chips. ProseMirror's own copy (data-pm-slice)
 				// keeps its chips as they are.
@@ -128,8 +115,8 @@ export function ComposerEditor({
 				return true;
 			},
 			handleDrop: (view: EditorView, event: DragEvent) => {
-				// Files dropped are the Composer's to take (a picture the form's);
-				// ProseMirror would write their address in as text.
+				// Files dropped are the Composer's to take, and it has; ProseMirror
+				// would write their address in as text.
 				if (!event.dataTransfer?.files.length) return false;
 				event.preventDefault();
 				return true;
@@ -154,6 +141,13 @@ export function ComposerEditor({
 		handle,
 		() => ({
 			text: () => (editor ? docToText(editor.getJSON()) : ""),
+			chips: () => {
+				const paths: string[] = [];
+				editor?.state.doc.descendants((node) => {
+					if (node.type.name === CHIP) paths.push(String(node.attrs.path));
+				});
+				return paths;
+			},
 			before: () => (editor ? lineBefore(editor.state) : { text: "", start: 1 }),
 			setText: (text) => {
 				// The caret to the end, without taking the focus: the draft is put back
