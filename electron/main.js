@@ -21,6 +21,7 @@ import { reportUrl } from "./report.js";
 import { CONFIG_FILE, DEFAULT_TIMEOUT, isConfig, readConfig } from "./octaveConfig.js";
 import { prefsOf, withPref } from "./prefs.js";
 import { copyInto } from "./copies.js";
+import { asideOf, putBack, setAside } from "./keptAside.js";
 import { runLogsIn } from "./runLogs.js";
 import { createRuns } from "./runs.js";
 import { runScript } from "./scripts.js";
@@ -822,6 +823,17 @@ function archiveWorkspace(path, seen) {
 			await disposeFolder(path);
 			await runs.stop(path);
 			const warning = await archive(root, path);
+			// What was dropped on its message box is out of git, so not on the
+			// branch: moved aside before anything is given back, and moved back
+			// where it was if that cannot be done whole (keptAside.js).
+			try {
+				setAside(path, asideOf(home(), path));
+			} catch (err) {
+				try {
+					putBack(asideOf(home(), path), path);
+				} catch {}
+				return { error: `The files given to the agent here could not be kept, so the workspace was not archived: ${err.message}` };
+			}
 			writeSettings({ ...readSettings(), projects: workspaceState(projectsOf(readSettings(), isCheckout), path, "archiving", { commit }) });
 			await removeWorktree(root, path);
 			writeSettings({ ...readSettings(), projects: workspaceState(projectsOf(readSettings(), isCheckout), path, "archived", { at: new Date().toISOString() }) });
@@ -859,6 +871,14 @@ function restoreWorkspace(path) {
 		if (existsSync(path)) return { error: `There is already a folder at ${path}.` };
 		try {
 			await addBranchWorktree(root, { path, branch: worktree.branch });
+			// Where the messages that named them say they are. One that will not
+			// move stays where it waits, and is said in the log; the workspace
+			// is back either way.
+			try {
+				putBack(asideOf(home(), path), path);
+			} catch (err) {
+				console.error(`[restore] the files given to the agent in ${path} are still in ${asideOf(home(), path)}: ${err.message}`);
+			}
 			writeSettings({ ...readSettings(), projects: workspaceState(projectsOf(readSettings(), isCheckout), path, null) });
 			workspacesChanged();
 			return { root };
@@ -885,6 +905,13 @@ function restoreWorkspace(path) {
 async function finishArchiving() {
 	for (const project of projectsOf(readSettings(), isCheckout)) {
 		for (const worktree of project.worktrees.filter((w) => w.state === "archiving")) {
+			// Set aside before the mark was written; anything still here goes the same way.
+			try {
+				setAside(worktree.path, asideOf(home(), worktree.path));
+			} catch (err) {
+				console.error(`[archive] could not keep the files given to the agent in ${worktree.path}: ${err.message}`);
+				continue;
+			}
 			await removeWorktree(project.path, worktree.path).catch(() => {});
 			writeSettings({ ...readSettings(), projects: workspaceState(projectsOf(readSettings(), isCheckout), worktree.path, "archived", { at: new Date().toISOString() }) });
 		}
