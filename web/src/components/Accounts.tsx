@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { CheckIcon, CopyIcon, ExternalLinkIcon, KeyRoundIcon, UserRoundIcon } from "lucide-react";
 
-import { bridge as githubBridge, githubStore, refresh as refreshGitHub, type Code, type GitHubBridge, type GitHubStanding } from "../github";
+import { bridge as githubBridge, githubStore, identityStore, refresh as refreshGitHub, type Code, type GitHubBridge, type GitHubStanding, type Identity } from "../github";
 import { loginStore, providersStore, type LoginState } from "../serverState";
 import type { LoginEvent, LoginPrompt, ProviderInfo } from "../types";
 import { send } from "../ws";
@@ -113,9 +113,13 @@ export function Accounts() {
  * sign-in is gh's: the shell runs it and says the one-time code as gh gets
  * it, shown here the way a provider's is (Event), and it ends when GitHub
  * says yes or the person gives up.
+ *
+ * Under them, who git commits as on this machine, which the sign-in does not
+ * decide (Commits).
  */
 function GitHub({ bridge }: { bridge: GitHubBridge }) {
 	const standing: GitHubStanding | null = useSyncExternalStore(githubStore.subscribe, githubStore.get);
+	const identity = useSyncExternalStore(identityStore.subscribe, identityStore.get);
 	const [signing, setSigning] = useState<{ code: Code | null; error: string | null } | null>(null);
 	const [busy, setBusy] = useState(false);
 
@@ -176,18 +180,21 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 	}
 
 	return (
-		<div id="github" className={`flex items-center gap-3 rounded-md border px-3 py-2.5 ${me ? "border-transparent bg-muted" : ""}`} title="Kept by gh, so the terminal is signed in too.">
-			<Avatar size="lg">
-				{me?.avatarUrl && <AvatarImage src={me.avatarUrl} alt="" />}
-				<AvatarFallback delayMs={me?.avatarUrl ? 600 : 0} className={me ? "bg-background" : undefined}>
-					{me ? initials(me.name ?? me.login) : <UserRoundIcon className="size-4" />}
-				</AvatarFallback>
-			</Avatar>
-			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-				<span className="truncate text-sm font-medium">{me ? (me.name ?? me.login) : "GitHub"}</span>
-				{about && <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">{about}</span>}
+		<div id="github" className={`flex flex-col rounded-md border ${me ? "border-transparent bg-muted" : ""}`}>
+			<div className="flex items-center gap-3 px-3 py-2.5" title="Kept by gh, so the terminal is signed in too.">
+				<Avatar size="lg">
+					{me?.avatarUrl && <AvatarImage src={me.avatarUrl} alt="" />}
+					<AvatarFallback delayMs={me?.avatarUrl ? 600 : 0} className={me ? "bg-background" : undefined}>
+						{me ? initials(me.name ?? me.login) : <UserRoundIcon className="size-4" />}
+					</AvatarFallback>
+				</Avatar>
+				<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+					<span className="truncate text-sm font-medium">{me ? (me.name ?? me.login) : "GitHub"}</span>
+					{about && <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">{about}</span>}
+				</div>
+				<span className="flex shrink-0 gap-1">{actions}</span>
 			</div>
-			<span className="flex shrink-0 gap-1">{actions}</span>
+			{identity && <Commits bridge={bridge} identity={identity} github={me !== null && me.id !== null} />}
 			{signing && (
 				<Dialog open onOpenChange={(open) => !open && (busy ? void bridge.cancel() : setSigning(null))}>
 					<DialogContent className="max-w-md" showCloseButton={false}>
@@ -216,6 +223,58 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 						</DialogFooter>
 					</DialogContent>
 				</Dialog>
+			)}
+		</div>
+	);
+}
+
+/**
+ * Who git commits as on this machine — the name and address every commit
+ * made here carries, and which GitHub ties to an account — as GitHub
+ * Desktop shows it beside the account. Git was told it, or it made it up
+ * from the Mac's names and commits as that without a word; then this says
+ * so, and offers the signed-in person's name and GitHub's private address
+ * for them, filling in only what git lacks. Nothing is said about an address
+ * git was told: whether GitHub knows it is not something this sign-in can
+ * ask.
+ */
+function Commits({ bridge, identity, github }: { bridge: GitHubBridge; identity: Identity; github: boolean }) {
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const who = identity.name && identity.email ? `${identity.name} <${identity.email}>` : (identity.email ?? identity.name);
+
+	const fill = async () => {
+		setBusy(true);
+		setError(null);
+		const out = await bridge.useGitHubIdentity();
+		await refreshGitHub();
+		setError(out.error ?? null);
+		setBusy(false);
+	};
+
+	return (
+		<div id="commitIdentity" className="flex flex-col gap-1 border-t px-3 py-2 text-xs">
+			<div className="flex min-h-7 items-center gap-3">
+				<span className="shrink-0 text-muted-foreground">Commits as</span>
+				<span className="min-w-0 flex-1 truncate" title={who ?? undefined}>
+					{who ?? "No one"}
+				</span>
+				{!identity.set && github && (
+					<Button type="button" variant="outline" size="sm" className="h-7 shrink-0 text-xs" disabled={busy} onClick={fill}>
+						Use my GitHub account
+					</Button>
+				)}
+			</div>
+			{!identity.set && (
+				<p className="text-warning">
+					{who ? "Git made this up from this Mac's names, so GitHub cannot tell these commits are yours." : "Git has not been told who you are."}
+					{!github && " Sign in to GitHub to use your account."}
+				</p>
+			)}
+			{error && (
+				<p role="alert" className="text-destructive">
+					{error}
+				</p>
 			)}
 		</div>
 	);

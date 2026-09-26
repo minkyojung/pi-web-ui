@@ -6,8 +6,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { CITIES, pickCity } from "../electron/cities.js";
-import { branchOf, changesIn, fetchOrigin, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf, startOf } from "../electron/git.js";
-import { deviceCodeFrom, login, profileFrom, signIn, standing } from "../electron/github.js";
+import { branchOf, changesIn, fetchOrigin, fillIdentity, identity, makeWorkspace, onRemote, remoteBranches, removeWorktree, repositoryOf, startOf } from "../electron/git.js";
+import { deviceCodeFrom, login, noreplyEmail, profileFrom, signIn, standing } from "../electron/github.js";
 
 const run = (cwd, ...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, encoding: "utf8" }).trim();
 
@@ -181,6 +181,69 @@ test("anything that is not GitHub's answer about a person is no one", () => {
 	for (const out of [null, "", "someone", "not json", "[]", "null", JSON.stringify({ id: 1 }), JSON.stringify({ login: "" }), JSON.stringify({ login: 7 }), JSON.stringify({ message: "Bad credentials" })]) {
 		assert.equal(profileFrom(out), null, String(out));
 	}
+});
+
+/** A machine of its own for as long as `run` runs: a home, and a global git configuration that is a file here rather than the person's. */
+async function withHome(run) {
+	const home = realpathSync(mkdtempSync(join(tmpdir(), "octave-home-")));
+	const saved = { ...process.env };
+	Object.assign(process.env, { HOME: home, GIT_CONFIG_GLOBAL: join(home, ".gitconfig"), GIT_CONFIG_NOSYSTEM: "1" });
+	for (const key of ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "EMAIL"]) delete process.env[key];
+	try {
+		return await run(home);
+	} finally {
+		for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
+		Object.assign(process.env, saved);
+	}
+}
+
+test("a machine git has not been told about makes up who commits, and says it made them up", async () => {
+	await withHome(async () => {
+		const who = await identity();
+		assert.equal(who.set, false);
+		// What it makes up is the machine's — a Mac's user and its name, as
+		// williamjung@Williams-MacBook-Pro.local — or nothing where it cannot.
+		for (const value of [who.name, who.email]) assert.ok(value === null || typeof value === "string");
+	});
+});
+
+test("who commits is what git was told, once it has a name and an email", async () => {
+	await withHome(async (home) => {
+		execFileSync("git", ["config", "--global", "user.name", "Mona Lisa"], { cwd: home });
+		assert.equal((await identity()).set, false, "a name alone is not enough: the email is still made up");
+		execFileSync("git", ["config", "--global", "user.email", "mona@example.com"], { cwd: home });
+		assert.deepEqual(await identity(), { name: "Mona Lisa", email: "mona@example.com", set: true });
+	});
+});
+
+test("filling in who commits writes only what git has no word for, and leaves the rest as the person set it", async () => {
+	await withHome(async (home) => {
+		execFileSync("git", ["config", "--global", "user.name", "Mona Lisa"], { cwd: home });
+		assert.deepEqual(await fillIdentity({ name: "monalisa octocat", email: "1+octocat@users.noreply.github.com" }), {});
+		assert.deepEqual(await identity(), { name: "Mona Lisa", email: "1+octocat@users.noreply.github.com", set: true });
+		assert.deepEqual(await fillIdentity({ name: "someone else", email: "else@example.com" }), {}, "nothing is left to fill");
+		assert.deepEqual(await identity(), { name: "Mona Lisa", email: "1+octocat@users.noreply.github.com", set: true });
+		const repo = join(home, "repo");
+		mkdirSync(repo);
+		execFileSync("git", ["init", "-q"], { cwd: repo });
+		execFileSync("git", ["commit", "-q", "--allow-empty", "-m", "first"], { cwd: repo });
+		assert.equal(execFileSync("git", ["log", "-1", "--format=%an <%ae>"], { cwd: repo, encoding: "utf8" }).trim(), "Mona Lisa <1+octocat@users.noreply.github.com>", "a commit is made as them");
+	});
+});
+
+test("what is not a name or an email is not written", async () => {
+	await withHome(async () => {
+		for (const bad of [{ name: "", email: "a@b" }, { name: "a", email: "not an email" }, { name: "a\nb", email: "a@b" }, { name: "a", email: "<a@b>" }, {}]) {
+			assert.ok((await fillIdentity(bad)).error, JSON.stringify(bad));
+		}
+		assert.equal((await identity()).set, false);
+	});
+});
+
+test("GitHub's private address for a person is made of their number and their login", () => {
+	assert.equal(noreplyEmail(1, "octocat"), "1+octocat@users.noreply.github.com");
+	assert.equal(noreplyEmail(null, "octocat"), null, "without the number there is no address that stays theirs");
+	assert.equal(noreplyEmail(1, ""), null);
 });
 
 test("a clone is asked for by owner/name or by a GitHub address, and nothing else", async () => {

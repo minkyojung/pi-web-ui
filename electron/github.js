@@ -46,6 +46,16 @@ export function profileFrom(out) {
 	};
 }
 
+/**
+ * The address GitHub keeps for a person to commit as without giving their
+ * own: their number and their login at users.noreply.github.com. GitHub ties
+ * a commit made as it to them, and it stays theirs when the login changes —
+ * the number is why — so it is null without the number.
+ */
+export function noreplyEmail(id, login) {
+	return Number.isInteger(id) && id > 0 && login ? `${id}+${login}@users.noreply.github.com` : null;
+}
+
 /** The signed-in person on GitHub, or null: no gh, no sign-in, no answer. */
 async function profile() {
 	return profileFrom(await gh(["api", "user"]));

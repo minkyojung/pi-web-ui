@@ -61,9 +61,14 @@ contextBridge.exposeInMainWorld("pi", {
 	 * until GitHub says yes, saying the one-time code through `onCode` as
 	 * `{ userCode, verificationUri }` on the way; it and `signOut` answer
 	 * `{ ok }` or `{ error }`, and a sign-in `cancel` gave up, `{ cancelled }`.
+	 * `identity` is who git commits as on this machine, `{ name, email, set }`
+	 * — `set` false when git made it up — and `useGitHubIdentity` fills in
+	 * what git lacks from the person signed in, answering `{}` or `{ error }`.
 	 */
 	github: {
 		standing: () => ipcRenderer.invoke("github:standing"),
+		identity: () => ipcRenderer.invoke("github:identity"),
+		useGitHubIdentity: () => ipcRenderer.invoke("github:useGitHubIdentity"),
 		signIn: () => ipcRenderer.invoke("github:signIn"),
 		cancel: () => ipcRenderer.invoke("github:cancel"),
 		signOut: () => ipcRenderer.invoke("github:signOut"),
