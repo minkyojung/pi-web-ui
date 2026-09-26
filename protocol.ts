@@ -235,6 +235,12 @@ export interface Item {
 	 */
 	entryId?: string;
 	/**
+	 * On a user message: what was sent beside it, for the conversation to draw
+	 * over it — the tab in front, the words chosen in it and their page, the
+	 * pictures kept. See besideOf in conversation.js.
+	 */
+	beside?: { front?: string; chosen?: string; page?: string; pictures?: string[] };
+	/**
 	 * On a tool: what its result carried besides text. A projection of pi's
 	 * `details`, not the thing itself — see detailsOf in conversation.js.
 	 */

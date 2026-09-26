@@ -254,6 +254,24 @@ test("an extension's message is a notice on both paths, and only if it asked to 
 	assert.deepEqual(itemsFromMessages([shown, hidden]), live);
 });
 
+test("what was sent beside a message goes over it on both paths — the tab, the words chosen, the pictures kept — and nothing else hidden shows", () => {
+  const user = { role: "user", content: [{ type: "text", text: "이 문장 무슨 뜻이야?" }], timestamp: 0 };
+  const looking = { role: "custom", customType: "open-note", content: "When they sent this message…", display: false, details: { front: "Hello.md", chosen: "고양이는 밤에 잘 본다" }, timestamp: 0 };
+  const kept = { role: "custom", customType: "attached", content: "The pictures…", display: false, details: { pictures: [".octave/attachments/ab12cd34/Pasted image.png"] }, timestamp: 0 };
+  const other = { role: "custom", customType: "spec", content: "hidden instructions", display: false, details: { x: 1 }, timestamp: 0 };
+  const answer = { role: "assistant", content: [{ type: "text", text: "밤눈이 밝다는 뜻이에요." }], stopReason: "stop", timestamp: 0 };
+  const events = [user, looking, kept, other].flatMap((message) => [{ type: "message_start", message }, { type: "message_end", message }]);
+  const live = replay([{ type: "agent_start" }, ...events, { type: "message_start", message: answer }, { type: "message_end", message: answer }]).state.items.filter((i) => i.kind !== "done");
+  const beside = { front: "Hello.md", chosen: "고양이는 밤에 잘 본다", pictures: [".octave/attachments/ab12cd34/Pasted image.png"] };
+  assert.deepEqual(live[0], { kind: "user", text: "이 문장 무슨 뜻이야?", beside });
+  assert.equal(live.filter((i) => i.kind === "notice").length, 0, "숨은 것은 알림으로 나오지 않는다");
+  const stored = itemsFromMessages([user, looking, kept, other, answer]).filter((i) => i.kind !== "done");
+  assert.deepEqual(stored[0], { kind: "user", text: "이 문장 무슨 뜻이야?", beside });
+  // A hidden message after the answer has begun is not the person's message's.
+  const late = itemsFromMessages([user, answer, looking]);
+  assert.equal(late[0].beside, undefined);
+});
+
 test("a branch summary reads as a notice after resuming", () => {
 	const stored = itemsFromMessages([
 		{ role: "branchSummary", summary: "Tried the other wording first", fromId: "x", timestamp: "0" },

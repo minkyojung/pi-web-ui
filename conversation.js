@@ -17,6 +17,8 @@
  * @property {{diff?: string, omittedLines?: number, fullOutputPath?: string, limit?: number}} [details]
  *   on `tool`: what the result carried besides its text
  * @property {string} [entryId]    on `user`: where this message sits in the session tree
+ * @property {{front?: string, chosen?: string, page?: string, pictures?: string[]}} [beside]
+ *   on `user`: what was sent beside it — see besideOf
  * @property {number} [startedAt]  ms, on `done`: when the run's first message was written
  * @property {number} [endedAt]    ms, on `done`: when its last one was
  * @property {string} [stopReason] on `done`: why the run's last message stopped
@@ -171,6 +173,30 @@ function bill(state, message) {
 	if (typeof message.stopReason === "string") state.runStopReason = message.stopReason;
 }
 
+/**
+ * What an extension said beside a message that the conversation draws over
+ * it: the tab in front and the words chosen in it (guard.ts), the pictures
+ * kept (sentPictures.ts). Their messages are hidden — pi reads the words,
+ * the person sees these — and anything else hidden stays hidden. Null for a
+ * message that is none of these.
+ */
+export function besideOf(message) {
+	const details = message?.details;
+	if (message?.role !== "custom" || !details || typeof details !== "object") return null;
+	if (message.customType === "open-note" && typeof details.front === "string") {
+		return {
+			front: details.front,
+			...(typeof details.chosen === "string" ? { chosen: details.chosen } : {}),
+			...(typeof details.page === "string" ? { page: details.page } : {}),
+		};
+	}
+	if (message.customType === "attached" && Array.isArray(details.pictures)) {
+		const pictures = details.pictures.filter((path) => typeof path === "string");
+		return pictures.length ? { pictures } : null;
+	}
+	return null;
+}
+
 export function createConversation() {
 	return {
 		/** @type {Item[]} */
@@ -178,6 +204,11 @@ export function createConversation() {
 		status: "idle",
 		/** The assistant item currently receiving text_delta, if any. */
 		openText: null,
+		/**
+		 * The person's message of the turn about to start, which what was sent
+		 * beside it (besideOf) belongs to; null once the answer has begun.
+		 */
+		openUser: null,
 		/** The thinking item currently receiving thinking_delta, if any. */
 		openThinking: null,
 		/** tool_execution_start items awaiting their _end, keyed by toolCallId. */
@@ -253,8 +284,9 @@ export function applyEvent(state, event) {
 			stamp(state, event.message);
 			if (event.message?.role === "user") {
 				const text = textOf(event.message.content);
-				if (text) add({ kind: "user", text });
+				state.openUser = text ? add({ kind: "user", text }) : null;
 			} else if (event.message?.role === "assistant") {
+				state.openUser = null;
 				state.sawText = false;
 				state.messageIndex++;
 			}
@@ -326,6 +358,9 @@ export function applyEvent(state, event) {
 				// does not stream, so the whole of it is here.
 				const text = textOf(event.message.content);
 				if (text) add({ kind: "notice", text });
+			} else if (state.openUser && besideOf(event.message)) {
+				state.openUser.beside = { ...state.openUser.beside, ...besideOf(event.message) };
+				changed.push(state.openUser);
 			}
 			state.openText = null;
 			state.openThinking = null;
@@ -483,10 +518,13 @@ export function itemsFromMessages(messages, entryIdOf) {
 		running = false;
 	};
 
+	// The person's message the turn's hidden messages follow, as live (openUser).
+	let openUser = null;
 	for (const message of messages) {
 		if (message.role === "user") {
 			settle();
 			stamp(run, message);
+			openUser = null;
 			const text = textOf(message.content);
 			if (text) {
 				const item = { kind: "user", text };
@@ -495,8 +533,10 @@ export function itemsFromMessages(messages, entryIdOf) {
 				const entryId = entryIdOf?.(message);
 				if (entryId) item.entryId = entryId;
 				items.push(item);
+				openUser = item;
 			}
 		} else if (message.role === "assistant") {
+			openUser = null;
 			// Live, the same two numbers come off message_start and message_end,
 			// and a tool result is not a message there — so it is not one here.
 			stamp(run, message);
@@ -531,9 +571,11 @@ export function itemsFromMessages(messages, entryIdOf) {
 			// Left behind by a compaction, in place of the messages it replaced.
 			items.push({ kind: "notice", text: compactionText(message.tokensBefore) });
 		} else if (message.role === "custom") {
-			// An extension's own message. Shown only if it asked to be, as live.
+			// An extension's own message. Shown only if it asked to be, as live;
+			// what was sent beside the person's message goes over it instead.
 			const text = textOf(message.content);
 			if (message.display && text) items.push({ kind: "notice", text });
+			else if (openUser && besideOf(message)) openUser.beside = { ...openUser.beside, ...besideOf(message) };
 		} else if (message.role === "branchSummary") {
 			// Left where a branch was left, saying what happened on it.
 			if (message.summary) items.push({ kind: "notice", text: message.summary });
