@@ -26,7 +26,7 @@ function Glyph({ glyph }: { glyph: PullGlyph }) {
 }
 
 /** The agent's four, each the command it sends, its verb and its icon. The verb says what is wrong: Fix checks is checks that failed. */
-const AGENT: Record<Exclude<PullAction, "merge">, { name: string; id: string; label: string; icon: React.ReactNode }> = {
+const AGENT: Record<Exclude<PullAction, "merge" | "update-branch" | "ready">, { name: string; id: string; label: string; icon: React.ReactNode }> = {
 	push: { name: PUSH, id: "push-pr", label: "Push", icon: <ArrowUpIcon /> },
 	"resolve-conflicts": { name: RESOLVE_CONFLICTS, id: "resolve-conflicts", label: "Resolve conflicts", icon: <GitMergeConflictIcon /> },
 	"fix-checks": { name: FIX_CHECKS, id: "fix-checks", label: "Fix checks", icon: <WrenchIcon /> },
@@ -45,7 +45,7 @@ const AGENT: Record<Exclude<PullAction, "merge">, { name: string; id: string; la
  * Merge is the shell's, given as `onMerge`; a browser tab has none.
  */
 export function PullRequestStanding({ view, onMerge }: { view: PullRequestView; onMerge?: () => Promise<{ error?: string } | null> }) {
-	const agent = view.action && view.action !== "merge" ? AGENT[view.action] : null;
+	const agent = view.action && view.action in AGENT ? AGENT[view.action as keyof typeof AGENT] : null;
 	return (
 		<span id="branch-standing" data-glyph={view.glyph} data-action={view.action ?? undefined} data-running={view.running || undefined} className="flex shrink-0 items-center gap-1 pr-1.5">
 			{/* One button, the mark and the number both: shadcn's link as a button

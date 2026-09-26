@@ -45,7 +45,7 @@ export interface BranchStatus {
 	review?: string;
 	/** The checks, folded: how many, how many still running, how many failed. */
 	checks?: { total: number; pending: number; failed: number };
-	/** GitHub's word on whether it can be merged (electron/github.js): CLEAN, BLOCKED, BEHIND, DIRTY, UNSTABLE, DRAFT, HAS_HOOKS, UNKNOWN, or "" when not said. */
+	/** GitHub's word on whether it can be merged (electron/github.js), as it said it — read through mergeStateOf. */
 	merge?: string;
 	/** How the repository merges by default — MERGE, SQUASH or REBASE — or "" when not said. */
 	method?: string;
@@ -94,8 +94,27 @@ export function offersPullRequest(git: GitStanding | null, status: BranchStatus 
 /** Which of GitHub's pull request marks, and so which colour: open, draft, merged, closed (Primer's own four). */
 export type PullGlyph = "open" | "draft" | "merged" | "closed";
 
-/** The one thing to do about a pull request, each a button: four are the agent's (pullRequest.ts), Merge the shell's. */
-export type PullAction = "push" | "resolve-conflicts" | "fix-checks" | "address-review" | "merge";
+/**
+ * GitHub's one word on whether a pull request can be merged, and if not what
+ * stands in the way (mergeStateStatus). Every value it documents is here, so
+ * that what the item does with each is a switch the compiler holds to all of
+ * them; a word it adds later is read as UNKNOWN — not known yet — until it is
+ * written in, rather than as something to act on.
+ */
+export type MergeState = "CLEAN" | "HAS_HOOKS" | "UNSTABLE" | "BEHIND" | "DIRTY" | "BLOCKED" | "DRAFT" | "UNKNOWN";
+
+const MERGE_STATES: readonly MergeState[] = ["CLEAN", "HAS_HOOKS", "UNSTABLE", "BEHIND", "DIRTY", "BLOCKED", "DRAFT", "UNKNOWN"];
+
+/** The shell's word read as one of GitHub's: anything else, or nothing, is UNKNOWN. */
+export const mergeStateOf = (said: string | undefined): MergeState => (MERGE_STATES as readonly string[]).includes(said ?? "") ? (said as MergeState) : "UNKNOWN";
+
+/**
+ * The one thing to do about a pull request, each a button. Four are the
+ * agent's, for what takes judgment (pullRequest.ts); three are the shell's,
+ * for what GitHub does itself when asked — merge, bring the base in, mark a
+ * draft ready — and nobody need decide anything.
+ */
+export type PullAction = "push" | "resolve-conflicts" | "fix-checks" | "address-review" | "update-branch" | "ready" | "merge";
 
 /** The pull request as the second item draws it: its mark and number, and at most one thing to do. */
 export interface PullRequestView {
@@ -106,32 +125,70 @@ export interface PullRequestView {
 	action: PullAction | null;
 	/** Checks are running, and there is nothing to do but wait. */
 	running: boolean;
+	/** Why nothing can be done here, when something stands in the way that only GitHub can say — said on pointing at the number. */
+	waiting: string | null;
 	/** How the repository merges by default — MERGE, SQUASH or REBASE — or "" when not said. */
 	method: string;
 	/** What it would be merged into, as `main`. */
 	base: string;
 }
 
+type Next = Pick<PullRequestView, "action" | "running" | "waiting">;
+const doing = (action: PullAction): Next => ({ action, running: false, waiting: null });
+const nothing = (waiting: string | null = null): Next => ({ action: null, running: false, waiting });
+
 /**
- * The one thing to do, in the order it has to be done. What is here and
- * not on origin first: until it is pushed, what GitHub says of the checks
- * and the conflicts is about the commit before. Then what stands in the
- * way — conflicts, a failed check, changes asked for — each the agent's to
- * deal with; then, with nothing in the way, the merge. What is in the way
- * is GitHub's word (merge: mergeStateStatus), which knows which checks and
- * reviews the repository requires. Waiting on a reviewer, or on a draft
- * being made ready, is nobody's here: nothing is offered.
+ * The one thing to do, in the order it has to be done — every state GitHub
+ * can be in given its answer, none left to fall through to silence.
+ *
+ * What is here and not on origin first: until it is pushed, what GitHub says
+ * of the checks and the conflicts is about the commit before. Then what has
+ * to change before anything else can: conflicts, or the base the repository
+ * wants merged in first. Then the checks and the review, each the agent's to
+ * deal with; then, while checks run, a wait. Then what the state itself
+ * says: a draft made ready, a merge, or — blocked by a rule of the
+ * repository's that is not a review, a conversation to resolve, a signature —
+ * nothing here, and why on the number, since only GitHub can say which.
+ * Waiting on a reviewer is nobody's here; so is GitHub not having worked it
+ * out yet, which is asked again.
  */
-function actionOf(git: GitStanding, status: BranchStatus): { action: PullAction | null; running: boolean } {
+function nextOf(git: GitStanding, status: BranchStatus): Next {
 	const checks = status.checks ?? { total: 0, pending: 0, failed: 0 };
+	const merge = mergeStateOf(status.merge);
 	const unpushed = git.changes > 0 || (git.remote ? git.remote.ahead : (git.ahead ?? 0)) > 0;
-	if (unpushed) return { action: "push", running: false };
-	if (status.merge === "DIRTY") return { action: "resolve-conflicts", running: false };
-	if (checks.failed > 0) return { action: "fix-checks", running: false };
-	if (status.review === "CHANGES_REQUESTED") return { action: "address-review", running: false };
-	if (checks.pending > 0) return { action: null, running: true };
-	if (status.merge === "CLEAN" || status.merge === "UNSTABLE" || status.merge === "HAS_HOOKS") return { action: "merge", running: false };
-	return { action: null, running: false };
+	if (unpushed) return doing("push");
+	// What has to change before anything else can. A switch, so that the one
+	// after it is held to every state these two leave.
+	switch (merge) {
+		case "DIRTY":
+			return doing("resolve-conflicts");
+		case "BEHIND":
+			return doing("update-branch");
+		default:
+			break;
+	}
+	if (checks.failed > 0) return doing("fix-checks");
+	if (status.review === "CHANGES_REQUESTED") return doing("address-review");
+	if (checks.pending > 0) return { action: null, running: true, waiting: null };
+	if (status.draft) return doing("ready");
+	switch (merge) {
+		case "CLEAN":
+		case "HAS_HOOKS":
+		// A check failed that the repository does not require: with no failure
+		// counted (a neutral or skipped one), GitHub merges it, and so do we.
+		case "UNSTABLE":
+			return doing("merge");
+		case "DRAFT":
+			return doing("ready");
+		case "BLOCKED":
+			return status.review === "REVIEW_REQUIRED" ? nothing() : nothing("Blocked by a rule of the repository's");
+		case "UNKNOWN":
+			return nothing();
+		default: {
+			const unheard: never = merge;
+			return unheard;
+		}
+	}
 }
 
 /**
@@ -142,6 +199,6 @@ function actionOf(git: GitStanding, status: BranchStatus): { action: PullAction 
 export function pullRequestOf(git: GitStanding | null, status: BranchStatus | undefined): PullRequestView | null {
 	if (!git || status?.number === undefined || !(status.state === "open" || status.state === "merged" || status.state === "closed")) return null;
 	const head = { number: status.number, url: status.url ?? null, method: status.method ?? "", base: git.base ?? "the base" };
-	if (status.state !== "open") return { ...head, glyph: status.state, action: null, running: false };
-	return { ...head, glyph: status.draft ? "draft" : "open", ...actionOf(git, status) };
+	if (status.state !== "open") return { ...head, glyph: status.state, ...nothing() };
+	return { ...head, glyph: status.draft ? "draft" : "open", ...nextOf(git, status) };
 }
