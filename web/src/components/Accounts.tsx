@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { CheckIcon, CopyIcon, ExternalLinkIcon, KeyRoundIcon, UserRoundIcon } from "lucide-react";
+import { ArrowUpRightIcon, CheckIcon, CopyIcon, ExternalLinkIcon, KeyRoundIcon, UserRoundIcon } from "lucide-react";
 
 import { bridge as githubBridge, githubStore, identityStore, refresh as refreshGitHub, type Code, type GitHubBridge, type GitHubStanding, type Identity } from "../github";
 import { loginStore, providersStore, type LoginState } from "../serverState";
@@ -106,8 +106,8 @@ export function Accounts() {
 
 /**
  * The person on GitHub, and the sign-in behind them. Signed in, they are
- * drawn as GitHub has them — picture, name, login — with their page a click
- * away: read here and changed there, since the account is GitHub's. Their
+ * drawn as GitHub has them — picture, name, login — and their name is their
+ * page on GitHub: read here and changed there, since the account is GitHub's. Their
  * initials stand in while the picture loads or when it cannot. Where they
  * stand is the store's (github.ts), asked again after anything done here. A
  * sign-in is gh's: the shell runs it and says the one-time code as gh gets
@@ -145,19 +145,7 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 	let about: React.ReactNode = null;
 	let actions: React.ReactNode = null;
 	if (me) {
-		about = (
-			<>
-				{me.name && (
-					<>
-						<span className="truncate">@{me.login}</span>
-						<span aria-hidden>·</span>
-					</>
-				)}
-				<a href={me.url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 text-link underline-offset-2 hover:underline">
-					View on GitHub <ExternalLinkIcon className="size-3" />
-				</a>
-			</>
-		);
+		about = me.name && <span className="truncate">@{me.login}</span>;
 		actions = (
 			<Button type="button" variant="outline" size="sm" className={b} disabled={busy} onClick={signOut}>
 				Sign out
@@ -189,7 +177,14 @@ function GitHub({ bridge }: { bridge: GitHubBridge }) {
 					</AvatarFallback>
 				</Avatar>
 				<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-					<span className="truncate text-sm font-medium">{me ? (me.name ?? me.login) : "GitHub"}</span>
+					{me ? (
+						<a href={me.url} target="_blank" rel="noreferrer" title="View on GitHub" className="group inline-flex min-w-0 items-center gap-0.5 self-start text-sm font-medium underline-offset-2 hover:underline">
+							<span className="truncate">{me.name ?? me.login}</span>
+							<ArrowUpRightIcon className="size-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
+						</a>
+					) : (
+						<span className="truncate text-sm font-medium">GitHub</span>
+					)}
 					{about && <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">{about}</span>}
 				</div>
 				<span className="flex shrink-0 gap-1">{actions}</span>
