@@ -13,7 +13,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, posix } from "node:path";
 
-import { fileAt } from "./vault.ts";
+import { fileAt, messageFileAt } from "./vault.ts";
 
 export const IMAGE_TYPES: Record<string, string> = {
 	".png": "image/png",
@@ -52,6 +52,13 @@ export function attachmentAt(root: string, given: string, from = ""): { path: st
 	const near = from ? posix.dirname(from) : "";
 	found.sort((a, b) => (a.dir === near ? -1 : b.dir === near ? 1 : a.depth - b.depth || a.path.localeCompare(b.path)));
 	return at(found[0].path);
+}
+
+/** A picture given in the message box, for the conversation to show over the message it went with (conversation.js besideOf). */
+export function messagePictureAt(root: string, given: string): { path: string; full: string; type: string } | null {
+	const file = messageFileAt(root, given);
+	const type = file && imageType(file.path);
+	return file && type && isFile(file.full) ? { ...file, type } : null;
 }
 
 function isFile(full: string): boolean {

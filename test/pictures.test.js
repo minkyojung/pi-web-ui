@@ -64,3 +64,25 @@ test("a pasted picture goes where Obsidian was told to keep them, else in attach
 	assert.equal(attachmentFolder(ROOT, "book/ch1/notes.md"), "book/ch1/img", "under the note's folder");
 	rmSync(join(ROOT, ".obsidian", "app.json"));
 });
+
+import { messagePictureAt } from "../pictures.ts";
+
+test("a picture given in the message box is served from .octave/attachments/<id>/ and nowhere else under a dot-folder", () => {
+	const kept = join(ROOT, ".octave/attachments/ab12cd34");
+	mkdirSync(kept, { recursive: true });
+	writeFileSync(join(kept, "Pasted image.png"), png);
+	writeFileSync(join(kept, "paper.pdf"), "%PDF");
+	mkdirSync(join(ROOT, ".octave/specs/x"), { recursive: true });
+	writeFileSync(join(ROOT, ".octave/specs/x/shot.png"), png);
+	symlinkSync(join(OUTSIDE, "secret.png"), join(kept, "link.png"));
+	const found = messagePictureAt(ROOT, ".octave/attachments/ab12cd34/Pasted image.png");
+	assert.equal(found?.type, "image/png");
+	assert.equal(found?.path, ".octave/attachments/ab12cd34/Pasted image.png");
+	assert.equal(messagePictureAt(ROOT, ".octave/attachments/ab12cd34/paper.pdf"), null, "only pictures");
+	assert.equal(messagePictureAt(ROOT, ".octave/specs/x/shot.png"), null, "not the rest of .octave/");
+	assert.equal(messagePictureAt(ROOT, ".octave/attachments/ab12cd34/link.png"), null, "not out by a link");
+	assert.equal(messagePictureAt(ROOT, ".octave/attachments/ab12cd34/../../specs/x/shot.png"), null, "not out by ..");
+	assert.equal(messagePictureAt(ROOT, ".octave/attachments/ab12cd34/nope.png"), null, "only what is there");
+	assert.equal(messagePictureAt(ROOT, ".pi/history/a.png"), null, "never .pi/");
+	assert.equal(attachmentAt(ROOT, ".octave/attachments/ab12cd34/Pasted image.png"), null, "the note's door still keeps out of dot-folders");
+});

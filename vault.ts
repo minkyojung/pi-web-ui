@@ -157,6 +157,18 @@ export function fileAt(root: string, given: string): { path: string; full: strin
 }
 
 /**
+ * A file given in the message box (attach.ts saveMessageAttachment), which
+ * fileAt leaves out with every dot-folder: that one folder, a folder of an
+ * id in it, a file in that — and landing there on the disk, so a link that
+ * points elsewhere is not followed. Nothing else under `.octave/`.
+ */
+export function messageFileAt(root: string, given: string): { path: string; full: string } | null {
+	if (!/^\.octave\/attachments\/[0-9a-f]{8}\/[^/]+$/.test(given)) return null;
+	const file = inFolder(root, given);
+	return file && file.path === given ? file : null;
+}
+
+/**
  * The spec a path from the folder names (documentKinds.ts), as the vault
  * names it, or null. Placed as a note is — inside the folder once resolved,
  * on the disk's spelling — and then under `.octave/specs/`, the one

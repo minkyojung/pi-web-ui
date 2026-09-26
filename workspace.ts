@@ -77,7 +77,7 @@ import {
 	writeSpec,
 	type WriteResult,
 } from "./vault.ts";
-import { attachmentAt } from "./pictures.ts";
+import { attachmentAt, messagePictureAt } from "./pictures.ts";
 import { FileIndex } from "./fileIndex.ts";
 import { type Repo, repoFiles } from "./repoFiles.ts";
 import { deleteNote, shellTrash } from "./trash.ts";
@@ -1773,7 +1773,11 @@ export async function createWorkspace(cwd: string) {
 			// that shows a PDF reads (Pdf.tsx). A document is named exactly, never
 			// looked for by name, since nothing embeds one yet.
 			const document = documentAt(CWD, given);
-			const found = attachmentAt(CWD, given, url.searchParams.get("from") ?? "") ?? (document ? { full: join(CWD, document), type: documentType(document)! } : null);
+			const found =
+				attachmentAt(CWD, given, url.searchParams.get("from") ?? "") ??
+				// Or one given in the message box, for the conversation to show over its message.
+				messagePictureAt(CWD, given) ??
+				(document ? { full: join(CWD, document), type: documentType(document)! } : null);
 			if (!found) {
 				res.writeHead(404).end("Not found");
 				return;
