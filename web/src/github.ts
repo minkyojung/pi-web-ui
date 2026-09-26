@@ -14,9 +14,10 @@ import { createStore } from "./serverState";
 /**
  * Who is signed in, as GitHub says (electron/github.js profileFrom): what
  * they have not filled in is null. `url` is their page on GitHub; `id` is
- * GitHub's number for them, which does not change when the login does.
+ * GitHub's number for them, which does not change when the login does;
+ * `email` is the one they chose to show on their profile.
  */
-export type GitHubProfile = { login: string; name: string | null; avatarUrl: string | null; url: string; id: number | null };
+export type GitHubProfile = { login: string; name: string | null; avatarUrl: string | null; url: string; id: number | null; email: string | null };
 export type GitHubStanding = { state: "missing" } | { state: "signed-out" } | ({ state: "signed-in" } & GitHubProfile);
 /** Who git commits as on this machine; `set` is false when git made it up from the machine's names (electron/git.js identity). */
 export type Identity = { name: string | null; email: string | null; set: boolean };
