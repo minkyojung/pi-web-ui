@@ -20,21 +20,51 @@ function gh(args, { timeoutMs = 15_000, cwd } = {}) {
 	});
 }
 
+/**
+ * The signed-in person as GitHub's answer to `gh api user` has them, cut to
+ * what the app shows — or null for anything that is not that answer. Only
+ * what the sign-in's own scopes give: the public profile, so no private
+ * email. What they have not filled in is null rather than made up — a
+ * person with no name has none, and the page decides what stands in for
+ * it. Pure, so it can be read in a test.
+ */
+export function profileFrom(out) {
+	let user;
+	try {
+		user = JSON.parse(out);
+	} catch {
+		return null;
+	}
+	if (!user || typeof user !== "object" || typeof user.login !== "string" || !user.login) return null;
+	const name = typeof user.name === "string" ? user.name.trim() : "";
+	return {
+		login: user.login,
+		name: name || null,
+		avatarUrl: typeof user.avatar_url === "string" && user.avatar_url.startsWith("https://") ? user.avatar_url : null,
+		url: `https://github.com/${user.login}`,
+		id: Number.isInteger(user.id) && user.id > 0 ? user.id : null,
+	};
+}
+
+/** The signed-in person on GitHub, or null: no gh, no sign-in, no answer. */
+async function profile() {
+	return profileFrom(await gh(["api", "user"]));
+}
+
 /** The signed-in person's GitHub name, which starts their branch names — or null. */
-export function login() {
-	return gh(["api", "user", "--jq", ".login"]);
+export async function login() {
+	return (await profile())?.login ?? null;
 }
 
 /**
- * Where the person stands with GitHub, for Settings › Accounts: `missing`
- * when there is no gh to ask, `signed-out` when it has no one — or its
- * keyring is locked, which it cannot tell from no one — and `signed-in` with
- * their name.
+ * Where the person stands with GitHub, for Settings: `missing` when there is
+ * no gh to ask, `signed-out` when it has no one — or its keyring is locked,
+ * which it cannot tell from no one — and `signed-in` with who they are.
  */
 export async function standing() {
 	if ((await gh(["--version"])) === null) return { state: "missing" };
-	const name = await login();
-	return name ? { state: "signed-in", login: name } : { state: "signed-out" };
+	const person = await profile();
+	return person ? { state: "signed-in", ...person } : { state: "signed-out" };
 }
 
 /**
