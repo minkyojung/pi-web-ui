@@ -3957,12 +3957,14 @@ check("a workspace's row archives it from a right click: what stays is said, the
 		await until("the dialog gone", async () => !(await app.evaluate("!!document.getElementById('archive-workspace')")));
 		assert.deepEqual(JSON.parse(await app.evaluate("JSON.stringify(window.__archives)")), [{ path: "/w/lima", seen: 1 }, { path: "/w/lima", seen: 2 }]);
 
-		// The archived one is not among the rows you can open; it is under
-		// Archived, folded, and a click on it asks for it back.
-		assert.equal(await app.evaluate("document.querySelector('[data-archived=\"/r/demo\"]').innerText.replace(/\\s+/g, ' ').trim()"), "Archived 1");
-		assert.equal(await app.evaluate("!!document.querySelector('[data-archived-workspace]')"), false, "folded until it is asked for");
-		await app.click('[data-archived="/r/demo"]');
+		// The archived one is not among the rows you can open, nor anywhere in
+		// the list: it is in Settings › Archived, where Restore asks for it back.
+		assert.equal(await app.evaluate("!!document.querySelector('#workspaces [data-archived], #workspaces [data-archived-workspace]')"), false, "not in the list");
+		await app.evaluate(`window.dispatchEvent(new KeyboardEvent("keydown", { key: ",", metaKey: true }))`);
+		await until("Settings", () => app.evaluate("[...document.querySelectorAll('[role=dialog] nav button')].some((b) => b.textContent === 'Archived')"));
+		await app.evaluate("[...document.querySelectorAll('[role=dialog] nav button')].find((b) => b.textContent === 'Archived').click()");
 		await until("the archived row", () => app.evaluate("!!document.querySelector('[data-archived-workspace=\"/w/oslo\"]')"));
+		assert.equal(await app.evaluate("document.querySelector('[data-archived=\"/r/demo\"]').innerText.includes('oslo')"), true, "under its repository");
 		await app.click('[data-archived-workspace="/w/oslo"]');
 		await until("it was asked for back", () => app.evaluate("JSON.stringify(window.__restores) === '[\"/w/oslo\"]'"));
 	} finally {
