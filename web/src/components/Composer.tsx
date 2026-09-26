@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { ArrowUpIcon, CornerDownLeftIcon, FileCodeIcon, FileDiffIcon, FileTextIcon, FileTypeIcon, GitCommitHorizontalIcon, PencilIcon, ScanIcon, SquareIcon, TextQuoteIcon, X } from "lucide-react";
+import { ArrowUpIcon, CornerDownLeftIcon, PencilIcon, ScanIcon, SquareIcon, TextQuoteIcon, X } from "lucide-react";
 
 import { attach, filesToAttach, imagesOf } from "../attachments";
 import { type Chosen as ChosenWords, chosenStore } from "../chosen";
@@ -20,7 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { type Suggestion, SuggestMenu } from "./SuggestMenu";
 import { ModelPicker } from "./ModelPicker";
 import { QueuedMessages } from "./QueuedMessages";
-import { TaskGlyph } from "./TaskGlyph";
+import { FrontMark } from "./FrontMark";
 import {
 	PromptInput,
 	PromptInputBody,
@@ -170,25 +170,6 @@ function FrontToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 			<TooltipContent side="top">{on ? "The agent is told what is in front — press to leave it out" : "Tell the agent what is in front"}</TooltipContent>
 		</Tooltip>
 	);
-}
-
-/** What kind of thing the tab in front is: a task where it stands, as the plan draws it; the rest by what they are. */
-function FrontMark({ label }: { label: FrontLabel }) {
-	const icon = "size-4 shrink-0 text-muted-foreground";
-	switch (label.kind) {
-		case "task":
-			return <TaskGlyph standing={label.standing} />;
-		case "commit":
-			return <GitCommitHorizontalIcon className={icon} />;
-		case "changes":
-			return <FileDiffIcon className={icon} />;
-		case "code":
-			return <FileCodeIcon className={icon} />;
-		case "document":
-			return <FileTypeIcon className={icon} />;
-		case "note":
-			return <FileTextIcon className={icon} />;
-	}
 }
 
 /**

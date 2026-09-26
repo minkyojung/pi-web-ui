@@ -3,6 +3,7 @@ import { CircleAlertIcon, InfoIcon } from "lucide-react";
 
 import type { Item } from "../types";
 import { AskAgain } from "./AskAgain";
+import { Beside } from "./Beside";
 import { BranchSwitch } from "./BranchSwitch";
 import { Fork } from "./Fork";
 import { Message, MessageContent, MessageResponse } from "./ai-elements/message";
@@ -31,6 +32,7 @@ export const ItemView = memo(function ItemView({ item, index }: { item: Item; in
 				// in the tree, which is the only kind that can be asked again or have
 				// been asked more than one way.
 				<Message from="user" className="group/user">
+					{item.beside && <Beside beside={item.beside} />}
 					<MessageContent className="whitespace-pre-wrap">{item.text}</MessageContent>
 					{item.entryId && (
 						<div className="ml-auto flex items-center gap-0.5">
