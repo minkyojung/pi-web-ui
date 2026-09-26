@@ -1111,7 +1111,7 @@ test("입력창에 떨어뜨린 파일은 .octave/attachments/<ID>/에 원래 �
   assert.match(path, /^\.octave\/attachments\/[0-9a-f]{8}\/for the agent\.pdf$/);
   assert.ok(existsSync(join(cwd, path)));
   assert.ok(!existsSync(join(cwd, "attachments/for the agent.pdf")), "노트의 첨부 폴더가 아니다");
-  assert.equal((await post("run.sh", "x")).status, 415, "받는 종류는 같다");
+  assert.equal((await post("run.log", "x")).status, 201, "입력창은 어떤 종류든 받는다");
   // A picture given there is served back, for the conversation to show over its message.
   const picture = await (await post("shot.png", Buffer.from("89504e470d0a1a0a", "hex"))).json();
   const served = await fetch(`http://127.0.0.1:${port}/vault/${picture.path.split("/").map(encodeURIComponent).join("/")}`);

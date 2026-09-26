@@ -3237,13 +3237,13 @@ check("a PDF dropped on the message box is kept in .octave/attachments/, out of 
 	assert.equal(existsSync(join(cwd, "attachments/dropped here.pdf")), false, "not where a note's pictures go");
 	assert.equal(await app.evaluate("document.querySelector('#adding') === null"), true, "the line saying so is gone once it is there");
 	assert.equal(await app.evaluate("document.querySelector('#attached') === null"), true, "it is not an image riding with the message");
-	// A kind the folder does not take is refused, in the conversation, and nothing is written in.
+	// What the folder does not take — an empty file — is refused, in the conversation, and nothing is written in.
 	await app.evaluate(`(() => {
 		const data = new DataTransfer();
-		data.items.add(new File(["x"], "script.sh", { type: "text/x-sh" }));
+		data.items.add(new File([], "empty.txt", { type: "text/plain" }));
 		document.querySelector(${JSON.stringify(BOX)}).dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
 	})()`);
-	await until("the refusal said", () => app.evaluate("document.body.innerText.includes('Could not add script.sh')"));
+	await until("the refusal said", () => app.evaluate("document.body.innerText.includes('Could not add empty.txt')"));
 	assert.equal(await box(), written);
 	await clearBox(app);
 });

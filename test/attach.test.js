@@ -96,7 +96,11 @@ test("입력창에 붙인 것은 .octave/attachments/<ID>/에 원래 이름대�
 		assert.equal(readFileSync(join(root, one.path), "utf8"), "one");
 		assert.equal(readFileSync(join(root, two.path), "utf8"), "two");
 		assert.ok(!readdirSync(root).includes("attachments"), "노트의 첨부 폴더는 건드리지 않는다");
-		assert.deepEqual(saveMessageAttachment(root, "run.sh", bytes("x")), { ok: false, reason: "kind" }, "받는 종류는 노트와 같다");
+		assert.equal(saveMessageAttachment(root, "run.sh", bytes("x")).ok, true, "입력창은 어떤 종류든 받는다");
+		assert.match(saveMessageAttachment(root, "Makefile", bytes("all:")).path, /\/Makefile$/, "확장자가 없어도");
+		assert.match(saveMessageAttachment(root, 'a "quoted" #1.log', bytes("x")).path, /\/a quoted #1\.log$/, "따옴표만 빠진다 — @\"…\"와 부딪히지 않게");
+		assert.deepEqual(saveMessageAttachment(root, ".env", bytes("x")), { ok: false, reason: "name" }, "숨은 이름은 아니다");
+		assert.deepEqual(saveAttachment(root, "run.sh", bytes("x")), { ok: false, reason: "kind" }, "노트에는 여전히 그림과 문서만");
 		assert.deepEqual(saveMessageAttachment(root, "a.pdf", bytes("")), { ok: false, reason: "size" });
 	} finally {
 		rmSync(root, { recursive: true, force: true });
